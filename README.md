@@ -1,1 +1,1 @@
-toml-span/README.md
+./toml-spanner/README.md

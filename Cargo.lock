@@ -56,7 +56,7 @@ dependencies = [
  "codespan-reporting",
  "insta",
  "pretty_assertions",
- "toml-span",
+ "toml-spanner",
 ]
 
 [[package]]
@@ -162,8 +162,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "toml-span"
-version = "0.6.0"
+name = "toml-spanner"
+version = "0.1.0"
 dependencies = [
  "codespan-reporting",
  "serde",

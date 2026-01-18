@@ -9,7 +9,8 @@ use std::{borrow::Cow, fmt};
 /// A deserialized [`ValueInner`] with accompanying [`Span`] information for where
 /// it was located in the toml document
 pub struct Value<'de> {
-    value: Option<ValueInner<'de>>,
+    /// The inner value
+    pub value: ValueInner<'de>,
     /// The location of the value in the toml document
     pub span: Span,
 }
@@ -24,20 +25,15 @@ impl<'de> Value<'de> {
     /// Creates a new [`Value`] with the specified [`Span`]
     #[inline]
     pub fn with_span(value: ValueInner<'de>, span: Span) -> Self {
-        Self {
-            value: Some(value),
-            span,
-        }
+        Self { value, span }
     }
 
-    /// Takes the inner [`ValueInner`]
-    ///
-    /// This panics if the inner value has already been taken.
+    /// Takes the inner [`ValueInner`], replacing it with a placeholder
     ///
     /// Typically paired with [`Self::set`]
     #[inline]
     pub fn take(&mut self) -> ValueInner<'de> {
-        self.value.take().expect("the value has already been taken")
+        std::mem::replace(&mut self.value, ValueInner::Boolean(false))
     }
 
     /// Sets the inner [`ValueInner`]
@@ -46,31 +42,27 @@ impl<'de> Value<'de> {
     /// processed, and returned
     #[inline]
     pub fn set(&mut self, value: ValueInner<'de>) {
-        self.value = Some(value);
+        self.value = value;
     }
 
     /// Returns true if the value is a table and is non-empty
     #[inline]
     pub fn has_keys(&self) -> bool {
-        self.value.as_ref().is_some_and(|val| {
-            if let ValueInner::Table(table) = val {
-                !table.is_empty()
-            } else {
-                false
-            }
-        })
+        if let ValueInner::Table(table) = &self.value {
+            !table.is_empty()
+        } else {
+            false
+        }
     }
 
     /// Returns true if the value is a table and has the specified key
     #[inline]
     pub fn has_key(&self, key: &str) -> bool {
-        self.value.as_ref().is_some_and(|val| {
-            if let ValueInner::Table(table) = val {
-                table.contains_key(key)
-            } else {
-                false
-            }
-        })
+        if let ValueInner::Table(table) = &self.value {
+            table.contains_key(key)
+        } else {
+            false
+        }
     }
 
     /// Takes the value as a string, returning an error with either a default
@@ -93,37 +85,37 @@ impl<'de> Value<'de> {
     /// Returns a borrowed string if this is a [`ValueInner::String`]
     #[inline]
     pub fn as_str(&self) -> Option<&str> {
-        self.value.as_ref().and_then(|v| v.as_str())
+        self.value.as_str()
     }
 
     /// Returns a borrowed table if this is a [`ValueInner::Table`]
     #[inline]
     pub fn as_table(&self) -> Option<&Table<'de>> {
-        self.value.as_ref().and_then(|v| v.as_table())
+        self.value.as_table()
     }
 
     /// Returns a borrowed array if this is a [`ValueInner::Array`]
     #[inline]
     pub fn as_array(&self) -> Option<&Array<'de>> {
-        self.value.as_ref().and_then(|v| v.as_array())
+        self.value.as_array()
     }
 
     /// Returns an `i64` if this is a [`ValueInner::Integer`]
     #[inline]
     pub fn as_integer(&self) -> Option<i64> {
-        self.value.as_ref().and_then(|v| v.as_integer())
+        self.value.as_integer()
     }
 
     /// Returns an `f64` if this is a [`ValueInner::Float`]
     #[inline]
     pub fn as_float(&self) -> Option<f64> {
-        self.value.as_ref().and_then(|v| v.as_float())
+        self.value.as_float()
     }
 
     /// Returns a `bool` if this is a [`ValueInner::Boolean`]
     #[inline]
     pub fn as_bool(&self) -> Option<bool> {
-        self.value.as_ref().and_then(|v| v.as_bool())
+        self.value.as_bool()
     }
 
     /// Uses JSON pointer-like syntax to lookup a specific [`Value`]
@@ -136,7 +128,7 @@ impl<'de> Value<'de> {
     ///
     /// ```rust
     /// let data = "[x]\ny = ['z', 'zz']";
-    /// let value = toml_span::parse(data).unwrap();
+    /// let value = toml_spanner::parse(data).unwrap();
     /// assert_eq!(value.pointer("/x/y/1").unwrap().as_str().unwrap(), "zz");
     /// assert!(value.pointer("/a/b/c").is_none());
     /// ```
@@ -157,13 +149,10 @@ impl<'de> Value<'de> {
             // Don't support / or ~ in key names unless someone actually opens
             // an issue about it
             //.map(|x| x.replace("~1", "/").replace("~0", "~"))
-            .try_fold(self, move |target, token| {
-                (match &target.value {
-                    Some(ValueInner::Table(tab)) => tab.get(token),
-                    Some(ValueInner::Array(list)) => parse_index(token).and_then(|x| list.get(x)),
-                    _ => None,
-                })
-                .filter(|v| v.value.is_some())
+            .try_fold(self, move |target, token| match &target.value {
+                ValueInner::Table(tab) => tab.get(token),
+                ValueInner::Array(list) => parse_index(token).and_then(|x| list.get(x)),
+                _ => None,
             })
     }
 
@@ -181,15 +170,10 @@ impl<'de> Value<'de> {
             // Don't support / or ~ in key names unless someone actually opens
             // an issue about it
             //.map(|x| x.replace("~1", "/").replace("~0", "~"))
-            .try_fold(self, |target, token| {
-                (match &mut target.value {
-                    Some(ValueInner::Table(tab)) => tab.get_mut(token),
-                    Some(ValueInner::Array(list)) => {
-                        parse_index(token).and_then(|x| list.get_mut(x))
-                    }
-                    _ => None,
-                })
-                .filter(|v| v.value.is_some())
+            .try_fold(self, |target, token| match &mut target.value {
+                ValueInner::Table(tab) => tab.get_mut(token),
+                ValueInner::Array(list) => parse_index(token).and_then(|x| list.get_mut(x)),
+                _ => None,
             })
     }
 }
@@ -203,9 +187,7 @@ fn parse_index(s: &str) -> Option<usize> {
 
 impl<'de> AsRef<ValueInner<'de>> for Value<'de> {
     fn as_ref(&self) -> &ValueInner<'de> {
-        self.value
-            .as_ref()
-            .expect("the value has already been taken")
+        &self.value
     }
 }
 

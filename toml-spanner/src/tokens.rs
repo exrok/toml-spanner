@@ -282,7 +282,7 @@ impl<'a> Tokenizer<'a> {
                 return Ok((
                     // Point the caret at the beginning of the quote, that looks
                     // better than the end quote
-                    (start..start + 1).into(),
+                    Span::new(start as u32, (start + 1) as u32),
                     Token::String {
                         src: &self.input[start..start + 2],
                         val: Cow::Borrowed(""),
@@ -340,11 +340,10 @@ impl<'a> Tokenizer<'a> {
                             3
                         };
 
-                        start + start_off..self.current() - 3
+                        Span::new((start + start_off) as u32, (self.current() - 3) as u32)
                     } else {
-                        start + 1..self.current() - 1
-                    }
-                    .into();
+                        Span::new((start + 1) as u32, (self.current() - 1) as u32)
+                    };
 
                     return Ok((
                         span,
@@ -469,7 +468,10 @@ impl<'a> Tokenizer<'a> {
             Some(t) => t.0,
             None => self.input.len(),
         };
-        Span { start, end }
+        Span {
+            start: start as u32,
+            end: end as u32,
+        }
     }
 
     /// Peek one char without consuming it.

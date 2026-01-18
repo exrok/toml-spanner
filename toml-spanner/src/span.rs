@@ -4,15 +4,15 @@
 #[derive(Copy, Clone, PartialEq, Eq, Default, Debug)]
 pub struct Span {
     /// The start byte index
-    pub start: usize,
+    pub start: u32,
     /// The end (exclusive) byte index
-    pub end: usize,
+    pub end: u32,
 }
 
 impl Span {
     /// Creates a new [`Span`]
     #[inline]
-    pub fn new(start: usize, end: usize) -> Self {
+    pub fn new(start: u32, end: u32) -> Self {
         Self { start, end }
     }
 
@@ -23,14 +23,29 @@ impl Span {
     }
 }
 
-impl From<Span> for (usize, usize) {
-    fn from(Span { start, end }: Span) -> (usize, usize) {
+impl From<Span> for (u32, u32) {
+    fn from(Span { start, end }: Span) -> (u32, u32) {
         (start, end)
     }
 }
 
-impl From<std::ops::Range<usize>> for Span {
-    fn from(s: std::ops::Range<usize>) -> Self {
+impl From<Span> for (usize, usize) {
+    fn from(Span { start, end }: Span) -> (usize, usize) {
+        (start as usize, end as usize)
+    }
+}
+
+impl From<std::ops::Range<u32>> for Span {
+    fn from(s: std::ops::Range<u32>) -> Self {
+        Self {
+            start: s.start,
+            end: s.end,
+        }
+    }
+}
+
+impl From<Span> for std::ops::Range<u32> {
+    fn from(s: Span) -> Self {
         Self {
             start: s.start,
             end: s.end,
@@ -41,8 +56,8 @@ impl From<std::ops::Range<usize>> for Span {
 impl From<Span> for std::ops::Range<usize> {
     fn from(s: Span) -> Self {
         Self {
-            start: s.start,
-            end: s.end,
+            start: s.start as usize,
+            end: s.end as usize,
         }
     }
 }

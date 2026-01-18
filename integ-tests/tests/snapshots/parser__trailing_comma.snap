@@ -1,0 +1,9 @@
+---
+source: integ-tests/tests/parser.rs
+expression: valid_toml
+---
+{
+  "a": {
+    "a": 1
+  }
+}

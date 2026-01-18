@@ -1,17 +1,20 @@
 [workspace]
 resolver = "2"
-members = ["integ-tests", "toml-span"]
+members = ["integ-tests", "toml-spanner"]
 
 [workspace.package]
-authors = ["Embark <opensource@embark-studios.com>"]
+authors = [
+    "Embark <opensource@embark-studios.com>",
+    "Thomas Dagenais <exrok@i64.dev>",
+]
 edition = "2024"
 license = "MIT OR Apache-2.0"
-homepage = "https://github.com/EmbarkStudios/toml-span"
-repository = "https://github.com/EmbarkStudios/toml-span"
+homepage = "https://github.com/exrok/toml-spanner"
+repository = "https://github.com/exrok/toml-spanner"
 
 [workspace.dependencies]
 codespan-reporting = "0.13"
-toml-span = { path = "toml-span" }
+toml-spanner = { path = "toml-spanner" }
 proc-macro2 = "1.0"
 quote = "1.0"
 syn = "2.0"

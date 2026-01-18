@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 
 use integ_tests::{invalid_de, valid_de};
-use toml_span::{
+use toml_spanner::{
     DeserError, Deserialize,
     de_helpers::*,
     span::Spanned,
@@ -174,7 +174,7 @@ valid_de!(flattened, Flattened);
 /// Validates the `Value::pointer/_mut` methods work as expected
 #[test]
 fn pointers() {
-    let mut ba = toml_span::parse(include_str!("../data/basic_arrays.toml")).unwrap();
+    let mut ba = toml_spanner::parse(include_str!("../data/basic_arrays.toml")).unwrap();
 
     assert_eq!(
         ba.pointer("/packages/2/version").unwrap().as_str().unwrap(),
@@ -190,7 +190,11 @@ fn pointers() {
         "fourth:0.1"
     );
 
-    assert!(ba.pointer("/packages/3/crate").is_none());
+    // After take(), the value is replaced with a Boolean(false) placeholder
+    assert_eq!(
+        ba.pointer("/packages/3/crate").unwrap().as_bool(),
+        Some(false)
+    );
 }
 
 #[derive(Debug)]
@@ -206,7 +210,7 @@ impl<'de> Deserialize<'de> for Ohno {
         if let Some(snbh) = th.optional_s::<std::borrow::Cow<'de, str>>("this-is-deprecated") {
             th.errors.push(
                 (
-                    toml_span::ErrorKind::Custom("this-is-deprecated is deprecated".into()),
+                    toml_spanner::ErrorKind::Custom("this-is-deprecated is deprecated".into()),
                     snbh.span,
                 )
                     .into(),

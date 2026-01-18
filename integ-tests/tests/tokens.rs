@@ -1,6 +1,6 @@
 use pretty_assertions::assert_eq;
 use std::borrow::Cow;
-use toml_span::tokens::{Error, Token, Tokenizer};
+use toml_spanner::tokens::{Error, Token, Tokenizer};
 
 fn err(input: &str, err: Error) {
     let mut t = Tokenizer::new(input);
@@ -107,7 +107,11 @@ fn all() {
         let mut tokens = Tokenizer::new(input);
         let mut actual: Vec<((usize, usize), Token<'_>, &str)> = Vec::new();
         while let Some((span, token)) = tokens.step().unwrap() {
-            actual.push((span.into(), token, &input[span.start..span.end]));
+            actual.push((
+                span.into(),
+                token,
+                &input[span.start as usize..span.end as usize],
+            ));
         }
         for (a, b) in actual.iter().zip(expected) {
             assert_eq!(a, b);

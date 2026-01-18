@@ -135,15 +135,16 @@ invalid!(integer_range_negative, "a = -9223372036854775809");
 invalid!(bare_number, "4");
 
 valid!(inline_tables);
+valid!(inline_tables_multiline);
+valid!(trailing_comma, "a = {a=1,}");
 invalid!(eof, "key =");
 
 mod bad_inline_tables {
     use super::invalid;
 
-    invalid!(trailing_comma, "a = {a=1,}");
     invalid!(only_comma, "a = {,}");
     invalid!(duplicate_key, "a = {a=1,a=1}");
-    invalid!(newline, "a = {\n}");
+    // Note: newlines inside inline tables are now valid in TOML 1.1.0
     invalid!(eof, "a = {");
 }
 

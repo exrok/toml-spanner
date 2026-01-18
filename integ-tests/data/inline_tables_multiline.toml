@@ -1,0 +1,91 @@
+# Multiline inline tables (TOML 1.1.0 feature)
+# Test basic newlines inside inline tables
+a = {
+    b = 1
+}
+
+# Test multiple key-value pairs with newlines
+b = {
+    a = 1,
+    b = 2
+}
+
+# Test nested inline tables with newlines
+c = {
+    a = 1,
+    b = {
+        c = 2
+    }
+}
+
+# Test inline table with array value spanning lines
+d = {
+    a = [
+        1,
+        2,
+        3
+    ]
+}
+
+# Test inline table with various whitespace and newlines
+e = {
+    a   =   1,
+    b = 2,
+        c = 3
+}
+
+# Test inline table with comment inside
+f = {
+    # this is a comment
+    a = 1,
+    # another comment
+    b = 2
+}
+
+# Test complex nested structure
+g = {
+    a = {
+        b = {
+            c = 1
+        }
+    },
+    d = [
+        1,
+        2
+    ]
+}
+
+# Test trailing comma with single key-value pair
+h = {
+    a = 1,
+}
+
+# Test trailing comma with multiple key-value pairs
+i = {
+    a = 1,
+    b = 2,
+    c = 3,
+}
+
+# Test trailing comma with nested inline table
+j = {
+    a = 1,
+    b = {
+        c = 2,
+    },
+}
+
+# Test trailing comma with array value
+k = {
+    a = [1, 2, 3],
+}
+
+# Test trailing comma with complex nested structure
+l = {
+    a = {
+        b = {
+            c = 1,
+        },
+    },
+    d = [1, 2],
+}

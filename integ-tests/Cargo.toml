@@ -10,4 +10,4 @@ publish = false
 codespan-reporting.workspace = true
 insta = { version = "1.34", features = ["json"] }
 pretty_assertions = "1.4"
-toml-span = { workspace = true, features = ["reporting", "serde"] }
+toml-spanner = { workspace = true, features = ["reporting", "serde"] }

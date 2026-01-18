@@ -32,6 +32,9 @@ pub enum ErrorKind {
     /// EOF was reached when looking for a value.
     UnexpectedEof,
 
+    /// The input file is larger than the maximum supported size of 4GiB.
+    FileTooLarge,
+
     /// An invalid character not allowed in a string was found.
     InvalidCharInString(char),
 
@@ -138,6 +141,7 @@ impl Display for ErrorKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::UnexpectedEof => f.write_str("unexpected-eof"),
+            Self::FileTooLarge => f.write_str("file-too-large"),
             Self::Custom(..) => f.write_str("custom"),
             Self::DottedKeyInvalidType { .. } => f.write_str("dotted-key-invalid-type"),
             Self::DuplicateKey { .. } => f.write_str("duplicate-key"),
@@ -183,6 +187,7 @@ impl Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match &self.kind {
             ErrorKind::UnexpectedEof => f.write_str("unexpected eof encountered")?,
+            ErrorKind::FileTooLarge => f.write_str("file is too large (maximum 4GiB)")?,
             ErrorKind::InvalidCharInString(c) => {
                 write!(f, "invalid character in string: `{}`", Escape(*c))?;
             }
@@ -336,6 +341,9 @@ impl Error {
                 .with_labels(vec![Label::primary(fid, self.span)]),
             ErrorKind::Custom(msg) => diag
                 .with_message(msg.to_string())
+                .with_labels(vec![Label::primary(fid, self.span)]),
+            ErrorKind::FileTooLarge => diag
+                .with_message("file is too large (maximum 4GiB)")
                 .with_labels(vec![Label::primary(fid, self.span)]),
         }
     }

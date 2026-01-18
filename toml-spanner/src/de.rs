@@ -19,6 +19,14 @@ type InlineVec<T> = SmallVec<[T; 5]>;
 
 /// Parses a toml string into a [`ValueInner::Table`]
 pub fn parse(s: &str) -> Result<Value<'_>, Error> {
+    if s.len() > u32::MAX as usize {
+        return Err(Error {
+            kind: ErrorKind::FileTooLarge,
+            span: Span::new(0, 0),
+            line_info: None,
+        });
+    }
+
     let mut de = Deserializer::new(s);
 
     let raw_tables = de.tables()?;
@@ -37,7 +45,7 @@ pub fn parse(s: &str) -> Result<Value<'_>, Error> {
         Vec::new(),
     )?;
 
-    Ok(Value::with_span(root, Span::new(0, s.len())))
+    Ok(Value::with_span(root, Span::new(0, s.len() as u32)))
 }
 
 struct Deserializer<'a> {
@@ -100,8 +108,8 @@ impl<'de, 'b> DeserializeCtx<'de, 'b> {
             if table_idx.table_idx < matching_tables[0] {
                 let array_tbl = &self.raw_tables[matching_tables[0]];
                 return Err(self.de.error(
-                    array_tbl.at,
-                    Some(array_tbl.end),
+                    array_tbl.at as usize,
+                    Some(array_tbl.end as usize),
                     ErrorKind::RedefineAsArray,
                 ));
             }
@@ -129,8 +137,8 @@ impl<'de, 'b> DeserializeCtx<'de, 'b> {
                 let first_tbl = &self.raw_tables[matching_tables[0]];
                 let second_tbl = &self.raw_tables[matching_tables[1]];
                 return Err(self.de.error(
-                    second_tbl.at,
-                    Some(second_tbl.end),
+                    second_tbl.at as usize,
+                    Some(second_tbl.end as usize),
                     ErrorKind::DuplicateTable {
                         name: current_header.last().unwrap().to_string(),
                         first: Span::new(first_tbl.at, first_tbl.end),
@@ -195,8 +203,8 @@ impl<'de, 'b> DeserializeCtx<'de, 'b> {
                     if self.raw_tables[subtable_idx].header.len() == header.len() + 1 =>
                 {
                     return Err(self.de.error(
-                        subtable_name.span.start,
-                        Some(subtable_name.span.end),
+                        subtable_name.span.start as usize,
+                        Some(subtable_name.span.end as usize),
                         ErrorKind::DuplicateKey {
                             key: subtable_name.to_string(),
                             first: previous_key.span,
@@ -220,8 +228,8 @@ impl<'de, 'b> DeserializeCtx<'de, 'b> {
                 }
                 Entry::Occupied(occ) => {
                     return Err(self.de.error(
-                        subtable_name.span.start,
-                        Some(subtable_name.span.end),
+                        subtable_name.span.start as usize,
+                        Some(subtable_name.span.end as usize),
                         ErrorKind::DuplicateKey {
                             key: subtable_name.to_string(),
                             first: occ.key().span,
@@ -309,8 +317,8 @@ fn table_insert<'de>(
 ) -> Result<(), Error> {
     match table.entry(key.clone()) {
         Entry::Occupied(occ) => Err(de.error(
-            key.span.start,
-            Some(key.span.end),
+            key.span.start as usize,
+            Some(key.span.end as usize),
             ErrorKind::DuplicateKey {
                 key: key.name.to_string(),
                 first: occ.key().span,
@@ -377,8 +385,8 @@ fn build_table_pindices<'de>(tables: &[Table<'de>]) -> BTreeMap<InlineVec<DeStr<
 }
 
 struct Table<'de> {
-    at: usize,
-    end: usize,
+    at: u32,
+    end: u32,
     header: InlineVec<Key<'de>>,
     values: Option<TableValues<'de>>,
     array: bool,
@@ -438,7 +446,7 @@ impl<'a> Deserializer<'a> {
                     while let Some(part) = header.next().map_err(|e| self.token_error(e))? {
                         cur_table.header.push(part);
                     }
-                    cur_table.end = header.tokens.current();
+                    cur_table.end = header.tokens.current() as u32;
                 }
                 Line::KeyValue {
                     key,
@@ -489,12 +497,12 @@ impl<'a> Deserializer<'a> {
     }
 
     fn table_header(&mut self) -> Result<Line<'a>, Error> {
-        let start = self.tokens.current();
+        let start = self.tokens.current() as u32;
         self.expect(Token::LeftBracket)?;
         let array = self.eat(Token::LeftBracket)?;
         let ret = Header::new(self.tokens.clone(), array);
         self.tokens.skip_to_newline();
-        let end = self.tokens.current();
+        let end = self.tokens.current() as u32;
         Ok(Line::Table {
             at: start,
             end,
@@ -504,14 +512,14 @@ impl<'a> Deserializer<'a> {
     }
 
     fn key_value(&mut self) -> Result<Line<'a>, Error> {
-        let start = self.tokens.current();
+        let start = self.tokens.current() as u32;
         let key = self.dotted_key()?;
         self.eat_whitespace();
         self.expect(Token::Equals)?;
         self.eat_whitespace();
 
         let value = self.value()?;
-        let end = self.tokens.current();
+        let end = self.tokens.current() as u32;
         self.eat_whitespace();
         if !self.eat_comment()? {
             self.eat_newline_or_eof()?;
@@ -562,7 +570,7 @@ impl<'a> Deserializer<'a> {
             Some(token) => {
                 return Err(self.error(
                     at,
-                    Some(token.0.end),
+                    Some(token.0.end as usize),
                     ErrorKind::Wanted {
                         expected: "a value",
                         found: token.1.describe(),
@@ -582,7 +590,7 @@ impl<'a> Deserializer<'a> {
         let first_char = key.chars().next().expect("key should not be empty here");
         match first_char {
             '-' | '0'..='9' => self.number(span, key),
-            _ => Err(self.error(at, Some(span.end), ErrorKind::UnquotedString)),
+            _ => Err(self.error(at, Some(span.end as usize), ErrorKind::UnquotedString)),
         }
     }
 
@@ -602,7 +610,7 @@ impl<'a> Deserializer<'a> {
             self.float(s, None).map(|f| Val {
                 e: E::Float(f),
                 start,
-                end: self.tokens.current(),
+                end: self.tokens.current() as u32,
             })
         } else if self.eat(Token::Period)? {
             let at = self.tokens.current();
@@ -611,10 +619,10 @@ impl<'a> Deserializer<'a> {
                     self.float(s, Some(after)).map(|f| Val {
                         e: E::Float(f),
                         start,
-                        end: self.tokens.current(),
+                        end: self.tokens.current() as u32,
                     })
                 }
-                _ => Err(self.error(at, Some(end), ErrorKind::InvalidNumber)),
+                _ => Err(self.error(at, Some(end as usize), ErrorKind::InvalidNumber)),
             }
         } else if s == "inf" {
             Ok(Val {
@@ -649,7 +657,7 @@ impl<'a> Deserializer<'a> {
         let start_token = self.tokens.current();
         match self.next()? {
             Some((Span { end, .. }, Token::Keylike(s))) => self.number(Span { start, end }, s),
-            _ => Err(self.error(start_token, Some(end), ErrorKind::InvalidNumber)),
+            _ => Err(self.error(start_token, Some(end as usize), ErrorKind::InvalidNumber)),
         }
     }
 
@@ -776,24 +784,27 @@ impl<'a> Deserializer<'a> {
     // great to defer parsing everything until later.
     fn inline_table(&mut self) -> Result<(Span, TableValues<'a>), Error> {
         let mut ret = TableValues::default();
-        self.eat_whitespace();
+        self.eat_inline_table_whitespace()?;
         if let Some(span) = self.eat_spanned(Token::RightBrace)? {
             return Ok((span, ret));
         }
         loop {
             let key = self.dotted_key()?;
-            self.eat_whitespace();
+            self.eat_inline_table_whitespace()?;
             self.expect(Token::Equals)?;
-            self.eat_whitespace();
+            self.eat_inline_table_whitespace()?;
             let value = self.value()?;
             self.add_dotted_key(key, value, &mut ret)?;
 
-            self.eat_whitespace();
+            self.eat_inline_table_whitespace()?;
             if let Some(span) = self.eat_spanned(Token::RightBrace)? {
                 return Ok((span, ret));
             }
             self.expect(Token::Comma)?;
-            self.eat_whitespace();
+            self.eat_inline_table_whitespace()?;
+            if let Some(span) = self.eat_spanned(Token::RightBrace)? {
+                return Ok((span, ret));
+            }
         }
     }
 
@@ -884,8 +895,8 @@ impl<'a> Deserializer<'a> {
             }
             Some(&mut (ref first, _)) => {
                 return Err(self.error(
-                    key.span.start,
-                    Some(value.end),
+                    key.span.start as usize,
+                    Some(value.end as usize),
                     ErrorKind::DottedKeyInvalidType { first: first.span },
                 ));
             }
@@ -914,6 +925,16 @@ impl<'a> Deserializer<'a> {
 
     fn eat_whitespace(&mut self) {
         self.tokens.eat_whitespace();
+    }
+
+    fn eat_inline_table_whitespace(&mut self) -> Result<(), Error> {
+        loop {
+            self.eat_whitespace();
+            if !self.eat(Token::Newline)? && !self.eat_comment()? {
+                break;
+            }
+        }
+        Ok(())
     }
 
     fn eat_comment(&mut self) -> Result<bool, Error> {
@@ -995,7 +1016,7 @@ impl<'a> Deserializer<'a> {
     }
 
     fn error(&self, start: usize, end: Option<usize>, kind: ErrorKind) -> Error {
-        let span = Span::new(start, end.unwrap_or(start + 1));
+        let span = Span::new(start as u32, end.unwrap_or(start + 1) as u32);
         let line_info = Some(self.to_linecol(start));
         Error {
             span,
@@ -1030,14 +1051,14 @@ impl std::convert::From<Error> for std::io::Error {
 
 enum Line<'a> {
     Table {
-        at: usize,
-        end: usize,
+        at: u32,
+        end: u32,
         header: Header<'a>,
         array: bool,
     },
     KeyValue {
-        at: usize,
-        end: usize,
+        at: u32,
+        end: u32,
         key: Vec<Key<'a>>,
         value: Val<'a>,
     },
@@ -1082,8 +1103,8 @@ impl<'a> Header<'a> {
 
 struct Val<'a> {
     e: E<'a>,
-    start: usize,
-    end: usize,
+    start: u32,
+    end: u32,
 }
 
 enum E<'a> {
