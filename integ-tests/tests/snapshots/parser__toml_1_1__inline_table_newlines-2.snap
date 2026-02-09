@@ -1,0 +1,48 @@
+---
+source: integ-tests/tests/parser.rs
+expression: spans
+---
+note[string]: root_tbl_key
+  ┌─ inline_table_newlines:3:12
+  │
+3 │     key = "value",
+  │            ^^^^^
+
+note[integer]: root_tbl_nested_inner
+  ┌─ inline_table_newlines:5:17
+  │
+5 │         inner = 42,
+  │                 ^^
+
+note[table]: root_tbl_nested
+  ┌─ inline_table_newlines:4:14
+  │  
+4 │       nested = {
+  │ ╭──────────────^
+5 │ │         inner = 42,
+6 │ │     },
+  │ ╰─────^
+
+note[table]: root_tbl
+  ┌─ inline_table_newlines:2:7
+  │  
+2 │   tbl = {
+  │ ╭───────^
+3 │ │     key = "value",
+4 │ │     nested = {
+5 │ │         inner = 42,
+6 │ │     },
+7 │ │ }
+  │ ╰─^
+
+note[table]: root
+  ┌─ inline_table_newlines:1:1
+  │  
+1 │ ╭ 
+2 │ │ tbl = {
+3 │ │     key = "value",
+4 │ │     nested = {
+  · │
+7 │ │ }
+8 │ │ 
+  │ ╰^

@@ -1,0 +1,24 @@
+---
+source: integ-tests/tests/parser.rs
+expression: spans
+---
+note[string]: root_letter
+  ┌─ escape_x:3:11
+  │
+3 │ letter = "\x61"
+  │           ^^^^
+
+note[string]: root_null
+  ┌─ escape_x:2:9
+  │
+2 │ null = "\x00"
+  │         ^^^^
+
+note[table]: root
+  ┌─ escape_x:1:1
+  │  
+1 │ ╭ 
+2 │ │ null = "\x00"
+3 │ │ letter = "\x61"
+4 │ │ 
+  │ ╰^

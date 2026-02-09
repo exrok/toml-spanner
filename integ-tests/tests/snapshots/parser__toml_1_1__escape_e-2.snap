@@ -1,0 +1,15 @@
+---
+source: integ-tests/tests/parser.rs
+expression: spans
+---
+note[string]: root_csi
+  ┌─ escape_e:1:8
+  │
+1 │ csi = "\e["
+  │        ^^^
+
+note[table]: root
+  ┌─ escape_e:1:1
+  │
+1 │ csi = "\e["
+  │ ^^^^^^^^^^^

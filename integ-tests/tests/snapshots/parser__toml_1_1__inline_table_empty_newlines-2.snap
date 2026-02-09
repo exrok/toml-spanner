@@ -1,0 +1,18 @@
+---
+source: integ-tests/tests/parser.rs
+expression: spans
+---
+note[table]: root_a
+  ┌─ inline_table_empty_newlines:1:5
+  │  
+1 │   a = {
+  │ ╭─────^
+2 │ │ }
+  │ ╰─^
+
+note[table]: root
+  ┌─ inline_table_empty_newlines:1:1
+  │  
+1 │ ╭ a = {
+2 │ │ }
+  │ ╰─^

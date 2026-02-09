@@ -308,3 +308,58 @@ mod require_newlines {
     invalid!(basic2, "0=0r0=0r=false");
     invalid!(basic3, "0=0r0=0r=falsefal=false");
 }
+
+// TOML 1.1 features
+mod toml_1_1 {
+    use super::valid;
+
+    // Inline tables can now have newlines
+    valid!(
+        inline_table_newlines,
+        r#"
+tbl = {
+    key = "value",
+    nested = {
+        inner = 42,
+    },
+}
+"#
+    );
+
+    // Trailing commas in inline tables
+    valid!(inline_table_trailing_comma, "a = {a=1,}");
+
+    // Empty inline table with newlines
+    valid!(inline_table_empty_newlines, "a = {\n}");
+
+    // \e escape sequence (escape character U+001B)
+    valid!(escape_e, r#"csi = "\e[""#);
+
+    // \xHH escape sequence for codepoints < 255
+    valid!(
+        escape_x,
+        r#"
+null = "\x00"
+letter = "\x61"
+"#
+    );
+
+    // Combined escape sequences
+    valid!(
+        escape_combined,
+        r#"test = "\x00\x1b\e\x61\u0041\U00000042""#
+    );
+
+    // Complex inline table with comments
+    valid!(
+        inline_table_with_comments,
+        r#"
+tbl = {
+    # This is a comment
+    key = "value",
+    # Another comment
+    num = 123,
+}
+"#
+    );
+}

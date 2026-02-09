@@ -1,0 +1,8 @@
+---
+source: integ-tests/tests/parser.rs
+expression: valid_toml
+---
+{
+  "letter": "a",
+  "null": "\u0000"
+}

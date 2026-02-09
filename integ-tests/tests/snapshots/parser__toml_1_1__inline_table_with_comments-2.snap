@@ -1,0 +1,39 @@
+---
+source: integ-tests/tests/parser.rs
+expression: spans
+---
+note[string]: root_tbl_key
+  ┌─ inline_table_with_comments:4:12
+  │
+4 │     key = "value",
+  │            ^^^^^
+
+note[integer]: root_tbl_num
+  ┌─ inline_table_with_comments:6:11
+  │
+6 │     num = 123,
+  │           ^^^
+
+note[table]: root_tbl
+  ┌─ inline_table_with_comments:2:7
+  │  
+2 │   tbl = {
+  │ ╭───────^
+3 │ │     # This is a comment
+4 │ │     key = "value",
+5 │ │     # Another comment
+6 │ │     num = 123,
+7 │ │ }
+  │ ╰─^
+
+note[table]: root
+  ┌─ inline_table_with_comments:1:1
+  │  
+1 │ ╭ 
+2 │ │ tbl = {
+3 │ │     # This is a comment
+4 │ │     key = "value",
+  · │
+7 │ │ }
+8 │ │ 
+  │ ╰^

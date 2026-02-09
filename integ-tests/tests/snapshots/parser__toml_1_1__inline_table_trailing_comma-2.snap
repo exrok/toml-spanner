@@ -1,0 +1,21 @@
+---
+source: integ-tests/tests/parser.rs
+expression: spans
+---
+note[integer]: root_a_a
+  ┌─ inline_table_trailing_comma:1:8
+  │
+1 │ a = {a=1,}
+  │        ^
+
+note[table]: root_a
+  ┌─ inline_table_trailing_comma:1:5
+  │
+1 │ a = {a=1,}
+  │     ^^^^^^
+
+note[table]: root
+  ┌─ inline_table_trailing_comma:1:1
+  │
+1 │ a = {a=1,}
+  │ ^^^^^^^^^^
