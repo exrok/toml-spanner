@@ -2,10 +2,8 @@
 source: integ-tests/tests/parser.rs
 expression: error
 ---
-error[unexpected]: 
+error[wanted]: 
   ┌─ array_value:1:7
   │
 1 │ a = [  ]
-  │        unexpected character '\r'
-
-
+  │        expected a value

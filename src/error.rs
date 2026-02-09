@@ -186,56 +186,87 @@ impl fmt::Display for Escape {
 impl Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match &self.kind {
-            ErrorKind::UnexpectedEof => f.write_str("unexpected eof encountered")?,
-            ErrorKind::FileTooLarge => f.write_str("file is too large (maximum 4GiB)")?,
+            ErrorKind::UnexpectedEof => f.write_str("unexpected eof encountered"),
+            ErrorKind::FileTooLarge => f.write_str("file is too large (maximum 4GiB)"),
             ErrorKind::InvalidCharInString(c) => {
-                write!(f, "invalid character in string: `{}`", Escape(*c))?;
+                f.write_str("invalid character in string: `")?;
+                Escape(*c).fmt(f)?;
+                f.write_str("`")
             }
             ErrorKind::InvalidEscape(c) => {
-                write!(f, "invalid escape character in string: `{}`", Escape(*c))?;
+                f.write_str("invalid escape character in string: `")?;
+                Escape(*c).fmt(f)?;
+                f.write_str("`")
             }
-            ErrorKind::InvalidHexEscape(c) => write!(
-                f,
-                "invalid hex escape character in string: `{}`",
-                Escape(*c)
-            )?,
-            ErrorKind::InvalidEscapeValue(c) => write!(f, "invalid escape value: `{c}`")?,
-            ErrorKind::Unexpected(c) => write!(f, "unexpected character found: `{}`", Escape(*c))?,
-            ErrorKind::UnterminatedString => f.write_str("unterminated string")?,
+            ErrorKind::InvalidHexEscape(c) => {
+                f.write_str("invalid hex escape character in string: `")?;
+                Escape(*c).fmt(f)?;
+                f.write_str("`")
+            }
+            ErrorKind::InvalidEscapeValue(c) => {
+                f.write_str("invalid escape value: `")?;
+                Display::fmt(c, f)?;
+                f.write_str("`")
+            }
+            ErrorKind::Unexpected(c) => {
+                f.write_str("unexpected character found: `")?;
+                Escape(*c).fmt(f)?;
+                f.write_str("`")
+            }
+            ErrorKind::UnterminatedString => f.write_str("unterminated string"),
             ErrorKind::Wanted { expected, found } => {
-                write!(f, "expected {expected}, found {found}")?;
+                f.write_str("expected ")?;
+                f.write_str(expected)?;
+                f.write_str(", found ")?;
+                f.write_str(found)
             }
-            ErrorKind::InvalidNumber => f.write_str("invalid number")?,
-            ErrorKind::OutOfRange(kind) => write!(f, "out of range of '{kind}'")?,
+            ErrorKind::InvalidNumber => f.write_str("invalid number"),
+            ErrorKind::OutOfRange(kind) => {
+                f.write_str("out of range of '")?;
+                f.write_str(kind)?;
+                f.write_str("'")
+            }
             ErrorKind::DuplicateTable { name, .. } => {
-                write!(f, "redefinition of table `{name}`")?;
+                f.write_str("redefinition of table `")?;
+                f.write_str(name)?;
+                f.write_str("`")
             }
             ErrorKind::DuplicateKey { key, .. } => {
-                write!(f, "duplicate key: `{key}`")?;
+                f.write_str("duplicate key: `")?;
+                f.write_str(key)?;
+                f.write_str("`")
             }
-            ErrorKind::RedefineAsArray => f.write_str("table redefined as array")?,
+            ErrorKind::RedefineAsArray => f.write_str("table redefined as array"),
             ErrorKind::MultilineStringKey => {
-                f.write_str("multiline strings are not allowed for key")?;
+                f.write_str("multiline strings are not allowed for key")
             }
-            ErrorKind::Custom(message) => f.write_str(message)?,
+            ErrorKind::Custom(message) => f.write_str(message),
             ErrorKind::DottedKeyInvalidType { .. } => {
-                f.write_str("dotted key attempted to extend non-table type")?;
+                f.write_str("dotted key attempted to extend non-table type")
             }
             ErrorKind::UnexpectedKeys { keys, expected } => write!(
                 f,
                 "unexpected keys in table: `{keys:?}`\nexpected: {expected:?}"
-            )?,
+            ),
             ErrorKind::UnquotedString => {
-                f.write_str("invalid TOML value, did you mean to use a quoted string?")?;
+                f.write_str("invalid TOML value, did you mean to use a quoted string?")
             }
-            ErrorKind::MissingField(field) => write!(f, "missing field '{field}' in table")?,
+            ErrorKind::MissingField(field) => {
+                f.write_str("missing field '")?;
+                f.write_str(field)?;
+                f.write_str("' in table")
+            }
             ErrorKind::Deprecated { old, new } => {
-                write!(f, "field '{old}' is deprecated, '{new}' has replaced it")?;
+                f.write_str("field '")?;
+                f.write_str(old)?;
+                f.write_str("' is deprecated, '")?;
+                f.write_str(new)?;
+                f.write_str("' has replaced it")
             }
-            ErrorKind::UnexpectedValue { expected, .. } => write!(f, "expected '{expected:?}'")?,
+            ErrorKind::UnexpectedValue { expected, .. } => {
+                write!(f, "expected '{expected:?}'")
+            }
         }
-
-        Ok(())
     }
 }
 

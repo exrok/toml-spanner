@@ -8,6 +8,4 @@ error[wanted]:
 1 │   key
   │ ╭───^
 2 │ │ =3
-  │ ╰──^ expected an equals
-
-
+  │ ╰^ expected an equals

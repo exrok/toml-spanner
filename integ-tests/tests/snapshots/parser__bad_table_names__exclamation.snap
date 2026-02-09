@@ -2,10 +2,8 @@
 source: integ-tests/tests/parser.rs
 expression: error
 ---
-error[unexpected]: 
+error[wanted]: 
   ┌─ exclamation:1:2
   │
 1 │ [!]
-  │  ^ unexpected character '!'
-
-
+  │  ^ expected a table key

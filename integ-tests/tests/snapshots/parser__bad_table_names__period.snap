@@ -6,6 +6,4 @@ error[wanted]:
   ┌─ period:1:2
   │
 1 │ [.]
-  │  ^^^ expected a table key
-
-
+  │  ^ expected a table key

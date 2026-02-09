@@ -6,6 +6,4 @@ error[wanted]:
   ┌─ none:1:1
   │
 1 │ =3
-  │ ^^^ expected a table key
-
-
+  │ ^ expected a table key

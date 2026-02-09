@@ -6,6 +6,4 @@ error[wanted]:
   ┌─ arrays:2:6
   │
 2 │ 0=[0]00=[0,0,0]t=["0","0","0"]s=[1000-00-00T00:00:00Z,2000-00-00T00:00:00Z]
-  │      ^^^^^^^^^^^^^ expected newline
-
-
+  │      ^^ expected newline

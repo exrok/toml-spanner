@@ -6,6 +6,4 @@ error[wanted]:
   ┌─ trailing_period:1:4
   │
 1 │ [a.]
-  │    ^^ expected a table key
-
-
+  │    ^ expected a table key

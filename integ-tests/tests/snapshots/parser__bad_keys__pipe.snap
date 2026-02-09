@@ -2,10 +2,8 @@
 source: integ-tests/tests/parser.rs
 expression: error
 ---
-error[unexpected]: 
+error[wanted]: 
   ┌─ pipe:1:4
   │
 1 │ key|=3
-  │    ^ unexpected character '|'
-
-
+  │    ^ expected an equals

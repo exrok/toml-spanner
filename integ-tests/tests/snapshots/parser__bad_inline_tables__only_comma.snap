@@ -6,6 +6,4 @@ error[wanted]:
   ┌─ only_comma:1:6
   │
 1 │ a = {,}
-  │      ^^^ expected a table key
-
-
+  │      ^ expected a table key
