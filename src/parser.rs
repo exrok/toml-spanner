@@ -42,7 +42,7 @@ struct Parser<'a> {
     error_kind: Option<ErrorKind>,
 
     // Reusable scratch buffers
-    string_buf: String,
+    string_buf: Vec<u8>,
 }
 
 #[allow(unsafe_code)]
@@ -53,7 +53,7 @@ impl<'a> Parser<'a> {
             cursor: 0,
             error_span: Span::new(0, 0),
             error_kind: None,
-            string_buf: String::new(),
+            string_buf: Vec::new(),
         };
         // Eat UTF-8 BOM
         if p.bytes.get(p.cursor..p.cursor + 3) == Some(b"\xef\xbb\xbf") {
@@ -191,11 +191,8 @@ impl<'a> Parser<'a> {
 
     /// Read the next character (with CRLF folding).
     fn next_char(&mut self) -> Option<(usize, char)> {
-        if self.cursor >= self.bytes.len() {
-            return None;
-        }
         let i = self.cursor;
-        let b = self.bytes[i];
+        let &b = self.bytes.get(i)?;
 
         if b == b'\r' && self.bytes.get(i + 1) == Some(&b'\n') {
             self.cursor = i + 2;
@@ -214,28 +211,6 @@ impl<'a> Parser<'a> {
         }
     }
 
-    /// Peek one char without consuming (with CRLF folding).
-    fn peek_char(&self) -> Option<(usize, char)> {
-        if self.cursor >= self.bytes.len() {
-            return None;
-        }
-        let i = self.cursor;
-        let b = self.bytes[i];
-
-        if b == b'\r' && self.bytes.get(i + 1) == Some(&b'\n') {
-            return Some((i, '\n'));
-        }
-
-        if b < 0x80 {
-            Some((i, b as char))
-        } else {
-            // SAFETY: self.bytes is valid UTF-8
-            let remaining = unsafe { std::str::from_utf8_unchecked(&self.bytes[i..]) };
-            let ch = remaining.chars().next().unwrap();
-            Some((i, ch))
-        }
-    }
-
     fn eat_whitespace(&mut self) {
         while let Some(b) = self.peek_byte() {
             if b == b' ' || b == b'\t' {
@@ -250,17 +225,9 @@ impl<'a> Parser<'a> {
         if !self.eat_byte(b'#') {
             return Ok(false);
         }
-        // Consume comment content (valid chars: tab, 0x20..=0x10ffff except DEL)
-        loop {
-            match self.peek_char() {
-                Some((_, ch))
-                    if ch == '\u{09}'
-                        || (ch != '\u{7f}' && ('\u{20}'..='\u{10ffff}').contains(&ch)) =>
-                {
-                    self.next_char();
-                }
-                _ => break,
-            }
+        // Consume comment content (valid bytes: tab, 0x20..=0x7E, 0x80..=0xFF)
+        while let Some(0x09 | 0x20..=0x7E | 0x80..) = self.peek_byte() {
+            self.cursor += 1;
         }
         self.eat_newline_or_eof().map(|()| true)
     }
@@ -362,7 +329,7 @@ impl<'a> Parser<'a> {
             Some(b'"') => {
                 let start = self.cursor;
                 self.advance();
-                let (span, val, multiline) = match self.read_basic_string(start) {
+                let (span, val, multiline) = match self.read_string(start, b'"') {
                     Ok(v) => v,
                     Err(e) => return Err(e),
                 };
@@ -378,7 +345,7 @@ impl<'a> Parser<'a> {
             Some(b'\'') => {
                 let start = self.cursor;
                 self.advance();
-                let (span, val, multiline) = match self.read_literal_string(start) {
+                let (span, val, multiline) = match self.read_string(start, b'\'') {
                     Ok(v) => v,
                     Err(e) => return Err(e),
                 };
@@ -445,16 +412,16 @@ impl<'a> Parser<'a> {
 
     /// Read a basic (double-quoted) string. `start` is the byte offset of the
     /// opening quote. The cursor should be positioned right after the opening `"`.
-    fn read_basic_string(
+    fn read_string(
         &mut self,
         start: usize,
+        delim: u8,
     ) -> Result<(Span, Cow<'a, str>, bool), ParseError> {
         let mut multiline = false;
-        if self.eat_byte(b'"') {
-            if self.eat_byte(b'"') {
+        if self.eat_byte(delim) {
+            if self.eat_byte(delim) {
                 multiline = true;
             } else {
-                // Empty string: ""
                 return Ok((
                     Span::new(start as u32, (start + 1) as u32),
                     Cow::Borrowed(""),
@@ -463,172 +430,170 @@ impl<'a> Parser<'a> {
             }
         }
 
-        let mut escaped = false;
-        let content_start = self.cursor;
-        let mut n = 0usize;
-
-        loop {
-            n += 1;
-            match self.next_char() {
-                Some((i, '\n')) => {
-                    if !multiline {
-                        return Err(self.set_error(i, None, ErrorKind::InvalidCharInString('\n')));
-                    }
-                    if self.bytes[i] == b'\r' && !escaped {
-                        // Bare \r in multiline -- need owned
-                        if !escaped {
-                            self.string_buf.clear();
-                            self.string_buf
-                                .push_str(unsafe { self.str_slice(content_start, i) });
-                            escaped = true;
-                        }
-                    }
-                    if n == 1 && !escaped {
-                        // Skip leading newline in multiline, reset content start
-                        return self.read_basic_string_inner(start, self.cursor, true);
-                    }
-                    if escaped {
-                        self.string_buf.push('\n');
-                    }
+        let mut content_start = self.cursor;
+        if multiline {
+            match self.peek_byte() {
+                Some(b'\n') => {
+                    self.advance();
+                    content_start = self.cursor;
                 }
-                Some((mut i, '"')) => {
-                    if multiline {
-                        if !self.eat_byte(b'"') {
-                            if escaped {
-                                self.string_buf.push('"');
-                            }
-                            continue;
-                        }
-                        if !self.eat_byte(b'"') {
-                            if escaped {
-                                self.string_buf.push('"');
-                                self.string_buf.push('"');
-                            }
-                            continue;
-                        }
-                        // Optional extra quotes
-                        if self.eat_byte(b'"') {
-                            if escaped {
-                                self.string_buf.push('"');
-                            }
-                            i += 1;
-                        }
-                        if self.eat_byte(b'"') {
-                            if escaped {
-                                self.string_buf.push('"');
-                            }
-                            i += 1;
-                        }
-
-                        let maybe_nl = self.bytes[start + 3];
-                        let start_off = if maybe_nl == b'\n' {
-                            4
-                        } else if maybe_nl == b'\r' {
-                            5
-                        } else {
-                            3
-                        };
-
-                        let span = Span::new((start + start_off) as u32, (self.cursor - 3) as u32);
-                        let val = if escaped {
-                            Cow::Owned(self.string_buf.split_off(0))
-                        } else {
-                            Cow::Borrowed(unsafe { self.str_slice(content_start, i) })
-                        };
-                        return Ok((span, val, true));
-                    }
-
-                    // Single-line string
-                    let span = Span::new((start + 1) as u32, (self.cursor - 1) as u32);
-                    let val = if escaped {
-                        Cow::Owned(self.string_buf.split_off(0))
-                    } else {
-                        Cow::Borrowed(unsafe { self.str_slice(content_start, i) })
-                    };
-                    return Ok((span, val, false));
+                Some(b'\r') if self.peek_byte_at(1) == Some(b'\n') => {
+                    self.cursor += 2;
+                    content_start = self.cursor;
                 }
-                Some((i, '\\')) => {
-                    // Escape sequence
-                    if !escaped {
-                        self.string_buf.clear();
-                        self.string_buf
-                            .push_str(unsafe { self.str_slice(content_start, i) });
-                        escaped = true;
-                    }
-                    if let Err(e) = self.read_basic_escape(start, multiline) {
-                        return Err(e);
-                    }
-                }
-                Some((i, ch))
-                    if ch == '\u{09}'
-                        || (ch != '\u{7f}' && ('\u{20}'..='\u{10ffff}').contains(&ch)) =>
-                {
-                    if escaped {
-                        self.string_buf.push(ch);
-                    }
-                    let _ = i;
-                }
-                Some((i, ch)) => {
-                    return Err(self.set_error(i, None, ErrorKind::InvalidCharInString(ch)));
-                }
-                None => {
-                    return Err(self.set_error(start, None, ErrorKind::UnterminatedString));
-                }
+                _ => {}
             }
+        }
+
+        self.read_string_loop(start, content_start, multiline, delim)
+    }
+
+    /// Advance `self.cursor` past bytes that do not require special handling
+    /// inside a string.  Uses SWAR (SIMD-Within-A-Register) to scan 8 bytes
+    /// at a time.
+    ///
+    /// Stops at the first byte that is:
+    ///   * a control character (< 0x20) — tab (0x09) is a benign false positive
+    ///   * DEL (0x7F)
+    ///   * the string delimiter (`"` or `'`)
+    ///   * a backslash (`\`) — benign false positive for literal strings
+    ///   * past the end of input
+    fn skip_string_plain(&mut self, delim: u8) {
+        // Quick bail-out for EOF or an immediately-interesting byte.
+        // Avoids SWAR setup cost for consecutive specials (e.g. \n\n).
+        if self.cursor >= self.bytes.len() {
+            return;
+        }
+        let b = self.bytes[self.cursor];
+        if b == delim || b == b'\\' || b == 0x7F || (b < 0x20 && b != 0x09) {
+            return;
+        }
+        self.cursor += 1;
+
+        let base = self.cursor;
+        let rest = &self.bytes[base..];
+
+        type Chunk = u64;
+        const STEP: usize = std::mem::size_of::<Chunk>();
+        const ONE: Chunk = Chunk::MAX / 255; // 0x0101_0101_0101_0101
+        const HIGH: Chunk = ONE << 7; // 0x8080_8080_8080_8080
+
+        let fill_delim = ONE * Chunk::from(delim);
+        let fill_bslash = ONE * Chunk::from(b'\\');
+        let fill_del = ONE * 0x7F;
+
+        let chunks = rest.chunks_exact(STEP);
+        let remainder_len = chunks.remainder().len();
+
+        for (i, chunk) in chunks.enumerate() {
+            let v = Chunk::from_le_bytes(chunk.try_into().unwrap());
+
+            let has_ctrl = v.wrapping_sub(ONE * 0x20) & !v;
+            let eq_delim = (v ^ fill_delim).wrapping_sub(ONE) & !(v ^ fill_delim);
+            let eq_bslash = (v ^ fill_bslash).wrapping_sub(ONE) & !(v ^ fill_bslash);
+            let eq_del = (v ^ fill_del).wrapping_sub(ONE) & !(v ^ fill_del);
+
+            let masked = (has_ctrl | eq_delim | eq_bslash | eq_del) & HIGH;
+            if masked != 0 {
+                self.cursor = base + i * STEP + masked.trailing_zeros() as usize / 8;
+                return;
+            }
+        }
+
+        self.cursor = self.bytes.len() - remainder_len;
+        self.skip_string_plain_slow(delim);
+    }
+
+    #[cold]
+    #[inline(never)]
+    fn skip_string_plain_slow(&mut self, delim: u8) {
+        while let Some(&b) = self.bytes.get(self.cursor) {
+            if b == delim || b == b'\\' || b == 0x7F || (b < 0x20 && b != 0x09) {
+                return;
+            }
+            self.cursor += 1;
         }
     }
 
-    /// Continue reading a basic multiline string after the leading newline was skipped.
-    fn read_basic_string_inner(
+    fn read_string_loop(
         &mut self,
         start: usize,
         content_start: usize,
         multiline: bool,
+        delim: u8,
     ) -> Result<(Span, Cow<'a, str>, bool), ParseError> {
-        let mut escaped = false;
-
+        let mut owned = false;
         loop {
-            match self.next_char() {
-                Some((i, '\n')) => {
+            // Fast-scan past plain bytes (8 at a time via SWAR).
+            let plain_start = self.cursor;
+            self.skip_string_plain(delim);
+            if owned && plain_start < self.cursor {
+                self.string_buf
+                    .extend_from_slice(&self.bytes[plain_start..self.cursor]);
+            }
+
+            let i = self.cursor;
+            let Some(&b) = self.bytes.get(i) else {
+                return Err(self.set_error(start, None, ErrorKind::UnterminatedString));
+            };
+            self.cursor = i + 1;
+
+            match b {
+                b'\r' => {
+                    if self.eat_byte(b'\n') {
+                        if !multiline {
+                            return Err(self.set_error(
+                                i,
+                                None,
+                                ErrorKind::InvalidCharInString('\n'),
+                            ));
+                        }
+                        if !owned {
+                            self.string_buf.clear();
+                            self.string_buf
+                                .extend_from_slice(&self.bytes[content_start..i]);
+                            owned = true;
+                        }
+                        self.string_buf.push(b'\n');
+                    } else {
+                        return Err(self.set_error(i, None, ErrorKind::InvalidCharInString('\r')));
+                    }
+                }
+                b'\n' => {
                     if !multiline {
                         return Err(self.set_error(i, None, ErrorKind::InvalidCharInString('\n')));
                     }
-                    if self.bytes[i] == b'\r' && !escaped {
-                        self.string_buf.clear();
-                        self.string_buf
-                            .push_str(unsafe { self.str_slice(content_start, i) });
-                        escaped = true;
-                    }
-                    if escaped {
-                        self.string_buf.push('\n');
+                    if owned {
+                        self.string_buf.push(b'\n');
                     }
                 }
-                Some((mut i, '"')) => {
+                d if d == delim => {
                     if multiline {
-                        if !self.eat_byte(b'"') {
-                            if escaped {
-                                self.string_buf.push('"');
+                        if !self.eat_byte(delim) {
+                            if owned {
+                                self.string_buf.push(delim);
                             }
                             continue;
                         }
-                        if !self.eat_byte(b'"') {
-                            if escaped {
-                                self.string_buf.push('"');
-                                self.string_buf.push('"');
+                        if !self.eat_byte(delim) {
+                            if owned {
+                                self.string_buf.push(delim);
+                                self.string_buf.push(delim);
                             }
                             continue;
                         }
-                        if self.eat_byte(b'"') {
-                            if escaped {
-                                self.string_buf.push('"');
+                        let mut extra = 0usize;
+                        if self.eat_byte(delim) {
+                            if owned {
+                                self.string_buf.push(delim);
                             }
-                            i += 1;
+                            extra += 1;
                         }
-                        if self.eat_byte(b'"') {
-                            if escaped {
-                                self.string_buf.push('"');
+                        if self.eat_byte(delim) {
+                            if owned {
+                                self.string_buf.push(delim);
                             }
-                            i += 1;
+                            extra += 1;
                         }
 
                         let maybe_nl = self.bytes[start + 3];
@@ -641,87 +606,97 @@ impl<'a> Parser<'a> {
                         };
 
                         let span = Span::new((start + start_off) as u32, (self.cursor - 3) as u32);
-                        let val = if escaped {
-                            Cow::Owned(self.string_buf.split_off(0))
+                        let val = if owned {
+                            Cow::Owned(unsafe {
+                                String::from_utf8_unchecked(std::mem::take(&mut self.string_buf))
+                            })
                         } else {
-                            Cow::Borrowed(unsafe { self.str_slice(content_start, i) })
+                            Cow::Borrowed(unsafe { self.str_slice(content_start, i + extra) })
                         };
                         return Ok((span, val, true));
                     }
 
                     let span = Span::new((start + 1) as u32, (self.cursor - 1) as u32);
-                    let val = if escaped {
-                        Cow::Owned(self.string_buf.split_off(0))
+                    let val = if owned {
+                        Cow::Owned(unsafe {
+                            String::from_utf8_unchecked(std::mem::take(&mut self.string_buf))
+                        })
                     } else {
                         Cow::Borrowed(unsafe { self.str_slice(content_start, i) })
                     };
                     return Ok((span, val, false));
                 }
-                Some((i, '\\')) => {
-                    if !escaped {
+                b'\\' if delim == b'"' => {
+                    if !owned {
                         self.string_buf.clear();
                         self.string_buf
-                            .push_str(unsafe { self.str_slice(content_start, i) });
-                        escaped = true;
+                            .extend_from_slice(&self.bytes[content_start..i]);
+                        owned = true;
                     }
                     if let Err(e) = self.read_basic_escape(start, multiline) {
                         return Err(e);
                     }
                 }
-                Some((i, ch))
-                    if ch == '\u{09}'
-                        || (ch != '\u{7f}' && ('\u{20}'..='\u{10ffff}').contains(&ch)) =>
-                {
-                    if escaped {
-                        self.string_buf.push(ch);
+                // Tab or backslash-in-literal-string: benign false positives
+                // from the SWAR scan.
+                0x09 | 0x20..=0x7E | 0x80.. => {
+                    if owned {
+                        self.string_buf.push(b);
                     }
-                    let _ = i;
                 }
-                Some((i, ch)) => {
-                    return Err(self.set_error(i, None, ErrorKind::InvalidCharInString(ch)));
-                }
-                None => {
-                    return Err(self.set_error(start, None, ErrorKind::UnterminatedString));
+                _ => {
+                    return Err(self.set_error(i, None, ErrorKind::InvalidCharInString(b as char)));
                 }
             }
         }
     }
 
     fn read_basic_escape(&mut self, string_start: usize, multi: bool) -> Result<(), ParseError> {
-        if self.cursor >= self.bytes.len() {
-            return Err(self.set_error(string_start, None, ErrorKind::UnterminatedString));
-        }
         let i = self.cursor;
-        let b = self.bytes[i];
+        let Some(&b) = self.bytes.get(i) else {
+            return Err(self.set_error(string_start, None, ErrorKind::UnterminatedString));
+        };
         self.cursor = i + 1;
 
         match b {
-            b'"' => self.string_buf.push('"'),
-            b'\\' => self.string_buf.push('\\'),
-            b'b' => self.string_buf.push('\u{8}'),
-            b'f' => self.string_buf.push('\u{c}'),
-            b'n' => self.string_buf.push('\n'),
-            b'r' => self.string_buf.push('\r'),
-            b't' => self.string_buf.push('\t'),
-            b'e' => self.string_buf.push('\u{1b}'),
+            b'"' => self.string_buf.push(b'"'),
+            b'\\' => self.string_buf.push(b'\\'),
+            b'b' => self.string_buf.push(0x08),
+            b'f' => self.string_buf.push(0x0C),
+            b'n' => self.string_buf.push(b'\n'),
+            b'r' => self.string_buf.push(b'\r'),
+            b't' => self.string_buf.push(b'\t'),
+            b'e' => self.string_buf.push(0x1B),
             b'u' => {
                 let ch = self.read_hex(4, string_start, i);
                 match ch {
-                    Ok(ch) => self.string_buf.push(ch),
+                    Ok(ch) => {
+                        let mut buf = [0u8; 4];
+                        let len = ch.encode_utf8(&mut buf).len();
+                        self.string_buf.extend_from_slice(&buf[..len]);
+                    }
                     Err(e) => return Err(e),
                 }
             }
             b'U' => {
                 let ch = self.read_hex(8, string_start, i);
                 match ch {
-                    Ok(ch) => self.string_buf.push(ch),
+                    Ok(ch) => {
+                        let mut buf = [0u8; 4];
+                        let len = ch.encode_utf8(&mut buf).len();
+                        self.string_buf.extend_from_slice(&buf[..len]);
+                    }
                     Err(e) => return Err(e),
                 }
             }
             b'x' => {
                 let ch = self.read_hex(2, string_start, i);
                 match ch {
-                    Ok(ch) => self.string_buf.push(ch),
+                    Ok(ch) => {
+                        let mut buf = [0u8; 4];
+                        let len = ch.encode_utf8(&mut buf).len();
+                        self.string_buf.extend_from_slice(&buf[..len]);
+                    }
                     Err(e) => return Err(e),
                 }
             }
@@ -787,10 +762,9 @@ impl<'a> Parser<'a> {
     ) -> Result<char, ParseError> {
         let mut buf = [0u8; 8];
         for b in buf[..n].iter_mut() {
-            if self.cursor >= self.bytes.len() {
+            let Some(&byte) = self.bytes.get(self.cursor) else {
                 return Err(self.set_error(string_start, None, ErrorKind::UnterminatedString));
-            }
-            let byte = self.bytes[self.cursor];
+            };
             if byte.is_ascii_hexdigit() {
                 *b = byte;
                 self.cursor += 1;
@@ -813,247 +787,6 @@ impl<'a> Parser<'a> {
                 Some(escape_start + n),
                 ErrorKind::InvalidEscapeValue(val),
             )),
-        }
-    }
-
-    /// Read a literal (single-quoted) string. `start` is the byte offset of the
-    /// opening quote. The cursor should be positioned right after the opening `'`.
-    fn read_literal_string(
-        &mut self,
-        start: usize,
-    ) -> Result<(Span, Cow<'a, str>, bool), ParseError> {
-        let mut multiline = false;
-        if self.eat_byte(b'\'') {
-            if self.eat_byte(b'\'') {
-                multiline = true;
-            } else {
-                return Ok((
-                    Span::new(start as u32, (start + 1) as u32),
-                    Cow::Borrowed(""),
-                    false,
-                ));
-            }
-        }
-
-        let content_start = self.cursor;
-        let mut n = 0usize;
-
-        loop {
-            n += 1;
-            match self.next_char() {
-                Some((i, '\n')) => {
-                    if multiline {
-                        if n == 1 {
-                            // Skip leading newline, reset content start
-                            return self.read_literal_string_inner(start, self.cursor, true);
-                        }
-                        // \r handling: if the original byte was \r, we need owned string
-                        if self.bytes[i] == b'\r' {
-                            self.string_buf.clear();
-                            self.string_buf
-                                .push_str(unsafe { self.str_slice(content_start, i) });
-                            self.string_buf.push('\n');
-                            return self.read_literal_string_owned(start, true);
-                        }
-                    } else {
-                        return Err(self.set_error(i, None, ErrorKind::InvalidCharInString('\n')));
-                    }
-                }
-                Some((mut i, '\'')) => {
-                    if multiline {
-                        if !self.eat_byte(b'\'') {
-                            continue;
-                        }
-                        if !self.eat_byte(b'\'') {
-                            continue;
-                        }
-                        if self.eat_byte(b'\'') {
-                            i += 1;
-                        }
-                        if self.eat_byte(b'\'') {
-                            i += 1;
-                        }
-
-                        let maybe_nl = self.bytes[start + 3];
-                        let start_off = if maybe_nl == b'\n' {
-                            4
-                        } else if maybe_nl == b'\r' {
-                            5
-                        } else {
-                            3
-                        };
-
-                        let span = Span::new((start + start_off) as u32, (self.cursor - 3) as u32);
-                        return Ok((
-                            span,
-                            Cow::Borrowed(unsafe { self.str_slice(content_start, i) }),
-                            true,
-                        ));
-                    }
-
-                    let span = Span::new((start + 1) as u32, (self.cursor - 1) as u32);
-                    return Ok((
-                        span,
-                        Cow::Borrowed(unsafe { self.str_slice(content_start, i) }),
-                        false,
-                    ));
-                }
-                Some((i, ch))
-                    if ch == '\u{09}'
-                        || (ch != '\u{7f}' && ('\u{20}'..='\u{10ffff}').contains(&ch)) =>
-                {
-                    let _ = i;
-                }
-                Some((i, ch)) => {
-                    return Err(self.set_error(i, None, ErrorKind::InvalidCharInString(ch)));
-                }
-                None => {
-                    return Err(self.set_error(start, None, ErrorKind::UnterminatedString));
-                }
-            }
-        }
-    }
-
-    fn read_literal_string_inner(
-        &mut self,
-        start: usize,
-        content_start: usize,
-        multiline: bool,
-    ) -> Result<(Span, Cow<'a, str>, bool), ParseError> {
-        loop {
-            match self.next_char() {
-                Some((i, '\n')) => {
-                    if !multiline {
-                        return Err(self.set_error(i, None, ErrorKind::InvalidCharInString('\n')));
-                    }
-                    if self.bytes[i] == b'\r' {
-                        self.string_buf.clear();
-                        self.string_buf
-                            .push_str(unsafe { self.str_slice(content_start, i) });
-                        self.string_buf.push('\n');
-                        return self.read_literal_string_owned(start, true);
-                    }
-                }
-                Some((mut i, '\'')) => {
-                    if multiline {
-                        if !self.eat_byte(b'\'') {
-                            continue;
-                        }
-                        if !self.eat_byte(b'\'') {
-                            continue;
-                        }
-                        if self.eat_byte(b'\'') {
-                            i += 1;
-                        }
-                        if self.eat_byte(b'\'') {
-                            i += 1;
-                        }
-
-                        let maybe_nl = self.bytes[start + 3];
-                        let start_off = if maybe_nl == b'\n' {
-                            4
-                        } else if maybe_nl == b'\r' {
-                            5
-                        } else {
-                            3
-                        };
-
-                        let span = Span::new((start + start_off) as u32, (self.cursor - 3) as u32);
-                        return Ok((
-                            span,
-                            Cow::Borrowed(unsafe { self.str_slice(content_start, i) }),
-                            true,
-                        ));
-                    }
-
-                    let span = Span::new((start + 1) as u32, (self.cursor - 1) as u32);
-                    return Ok((
-                        span,
-                        Cow::Borrowed(unsafe { self.str_slice(content_start, i) }),
-                        false,
-                    ));
-                }
-                Some((i, ch))
-                    if ch == '\u{09}'
-                        || (ch != '\u{7f}' && ('\u{20}'..='\u{10ffff}').contains(&ch)) =>
-                {
-                    let _ = i;
-                }
-                Some((i, ch)) => {
-                    return Err(self.set_error(i, None, ErrorKind::InvalidCharInString(ch)));
-                }
-                None => {
-                    return Err(self.set_error(start, None, ErrorKind::UnterminatedString));
-                }
-            }
-        }
-    }
-
-    /// Continue reading a literal multiline string after we started building into `string_buf`.
-    fn read_literal_string_owned(
-        &mut self,
-        start: usize,
-        multiline: bool,
-    ) -> Result<(Span, Cow<'a, str>, bool), ParseError> {
-        loop {
-            match self.next_char() {
-                Some((i, '\n')) => {
-                    if !multiline {
-                        return Err(self.set_error(i, None, ErrorKind::InvalidCharInString('\n')));
-                    }
-                    self.string_buf.push('\n');
-                }
-                Some((mut i, '\'')) => {
-                    if multiline {
-                        if !self.eat_byte(b'\'') {
-                            self.string_buf.push('\'');
-                            continue;
-                        }
-                        if !self.eat_byte(b'\'') {
-                            self.string_buf.push('\'');
-                            self.string_buf.push('\'');
-                            continue;
-                        }
-                        if self.eat_byte(b'\'') {
-                            self.string_buf.push('\'');
-                            i += 1;
-                        }
-                        if self.eat_byte(b'\'') {
-                            self.string_buf.push('\'');
-                            i += 1;
-                        }
-
-                        let _ = i;
-                        let maybe_nl = self.bytes[start + 3];
-                        let start_off = if maybe_nl == b'\n' {
-                            4
-                        } else if maybe_nl == b'\r' {
-                            5
-                        } else {
-                            3
-                        };
-
-                        let span = Span::new((start + start_off) as u32, (self.cursor - 3) as u32);
-                        return Ok((span, Cow::Owned(self.string_buf.split_off(0)), true));
-                    }
-
-                    let span = Span::new((start + 1) as u32, (self.cursor - 1) as u32);
-                    return Ok((span, Cow::Owned(self.string_buf.split_off(0)), false));
-                }
-                Some((i, ch))
-                    if ch == '\u{09}'
-                        || (ch != '\u{7f}' && ('\u{20}'..='\u{10ffff}').contains(&ch)) =>
-                {
-                    self.string_buf.push(ch);
-                    let _ = i;
-                }
-                Some((i, ch)) => {
-                    return Err(self.set_error(i, None, ErrorKind::InvalidCharInString(ch)));
-                }
-                None => {
-                    return Err(self.set_error(start, None, ErrorKind::UnterminatedString));
-                }
-            }
         }
     }
 
@@ -1260,24 +993,23 @@ impl<'a> Parser<'a> {
 
         // Build the float string in string_buf to avoid allocation
         self.string_buf.clear();
-        for c in integral
-            .trim_start_matches('+')
-            .chars()
-            .filter(|c| *c != '_')
-        {
-            self.string_buf.push(c);
-        }
+        self.string_buf.extend(
+            integral
+                .trim_start_matches('+')
+                .bytes()
+                .filter(|b| *b != b'_'),
+        );
         if let Some(fraction) = fraction {
-            self.string_buf.push('.');
+            self.string_buf.push(b'.');
             self.string_buf
-                .extend(fraction.chars().filter(|c| *c != '_'));
+                .extend(fraction.bytes().filter(|b| *b != b'_'));
         }
         if let Some(exponent) = exponent {
-            self.string_buf.push('E');
+            self.string_buf.push(b'E');
             self.string_buf
-                .extend(exponent.chars().filter(|c| *c != '_'));
+                .extend(exponent.bytes().filter(|b| *b != b'_'));
         }
-        let n: f64 = match self.string_buf.parse() {
+        let n: f64 = match unsafe { std::str::from_utf8_unchecked(&self.string_buf) }.parse() {
             Ok(n) => n,
             Err(_) => {
                 return Err(self.set_error(
@@ -1305,10 +1037,13 @@ impl<'a> Parser<'a> {
 
     fn value(&mut self) -> Result<Val<'a>, ParseError> {
         let at = self.cursor;
-        match self.peek_byte() {
-            Some(b'"') => {
+        let Some(byte) = self.peek_byte() else {
+            return Err(self.set_error(self.bytes.len(), None, ErrorKind::UnexpectedEof));
+        };
+        match byte {
+            b'"' => {
                 self.advance();
-                let (span, val, _multiline) = match self.read_basic_string(self.cursor - 1) {
+                let (span, val, _multiline) = match self.read_string(self.cursor - 1, b'"') {
                     Ok(v) => v,
                     Err(e) => return Err(e),
                 };
@@ -1318,9 +1053,9 @@ impl<'a> Parser<'a> {
                     end: span.end,
                 })
             }
-            Some(b'\'') => {
+            b'\'' => {
                 self.advance();
-                let (span, val, _multiline) = match self.read_literal_string(self.cursor - 1) {
+                let (span, val, _multiline) = match self.read_string(self.cursor - 1, b'\'') {
                     Ok(v) => v,
                     Err(e) => return Err(e),
                 };
@@ -1330,7 +1065,7 @@ impl<'a> Parser<'a> {
                     end: span.end,
                 })
             }
-            Some(b'{') => {
+            b'{' => {
                 let start = self.cursor as u32;
                 self.advance();
                 let mut table = TableValues::default();
@@ -1344,7 +1079,7 @@ impl<'a> Parser<'a> {
                     end: end_span.end,
                 })
             }
-            Some(b'[') => {
+            b'[' => {
                 let start = self.cursor as u32;
                 self.advance();
                 let mut arr = Vec::new();
@@ -1358,12 +1093,12 @@ impl<'a> Parser<'a> {
                     end: end_span.end,
                 })
             }
-            Some(b'+') => {
+            b'+' => {
                 let start = self.cursor as u32;
                 self.advance();
                 self.number_leading_plus(start)
             }
-            Some(b) if is_keylike_byte(b) => {
+            b if is_keylike_byte(b) => {
                 let start = self.cursor as u32;
                 let key = self.read_keylike();
                 let end = self.cursor as u32;
@@ -1394,8 +1129,7 @@ impl<'a> Parser<'a> {
                     }
                 }
             }
-            None => Err(self.set_error(self.bytes.len(), None, ErrorKind::UnexpectedEof)),
-            Some(_) => {
+            _ => {
                 let (found_desc, end) = self.scan_token_desc_and_end();
                 Err(self.set_error(
                     at,
