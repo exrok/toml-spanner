@@ -1,8 +1,7 @@
-[workspace]
-resolver = "2"
-members = ["integ-tests", "toml-spanner"]
-
-[workspace.package]
+[package]
+name = "toml-spanner"
+version = "0.1.0"
+description = "Toml parser and deserializer that preserves span information"
 authors = [
     "Embark <opensource@embark-studios.com>",
     "Thomas Dagenais <exrok@i64.dev>",
@@ -11,13 +10,26 @@ edition = "2024"
 license = "MIT OR Apache-2.0"
 homepage = "https://github.com/exrok/toml-spanner"
 repository = "https://github.com/exrok/toml-spanner"
+documentation = "https://docs.rs/toml-spanner"
+readme = "README.md"
+categories = ["parser-implementations", "config"]
 
-[workspace.dependencies]
-codespan-reporting = "0.13"
-toml-spanner = { path = "toml-spanner" }
-proc-macro2 = "1.0"
-quote = "1.0"
-syn = "2.0"
+[workspace]
+resolver = "3"
+members = ["integ-tests"]
+
+[features]
+serde = ["dep:serde"]
+reporting = ["dep:codespan-reporting"]
+
+[dependencies]
+codespan-reporting = { version = "0.13", optional = true }
+serde = { version = "1.0", optional = true }
+smallvec = "1.13"
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
 
 [profile.dev.package.insta]
 opt-level = 3
