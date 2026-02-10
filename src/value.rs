@@ -245,12 +245,10 @@ impl PartialEq for Key<'_> {
 
 impl Eq for Key<'_> {}
 
-/// A toml table, always represented as a sorted map.
-///
-/// The original key ordering can be obtained by ordering the keys by their span
-pub type Table<'de> = std::collections::BTreeMap<Key<'de>, Value<'de>>;
 /// A toml array
-pub type Array<'de> = Vec<Value<'de>>;
+pub use crate::array::Array;
+/// A toml table: flat list of key-value pairs in insertion order
+pub use crate::table::Table;
 
 /// The core value types that toml can deserialize to
 ///

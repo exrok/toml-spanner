@@ -2,89 +2,17 @@
 source: integ-tests/tests/parser.rs
 expression: spans
 ---
-note[string]: root_answer1
-   ┌─ strings:63:12
-   │
-63 │ answer1 = "\u000B"
-   │            ^^^^^^
-
-note[string]: root_answer10
-   ┌─ strings:67:13
-   │
-67 │ answer10 = "\u03b4α"
-   │             ^^^^^^^
-
-note[string]: root_answer11
-   ┌─ strings:68:13
-   │
-68 │ answer11 = "\U0000abc1"
-   │             ^^^^^^^^^^
-
-note[string]: root_answer4
-   ┌─ strings:64:12
-   │
-64 │ answer4 = "\u03B4α"
-   │            ^^^^^^^
-
-note[string]: root_answer8
-   ┌─ strings:65:12
-   │
-65 │ answer8 = "\U000003B4β"
-   │            ^^^^^^^^^^^
-
-note[string]: root_answer9
-   ┌─ strings:66:12
-   │
-66 │ answer9 = "\uc0de"
-   │            ^^^^^^
-
-note[string]: root_backslash
-   ┌─ strings:54:14
-   │
-54 │ backslash = "This string has a \\ backslash character."
-   │              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-note[string]: root_backspace
-   ┌─ strings:47:14
-   │
-47 │ backspace = "This string has a \b backspace character."
-   │              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
 note[string]: root_bar
   ┌─ strings:1:8
   │
 1 │ bar = "\U00000000"
   │        ^^^^^^^^^^
 
-note[string]: root_carriage
-   ┌─ strings:51:13
-   │
-51 │ carriage = "This string has a \r carriage return character."
-   │             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-note[string]: root_delete
-   ┌─ strings:59:11
-   │
-59 │ delete = "This string has a \u007F delete control code."
-   │           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-note[string]: root_empty
-  ┌─ strings:5:9
+note[string]: root_unicode
+  ┌─ strings:2:12
   │
-5 │ empty = ""
-  │         ^
-
-note[string]: root_firstnl
-   ┌─ strings:36:1
-   │
-36 │ This string has a ' quote character.'''
-   │ ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-note[string]: root_formfeed
-   ┌─ strings:50:13
-   │
-50 │ formfeed = "This string has a \f form feed character."
-   │             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2 │ unicode = "δ"
+  │            ^
 
 note[string]: root_key1
   ┌─ strings:3:9
@@ -97,6 +25,12 @@ note[string]: root_key2
   │
 4 │ key2 = """One\nTwo"""
   │           ^^^^^^^^
+
+note[string]: root_empty
+  ┌─ strings:5:9
+  │
+5 │ empty = ""
+  │         ^
 
 note[string]: root_key3
   ┌─ strings:7:1
@@ -132,29 +66,35 @@ note[string]: root_key6
 21 │ │    """
    │ ╰───^
 
-note[string]: root_lbackslash
-   ┌─ strings:44:15
+note[string]: root_winpath
+   ┌─ strings:23:12
    │
-44 │ lbackslash = 'This string has a \\ backslash character.'
-   │               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+23 │ winpath = 'C:\Users\nodejs\templates'
+   │            ^^^^^^^^^^^^^^^^^^^^^^^^^
 
-note[string]: root_lbackspace
-   ┌─ strings:38:15
+note[string]: root_winpath2
+   ┌─ strings:24:13
    │
-38 │ lbackspace = 'This string has a \b backspace character.'
-   │               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+24 │ winpath2 = '\\ServerX\admin$\system32\'
+   │             ^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-note[string]: root_lcarriage
-   ┌─ strings:42:14
+note[string]: root_quoted
+   ┌─ strings:25:11
    │
-42 │ lcarriage = 'This string has a \r carriage return character.'
-   │              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+25 │ quoted = 'Tom "Dubs" Preston-Werner'
+   │           ^^^^^^^^^^^^^^^^^^^^^^^^^
 
-note[string]: root_lformfeed
-   ┌─ strings:41:14
+note[string]: root_regex
+   ┌─ strings:26:10
    │
-41 │ lformfeed = 'This string has a \f form feed character.'
-   │              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+26 │ regex = '<\i\c*\s*>'
+   │          ^^^^^^^^^^
+
+note[string]: root_regex2
+   ┌─ strings:28:13
+   │
+28 │ regex2 = '''I [dw]on't need \d{2} apples'''
+   │             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 note[string]: root_lines
    ┌─ strings:30:1
@@ -166,17 +106,17 @@ note[string]: root_lines
 34 │ │ '''
    │ ╰^
 
-note[string]: root_lnewline
-   ┌─ strings:40:13
+note[string]: root_firstnl
+   ┌─ strings:36:1
    │
-40 │ lnewline = 'This string has a \n new line character.'
-   │             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+36 │ This string has a ' quote character.'''
+   │ ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-note[string]: root_lslash
-   ┌─ strings:43:11
+note[string]: root_lbackspace
+   ┌─ strings:38:15
    │
-43 │ lslash = 'This string has a \/ slash character.'
-   │           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+38 │ lbackspace = 'This string has a \b backspace character.'
+   │               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 note[string]: root_ltab
    ┌─ strings:39:9
@@ -184,11 +124,83 @@ note[string]: root_ltab
 39 │ ltab = 'This string has a \t tab character.'
    │         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+note[string]: root_lnewline
+   ┌─ strings:40:13
+   │
+40 │ lnewline = 'This string has a \n new line character.'
+   │             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+note[string]: root_lformfeed
+   ┌─ strings:41:14
+   │
+41 │ lformfeed = 'This string has a \f form feed character.'
+   │              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+note[string]: root_lcarriage
+   ┌─ strings:42:14
+   │
+42 │ lcarriage = 'This string has a \r carriage return character.'
+   │              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+note[string]: root_lslash
+   ┌─ strings:43:11
+   │
+43 │ lslash = 'This string has a \/ slash character.'
+   │           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+note[string]: root_lbackslash
+   ┌─ strings:44:15
+   │
+44 │ lbackslash = 'This string has a \\ backslash character.'
+   │               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+note[string]: root_backspace
+   ┌─ strings:47:14
+   │
+47 │ backspace = "This string has a \b backspace character."
+   │              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+note[string]: root_tab
+   ┌─ strings:48:8
+   │
+48 │ tab = "This string has a \t tab character."
+   │        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
 note[string]: root_newline
    ┌─ strings:49:12
    │
 49 │ newline = "This string has a \n new line character."
    │            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+note[string]: root_formfeed
+   ┌─ strings:50:13
+   │
+50 │ formfeed = "This string has a \f form feed character."
+   │             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+note[string]: root_carriage
+   ┌─ strings:51:13
+   │
+51 │ carriage = "This string has a \r carriage return character."
+   │             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+note[string]: root_quote
+   ┌─ strings:52:10
+   │
+52 │ quote = "This string has a \" quote character."
+   │          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+note[string]: root_slash
+   ┌─ strings:53:10
+   │
+53 │ slash = "This string has a / slash character."
+   │          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+note[string]: root_backslash
+   ┌─ strings:54:14
+   │
+54 │ backslash = "This string has a \\ backslash character."
+   │              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 note[string]: root_notunicode1
    ┌─ strings:55:16
@@ -214,47 +226,11 @@ note[string]: root_notunicode4
 58 │ notunicode4 = "This string does not have a unicode \\\u0075 escape."
    │                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-note[string]: root_quote
-   ┌─ strings:52:10
+note[string]: root_delete
+   ┌─ strings:59:11
    │
-52 │ quote = "This string has a \" quote character."
-   │          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-note[string]: root_quoted
-   ┌─ strings:25:11
-   │
-25 │ quoted = 'Tom "Dubs" Preston-Werner'
-   │           ^^^^^^^^^^^^^^^^^^^^^^^^^
-
-note[string]: root_regex
-   ┌─ strings:26:10
-   │
-26 │ regex = '<\i\c*\s*>'
-   │          ^^^^^^^^^^
-
-note[string]: root_regex2
-   ┌─ strings:28:13
-   │
-28 │ regex2 = '''I [dw]on't need \d{2} apples'''
-   │             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-note[string]: root_slash
-   ┌─ strings:53:10
-   │
-53 │ slash = "This string has a / slash character."
-   │          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-note[string]: root_tab
-   ┌─ strings:48:8
-   │
-48 │ tab = "This string has a \t tab character."
-   │        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-note[string]: root_unicode
-  ┌─ strings:2:12
-  │
-2 │ unicode = "δ"
-  │            ^
+59 │ delete = "This string has a \u007F delete control code."
+   │           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 note[string]: root_unitseparator
    ┌─ strings:60:18
@@ -262,17 +238,41 @@ note[string]: root_unitseparator
 60 │ unitseparator = "This string has a \u001F unit separator control code."
    │                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-note[string]: root_winpath
-   ┌─ strings:23:12
+note[string]: root_answer1
+   ┌─ strings:63:12
    │
-23 │ winpath = 'C:\Users\nodejs\templates'
-   │            ^^^^^^^^^^^^^^^^^^^^^^^^^
+63 │ answer1 = "\u000B"
+   │            ^^^^^^
 
-note[string]: root_winpath2
-   ┌─ strings:24:13
+note[string]: root_answer4
+   ┌─ strings:64:12
    │
-24 │ winpath2 = '\\ServerX\admin$\system32\'
-   │             ^^^^^^^^^^^^^^^^^^^^^^^^^^
+64 │ answer4 = "\u03B4α"
+   │            ^^^^^^^
+
+note[string]: root_answer8
+   ┌─ strings:65:12
+   │
+65 │ answer8 = "\U000003B4β"
+   │            ^^^^^^^^^^^
+
+note[string]: root_answer9
+   ┌─ strings:66:12
+   │
+66 │ answer9 = "\uc0de"
+   │            ^^^^^^
+
+note[string]: root_answer10
+   ┌─ strings:67:13
+   │
+67 │ answer10 = "\u03b4α"
+   │             ^^^^^^^
+
+note[string]: root_answer11
+   ┌─ strings:68:13
+   │
+68 │ answer11 = "\U0000abc1"
+   │             ^^^^^^^^^^
 
 note[table]: root
    ┌─ strings:1:1
@@ -285,5 +285,3 @@ note[table]: root
 68 │ │ answer11 = "\U0000abc1"
 69 │ │ 
    │ ╰^
-
-

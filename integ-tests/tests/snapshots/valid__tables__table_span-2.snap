@@ -2,6 +2,31 @@
 source: integ-tests/tests/valid.rs
 expression: spans
 ---
+note[bool]: root_workspace_members
+  ┌─ table_span:3:11
+  │
+3 │ members = true
+  │           ^^^^
+
+note[bool]: root_workspace_other
+  ┌─ table_span:4:9
+  │
+4 │ other = false
+  │         ^^^^^
+
+note[integer]: root_workspace_foo_bar
+  ┌─ table_span:6:5
+  │
+6 │ bar=3
+  │     ^
+
+note[table]: root_workspace_foo
+  ┌─ table_span:5:1
+  │  
+5 │ ╭ [workspace.foo]
+6 │ │ bar=3
+  │ ╰─────^
+
 note[integer]: root_workspace_bar_inline_foo
   ┌─ table_span:9:18
   │
@@ -20,31 +45,6 @@ note[table]: root_workspace_bar
 8 │ ╭ [workspace.bar]
 9 │ │ inline = { foo = 3 }
   │ ╰────────────────────^
-
-note[integer]: root_workspace_foo_bar
-  ┌─ table_span:6:5
-  │
-6 │ bar=3
-  │     ^
-
-note[table]: root_workspace_foo
-  ┌─ table_span:5:1
-  │  
-5 │ ╭ [workspace.foo]
-6 │ │ bar=3
-  │ ╰─────^
-
-note[bool]: root_workspace_members
-  ┌─ table_span:3:11
-  │
-3 │ members = true
-  │           ^^^^
-
-note[bool]: root_workspace_other
-  ┌─ table_span:4:9
-  │
-4 │ other = false
-  │         ^^^^^
 
 note[table]: root_workspace
   ┌─ table_span:2:1

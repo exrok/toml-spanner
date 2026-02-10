@@ -2,6 +2,12 @@
 source: integ-tests/tests/valid.rs
 expression: spans
 ---
+note[integer]: root_a_better
+  ┌─ implicit_and_explicit_before:3:10
+  │
+3 │ better = 43
+  │          ^^
+
 note[integer]: root_a_b_c_answer
   ┌─ implicit_and_explicit_before:6:10
   │
@@ -20,13 +26,7 @@ note[table]: root_a_b
   │  
 5 │ ╭ [a.b.c]
 6 │ │ answer = 42
-  │ ╰───────────^
-
-note[integer]: root_a_better
-  ┌─ implicit_and_explicit_before:3:10
-  │
-3 │ better = 43
-  │          ^^
+  │ ╰^
 
 note[table]: root_a
   ┌─ implicit_and_explicit_before:2:1

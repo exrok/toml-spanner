@@ -3,18 +3,18 @@ source: integ-tests/tests/parser.rs
 expression: valid_toml
 ---
 {
-  "lib": [
-    {
-      "description": "A Rust implementation of a TAR file reader and writer. This library does not\ncurrently handle compression, but it is abstract over all I/O readers and\nwriters. Additionally, great lengths are taken to ensure that the entire\ncontents are never required to be entirely resident in memory all at once.\n",
-      "name": "splay",
-      "path": "lib.rs"
-    }
-  ],
   "project": {
+    "name": "splay",
+    "version": "0.1.0",
     "authors": [
       "alex@crichton.co"
-    ],
-    "name": "splay",
-    "version": "0.1.0"
-  }
+    ]
+  },
+  "lib": [
+    {
+      "path": "lib.rs",
+      "name": "splay",
+      "description": "A Rust implementation of a TAR file reader and writer. This library does not\ncurrently handle compression, but it is abstract over all I/O readers and\nwriters. Additionally, great lengths are taken to ensure that the entire\ncontents are never required to be entirely resident in memory all at once.\n"
+    }
+  ]
 }

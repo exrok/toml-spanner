@@ -2,11 +2,11 @@
 source: integ-tests/tests/parser.rs
 expression: error
 ---
-error[duplicate-key]: 
-  ┌─ table_9_reverse_invalid:2:14
+error[dotted-key-invalid-type]: dotted key attempted to extend non-table type
+  ┌─ table_9_reverse_invalid:6:7
   │
 2 │ [fruit.apple.taste]  # INVALID
-  │              ^^^^^ duplicate key
+  │              ----- non-table
   ·
 6 │ apple.taste.sweet = true
-  │       ----- first key instance
+  │       ^^^^^ attempted to extend table here

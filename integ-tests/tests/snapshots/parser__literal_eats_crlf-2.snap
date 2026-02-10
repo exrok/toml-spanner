@@ -2,6 +2,14 @@
 source: integ-tests/tests/parser.rs
 expression: spans
 ---
+note[string]: root_foo
+  ┌─ literal_eats_crlf:1:10
+  │  
+1 │   foo = """\
+  │ ╭──────────^
+2 │ │ """
+  │ ╰^
+
 note[string]: root_bar
   ┌─ literal_eats_crlf:3:10
   │  
@@ -11,14 +19,6 @@ note[string]: root_bar
 5 │ │    
 6 │ │    a"""
   │ ╰────^
-
-note[string]: root_foo
-  ┌─ literal_eats_crlf:1:10
-  │  
-1 │   foo = """\
-  │ ╭──────────^
-2 │ │ """
-  │ ╰^
 
 note[table]: root
   ┌─ literal_eats_crlf:1:1
@@ -30,5 +30,3 @@ note[table]: root
 5 │ │    
 6 │ │    a"""
   │ ╰───────^
-
-

@@ -2,11 +2,15 @@
 #![doc = include_str!("../README.md")]
 #![deny(missing_docs)]
 
+/// Growable array of TOML values
+pub mod array;
 pub mod de;
 pub mod de_helpers;
 mod error;
 mod parser;
 pub mod span;
+/// TOML table: flat list of key-value pairs
+pub mod table;
 pub mod value;
 
 pub use de::parse;

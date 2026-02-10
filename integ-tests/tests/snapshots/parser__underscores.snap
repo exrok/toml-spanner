@@ -3,9 +3,9 @@ source: integ-tests/tests/parser.rs
 expression: valid_toml
 ---
 {
-  "hundred": 100,
   "ten": 10,
+  "hundred": 100,
   "thousand": 1000,
-  "thousand-neg": -1000,
-  "thousand-pos": 1000
+  "thousand-pos": 1000,
+  "thousand-neg": -1000
 }

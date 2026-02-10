@@ -2,30 +2,6 @@
 source: integ-tests/tests/valid.rs
 expression: spans
 ---
-note[float]: root_longpi
-   ┌─ floats:13:10
-   │
-13 │ longpi = 3.141592653589793
-   │          ^^^^^^^^^^^^^^^^^
-
-note[float]: root_multi-dec-exp
-  ┌─ floats:6:17
-  │
-6 │ multi-dec-exp = 1.001e-0
-  │                 ^^^^^^^^
-
-note[float]: root_neg-exp
-  ┌─ floats:5:11
-  │
-5 │ neg-exp = 1E-0
-  │           ^^^^
-
-note[float]: root_neglongpi
-   ┌─ floats:14:13
-   │
-14 │ neglongpi = -3.141592653589793
-   │             ^^^^^^^^^^^^^^^^^^
-
 note[float]: root_normal
   ┌─ floats:1:10
   │
@@ -38,17 +14,47 @@ note[float]: root_normal-exp
 2 │ normal-exp = 1.0e0
   │              ^^^^^
 
+note[float]: root_normal-pos-exp
+  ┌─ floats:3:18
+  │
+3 │ normal-pos-exp = 1.0e+0
+  │                  ^^^^^^
+
 note[float]: root_normal-neg-exp
   ┌─ floats:4:18
   │
 4 │ normal-neg-exp = 1.0e-0
   │                  ^^^^^^
 
-note[float]: root_normal-pos-exp
-  ┌─ floats:3:18
+note[float]: root_neg-exp
+  ┌─ floats:5:11
   │
-3 │ normal-pos-exp = 1.0e+0
-  │                  ^^^^^^
+5 │ neg-exp = 1E-0
+  │           ^^^^
+
+note[float]: root_multi-dec-exp
+  ┌─ floats:6:17
+  │
+6 │ multi-dec-exp = 1.001e-0
+  │                 ^^^^^^^^
+
+note[float]: root_two-exp
+  ┌─ floats:7:11
+  │
+7 │ two-exp = 2e10
+  │           ^^^^
+
+note[float]: root_two-pos-exp
+  ┌─ floats:8:15
+  │
+8 │ two-pos-exp = 2e+11
+  │               ^^^^^
+
+note[float]: root_two-neg-exp
+  ┌─ floats:9:15
+  │
+9 │ two-neg-exp = 2e-10
+  │               ^^^^^
 
 note[float]: root_twenty
    ┌─ floats:10:10
@@ -68,23 +74,17 @@ note[float]: root_twenty-punkt-ett
 12 │ twenty-punkt-ett = 2_0.1_0e1_0
    │                    ^^^^^^^^^^^
 
-note[float]: root_two-exp
-  ┌─ floats:7:11
-  │
-7 │ two-exp = 2e10
-  │           ^^^^
+note[float]: root_longpi
+   ┌─ floats:13:10
+   │
+13 │ longpi = 3.141592653589793
+   │          ^^^^^^^^^^^^^^^^^
 
-note[float]: root_two-neg-exp
-  ┌─ floats:9:15
-  │
-9 │ two-neg-exp = 2e-10
-  │               ^^^^^
-
-note[float]: root_two-pos-exp
-  ┌─ floats:8:15
-  │
-8 │ two-pos-exp = 2e+11
-  │               ^^^^^
+note[float]: root_neglongpi
+   ┌─ floats:14:13
+   │
+14 │ neglongpi = -3.141592653589793
+   │             ^^^^^^^^^^^^^^^^^^
 
 note[table]: root
    ┌─ floats:1:1
@@ -97,5 +97,3 @@ note[table]: root
 14 │ │ neglongpi = -3.141592653589793
 15 │ │ 
    │ ╰^
-
-

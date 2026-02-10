@@ -2,17 +2,17 @@
 source: integ-tests/tests/parser.rs
 expression: spans
 ---
-note[integer]: root_hundred
-  ┌─ underscores:2:11
-  │
-2 │ hundred = 1_0_0
-  │           ^^^^^
-
 note[integer]: root_ten
   ┌─ underscores:1:7
   │
 1 │ ten = 1_0
   │       ^^^
+
+note[integer]: root_hundred
+  ┌─ underscores:2:11
+  │
+2 │ hundred = 1_0_0
+  │           ^^^^^
 
 note[integer]: root_thousand
   ┌─ underscores:3:12
@@ -20,17 +20,17 @@ note[integer]: root_thousand
 3 │ thousand = 1_000
   │            ^^^^^
 
-note[integer]: root_thousand-neg
-  ┌─ underscores:5:15
-  │
-5 │ thousand-neg =-1_000
-  │               ^^^^^^
-
 note[integer]: root_thousand-pos
   ┌─ underscores:4:16
   │
 4 │ thousand-pos = +1_000
   │                ^^^^^^
+
+note[integer]: root_thousand-neg
+  ┌─ underscores:5:15
+  │
+5 │ thousand-neg =-1_000
+  │               ^^^^^^
 
 note[table]: root
   ┌─ underscores:1:1
@@ -42,5 +42,3 @@ note[table]: root
 5 │ │ thousand-neg =-1_000
 6 │ │ 
   │ ╰^
-
-

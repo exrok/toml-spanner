@@ -8,11 +8,23 @@ note[integer]: root_answer
 1 │ answer = 42
   │          ^^
 
-note[integer]: root_bin1
-   ┌─ integers:17:8
-   │
-17 │ bin1 = 0b11010110
-   │        ^^^^^^^^^^
+note[integer]: root_neganswer
+  ┌─ integers:2:13
+  │
+2 │ neganswer = -42
+  │             ^^^
+
+note[integer]: root_neg_zero
+  ┌─ integers:4:12
+  │
+4 │ neg_zero = -0
+  │            ^^
+
+note[integer]: root_pos_zero
+  ┌─ integers:5:12
+  │
+5 │ pos_zero = +0
+  │            ^^
 
 note[integer]: root_hex1
   ┌─ integers:8:8
@@ -32,30 +44,6 @@ note[integer]: root_hex3
 10 │ hex3 = 0xdead_beef
    │        ^^^^^^^^^^^
 
-note[integer]: root_long-answer
-   ┌─ integers:19:15
-   │
-19 │ long-answer = 9223372036854775807
-   │               ^^^^^^^^^^^^^^^^^^^
-
-note[integer]: root_long-neganswer
-   ┌─ integers:20:18
-   │
-20 │ long-neganswer = -9223372036854775808
-   │                  ^^^^^^^^^^^^^^^^^^^^
-
-note[integer]: root_neg_zero
-  ┌─ integers:4:12
-  │
-4 │ neg_zero = -0
-  │            ^^
-
-note[integer]: root_neganswer
-  ┌─ integers:2:13
-  │
-2 │ neganswer = -42
-  │             ^^^
-
 note[integer]: root_oct1
    ┌─ integers:13:8
    │
@@ -68,11 +56,23 @@ note[integer]: root_oct2
 14 │ oct2 = 0o755      # useful for Unix file permissions
    │        ^^^^^
 
-note[integer]: root_pos_zero
-  ┌─ integers:5:12
-  │
-5 │ pos_zero = +0
-  │            ^^
+note[integer]: root_bin1
+   ┌─ integers:17:8
+   │
+17 │ bin1 = 0b11010110
+   │        ^^^^^^^^^^
+
+note[integer]: root_long-answer
+   ┌─ integers:19:15
+   │
+19 │ long-answer = 9223372036854775807
+   │               ^^^^^^^^^^^^^^^^^^^
+
+note[integer]: root_long-neganswer
+   ┌─ integers:20:18
+   │
+20 │ long-neganswer = -9223372036854775808
+   │                  ^^^^^^^^^^^^^^^^^^^^
 
 note[table]: root
    ┌─ integers:1:1
@@ -85,5 +85,3 @@ note[table]: root
 20 │ │ long-neganswer = -9223372036854775808
 21 │ │ 
    │ ╰^
-
-

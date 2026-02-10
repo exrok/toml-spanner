@@ -55,11 +55,14 @@ note[table]: root_fruit_0_variety_1
    │ ╰─────────────────────^
 
 note[array]: root_fruit_0_variety
-  ┌─ fruit:8:1
-  │  
-8 │ ╭ [[fruit.variety]]
-9 │ │ name = "red delicious"
-  │ ╰──────────────────────^
+   ┌─ fruit:8:1
+   │  
+ 8 │ ╭ [[fruit.variety]]
+ 9 │ │ name = "red delicious"
+10 │ │ 
+11 │ │ [[fruit.variety]]
+12 │ │ name = "granny smith"
+   │ ╰─────────────────────^
 
 note[table]: root_fruit_0
   ┌─ fruit:1:1
@@ -102,11 +105,16 @@ note[table]: root_fruit_1
    │ ╰───────────────^
 
 note[array]: root_fruit
-  ┌─ fruit:1:1
-  │  
-1 │ ╭ [[fruit]]
-2 │ │ name = "apple"
-  │ ╰──────────────^
+   ┌─ fruit:1:1
+   │  
+ 1 │ ╭ [[fruit]]
+ 2 │ │ name = "apple"
+ 3 │ │ 
+ 4 │ │ [fruit.physical]
+   · │
+14 │ │ [[fruit]]
+15 │ │ name = "banana"
+   │ ╰───────────────^
 
 note[table]: root
    ┌─ fruit:1:1

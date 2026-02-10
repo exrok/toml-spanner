@@ -29,11 +29,10 @@ note[array]: root_fruit_apple_seeds
   │ ╰────────^
 
 note[table]: root_fruit_apple
-  ┌─ array_within_dotted:4:1
-  │  
-4 │ ╭ [[fruit.apple.seeds]]
-5 │ │ size = 2
-  │ ╰────────^
+  ┌─ array_within_dotted:2:1
+  │
+2 │ apple.color = "red"
+  │ ^^^^^
 
 note[table]: root_fruit
   ┌─ array_within_dotted:1:1

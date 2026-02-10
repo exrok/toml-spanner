@@ -7,10 +7,8 @@ error[duplicate-table]:
   │    
 2 │ ╭   [a]
 3 │ │   foo="bar"
-  │ ╰──' first table instance
-4 │     b = { foo = "bar" }
+4 │ │   b = { foo = "bar" }
+  │ ╰─────────────────────' first table instance
 5 │   ╭ [a]
 6 │   │ 
   │   ╰^ duplicate table
-
-

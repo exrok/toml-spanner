@@ -2,20 +2,6 @@
 source: integ-tests/tests/parser.rs
 expression: spans
 ---
-note[table]: root_"
-  ┌─ table_names:4:1
-  │  
-4 │ ╭ ["\""]
-5 │ │ ['a.a']
-  │ ╰^
-
-note[table]: root_""
-  ┌─ table_names:6:1
-  │  
-6 │ ╭ ['""']
-7 │ │ 
-  │ ╰^
-
 note[table]: root_a_b
   ┌─ table_names:1:1
   │  
@@ -30,13 +16,6 @@ note[table]: root_a
 2 │ │ ["f f"]
   │ ╰^
 
-note[table]: root_a.a
-  ┌─ table_names:5:1
-  │  
-5 │ ╭ ['a.a']
-6 │ │ ['""']
-  │ ╰^
-
 note[table]: root_f f
   ┌─ table_names:2:1
   │  
@@ -49,6 +28,27 @@ note[table]: root_f.f
   │  
 3 │ ╭ ["f.f"]
 4 │ │ ["\""]
+  │ ╰^
+
+note[table]: root_"
+  ┌─ table_names:4:1
+  │  
+4 │ ╭ ["\""]
+5 │ │ ['a.a']
+  │ ╰^
+
+note[table]: root_a.a
+  ┌─ table_names:5:1
+  │  
+5 │ ╭ ['a.a']
+6 │ │ ['""']
+  │ ╰^
+
+note[table]: root_""
+  ┌─ table_names:6:1
+  │  
+6 │ ╭ ['""']
+7 │ │ 
   │ ╰^
 
 note[table]: root

@@ -5,12 +5,12 @@ expression: valid_toml
 {
   "fruit": {
     "apple": {
+      "texture": {
+        "smooth": true
+      },
       "color": "red",
       "taste": {
         "sweet": true
-      },
-      "texture": {
-        "smooth": true
       }
     }
   }

@@ -4,11 +4,11 @@ expression: valid_toml
 ---
 {
   "a": {
+    "better": 43,
     "b": {
       "c": {
         "answer": 42
       }
-    },
-    "better": 43
+    }
   }
 }

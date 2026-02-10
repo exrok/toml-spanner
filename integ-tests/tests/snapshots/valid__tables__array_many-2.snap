@@ -63,12 +63,16 @@ note[table]: root_people_2
    │ ╰───────────────────^
 
 note[array]: root_people
-  ┌─ array_many:2:1
-  │  
-2 │ ╭ [[people]]
-3 │ │ first_name = "Bruce"
-4 │ │ last_name = "Springsteen"
-  │ ╰─────────────────────────^
+   ┌─ array_many:2:1
+   │  
+ 2 │ ╭ [[people]]
+ 3 │ │ first_name = "Bruce"
+ 4 │ │ last_name = "Springsteen"
+ 5 │ │ 
+   · │
+11 │ │ first_name = "Bob"
+12 │ │ last_name = "Seger"
+   │ ╰───────────────────^
 
 note[table]: root
    ┌─ array_many:1:1

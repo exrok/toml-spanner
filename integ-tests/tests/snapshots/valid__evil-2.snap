@@ -2,50 +2,11 @@
 source: integ-tests/tests/valid.rs
 expression: spans
 ---
-note[string]: root_the_hard_another_test_string
-   ┌─ evil:12:28
-   │
-12 │     another_test_string = " Same thing, but with a string #"
-   │                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-note[string]: root_the_hard_bit#_multi_line_array_0
-   ┌─ evil:19:14
-   │
-19 │             "]",
-   │              ^
-
-note[array]: root_the_hard_bit#_multi_line_array
-   ┌─ evil:18:28
-   │  
-18 │           multi_line_array = [
-   │ ╭────────────────────────────^
-19 │ │             "]",
-20 │ │             # ] Oh yes I did
-21 │ │             ]
-   │ ╰─────────────^
-
-note[string]: root_the_hard_bit#_what?
-   ┌─ evil:17:20
-   │
-17 │         "what?" = "You don't think some user won't do that?"
-   │                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-note[table]: root_the_hard_bit#
-   ┌─ evil:16:9
-   │  
-16 │ ╭         [the.hard."bit#"]
-17 │ │         "what?" = "You don't think some user won't do that?"
-18 │ │         multi_line_array = [
-19 │ │             "]",
-20 │ │             # ] Oh yes I did
-21 │ │             ]
-   │ ╰─────────────^
-
-note[string]: root_the_hard_harder_test_string
-   ┌─ evil:13:27
-   │
-13 │     harder_test_string = " And when \"'s are in the string, along with # \""   # "and comments are there too"
-   │                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+note[string]: root_the_test_string
+  ┌─ evil:6:16
+  │
+6 │ test_string = "You'll hate me after this - #"          # " Annoying, isn't it?
+  │                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 note[string]: root_the_hard_test_array_0
   ┌─ evil:9:21
@@ -83,6 +44,51 @@ note[array]: root_the_hard_test_array2
 10 │     test_array2 = [ "Test #11 ]proved that", "Experiment #9 was a success" ]
    │                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+note[string]: root_the_hard_another_test_string
+   ┌─ evil:12:28
+   │
+12 │     another_test_string = " Same thing, but with a string #"
+   │                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+note[string]: root_the_hard_harder_test_string
+   ┌─ evil:13:27
+   │
+13 │     harder_test_string = " And when \"'s are in the string, along with # \""   # "and comments are there too"
+   │                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+note[string]: root_the_hard_bit#_what?
+   ┌─ evil:17:20
+   │
+17 │         "what?" = "You don't think some user won't do that?"
+   │                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+note[string]: root_the_hard_bit#_multi_line_array_0
+   ┌─ evil:19:14
+   │
+19 │             "]",
+   │              ^
+
+note[array]: root_the_hard_bit#_multi_line_array
+   ┌─ evil:18:28
+   │  
+18 │           multi_line_array = [
+   │ ╭────────────────────────────^
+19 │ │             "]",
+20 │ │             # ] Oh yes I did
+21 │ │             ]
+   │ ╰─────────────^
+
+note[table]: root_the_hard_bit#
+   ┌─ evil:16:9
+   │  
+16 │ ╭         [the.hard."bit#"]
+17 │ │         "what?" = "You don't think some user won't do that?"
+18 │ │         multi_line_array = [
+19 │ │             "]",
+20 │ │             # ] Oh yes I did
+21 │ │             ]
+   │ ╰─────────────^
+
 note[table]: root_the_hard
    ┌─ evil:8:5
    │  
@@ -93,12 +99,6 @@ note[table]: root_the_hard
 12 │ │     another_test_string = " Same thing, but with a string #"
 13 │ │     harder_test_string = " And when \"'s are in the string, along with # \""   # "and comments are there too"
    │ ╰────────────────────────────────────────────────────────────────────────────^
-
-note[string]: root_the_test_string
-  ┌─ evil:6:16
-  │
-6 │ test_string = "You'll hate me after this - #"          # " Annoying, isn't it?
-  │                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 note[table]: root_the
   ┌─ evil:5:1

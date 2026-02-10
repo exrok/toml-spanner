@@ -27,7 +27,7 @@ note[table]: root_albums
   │  
 1 │ ╭ [[albums.songs]]
 2 │ │ name = "Glory Days"
-  │ ╰───────────────────^
+  │ ╰^
 
 note[table]: root
   ┌─ implicit_array:1:1
