@@ -3,23 +3,23 @@
 #![deny(missing_docs)]
 
 /// Growable array of TOML values
-pub mod array;
+mod array;
 pub mod de;
 pub mod de_helpers;
 mod error;
 mod parser;
-pub mod span;
+mod span;
 /// A 16-byte string type for borrowed or owned string data
-pub mod str;
+mod str;
 /// TOML table: flat list of key-value pairs
-pub mod table;
-pub mod value;
+mod table;
+mod value;
 
 pub use de::parse;
 pub use error::{DeserError, Error, ErrorKind};
 pub use span::{Span, Spanned};
 pub use str::Str;
-pub use value::{Value, ValueOwned, ValueRef};
+pub use value::{Key, Value, ValueOwned, ValueRef};
 
 #[cfg(feature = "serde")]
 pub mod impl_serde;
