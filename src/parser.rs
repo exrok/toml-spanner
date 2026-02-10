@@ -1890,3 +1890,7 @@ fn byte_describe(b: u8) -> &'static str {
         _ => "a character",
     }
 }
+
+#[cfg(test)]
+#[path = "./parser_tests.rs"]
+mod tests;

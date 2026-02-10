@@ -305,3 +305,7 @@ impl From<Str<'_>> for String {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "./str_tests.rs"]
+mod tests;

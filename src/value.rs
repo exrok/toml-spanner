@@ -626,7 +626,7 @@ impl serde::Serialize for Value<'_> {
     where
         S: serde::Serializer,
     {
-        match self.kind() {
+        match self.as_ref() {
             ValueRef::String(s) => ser.serialize_str(s),
             ValueRef::Integer(i) => ser.serialize_i64(i),
             ValueRef::Float(f) => ser.serialize_f64(f),
@@ -704,3 +704,7 @@ impl PartialEq for Key<'_> {
 }
 
 impl Eq for Key<'_> {}
+
+#[cfg(test)]
+#[path = "./value_tests.rs"]
+mod tests;

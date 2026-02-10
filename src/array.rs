@@ -264,3 +264,7 @@ impl<'de> IntoIterator for Array<'de> {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "./array_tests.rs"]
+mod tests;

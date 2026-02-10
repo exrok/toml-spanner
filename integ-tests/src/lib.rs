@@ -169,7 +169,7 @@ pub fn collect_spans(
     use codespan_reporting::diagnostic::Label;
     use toml_spanner::ValueRef;
 
-    let code = match val.kind() {
+    let code = match val.as_ref() {
         ValueRef::String(_s) => "string",
         ValueRef::Integer(_s) => "integer",
         ValueRef::Float(_s) => "float",

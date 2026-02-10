@@ -392,3 +392,7 @@ impl<'a, 'de> VacantEntry<'a, 'de> {
         self.table.insert(self.key, value);
     }
 }
+
+#[cfg(test)]
+#[path = "./table_tests.rs"]
+mod tests;
