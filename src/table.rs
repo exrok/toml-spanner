@@ -136,38 +136,60 @@ impl<'de> Table<'de> {
 
     // -- internal helpers ---------------------------------------------------
 
+    /// Returns the span start of the first key. Used as a table discriminator
+    /// in the parser's hash index.
+    ///
+    /// # Panics
+    ///
+    /// Debug-asserts that the table is non-empty.
     #[inline]
-    fn entries(&self) -> &[TableEntry<'de>] {
-        if self.len == 0 {
-            &[]
-        } else {
-            unsafe { std::slice::from_raw_parts(self.ptr.as_ptr(), self.len as usize) }
+    pub(crate) fn first_key_span_start(&self) -> u32 {
+        debug_assert!(self.len > 0);
+        unsafe { (*self.ptr.as_ptr()).0.span.start() }
+    }
+
+    /// Returns key-value references at a given index (unchecked in release).
+    #[inline]
+    pub(crate) fn get_key_value_at(&self, index: usize) -> (&Key<'de>, &Value<'de>) {
+        debug_assert!(index < self.len as usize);
+        unsafe {
+            let entry = &*self.ptr.as_ptr().add(index as usize);
+            (&entry.0, &entry.1)
         }
+    }
+
+    /// Returns a mutable value reference at a given index (unchecked in release).
+    #[inline]
+    pub(crate) fn get_mut_at(&mut self, index: usize) -> &mut Value<'de> {
+        debug_assert!(index < self.len as usize);
+        unsafe { &mut (*self.ptr.as_ptr().add(index as usize)).1 }
+    }
+
+    /// Returns a slice of all entries.
+    #[inline]
+    pub fn entries(&self) -> &[TableEntry<'de>] {
+        unsafe { std::slice::from_raw_parts(self.ptr.as_ptr(), self.len as usize) }
     }
 
     #[inline]
     fn entries_mut(&mut self) -> &mut [TableEntry<'de>] {
-        if self.len == 0 {
-            &mut []
-        } else {
-            unsafe { std::slice::from_raw_parts_mut(self.ptr.as_ptr(), self.len as usize) }
-        }
+        unsafe { std::slice::from_raw_parts_mut(self.ptr.as_ptr(), self.len as usize) }
     }
 
-    fn find_index(&self, name: &str) -> Option<u32> {
+    pub(crate) fn find_index(&self, name: &str) -> Option<usize> {
         for (i, entry) in self.entries().iter().enumerate() {
             if entry.0.name == name {
-                return Some(i as u32);
+                return Some(i);
             }
         }
         None
     }
 
     /// Remove entry at `idx`, shifting subsequent entries left.
-    fn remove_at(&mut self, idx: u32) -> (Key<'de>, Value<'de>) {
+    fn remove_at(&mut self, idx: usize) -> (Key<'de>, Value<'de>) {
         let ptr = unsafe { self.ptr.as_ptr().add(idx as usize) };
         let entry = unsafe { ptr.read() };
-        let remaining = self.len - idx - 1;
+        let remaining = self.len as usize - idx - 1;
         if remaining > 0 {
             unsafe {
                 std::ptr::copy(ptr.add(1), ptr, remaining as usize);

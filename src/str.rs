@@ -6,6 +6,7 @@ use std::borrow::{Borrow, Cow};
 use std::hash::{Hash, Hasher};
 use std::marker::PhantomData;
 use std::ops::Deref;
+use std::ptr::NonNull;
 use std::{fmt, str};
 
 /// High bit of `len_and_tag`: set = owned (must free), clear = borrowed.
@@ -18,7 +19,7 @@ const OWNED_BIT: usize = 1 << (usize::BITS - 1);
 /// length word distinguishes borrowed (0) from owned (1). Maximum string
 /// length is `isize::MAX`, matching Rust's allocation limit.
 pub struct Str<'de> {
-    ptr: *const u8,
+    ptr: NonNull<u8>,
     len_and_tag: usize,
     _marker: PhantomData<&'de str>,
 }
@@ -43,6 +44,12 @@ impl Str<'_> {
     fn str_len(&self) -> usize {
         self.len_and_tag & !OWNED_BIT
     }
+
+    /// Returns the raw pointer and byte length without creating an intermediate `&str`.
+    #[inline]
+    pub(crate) fn as_raw_parts(&self) -> (NonNull<u8>, usize) {
+        (self.ptr, self.str_len())
+    }
 }
 
 // -- Core trait impls -------------------------------------------------------
@@ -53,7 +60,7 @@ impl Deref for Str<'_> {
     #[inline]
     fn deref(&self) -> &str {
         unsafe {
-            let slice = std::slice::from_raw_parts(self.ptr, self.str_len());
+            let slice = std::slice::from_raw_parts(self.ptr.as_ptr(), self.str_len());
             str::from_utf8_unchecked(slice)
         }
     }
@@ -99,7 +106,7 @@ impl Drop for Str<'_> {
     fn drop(&mut self) {
         if self.is_owned() {
             let len = self.str_len();
-            let slice = std::ptr::slice_from_raw_parts_mut(self.ptr as *mut u8, len);
+            let slice = std::ptr::slice_from_raw_parts_mut(self.ptr.as_ptr(), len);
             unsafe {
                 drop(Box::from_raw(slice as *mut str));
             }
@@ -185,8 +192,10 @@ impl<'de> Str<'de> {
     }
     #[inline]
     fn from_borrowed(s: &'de str) -> Self {
+        // SAFETY: str::as_ptr() is non-null for any valid &str (even "" points to a dangling-but-non-null address).
+        let ptr = unsafe { NonNull::new_unchecked(s.as_ptr() as *mut u8) };
         Self {
-            ptr: s.as_ptr(),
+            ptr,
             len_and_tag: s.len(),
             _marker: PhantomData,
         }
@@ -195,11 +204,11 @@ impl<'de> Str<'de> {
     pub fn into_boxed_str(self) -> Box<str> {
         let s = std::mem::ManuallyDrop::new(self);
         if s.is_owned() {
-            let slice = std::ptr::slice_from_raw_parts_mut(s.ptr as *mut u8, s.str_len());
+            let slice = std::ptr::slice_from_raw_parts_mut(s.ptr.as_ptr(), s.str_len());
             unsafe { Box::from_raw(slice as *mut str) }
         } else {
             let borrowed: &str =
-                unsafe { str::from_utf8_unchecked(std::slice::from_raw_parts(s.ptr, s.str_len())) };
+                unsafe { str::from_utf8_unchecked(std::slice::from_raw_parts(s.ptr.as_ptr(), s.str_len())) };
             borrowed.into()
         }
     }
@@ -207,7 +216,8 @@ impl<'de> Str<'de> {
     #[inline]
     fn from_box(s: Box<str>) -> Self {
         let len = s.len();
-        let ptr = Box::into_raw(s) as *const u8;
+        // SAFETY: Box::into_raw always returns a non-null pointer.
+        let ptr = unsafe { NonNull::new_unchecked(Box::into_raw(s) as *mut u8) };
         Self {
             ptr,
             len_and_tag: len | OWNED_BIT,
@@ -254,12 +264,12 @@ impl<'de> From<Str<'de>> for Cow<'de, str> {
     fn from(s: Str<'de>) -> Self {
         let s = std::mem::ManuallyDrop::new(s);
         if s.is_owned() {
-            let slice = std::ptr::slice_from_raw_parts_mut(s.ptr as *mut u8, s.str_len());
+            let slice = std::ptr::slice_from_raw_parts_mut(s.ptr.as_ptr(), s.str_len());
             let boxed: Box<str> = unsafe { Box::from_raw(slice as *mut str) };
             Cow::Owned(boxed.into())
         } else {
             let borrowed: &'de str =
-                unsafe { str::from_utf8_unchecked(std::slice::from_raw_parts(s.ptr, s.str_len())) };
+                unsafe { str::from_utf8_unchecked(std::slice::from_raw_parts(s.ptr.as_ptr(), s.str_len())) };
             Cow::Borrowed(borrowed)
         }
     }
@@ -269,12 +279,12 @@ impl From<Str<'_>> for Box<str> {
     fn from(s: Str<'_>) -> Self {
         let s = std::mem::ManuallyDrop::new(s);
         if s.is_owned() {
-            let slice = std::ptr::slice_from_raw_parts_mut(s.ptr as *mut u8, s.str_len());
+            let slice = std::ptr::slice_from_raw_parts_mut(s.ptr.as_ptr(), s.str_len());
             let boxed: Box<str> = unsafe { Box::from_raw(slice as *mut str) };
             boxed
         } else {
             let borrowed: &str =
-                unsafe { str::from_utf8_unchecked(std::slice::from_raw_parts(s.ptr, s.str_len())) };
+                unsafe { str::from_utf8_unchecked(std::slice::from_raw_parts(s.ptr.as_ptr(), s.str_len())) };
             borrowed.into()
         }
     }
@@ -285,12 +295,12 @@ impl From<Str<'_>> for String {
     fn from(s: Str<'_>) -> Self {
         let s = std::mem::ManuallyDrop::new(s);
         if s.is_owned() {
-            let slice = std::ptr::slice_from_raw_parts_mut(s.ptr as *mut u8, s.str_len());
+            let slice = std::ptr::slice_from_raw_parts_mut(s.ptr.as_ptr(), s.str_len());
             let boxed: Box<str> = unsafe { Box::from_raw(slice as *mut str) };
             boxed.into()
         } else {
             let borrowed: &str =
-                unsafe { str::from_utf8_unchecked(std::slice::from_raw_parts(s.ptr, s.str_len())) };
+                unsafe { str::from_utf8_unchecked(std::slice::from_raw_parts(s.ptr.as_ptr(), s.str_len())) };
             borrowed.to_owned()
         }
     }

@@ -1,0 +1,160 @@
+day_offset_minutes = 120
+copy_command = ["wl-copy"]
+default_view = "unfinished"
+spell_dict = "/usr/share/nvim/runtime/spell/en.utf-8.spl"
+
+[editor]
+terminal = ["nvim"]
+
+[bindings.input_mode]
+"C-j" = "Down"
+"C-k" = "Up"
+"UP" = "Up"
+"C-g" = "Cancel"
+"ESC" = "Cancel"
+"C-l" = "Submit"
+"ENTER" = "Submit"
+"A-ENTER" = "SubmitAlt"
+"C-n" = "SubmitAlt"
+"DOWN" = "Down"
+
+[bindings.spelling_correction]
+"j" = "Down"
+"k" = "Up"
+"UP" = "Up"
+"DOWN" = "Down"
+"ENTER" = "Submit"
+"C-l" = "Submit"
+"e" = "EditWord"
+"ESC" = "Cancel"
+"A" = "AcceptWord"
+"?" = { ToggleWindow = "Bindings" }
+
+[bindings.visual]
+"ESC" = "Cancel"
+"j" = "Down"
+"k" = "Up"
+"BACKSPACE" = "DeleteTask"
+"s".Label = "Set Status"
+"s d" = { Set = [{ Status = "Done" }] }
+"s r" = { Set = [{ Status = "InReview" }] }
+"s p" = { Set = [{ Status = "InProgress" }] }
+"s t" = { Set = [{ Status = "Todo" }] }
+"s c" = { Set = [{ Status = "Cancelled" }] }
+"s b" = { Set = [{ Status = "Blocked" }] }
+"s h" = { Set = [{ Status = "OnHold" }] }
+"c".Label = "Change Task Component"
+"c g" = { UpdateTask = "Group" }
+
+[bindings.normal]
+# Leader key group
+"SPACE".Label = "leader"
+"SPACE s".Label = "Selection"
+"SPACE s c" = "ClearSelection"
+"SPACE u".Label = "Undo/Unlink"
+"SPACE u p" = "UnlinkParent"
+"SPACE u c" = "UnlinkChildren"
+"SPACE l".Label = "Link"
+"SPACE l a" = "AdoptSelection"
+
+# Basic navigation
+"m" = "ToggleTaskSelection"
+"j" = "Down"
+"k" = "Up"
+"G" = "Bottom"
+"C-u" = "UpHalfPage"
+"C-d" = "DownHalfPage"
+"PGUP" = "UpHalfPage"
+"PGDN" = "DownHalfPage"
+"UP" = "Up"
+"DOWN" = "Down"
+
+# Move task
+"C-j" = { MoveTask = "Down" }
+"C-k" = { MoveTask = "Up" }
+"C-h" = { MoveTask = "Out" }
+"L" = { MoveTask = "InBelow" }
+"C-l" = { MoveTask = "InAbove" }
+
+# Task operations
+"BACKSPACE" = "DeleteTask"
+"y" = "CopyTaskID"
+"Y" = "CopyTaskName"
+"n" = "CreateTask"
+"N" = "CreateChildTask"
+"C-n" = "CreateSiblingTask"
+"i" = "CreateNote"
+"/" = "Search"
+"a" = "SetActiveTask"
+"A" = "ClearActiveTask"
+"t" = "ToggleTag"
+"." = "RepeatLastUpdate"
+"U" = "UndoTask"
+"u" = "Undo"
+"C-z" = "Undo"
+"V" = "VisualMode"
+
+# Details navigation
+"A-j" = "DetailsDown"
+"A-k" = "DetailsUp"
+
+# Window toggles
+"ENTER" = { ToggleWindow = "Details" }
+"," = { ToggleWindow = "Messages" }
+"?" = { ToggleWindow = "Bindings" }
+"TAB" = { ToggleWindow = "Details" }
+
+# Go commands
+"g".Label = "Go"
+"g g" = "Top"
+
+# Set Due date
+"d".Label = "Set Due"
+"d f" = { Set = [{ Due = "Today" }] }
+"d t" = { Set = [{ Due = "Tomorrow" }] }
+"d n" = { Set = [{ Due = "None" }] }
+
+# Set Status
+"s".Label = "Set Status"
+"s d" = { Set = [{ Status = "Done" }] }
+"s r" = { Set = [{ Status = "InReview" }] }
+"s p" = { Set = [{ Status = "InProgress" }] }
+"s t" = { Set = [{ Status = "Todo" }] }
+"s c" = { Set = [{ Status = "Cancelled" }] }
+"s b" = { Set = [{ Status = "Blocked" }] }
+"s h" = { Set = [{ Status = "OnHold" }] }
+
+# Order By
+"o".Label = "Order By"
+"o u" = { OrderBy = { property = "Updated", direction = "Asc" } }
+"o U" = { OrderBy = { property = "Updated", direction = "Desc" } }
+"o s" = { OrderBy = { property = "Status", direction = "Asc" } }
+"o S" = { OrderBy = { property = "Status", direction = "Desc" } }
+"o t" = { OrderBy = { property = "TaskID", direction = "Asc" } }
+"o T" = { OrderBy = { property = "TaskID", direction = "Desc" } }
+"o n" = { OrderBy = { property = "Name", direction = "Asc" } }
+"o N" = { OrderBy = { property = "Name", direction = "Desc" } }
+
+# Change Task Component
+"c".Label = "Change Task Component"
+"c g" = { UpdateTask = "Group" }
+"c n" = { UpdateTask = "Name" }
+"c e" = { UpdateTask = "TimeEstimate" }
+
+# Set View
+"v".Label = "Set View"
+"v u" = { SetView = "unfinished" }
+"v t" = { SetView = "today" }
+"v s" = { CycleViewStructure = ["Flat", { Tree = {} }] }
+"v c" = "ClearView"
+"v g" = "ViewGroup"
+"v r" = "ResetView"
+"ESC" = "ResetView"
+
+[views.today]
+filter = { today_view_hack = true }
+structure = { Tree = { expand_parents = "WithFilteredChildren" } }
+
+[views.unfinished]
+filter = { status = ["Todo", "InProgress", "InReview"] }
+structure = { Tree = { expand_parents = "WithFilteredChildren" } }

@@ -1,0 +1,3 @@
+pub static ZED_CARGO_TOML: &str = include_str!("../data/zed.toml");
+pub static EXTASK_TOML: &str = include_str!("../data/extask.toml");
+pub static DEVSM_TOML: &str = include_str!("../data/devsm.toml");

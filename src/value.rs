@@ -397,7 +397,7 @@ impl fmt::Debug for ValueOwned<'_> {
 impl<'de> Value<'de> {
     /// Returns a borrowed view for pattern matching.
     #[inline]
-    pub fn kind(&self) -> ValueRef<'_, 'de> {
+    pub fn as_ref(&self) -> ValueRef<'_, 'de> {
         unsafe {
             match self.tag() {
                 TAG_STRING => ValueRef::String(&self.payload.string),
@@ -412,7 +412,7 @@ impl<'de> Value<'de> {
 
     /// Returns a mutable view for pattern matching.
     #[inline]
-    pub fn kind_mut(&mut self) -> ValueMut<'_, 'de> {
+    pub fn as_mut(&mut self) -> ValueMut<'_, 'de> {
         unsafe {
             match self.tag() {
                 TAG_STRING => ValueMut::String(&mut self.payload.string),

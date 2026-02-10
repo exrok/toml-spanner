@@ -1,0 +1,96 @@
+[test.typos]
+cmd = "typos"
+
+[action.init-db]
+cmd = "./cmd/dev.postgres.sh"
+cache.key = [
+    { modified = "./backend/database/schema.sql" },
+    { profile_changed = "backend" },
+]
+
+[action.init-mqtt]
+cmd = "./cmd/dev.mqtt.sh"
+cache = {}
+
+[service.frontend]
+pwd = "frontend/app"
+cmd = "./run.prisons.sh"
+require = ["frontend_module_install"]
+[action.frontend_module_install]
+pwd = "frontend/app"
+cmd = ["bun", "install", "--frozen-lockfile"]
+cache.key = [{ modified = "frontend/app/bun.lock" }]
+[test.frontend-api-client]
+cmd = "./cmd/test.api-client.sh"
+require = ["backend:default"]
+tag = "e2e"
+[test.frontend-lint]
+pwd = "frontend/app"
+cmd = ["npm", "run", "lint"]
+tag = "lint"
+[test.frontend-type-check]
+pwd = "frontend/app"
+cmd = ["tsc", "--noEmit"]
+tag = ["lint", "slow"]
+
+[service.vgs]
+pwd = "projects/video_gateway/server"
+cmd = ["cargo", "run"]
+[test.vgs-check]
+pwd = "projects/video_gateway"
+cmd = ["cargo", "check"]
+tag = "lint"
+[test.vgs-test]
+pwd = "projects/video_gateway"
+cmd = ["cargo", "test"]
+
+[service.sim]
+pwd = "projects/libra_simulation/sim_server"
+cmd = ["cargo", "run"]
+[test.sim-check]
+pwd = "projects/libra_simulation/sim_server"
+cmd = ["cargo", "check"]
+tag = "lint"
+[test.sim-test]
+pwd = "projects/libra_simulation/sim_server"
+cmd = ["cargo", "test"]
+
+[service.monitoring_server]
+hidden = "until_ran"
+pwd = "projects/libra_monitoring/server"
+cmd = ["cargo", "run"]
+
+[service.monitoring_frontend]
+hidden = "until_ran"
+pwd = "projects/libra_monitoring/ui"
+cmd = ["bun", "run", "dev"]
+
+[service.backend]
+pwd = "backend/webserver"
+cmd = [
+    "cargo",
+    "run",
+    { if.profile = "sim", then = [
+        "--",
+        "--config",
+        "../libra.sim.config.js",
+        "--config",
+        "../libra.config.js",
+    ] },
+]
+profiles = ["default", "sim"]
+require = ["init-db", "init-mqtt"]
+ready.when.output_contains = "Starting webserver"
+[test.backend-check]
+pwd = "backend/webserver"
+cmd = ["cargo", "check"]
+tag = "lint"
+[test.backend-test]
+pwd = "backend/webserver"
+cmd = ["cargo", "test"]
+require = ["init-db"]
+
+[group]
+airspace_with_sim = ["frontend", "backend:sim", "vgs", "sim"]
+traffic = ["frontend", "backend:default", "vgs"]
+monitoring = ["monitoring_server", "monitoring_frontend"]

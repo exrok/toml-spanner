@@ -2,15 +2,17 @@
 // performance: explicit match/if-let prevents the compiler from generating
 // From::from conversion and drop-glue machinery at every call site.
 #![allow(clippy::question_mark)]
+#![allow(unsafe_code)]
 
 use crate::{
     Span,
     error::{Error, ErrorKind},
     str::Str,
-    table::Entry,
     value::{self, Key, Value},
 };
 use std::borrow::Cow;
+use std::collections::HashMap;
+use std::hash::{Hash, Hasher};
 use std::ptr::NonNull;
 
 // ---------------------------------------------------------------------------
@@ -37,6 +39,54 @@ struct Ctx<'a> {
 }
 
 // ---------------------------------------------------------------------------
+// Key index for O(1) table lookups
+// ---------------------------------------------------------------------------
+
+/// Tables with at least this many entries use the hash index for lookups.
+const INDEXED_TABLE_THRESHOLD: usize = 6;
+
+/// Hash-map key that identifies a (table, key-name) pair without owning the
+/// string data.  The raw `key_ptr`/`len` point into either the input buffer
+/// (borrowed `Str`) or the heap allocation of an owned `Str`; both are stable
+/// for the lifetime of the parse.  `first_key_span` is the `span.start()` of
+/// the **first** key ever inserted into the table and serves as a cheap,
+/// collision-free table discriminator.
+struct KeyIndex {
+    key_ptr: NonNull<u8>,
+    len: u32,
+    first_key_span: u32,
+}
+
+impl KeyIndex {
+    #[inline]
+    unsafe fn as_str(&self) -> &str {
+        unsafe {
+            std::str::from_utf8_unchecked(std::slice::from_raw_parts(
+                self.key_ptr.as_ptr(),
+                self.len as usize,
+            ))
+        }
+    }
+}
+
+impl Hash for KeyIndex {
+    #[inline]
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        unsafe { self.as_str() }.hash(state);
+        self.first_key_span.hash(state);
+    }
+}
+
+impl PartialEq for KeyIndex {
+    #[inline]
+    fn eq(&self, other: &Self) -> bool {
+        self.first_key_span == other.first_key_span && unsafe { self.as_str() == other.as_str() }
+    }
+}
+
+impl Eq for KeyIndex {}
+
+// ---------------------------------------------------------------------------
 // Parser
 // ---------------------------------------------------------------------------
 
@@ -54,24 +104,24 @@ struct Parser<'a> {
 
     // Navigation stack for direct construction
     ctx: Vec<Ctx<'a>>,
+
+    // Global key-index for O(1) lookups in large tables.
+    // Maps (table-discriminator, key-name) → entry index in the table.
+    table_index: foldhash::HashMap<KeyIndex, usize>,
 }
 
 #[allow(unsafe_code)]
 impl<'a> Parser<'a> {
     fn new(input: &'a str) -> Self {
-        let mut p = Parser {
+        Parser {
             bytes: input.as_bytes(),
             cursor: 0,
             error_span: Span::new(0, 0),
             error_kind: None,
             string_buf: Vec::new(),
             ctx: Vec::new(),
-        };
-        // Eat UTF-8 BOM
-        if p.bytes.get(p.cursor..p.cursor + 3) == Some(b"\xef\xbb\xbf") {
-            p.cursor += 3;
+            table_index: HashMap::default(),
         }
-        p
     }
 
     /// Get a `&str` slice from the underlying bytes.
@@ -79,7 +129,18 @@ impl<'a> Parser<'a> {
     /// `start..end` falls on UTF-8 char boundaries.
     #[inline]
     unsafe fn str_slice(&self, start: usize, end: usize) -> &'a str {
-        unsafe { std::str::from_utf8_unchecked(&self.bytes[start..end]) }
+        #[cfg(not(debug_assertions))]
+        unsafe {
+            std::str::from_utf8_unchecked(&self.bytes[start..end])
+        }
+        #[cfg(debug_assertions)]
+        match std::str::from_utf8(&self.bytes[start..end]) {
+            Ok(value) => value,
+            Err(err) => panic!(
+                "Invalid UTF-8 slice: bytes[{}..{}] is not valid UTF-8: {}",
+                start, end, err
+            ),
+        }
     }
 
     // -- error helpers ------------------------------------------------------
@@ -1230,13 +1291,14 @@ impl<'a> Parser<'a> {
     ) -> Result<*mut value::Table<'a>, ParseError> {
         let table_ref = unsafe { &mut *table };
 
-        // Probe immutably first to extract key span for potential errors.
-        let probe = table_ref.get_key_value(key.name.as_ref());
-        if let Some((existing_key, existing_val)) = probe {
+        if let Some(idx) = self.indexed_find(table_ref, key.name.as_ref()) {
+            let (existing_key, existing_val) = table_ref.get_key_value_at(idx);
             let first_key_span = existing_key.span;
+            let ok = existing_val.is_table()
+                && !existing_val.is_frozen()
+                && !existing_val.has_header_bit();
 
-            if !existing_val.is_table() || existing_val.is_frozen() || existing_val.has_header_bit()
-            {
+            if !ok {
                 return Err(self.set_error(
                     key.span.start() as usize,
                     Some(key.span.end() as usize),
@@ -1245,15 +1307,15 @@ impl<'a> Parser<'a> {
                     },
                 ));
             }
-            // Immutable borrow released; get mutable reference.
-            let existing = table_ref.get_mut(key.name.as_ref()).unwrap();
+            let existing = table_ref.get_mut_at(idx);
             let t = unsafe { existing.as_table_mut_unchecked() };
             Ok(t as *mut _)
         } else {
-            // Create new table with DOTTED tag
             let new_val = Value::table_dotted(value::Table::new(), key.span);
             table_ref.insert(key.clone(), new_val);
-            let inserted = table_ref.get_mut(key.name.as_ref()).unwrap();
+            self.index_after_insert(unsafe { &*table });
+            let last_idx = (unsafe { &*table }).len() as usize - 1;
+            let inserted = (unsafe { &mut *table }).get_mut_at(last_idx);
             let t = unsafe { inserted.as_table_mut_unchecked() };
             Ok(t as *mut _)
         }
@@ -1268,17 +1330,19 @@ impl<'a> Parser<'a> {
         header_start: u32,
         header_end: u32,
     ) -> Result<(), ParseError> {
-        let table_ref = unsafe { &mut *self.current_table() };
+        let table_ptr = self.current_table();
+        let table_ref = unsafe { &mut *table_ptr };
 
-        // Probe for key span (cold error path)
-        let probe = table_ref.get_key_value(key.name.as_ref());
-        if let Some((existing_key, existing_val)) = probe {
+        if let Some(idx) = self.indexed_find(table_ref, key.name.as_ref()) {
+            let (existing_key, existing_val) = table_ref.get_key_value_at(idx);
             let first_key_span = existing_key.span;
             let is_table = existing_val.is_table();
             let is_array = existing_val.is_array();
+            let is_frozen = existing_val.is_frozen();
+            let is_aot = existing_val.is_aot();
 
             if is_table {
-                if existing_val.is_frozen() {
+                if is_frozen {
                     return Err(self.set_error(
                         key.span.start() as usize,
                         Some(key.span.end() as usize),
@@ -1288,13 +1352,11 @@ impl<'a> Parser<'a> {
                         },
                     ));
                 }
-                // Immutable borrow released
-                let existing = table_ref.get_mut(key.name.as_ref()).unwrap();
+                let existing = table_ref.get_mut_at(idx);
                 self.push_table_ctx(existing as *mut _, None);
                 Ok(())
-            } else if is_array && existing_val.is_aot() {
-                // Array-of-tables: navigate into the last element
-                let existing = table_ref.get_mut(key.name.as_ref()).unwrap();
+            } else if is_array && is_aot {
+                let existing = table_ref.get_mut_at(idx);
                 let arr_ptr = unsafe { NonNull::new_unchecked(existing as *mut Value<'a>) };
                 let arr = unsafe { (*arr_ptr.as_ptr()).as_array_mut() }.unwrap();
                 let last = arr.last_mut().unwrap();
@@ -1321,11 +1383,12 @@ impl<'a> Parser<'a> {
                 ))
             }
         } else {
-            // Create implicit table (plain TABLE tag, no header/dotted bits)
             let span = Span::new(header_start, header_end);
             let new_val = Value::table(value::Table::new(), span);
             table_ref.insert(key.clone(), new_val);
-            let inserted = table_ref.get_mut(key.name.as_ref()).unwrap();
+            self.index_after_insert(unsafe { &*table_ptr });
+            let last_idx = (unsafe { &*table_ptr }).len() - 1;
+            let inserted = (unsafe { &mut *table_ptr }).get_mut_at(last_idx);
             self.push_table_ctx(inserted as *mut _, None);
             Ok(())
         }
@@ -1338,13 +1401,19 @@ impl<'a> Parser<'a> {
         header_start: u32,
         header_end: u32,
     ) -> Result<(), ParseError> {
-        let table_ref = unsafe { &mut *self.current_table() };
+        let table_ptr = self.current_table();
+        let table_ref = unsafe { &mut *table_ptr };
 
-        let probe = table_ref.get_key_value(key.name.as_ref());
-        if let Some((existing_key, existing_val)) = probe {
+        if let Some(idx) = self.indexed_find(table_ref, key.name.as_ref()) {
+            let (existing_key, existing_val) = table_ref.get_key_value_at(idx);
             let first_key_span = existing_key.span;
+            let is_table = existing_val.is_table();
+            let is_frozen = existing_val.is_frozen();
+            let has_header = existing_val.has_header_bit();
+            let has_dotted = existing_val.has_dotted_bit();
+            let val_span = existing_val.span();
 
-            if !existing_val.is_table() {
+            if !is_table {
                 return Err(self.set_error(
                     key.span.start() as usize,
                     Some(key.span.end() as usize),
@@ -1354,7 +1423,7 @@ impl<'a> Parser<'a> {
                     },
                 ));
             }
-            if existing_val.is_frozen() {
+            if is_frozen {
                 return Err(self.set_error(
                     key.span.start() as usize,
                     Some(key.span.end() as usize),
@@ -1364,18 +1433,17 @@ impl<'a> Parser<'a> {
                     },
                 ));
             }
-            if existing_val.has_header_bit() {
-                let clean = existing_val.span();
+            if has_header {
                 return Err(self.set_error(
                     header_start as usize,
                     Some(header_end as usize),
                     ErrorKind::DuplicateTable {
                         name: key.name.to_string(),
-                        first: clean,
+                        first: val_span,
                     },
                 ));
             }
-            if existing_val.has_dotted_bit() {
+            if has_dotted {
                 return Err(self.set_error(
                     key.span.start() as usize,
                     Some(key.span.end() as usize),
@@ -1385,9 +1453,8 @@ impl<'a> Parser<'a> {
                     },
                 ));
             }
-            // Implicitly created table (by sub-header navigation). Now
-            // explicitly define it.
-            let existing = table_ref.get_mut(key.name.as_ref()).unwrap();
+            // Implicitly created table — now explicitly define it.
+            let existing = table_ref.get_mut_at(idx);
             existing.set_header_tag();
             existing.set_span_start(header_start);
             existing.set_span_end(header_end);
@@ -1397,7 +1464,9 @@ impl<'a> Parser<'a> {
             let new_val =
                 Value::table_header(value::Table::new(), Span::new(header_start, header_end));
             table_ref.insert(key.clone(), new_val);
-            let inserted = table_ref.get_mut(key.name.as_ref()).unwrap();
+            self.index_after_insert(unsafe { &*table_ptr });
+            let last_idx = (unsafe { &*table_ptr }).len() - 1;
+            let inserted = (unsafe { &mut *table_ptr }).get_mut_at(last_idx);
             self.push_table_ctx(inserted as *mut _, None);
             Ok(())
         }
@@ -1410,15 +1479,17 @@ impl<'a> Parser<'a> {
         header_start: u32,
         header_end: u32,
     ) -> Result<(), ParseError> {
-        let table_ref = unsafe { &mut *self.current_table() };
+        let table_ptr = self.current_table();
+        let table_ref = unsafe { &mut *table_ptr };
 
-        let probe = table_ref.get_key_value(key.name.as_ref());
-        if let Some((existing_key, existing_val)) = probe {
+        if let Some(idx) = self.indexed_find(table_ref, key.name.as_ref()) {
+            let (existing_key, existing_val) = table_ref.get_key_value_at(idx);
             let first_key_span = existing_key.span;
+            let is_aot = existing_val.is_aot();
+            let is_table = existing_val.is_table();
 
-            if existing_val.is_aot() {
-                // Existing array-of-tables: push a new entry
-                let existing = table_ref.get_mut(key.name.as_ref()).unwrap();
+            if is_aot {
+                let existing = table_ref.get_mut_at(idx);
                 let arr_ptr = unsafe { NonNull::new_unchecked(existing as *mut Value<'a>) };
                 let arr = unsafe { (*arr_ptr.as_ptr()).as_array_mut() }.unwrap();
                 let entry_span = Span::new(header_start, header_end);
@@ -1426,15 +1497,13 @@ impl<'a> Parser<'a> {
                 let entry = arr.last_mut().unwrap();
                 self.push_table_ctx(entry as *mut _, Some(arr_ptr));
                 Ok(())
-            } else if existing_val.is_table() {
-                // Implicit table being redefined as array-of-tables
+            } else if is_table {
                 Err(self.set_error(
                     header_start as usize,
                     Some(header_end as usize),
                     ErrorKind::RedefineAsArray,
                 ))
             } else {
-                // Explicit value (plain array, inline table, scalar) at this key
                 Err(self.set_error(
                     key.span.start() as usize,
                     Some(key.span.end() as usize),
@@ -1445,15 +1514,15 @@ impl<'a> Parser<'a> {
                 ))
             }
         } else {
-            // Create new array-of-tables
             let entry_span = Span::new(header_start, header_end);
             let first_entry = Value::table_header(value::Table::new(), entry_span);
             let array_span = Span::new(header_start, header_end);
             let array_val = Value::array_aot(value::Array::with_single(first_entry), array_span);
             table_ref.insert(key.clone(), array_val);
+            self.index_after_insert(unsafe { &*table_ptr });
 
-            // Navigate into the first entry
-            let inserted = table_ref.get_mut(key.name.as_ref()).unwrap();
+            let last_idx = (unsafe { &*table_ptr }).len() - 1;
+            let inserted = (unsafe { &mut *table_ptr }).get_mut_at(last_idx);
             let arr_ptr = unsafe { NonNull::new_unchecked(inserted as *mut Value<'a>) };
             let arr = unsafe { (*arr_ptr.as_ptr()).as_array_mut() }.unwrap();
             let entry = arr.last_mut().unwrap();
@@ -1470,20 +1539,82 @@ impl<'a> Parser<'a> {
         val: Value<'a>,
     ) -> Result<(), ParseError> {
         let table_ref = unsafe { &mut *table };
-        match table_ref.entry(key.clone()) {
-            Entry::Occupied(occ) => Err(self.set_error(
+
+        if let Some(idx) = self.indexed_find(table_ref, key.name.as_ref()) {
+            let (existing_key, _) = table_ref.get_key_value_at(idx);
+            let first_span = existing_key.span;
+            return Err(self.set_error(
                 key.span.start() as usize,
                 Some(key.span.end() as usize),
                 ErrorKind::DuplicateKey {
                     key: key.name.to_string(),
-                    first: occ.key().span,
+                    first: first_span,
                 },
-            )),
-            Entry::Vacant(vac) => {
-                vac.insert(val);
-                Ok(())
-            }
+            ));
         }
+
+        table_ref.insert(key, val);
+        self.index_after_insert(unsafe { &*table });
+        Ok(())
+    }
+
+    // -- key index helpers ----------------------------------------------------
+
+    /// Look up a key name in a table, returning its entry index.
+    /// Uses the hash index for tables at or above the threshold, otherwise
+    /// falls back to a linear scan.
+    fn indexed_find(&self, table: &value::Table<'a>, name: &str) -> Option<usize> {
+        if table.len() >= INDEXED_TABLE_THRESHOLD {
+            let first_key_span = table.first_key_span_start();
+            let probe = KeyIndex {
+                key_ptr: unsafe { NonNull::new_unchecked(name.as_ptr() as *mut u8) },
+                len: name.len() as u32,
+                first_key_span,
+            };
+            self.table_index.get(&probe).copied()
+        } else {
+            table.find_index(name)
+        }
+    }
+
+    /// After inserting an entry into a table, update the hash index if the
+    /// table has reached or exceeded the indexing threshold.
+    fn index_after_insert(&mut self, table: &value::Table<'a>) {
+        let len = table.len();
+        if len == INDEXED_TABLE_THRESHOLD {
+            self.bulk_index_table(table);
+        } else if len > INDEXED_TABLE_THRESHOLD {
+            self.index_last_entry(table);
+        }
+    }
+
+    /// Populate the hash index with all entries of a table that just reached
+    /// the threshold.
+    fn bulk_index_table(&mut self, table: &value::Table<'a>) {
+        let first_key_span = table.first_key_span_start();
+        for (i, (key, _)) in table.entries().iter().enumerate() {
+            let (ptr, slen) = key.name.as_raw_parts();
+            let ki = KeyIndex {
+                key_ptr: ptr,
+                len: slen as u32,
+                first_key_span,
+            };
+            self.table_index.insert(ki, i as usize);
+        }
+    }
+
+    /// Index only the last (just-inserted) entry of an already-indexed table.
+    fn index_last_entry(&mut self, table: &value::Table<'a>) {
+        let idx = (table.len() - 1) as usize;
+        let first_key_span = table.first_key_span_start();
+        let (key, _) = table.get_key_value_at(idx);
+        let (ptr, slen) = key.name.as_raw_parts();
+        let ki = KeyIndex {
+            key_ptr: ptr,
+            len: slen as u32,
+            first_key_span,
+        };
+        self.table_index.insert(ki, idx);
     }
 
     // -- context helpers ------------------------------------------------------

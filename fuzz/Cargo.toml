@@ -21,3 +21,10 @@ path = "fuzz_targets/parse_value.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "parse_compare_toml"
+path = "fuzz_targets/parse_compare_toml.rs"
+test = false
+doc = false
+bench = false
