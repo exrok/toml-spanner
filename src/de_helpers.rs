@@ -1,15 +1,16 @@
-//! Provides helpers for deserializing [`Value`]/[`ValueInner`] into Rust types
+//! Provides helpers for deserializing [`Value`]/[`ValueKindOwned`] into Rust types
 
 use crate::{
     DeserError, Deserialize, Error, ErrorKind, Span,
     span::Spanned,
-    value::{self, Table, Value, ValueInner},
+    str::Str,
+    value::{self, Table, Value, ValueOwned},
 };
 use std::{fmt::Display, str::FromStr};
 
 /// Helper for construction an [`ErrorKind::Wanted`]
 #[inline]
-pub fn expected(expected: &'static str, found: ValueInner<'_>, span: Span) -> Error {
+pub fn expected(expected: &'static str, found: ValueOwned<'_>, span: Span) -> Error {
     Error {
         kind: ErrorKind::Wanted {
             expected,
@@ -20,7 +21,7 @@ pub fn expected(expected: &'static str, found: ValueInner<'_>, span: Span) -> Er
     }
 }
 
-/// Attempts to acquire a [`ValueInner::String`] and parse it, returning an error
+/// Attempts to acquire a string and parse it, returning an error
 /// if the value is not a string, or the parse implementation fails
 #[inline]
 pub fn parse<T, E>(value: &mut Value<'_>) -> Result<T, Error>
@@ -33,13 +34,13 @@ where
         Ok(v) => Ok(v),
         Err(err) => Err(Error {
             kind: ErrorKind::Custom(format!("failed to parse string: {err}").into()),
-            span: value.span,
+            span: value.span(),
             line_info: None,
         }),
     }
 }
 
-/// A helper for dealing with [`ValueInner::Table`]
+/// A helper for dealing with tables
 pub struct TableHelper<'de> {
     /// The table the helper is operating upon
     pub table: Table<'de>,
@@ -67,16 +68,17 @@ impl<'de> From<(Table<'de>, Span)> for TableHelper<'de> {
 impl<'de> TableHelper<'de> {
     /// Creates a helper for the value, failing if it is not a table
     pub fn new(value: &mut Value<'de>) -> Result<Self, DeserError> {
+        let span = value.span();
         let table = match value.take() {
-            ValueInner::Table(table) => table,
-            other => return Err(expected("a table", other, value.span).into()),
+            ValueOwned::Table(table) => table,
+            other => return Err(expected("a table", other, span).into()),
         };
 
         Ok(Self {
             errors: Vec::new(),
             table,
             expected: Vec::new(),
-            span: value.span,
+            span,
         })
     }
 
@@ -169,7 +171,7 @@ impl<'de> TableHelper<'de> {
     /// you can instead put that table back in its original value during this step
     pub fn finalize(mut self, original: Option<&mut Value<'de>>) -> Result<(), DeserError> {
         if let Some(original) = original {
-            original.set(ValueInner::Table(self.table));
+            original.set_table(self.table);
         } else if !self.table.is_empty() {
             let keys = self
                 .table
@@ -203,22 +205,32 @@ impl<'de> Deserialize<'de> for String {
     fn deserialize(value: &mut Value<'de>) -> Result<Self, DeserError> {
         value
             .take_string(None)
-            .map(|s| s.into())
+            .map(String::from)
             .map_err(DeserError::from)
     }
 }
 
-impl<'de> Deserialize<'de> for std::borrow::Cow<'de, str> {
+impl<'de> Deserialize<'de> for Str<'de> {
     fn deserialize(value: &mut Value<'de>) -> Result<Self, DeserError> {
         value.take_string(None).map_err(DeserError::from)
     }
 }
 
+impl<'de> Deserialize<'de> for std::borrow::Cow<'de, str> {
+    fn deserialize(value: &mut Value<'de>) -> Result<Self, DeserError> {
+        value
+            .take_string(None)
+            .map(std::borrow::Cow::from)
+            .map_err(DeserError::from)
+    }
+}
+
 impl<'de> Deserialize<'de> for bool {
     fn deserialize(value: &mut Value<'de>) -> Result<Self, DeserError> {
+        let span = value.span();
         match value.take() {
-            ValueInner::Boolean(b) => Ok(b),
-            other => Err(expected("a bool", other, value.span).into()),
+            ValueOwned::Boolean(b) => Ok(b),
+            other => Err(expected("a bool", other, span).into()),
         }
     }
 }
@@ -227,19 +239,20 @@ macro_rules! integer {
     ($num:ty) => {
         impl<'de> Deserialize<'de> for $num {
             fn deserialize(value: &mut Value<'de>) -> Result<Self, DeserError> {
+                let span = value.span();
                 match value.take() {
-                    ValueInner::Integer(i) => {
+                    ValueOwned::Integer(i) => {
                         let i = i.try_into().map_err(|_| {
                             DeserError::from(Error {
                                 kind: ErrorKind::OutOfRange(stringify!($num)),
-                                span: value.span,
+                                span,
                                 line_info: None,
                             })
                         })?;
 
                         Ok(i)
                     }
-                    other => Err(expected(stringify!($num), other, value.span).into()),
+                    other => Err(expected(stringify!($num), other, span).into()),
                 }
             }
         }
@@ -259,18 +272,20 @@ integer!(isize);
 
 impl<'de> Deserialize<'de> for f32 {
     fn deserialize(value: &mut Value<'de>) -> Result<Self, DeserError> {
+        let span = value.span();
         match value.take() {
-            ValueInner::Float(f) => Ok(f as f32),
-            other => Err(expected("a float", other, value.span).into()),
+            ValueOwned::Float(f) => Ok(f as f32),
+            other => Err(expected("a float", other, span).into()),
         }
     }
 }
 
 impl<'de> Deserialize<'de> for f64 {
     fn deserialize(value: &mut Value<'de>) -> Result<Self, DeserError> {
+        let span = value.span();
         match value.take() {
-            ValueInner::Float(f) => Ok(f),
-            other => Err(expected("a float", other, value.span).into()),
+            ValueOwned::Float(f) => Ok(f),
+            other => Err(expected("a float", other, span).into()),
         }
     }
 }
@@ -280,8 +295,9 @@ where
     T: Deserialize<'de>,
 {
     fn deserialize(value: &mut value::Value<'de>) -> Result<Self, DeserError> {
+        let span = value.span();
         match value.take() {
-            ValueInner::Array(arr) => {
+            ValueOwned::Array(arr) => {
                 let mut errors = Vec::new();
                 let mut s = Vec::new();
                 for mut v in arr {
@@ -297,7 +313,7 @@ where
                     Err(DeserError { errors })
                 }
             }
-            other => Err(expected("an array", other, value.span).into()),
+            other => Err(expected("an array", other, span).into()),
         }
     }
 }

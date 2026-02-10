@@ -4,7 +4,7 @@ use crate::value::Value;
 use std::alloc::{Layout, alloc, dealloc, realloc};
 use std::ptr::NonNull;
 
-const MIN_CAP: u32 = 8;
+const MIN_CAP: u32 = 4;
 
 /// A growable array of TOML [`Value`]s backed by a flat allocation with 32-bit
 /// length and capacity.

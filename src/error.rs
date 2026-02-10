@@ -139,30 +139,31 @@ pub enum ErrorKind {
 
 impl Display for ErrorKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::UnexpectedEof => f.write_str("unexpected-eof"),
-            Self::FileTooLarge => f.write_str("file-too-large"),
-            Self::Custom(..) => f.write_str("custom"),
-            Self::DottedKeyInvalidType { .. } => f.write_str("dotted-key-invalid-type"),
-            Self::DuplicateKey { .. } => f.write_str("duplicate-key"),
-            Self::DuplicateTable { .. } => f.write_str("duplicate-table"),
-            Self::UnexpectedKeys { .. } => f.write_str("unexpected-keys"),
-            Self::UnquotedString => f.write_str("unquoted-string"),
-            Self::MultilineStringKey => f.write_str("multiline-string-key"),
-            Self::RedefineAsArray => f.write_str("redefine-as-array"),
-            Self::InvalidCharInString(..) => f.write_str("invalid-char-in-string"),
-            Self::InvalidEscape(..) => f.write_str("invalid-escape"),
-            Self::InvalidEscapeValue(..) => f.write_str("invalid-escape-value"),
-            Self::InvalidHexEscape(..) => f.write_str("invalid-hex-escape"),
-            Self::Unexpected(..) => f.write_str("unexpected"),
-            Self::UnterminatedString => f.write_str("unterminated-string"),
-            Self::InvalidNumber => f.write_str("invalid-number"),
-            Self::OutOfRange(_) => f.write_str("out-of-range"),
-            Self::Wanted { .. } => f.write_str("wanted"),
-            Self::MissingField(..) => f.write_str("missing-field"),
-            Self::Deprecated { .. } => f.write_str("deprecated"),
-            Self::UnexpectedValue { .. } => f.write_str("unexpected-value"),
-        }
+        let text = match self {
+            Self::UnexpectedEof => "unexpected-eof",
+            Self::FileTooLarge => "file-too-large",
+            Self::Custom(..) => "custom",
+            Self::DottedKeyInvalidType { .. } => "dotted-key-invalid-type",
+            Self::DuplicateKey { .. } => "duplicate-key",
+            Self::DuplicateTable { .. } => "duplicate-table",
+            Self::UnexpectedKeys { .. } => "unexpected-keys",
+            Self::UnquotedString => "unquoted-string",
+            Self::MultilineStringKey => "multiline-string-key",
+            Self::RedefineAsArray => "redefine-as-array",
+            Self::InvalidCharInString(..) => "invalid-char-in-string",
+            Self::InvalidEscape(..) => "invalid-escape",
+            Self::InvalidEscapeValue(..) => "invalid-escape-value",
+            Self::InvalidHexEscape(..) => "invalid-hex-escape",
+            Self::Unexpected(..) => "unexpected",
+            Self::UnterminatedString => "unterminated-string",
+            Self::InvalidNumber => "invalid-number",
+            Self::OutOfRange(_) => "out-of-range",
+            Self::Wanted { .. } => "wanted",
+            Self::MissingField(..) => "missing-field",
+            Self::Deprecated { .. } => "deprecated",
+            Self::UnexpectedValue { .. } => "unexpected-value",
+        };
+        f.write_str(text)
     }
 }
 
@@ -183,57 +184,64 @@ impl fmt::Display for Escape {
     }
 }
 
+macro_rules! rtry {
+    ($($tt:tt)*) => {
+        if let Err(err) = $($tt)* {
+            return Err(err);
+        }
+    };
+}
 impl Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match &self.kind {
             ErrorKind::UnexpectedEof => f.write_str("unexpected eof encountered"),
             ErrorKind::FileTooLarge => f.write_str("file is too large (maximum 4GiB)"),
             ErrorKind::InvalidCharInString(c) => {
-                f.write_str("invalid character in string: `")?;
-                Escape(*c).fmt(f)?;
+                rtry!(f.write_str("invalid character in string: `"));
+                rtry!(std::fmt::Display::fmt(c, f));
                 f.write_str("`")
             }
             ErrorKind::InvalidEscape(c) => {
-                f.write_str("invalid escape character in string: `")?;
-                Escape(*c).fmt(f)?;
+                rtry!(f.write_str("invalid escape character in string: `"));
+                rtry!(Escape(*c).fmt(f));
                 f.write_str("`")
             }
             ErrorKind::InvalidHexEscape(c) => {
-                f.write_str("invalid hex escape character in string: `")?;
-                Escape(*c).fmt(f)?;
+                rtry!(f.write_str("invalid hex escape character in string: `"));
+                rtry!(std::fmt::Display::fmt(c, f));
                 f.write_str("`")
             }
             ErrorKind::InvalidEscapeValue(c) => {
-                f.write_str("invalid escape value: `")?;
-                Display::fmt(c, f)?;
+                rtry!(f.write_str("invalid escape value: `"));
+                rtry!(std::fmt::Display::fmt(c, f));
                 f.write_str("`")
             }
             ErrorKind::Unexpected(c) => {
-                f.write_str("unexpected character found: `")?;
-                Escape(*c).fmt(f)?;
+                rtry!(f.write_str("unexpected character found: `"));
+                rtry!(std::fmt::Display::fmt(c, f));
                 f.write_str("`")
             }
             ErrorKind::UnterminatedString => f.write_str("unterminated string"),
             ErrorKind::Wanted { expected, found } => {
-                f.write_str("expected ")?;
-                f.write_str(expected)?;
-                f.write_str(", found ")?;
+                rtry!(f.write_str("expected "));
+                rtry!(f.write_str(expected));
+                rtry!(f.write_str(", found "));
                 f.write_str(found)
             }
             ErrorKind::InvalidNumber => f.write_str("invalid number"),
             ErrorKind::OutOfRange(kind) => {
-                f.write_str("out of range of '")?;
-                f.write_str(kind)?;
+                rtry!(f.write_str("out of range of '"));
+                rtry!(f.write_str(kind));
                 f.write_str("'")
             }
             ErrorKind::DuplicateTable { name, .. } => {
-                f.write_str("redefinition of table `")?;
-                f.write_str(name)?;
+                rtry!(f.write_str("redefinition of table `"));
+                rtry!(f.write_str(name));
                 f.write_str("`")
             }
             ErrorKind::DuplicateKey { key, .. } => {
-                f.write_str("duplicate key: `")?;
-                f.write_str(key)?;
+                rtry!(f.write_str("duplicate key: `"));
+                rtry!(f.write_str(key));
                 f.write_str("`")
             }
             ErrorKind::RedefineAsArray => f.write_str("table redefined as array"),
@@ -252,15 +260,15 @@ impl Display for Error {
                 f.write_str("invalid TOML value, did you mean to use a quoted string?")
             }
             ErrorKind::MissingField(field) => {
-                f.write_str("missing field '")?;
-                f.write_str(field)?;
+                rtry!(f.write_str("missing field '"));
+                rtry!(f.write_str(field));
                 f.write_str("' in table")
             }
             ErrorKind::Deprecated { old, new } => {
-                f.write_str("field '")?;
-                f.write_str(old)?;
-                f.write_str("' is deprecated, '")?;
-                f.write_str(new)?;
+                rtry!(f.write_str("field '"));
+                rtry!(f.write_str(old));
+                rtry!(f.write_str("' is deprecated, '"));
+                rtry!(f.write_str(new));
                 f.write_str("' has replaced it")
             }
             ErrorKind::UnexpectedValue { expected, .. } => {

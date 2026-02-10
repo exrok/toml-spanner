@@ -167,21 +167,21 @@ pub fn collect_spans(
     diags: &mut Vec<Diagnostic<()>>,
 ) {
     use codespan_reporting::diagnostic::Label;
-    use toml_spanner::value::ValueInner;
+    use toml_spanner::ValueRef;
 
-    let code = match val.as_ref() {
-        ValueInner::String(_s) => "string",
-        ValueInner::Integer(_s) => "integer",
-        ValueInner::Float(_s) => "float",
-        ValueInner::Boolean(_s) => "bool",
-        ValueInner::Array(arr) => {
+    let code = match val.kind() {
+        ValueRef::String(_s) => "string",
+        ValueRef::Integer(_s) => "integer",
+        ValueRef::Float(_s) => "float",
+        ValueRef::Boolean(_s) => "bool",
+        ValueRef::Array(arr) => {
             for (i, v) in arr.iter().enumerate() {
                 collect_spans(&format!("{key}_{i}"), v, diags);
             }
 
             "array"
         }
-        ValueInner::Table(tab) => {
+        ValueRef::Table(tab) => {
             for (k, v) in tab {
                 collect_spans(&format!("{key}_{}", k.name), v, diags);
             }
@@ -194,7 +194,7 @@ pub fn collect_spans(
         Diagnostic::note()
             .with_code(code)
             .with_message(key)
-            .with_labels(vec![Label::primary((), val.span)]),
+            .with_labels(vec![Label::primary((), val.span())]),
     );
 }
 

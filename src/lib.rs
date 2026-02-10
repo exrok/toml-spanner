@@ -9,6 +9,8 @@ pub mod de_helpers;
 mod error;
 mod parser;
 pub mod span;
+/// A 16-byte string type for borrowed or owned string data
+pub mod str;
 /// TOML table: flat list of key-value pairs
 pub mod table;
 pub mod value;
@@ -16,7 +18,8 @@ pub mod value;
 pub use de::parse;
 pub use error::{DeserError, Error, ErrorKind};
 pub use span::{Span, Spanned};
-pub use value::Value;
+pub use str::Str;
+pub use value::{Value, ValueOwned, ValueRef};
 
 #[cfg(feature = "serde")]
 pub mod impl_serde;

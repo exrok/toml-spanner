@@ -1,215 +1,675 @@
-//! Contains the [`Value`] and [`ValueInner`] containers into which all toml
-//! contents can be deserialized into and either used directly or fed into
-//! [`crate::Deserialize`] or your own constructs to deserialize into your own
-//! types
+#![allow(unsafe_code)]
 
+//! Contains the [`Value`] tagged union: a 24-byte TOML value with inline span.
+
+use crate::str::Str;
 use crate::{Error, ErrorKind, Span};
-use std::{borrow::Cow, fmt};
+use std::mem::ManuallyDrop;
+use std::{fmt, ptr};
 
-/// A deserialized [`ValueInner`] with accompanying [`Span`] information for where
-/// it was located in the toml document
-pub struct Value<'de> {
-    /// The inner value
-    pub value: ValueInner<'de>,
-    /// The location of the value in the toml document
-    pub span: Span,
+/// A toml array
+pub use crate::array::Array;
+/// A toml table: flat list of key-value pairs in insertion order
+pub use crate::table::Table;
+
+// ---------------------------------------------------------------------------
+// Tag / flag constants
+// ---------------------------------------------------------------------------
+
+const TAG_MASK: u32 = 0x7;
+const TAG_SHIFT: u32 = 3;
+
+pub(crate) const TAG_STRING: u32 = 0;
+pub(crate) const TAG_INTEGER: u32 = 1;
+pub(crate) const TAG_FLOAT: u32 = 2;
+pub(crate) const TAG_BOOLEAN: u32 = 3;
+pub(crate) const TAG_ARRAY: u32 = 4;
+pub(crate) const TAG_TABLE: u32 = 5;
+pub(crate) const TAG_TABLE_HEADER: u32 = 6;
+pub(crate) const TAG_TABLE_DOTTED: u32 = 7;
+
+pub(crate) const FLAG_BIT: u32 = 1;
+const FLAG_SHIFT: u32 = 1;
+
+// ---------------------------------------------------------------------------
+// Tagged union payload
+// ---------------------------------------------------------------------------
+
+#[repr(C)]
+union Payload<'de> {
+    string: ManuallyDrop<Str<'de>>,
+    integer: i64,
+    float: f64,
+    boolean: bool,
+    array: ManuallyDrop<Array<'de>>,
+    table: ManuallyDrop<Table<'de>>,
 }
 
+// ---------------------------------------------------------------------------
+// Value
+// ---------------------------------------------------------------------------
+
+/// A parsed TOML value with inline span information.
+///
+/// This is a 24-byte `#[repr(C)]` tagged union. The tag and span are packed
+/// into two `u32` fields; the payload is a 16-byte union.
+#[repr(C)]
+pub struct Value<'de> {
+    /// Bits 2-0: tag, bits 31-3: span.start
+    start_and_tag: u32,
+    /// Bit 0: flag bit (parser-internal), bits 31-1: span.end
+    end_and_flag: u32,
+    payload: Payload<'de>,
+}
+
+const _: () = assert!(std::mem::size_of::<Value<'_>>() == 24);
+const _: () = assert!(std::mem::align_of::<Value<'_>>() == 8);
+
+// -- Constructors -----------------------------------------------------------
+
 impl<'de> Value<'de> {
-    /// Creates a new [`Value`] with an empty [`Span`]
     #[inline]
-    pub fn new(value: ValueInner<'de>) -> Self {
-        Self::with_span(value, Span::default())
+    fn raw(tag: u32, start: u32, end: u32, payload: Payload<'de>) -> Self {
+        Self {
+            start_and_tag: (start << TAG_SHIFT) | tag,
+            end_and_flag: end << FLAG_SHIFT,
+            payload,
+        }
     }
 
-    /// Creates a new [`Value`] with the specified [`Span`]
+    /// Creates a string value.
     #[inline]
-    pub fn with_span(value: ValueInner<'de>, span: Span) -> Self {
-        Self { value, span }
+    pub fn string(s: Str<'de>, span: Span) -> Self {
+        Self::raw(
+            TAG_STRING,
+            span.start(),
+            span.end(),
+            Payload {
+                string: ManuallyDrop::new(s),
+            },
+        )
     }
 
-    /// Takes the inner [`ValueInner`], replacing it with a placeholder
+    /// Creates an integer value.
+    #[inline]
+    pub fn integer(i: i64, span: Span) -> Self {
+        Self::raw(
+            TAG_INTEGER,
+            span.start(),
+            span.end(),
+            Payload { integer: i },
+        )
+    }
+
+    /// Creates a float value.
+    #[inline]
+    pub fn float(f: f64, span: Span) -> Self {
+        Self::raw(TAG_FLOAT, span.start(), span.end(), Payload { float: f })
+    }
+
+    /// Creates a boolean value.
+    #[inline]
+    pub fn boolean(b: bool, span: Span) -> Self {
+        Self::raw(
+            TAG_BOOLEAN,
+            span.start(),
+            span.end(),
+            Payload { boolean: b },
+        )
+    }
+
+    /// Creates an array value.
+    #[inline]
+    pub fn array(a: Array<'de>, span: Span) -> Self {
+        Self::raw(
+            TAG_ARRAY,
+            span.start(),
+            span.end(),
+            Payload {
+                array: ManuallyDrop::new(a),
+            },
+        )
+    }
+
+    /// Creates a table value.
+    #[inline]
+    pub fn table(t: Table<'de>, span: Span) -> Self {
+        Self::raw(
+            TAG_TABLE,
+            span.start(),
+            span.end(),
+            Payload {
+                table: ManuallyDrop::new(t),
+            },
+        )
+    }
+
+    /// Creates an array-of-tables value (flag bit set).
+    #[inline]
+    pub(crate) fn array_aot(a: Array<'de>, span: Span) -> Self {
+        let mut v = Self::array(a, span);
+        v.end_and_flag |= FLAG_BIT;
+        v
+    }
+
+    /// Creates a frozen (inline) table value (flag bit set).
+    #[inline]
+    pub(crate) fn table_frozen(t: Table<'de>, span: Span) -> Self {
+        let mut v = Self::table(t, span);
+        v.end_and_flag |= FLAG_BIT;
+        v
+    }
+
+    /// Creates a table with HEADER tag (explicitly opened by `[header]`).
+    #[inline]
+    pub(crate) fn table_header(t: Table<'de>, span: Span) -> Self {
+        Self::raw(
+            TAG_TABLE_HEADER,
+            span.start(),
+            span.end(),
+            Payload {
+                table: ManuallyDrop::new(t),
+            },
+        )
+    }
+
+    /// Creates a table with DOTTED tag (created by dotted-key navigation).
+    #[inline]
+    pub(crate) fn table_dotted(t: Table<'de>, span: Span) -> Self {
+        Self::raw(
+            TAG_TABLE_DOTTED,
+            span.start(),
+            span.end(),
+            Payload {
+                table: ManuallyDrop::new(t),
+            },
+        )
+    }
+}
+
+// -- Tag / span access ------------------------------------------------------
+
+impl<'de> Value<'de> {
+    #[inline]
+    pub(crate) fn tag(&self) -> u32 {
+        self.start_and_tag & TAG_MASK
+    }
+
+    /// Returns the source span (tag and flag bits masked out).
+    #[inline]
+    pub fn span(&self) -> Span {
+        Span::new(
+            self.start_and_tag >> TAG_SHIFT,
+            self.end_and_flag >> FLAG_SHIFT,
+        )
+    }
+
+    /// Gets the type of the value as a string.
+    #[inline]
+    pub fn type_str(&self) -> &'static str {
+        match self.tag() {
+            TAG_STRING => "string",
+            TAG_INTEGER => "integer",
+            TAG_FLOAT => "float",
+            TAG_BOOLEAN => "boolean",
+            TAG_ARRAY => "array",
+            _ => "table",
+        }
+    }
+
+    // -- parser-internal queries ---
+
+    #[inline]
+    pub(crate) fn is_table(&self) -> bool {
+        self.tag() >= TAG_TABLE
+    }
+
+    #[inline]
+    pub(crate) fn is_array(&self) -> bool {
+        self.tag() == TAG_ARRAY
+    }
+
+    #[inline]
+    pub(crate) fn is_frozen(&self) -> bool {
+        self.end_and_flag & FLAG_BIT != 0
+    }
+
+    #[inline]
+    pub(crate) fn is_aot(&self) -> bool {
+        self.tag() == TAG_ARRAY && self.end_and_flag & FLAG_BIT != 0
+    }
+
+    #[inline]
+    pub(crate) fn has_header_bit(&self) -> bool {
+        self.tag() == TAG_TABLE_HEADER
+    }
+
+    #[inline]
+    pub(crate) fn has_dotted_bit(&self) -> bool {
+        self.tag() == TAG_TABLE_DOTTED
+    }
+
+    // -- parser-internal mutation ---
+
+    /// Change tag to table-header (from plain table).
+    #[inline]
+    pub(crate) fn set_header_tag(&mut self) {
+        self.start_and_tag = (self.start_and_tag & !TAG_MASK) | TAG_TABLE_HEADER;
+    }
+
+    /// Set span.start, preserving the tag bits.
+    #[inline]
+    pub(crate) fn set_span_start(&mut self, v: u32) {
+        self.start_and_tag = (v << TAG_SHIFT) | (self.start_and_tag & TAG_MASK);
+    }
+
+    /// Set span.end, preserving the flag bit.
+    #[inline]
+    pub(crate) fn set_span_end(&mut self, v: u32) {
+        self.end_and_flag = (v << FLAG_SHIFT) | (self.end_and_flag & FLAG_BIT);
+    }
+
+    // -- Raw-pointer span helpers ---------------------------------------------
+    //
+    // These access span fields through `addr_of[_mut]!` without creating
+    // `&mut Value`, so they never produce a Unique retag that would
+    // invalidate sibling pointers (e.g. a table pointer derived from
+    // the same `Value`).
+
+    #[inline]
+    pub(crate) unsafe fn ptr_raw_start(p: *const Self) -> u32 {
+        unsafe { std::ptr::addr_of!((*p).start_and_tag).read() >> TAG_SHIFT }
+    }
+
+    #[inline]
+    pub(crate) unsafe fn ptr_raw_end(p: *const Self) -> u32 {
+        unsafe { std::ptr::addr_of!((*p).end_and_flag).read() >> FLAG_SHIFT }
+    }
+
+    #[inline]
+    pub(crate) unsafe fn ptr_set_span_start(p: *mut Self, v: u32) {
+        unsafe {
+            let field = std::ptr::addr_of_mut!((*p).start_and_tag);
+            let old = field.read();
+            field.write((v << TAG_SHIFT) | (old & TAG_MASK));
+        }
+    }
+
+    #[inline]
+    pub(crate) unsafe fn ptr_extend_span_end(p: *mut Self, new_end: u32) {
+        unsafe {
+            let field = std::ptr::addr_of_mut!((*p).end_and_flag);
+            let old = field.read();
+            let current = old >> FLAG_SHIFT;
+            field.write((current.max(new_end) << FLAG_SHIFT) | (old & FLAG_BIT));
+        }
+    }
+
+    #[inline]
+    pub(crate) unsafe fn ptr_set_span_end(p: *mut Self, v: u32) {
+        unsafe {
+            let field = std::ptr::addr_of_mut!((*p).end_and_flag);
+            let old = field.read();
+            field.write((v << FLAG_SHIFT) | (old & FLAG_BIT));
+        }
+    }
+}
+
+// -- Kind enums for matching ------------------------------------------------
+
+/// Borrowed view into a [`Value`] for pattern matching.
+pub enum ValueRef<'a, 'de> {
+    /// A string
+    String(&'a Str<'de>),
+    /// An integer
+    Integer(i64),
+    /// A float
+    Float(f64),
+    /// A boolean
+    Boolean(bool),
+    /// An array
+    Array(&'a Array<'de>),
+    /// A table
+    Table(&'a Table<'de>),
+}
+
+/// Mutable view into a [`Value`] for pattern matching.
+pub enum ValueMut<'a, 'de> {
+    /// A string
+    String(&'a mut Str<'de>),
+    /// An integer
+    Integer(&'a mut i64),
+    /// A float
+    Float(&'a mut f64),
+    /// A boolean
+    Boolean(&'a mut bool),
+    /// An array
+    Array(&'a mut Array<'de>),
+    /// A table
+    Table(&'a mut Table<'de>),
+}
+
+/// Owned value extracted from a [`Value`] for pattern matching.
+pub enum ValueOwned<'de> {
+    /// A string
+    String(Str<'de>),
+    /// An integer
+    Integer(i64),
+    /// A float
+    Float(f64),
+    /// A boolean
+    Boolean(bool),
+    /// An array
+    Array(Array<'de>),
+    /// A table
+    Table(Table<'de>),
+}
+
+impl ValueOwned<'_> {
+    /// Gets the type of the value as a string.
+    pub fn type_str(&self) -> &'static str {
+        match self {
+            Self::String(..) => "string",
+            Self::Integer(..) => "integer",
+            Self::Float(..) => "float",
+            Self::Boolean(..) => "boolean",
+            Self::Array(..) => "array",
+            Self::Table(..) => "table",
+        }
+    }
+}
+
+impl fmt::Debug for ValueOwned<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::String(s) => s.fmt(f),
+            Self::Integer(i) => i.fmt(f),
+            Self::Float(v) => v.fmt(f),
+            Self::Boolean(b) => b.fmt(f),
+            Self::Array(a) => a.fmt(f),
+            Self::Table(t) => t.fmt(f),
+        }
+    }
+}
+
+// -- kind / kind_mut / into_kind -------------------------------------------
+
+impl<'de> Value<'de> {
+    /// Returns a borrowed view for pattern matching.
+    #[inline]
+    pub fn kind(&self) -> ValueRef<'_, 'de> {
+        unsafe {
+            match self.tag() {
+                TAG_STRING => ValueRef::String(&self.payload.string),
+                TAG_INTEGER => ValueRef::Integer(self.payload.integer),
+                TAG_FLOAT => ValueRef::Float(self.payload.float),
+                TAG_BOOLEAN => ValueRef::Boolean(self.payload.boolean),
+                TAG_ARRAY => ValueRef::Array(&self.payload.array),
+                _ => ValueRef::Table(&self.payload.table),
+            }
+        }
+    }
+
+    /// Returns a mutable view for pattern matching.
+    #[inline]
+    pub fn kind_mut(&mut self) -> ValueMut<'_, 'de> {
+        unsafe {
+            match self.tag() {
+                TAG_STRING => ValueMut::String(&mut self.payload.string),
+                TAG_INTEGER => ValueMut::Integer(&mut self.payload.integer),
+                TAG_FLOAT => ValueMut::Float(&mut self.payload.float),
+                TAG_BOOLEAN => ValueMut::Boolean(&mut self.payload.boolean),
+                TAG_ARRAY => ValueMut::Array(&mut self.payload.array),
+                _ => ValueMut::Table(&mut self.payload.table),
+            }
+        }
+    }
+
+    /// Consumes the value and returns an owned kind for pattern matching.
     ///
-    /// Typically paired with [`Self::set`]
+    /// The span information is lost; call [`Self::span()`] before this if needed.
     #[inline]
-    pub fn take(&mut self) -> ValueInner<'de> {
-        std::mem::replace(&mut self.value, ValueInner::Boolean(false))
+    pub fn into_kind(self) -> ValueOwned<'de> {
+        let tag = self.tag();
+        // Prevent drop from running — we're moving out of the payload
+        let me = ManuallyDrop::new(self);
+        unsafe {
+            match tag {
+                TAG_STRING => ValueOwned::String(ptr::read(&*me.payload.string)),
+                TAG_INTEGER => ValueOwned::Integer(me.payload.integer),
+                TAG_FLOAT => ValueOwned::Float(me.payload.float),
+                TAG_BOOLEAN => ValueOwned::Boolean(me.payload.boolean),
+                TAG_ARRAY => ValueOwned::Array(ptr::read(&*me.payload.array)),
+                _ => ValueOwned::Table(ptr::read(&*me.payload.table)),
+            }
+        }
+    }
+}
+
+// -- Direct accessors -------------------------------------------------------
+
+impl<'de> Value<'de> {
+    /// Returns a borrowed string if this is a string value.
+    #[inline]
+    pub fn as_str(&self) -> Option<&str> {
+        if self.tag() == TAG_STRING {
+            Some(unsafe { &self.payload.string })
+        } else {
+            None
+        }
     }
 
-    /// Sets the inner [`ValueInner`]
-    ///
-    /// This is typically done when the value is taken with [`Self::take`],
-    /// processed, and returned
+    /// Returns an `i64` if this is an integer value.
     #[inline]
-    pub fn set(&mut self, value: ValueInner<'de>) {
-        self.value = value;
+    pub fn as_integer(&self) -> Option<i64> {
+        if self.tag() == TAG_INTEGER {
+            Some(unsafe { self.payload.integer })
+        } else {
+            None
+        }
     }
 
-    /// Returns true if the value is a table and is non-empty
+    /// Returns an `f64` if this is a float value.
+    #[inline]
+    pub fn as_float(&self) -> Option<f64> {
+        if self.tag() == TAG_FLOAT {
+            Some(unsafe { self.payload.float })
+        } else {
+            None
+        }
+    }
+
+    /// Returns a `bool` if this is a boolean value.
+    #[inline]
+    pub fn as_bool(&self) -> Option<bool> {
+        if self.tag() == TAG_BOOLEAN {
+            Some(unsafe { self.payload.boolean })
+        } else {
+            None
+        }
+    }
+
+    /// Returns a borrowed array if this is an array value.
+    #[inline]
+    pub fn as_array(&self) -> Option<&Array<'de>> {
+        if self.tag() == TAG_ARRAY {
+            Some(unsafe { &self.payload.array })
+        } else {
+            None
+        }
+    }
+
+    /// Returns a borrowed table if this is a table value.
+    #[inline]
+    pub fn as_table(&self) -> Option<&Table<'de>> {
+        if self.is_table() {
+            Some(unsafe { &self.payload.table })
+        } else {
+            None
+        }
+    }
+
+    /// Returns a mutable array reference.
+    #[inline]
+    pub fn as_array_mut(&mut self) -> Option<&mut Array<'de>> {
+        if self.tag() == TAG_ARRAY {
+            Some(unsafe { &mut self.payload.array })
+        } else {
+            None
+        }
+    }
+
+    /// Returns a mutable table reference.
+    #[inline]
+    pub fn as_table_mut(&mut self) -> Option<&mut Table<'de>> {
+        if self.is_table() {
+            Some(unsafe { &mut self.payload.table })
+        } else {
+            None
+        }
+    }
+
+    /// Returns a mutable table pointer (parser-internal).
+    #[inline]
+    pub(crate) unsafe fn as_table_mut_unchecked(&mut self) -> &mut Table<'de> {
+        debug_assert!(self.is_table());
+        unsafe { &mut self.payload.table }
+    }
+
+    /// Returns true if the value is a table and is non-empty.
     #[inline]
     pub fn has_keys(&self) -> bool {
-        if let ValueInner::Table(table) = &self.value {
-            !table.is_empty()
-        } else {
-            false
-        }
+        self.as_table().is_some_and(|t| !t.is_empty())
     }
 
-    /// Returns true if the value is a table and has the specified key
+    /// Returns true if the value is a table and has the specified key.
     #[inline]
     pub fn has_key(&self, key: &str) -> bool {
-        if let ValueInner::Table(table) = &self.value {
-            table.contains_key(key)
-        } else {
-            false
-        }
+        self.as_table().is_some_and(|t| t.contains_key(key))
+    }
+}
+
+// -- take / set for deserialization -----------------------------------------
+
+impl<'de> Value<'de> {
+    /// Takes the payload, replacing self with `Boolean(false)`.
+    /// The span is preserved.
+    #[inline]
+    pub fn take(&mut self) -> ValueOwned<'de> {
+        let span = self.span();
+        let old = std::mem::replace(self, Value::boolean(false, span));
+        old.into_kind()
     }
 
-    /// Takes the value as a string, returning an error with either a default
-    /// or user supplied message
+    /// Takes the value as a string, returning an error if it is not a string.
     #[inline]
-    pub fn take_string(&mut self, msg: Option<&'static str>) -> Result<Cow<'de, str>, Error> {
+    pub fn take_string(&mut self, msg: Option<&'static str>) -> Result<Str<'de>, Error> {
+        let span = self.span();
         match self.take() {
-            ValueInner::String(s) => Ok(s),
+            ValueOwned::String(s) => Ok(s),
             other => Err(Error {
                 kind: ErrorKind::Wanted {
                     expected: msg.unwrap_or("a string"),
                     found: other.type_str(),
                 },
-                span: self.span,
+                span,
                 line_info: None,
             }),
         }
     }
 
-    /// Returns a borrowed string if this is a [`ValueInner::String`]
-    #[inline]
-    pub fn as_str(&self) -> Option<&str> {
-        self.value.as_str()
+    /// Replace payload with a table, preserving the span.
+    pub fn set_table(&mut self, table: Table<'de>) {
+        let span = self.span();
+        let old = std::mem::replace(self, Value::table(table, span));
+        drop(old);
     }
+}
 
-    /// Returns a borrowed table if this is a [`ValueInner::Table`]
-    #[inline]
-    pub fn as_table(&self) -> Option<&Table<'de>> {
-        self.value.as_table()
-    }
+// -- Drop -------------------------------------------------------------------
 
-    /// Returns a borrowed array if this is a [`ValueInner::Array`]
-    #[inline]
-    pub fn as_array(&self) -> Option<&Array<'de>> {
-        self.value.as_array()
-    }
-
-    /// Returns an `i64` if this is a [`ValueInner::Integer`]
-    #[inline]
-    pub fn as_integer(&self) -> Option<i64> {
-        self.value.as_integer()
-    }
-
-    /// Returns an `f64` if this is a [`ValueInner::Float`]
-    #[inline]
-    pub fn as_float(&self) -> Option<f64> {
-        self.value.as_float()
-    }
-
-    /// Returns a `bool` if this is a [`ValueInner::Boolean`]
-    #[inline]
-    pub fn as_bool(&self) -> Option<bool> {
-        self.value.as_bool()
-    }
-
-    /// Uses JSON pointer-like syntax to lookup a specific [`Value`]
-    ///
-    /// The basic format is:
-    ///
-    /// - The path starts with `/`
-    /// - Each segment is separated by a `/`
-    /// - Each segment is either a key name, or an integer array index
-    ///
-    /// ```rust
-    /// let data = "[x]\ny = ['z', 'zz']";
-    /// let value = toml_spanner::parse(data).unwrap();
-    /// assert_eq!(value.pointer("/x/y/1").unwrap().as_str().unwrap(), "zz");
-    /// assert!(value.pointer("/a/b/c").is_none());
-    /// ```
-    ///
-    /// Note that this is JSON pointer**-like** because `/` is not supported in
-    /// key names because I don't see the point. If you want this it is easy to
-    /// implement.
-    pub fn pointer(&self, pointer: &str) -> Option<&Self> {
-        if pointer.is_empty() {
-            return Some(self);
-        } else if !pointer.starts_with('/') {
-            return None;
+impl Drop for Value<'_> {
+    fn drop(&mut self) {
+        match self.tag() {
+            TAG_STRING => unsafe { ManuallyDrop::drop(&mut self.payload.string) },
+            TAG_ARRAY => unsafe { ManuallyDrop::drop(&mut self.payload.array) },
+            TAG_TABLE | TAG_TABLE_HEADER | TAG_TABLE_DOTTED => unsafe {
+                ManuallyDrop::drop(&mut self.payload.table);
+            },
+            _ => {}
         }
-
-        pointer
-            .split('/')
-            .skip(1)
-            // Don't support / or ~ in key names unless someone actually opens
-            // an issue about it
-            //.map(|x| x.replace("~1", "/").replace("~0", "~"))
-            .try_fold(self, move |target, token| match &target.value {
-                ValueInner::Table(tab) => tab.get(token),
-                ValueInner::Array(list) => parse_index(token).and_then(|x| list.get(x)),
-                _ => None,
-            })
-    }
-
-    /// The `mut` version of [`Self::pointer`]
-    pub fn pointer_mut(&mut self, pointer: &'de str) -> Option<&mut Self> {
-        if pointer.is_empty() {
-            return Some(self);
-        } else if !pointer.starts_with('/') {
-            return None;
-        }
-
-        pointer
-            .split('/')
-            .skip(1)
-            // Don't support / or ~ in key names unless someone actually opens
-            // an issue about it
-            //.map(|x| x.replace("~1", "/").replace("~0", "~"))
-            .try_fold(self, |target, token| match &mut target.value {
-                ValueInner::Table(tab) => tab.get_mut(token),
-                ValueInner::Array(list) => parse_index(token).and_then(|x| list.get_mut(x)),
-                _ => None,
-            })
     }
 }
 
-fn parse_index(s: &str) -> Option<usize> {
-    if s.starts_with('+') || (s.starts_with('0') && s.len() != 1) {
-        return None;
-    }
-    s.parse().ok()
-}
-
-impl<'de> AsRef<ValueInner<'de>> for Value<'de> {
-    fn as_ref(&self) -> &ValueInner<'de> {
-        &self.value
-    }
-}
+// -- Debug ------------------------------------------------------------------
 
 impl fmt::Debug for Value<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}", self.value)
+        unsafe {
+            match self.tag() {
+                TAG_STRING => self.payload.string.fmt(f),
+                TAG_INTEGER => self.payload.integer.fmt(f),
+                TAG_FLOAT => self.payload.float.fmt(f),
+                TAG_BOOLEAN => self.payload.boolean.fmt(f),
+                TAG_ARRAY => self.payload.array.fmt(f),
+                _ => self.payload.table.fmt(f),
+            }
+        }
     }
 }
+
+// -- serde ------------------------------------------------------------------
+
+#[cfg(feature = "serde")]
+impl serde::Serialize for Value<'_> {
+    fn serialize<S>(&self, ser: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        match self.kind() {
+            ValueRef::String(s) => ser.serialize_str(s),
+            ValueRef::Integer(i) => ser.serialize_i64(i),
+            ValueRef::Float(f) => ser.serialize_f64(f),
+            ValueRef::Boolean(b) => ser.serialize_bool(b),
+            ValueRef::Array(arr) => {
+                use serde::ser::SerializeSeq;
+                let mut seq = ser.serialize_seq(Some(arr.len()))?;
+                for ele in arr {
+                    seq.serialize_element(ele)?;
+                }
+                seq.end()
+            }
+            ValueRef::Table(tab) => {
+                use serde::ser::SerializeMap;
+                let mut map = ser.serialize_map(Some(tab.len()))?;
+                for (k, v) in tab {
+                    map.serialize_entry(&*k.name, v)?;
+                }
+                map.end()
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Key
+// ---------------------------------------------------------------------------
 
 /// A toml table key
 #[derive(Clone)]
 pub struct Key<'de> {
     /// The key itself, in most cases it will be borrowed, but may be owned
     /// if escape characters are present in the original source
-    pub name: Cow<'de, str>,
+    pub name: Str<'de>,
     /// The span for the key in the original document
     pub span: Span,
 }
 
+const _: () = assert!(std::mem::size_of::<Key<'_>>() == 24);
+
 impl std::borrow::Borrow<str> for Key<'_> {
     fn borrow(&self) -> &str {
-        self.name.as_ref()
+        &self.name
     }
 }
 
@@ -244,105 +704,3 @@ impl PartialEq for Key<'_> {
 }
 
 impl Eq for Key<'_> {}
-
-/// A toml array
-pub use crate::array::Array;
-/// A toml table: flat list of key-value pairs in insertion order
-pub use crate::table::Table;
-
-/// The core value types that toml can deserialize to
-///
-/// Note that this library does not support datetime values that are part of the
-/// toml spec since I have no need of them, but could be added
-#[derive(Debug)]
-pub enum ValueInner<'de> {
-    /// A string.
-    ///
-    /// This will be borrowed from the original toml source unless it contains
-    /// escape characters
-    String(Cow<'de, str>),
-    /// An integer
-    Integer(i64),
-    /// A float
-    Float(f64),
-    /// A boolean
-    Boolean(bool),
-    /// An array
-    Array(Array<'de>),
-    /// A table
-    Table(Table<'de>),
-}
-
-impl<'de> ValueInner<'de> {
-    /// Gets the type of the value as a string
-    pub fn type_str(&self) -> &'static str {
-        match self {
-            Self::String(..) => "string",
-            Self::Integer(..) => "integer",
-            Self::Float(..) => "float",
-            Self::Boolean(..) => "boolean",
-            Self::Array(..) => "array",
-            Self::Table(..) => "table",
-        }
-    }
-
-    /// Returns a borrowed string if this is a [`Self::String`]
-    #[inline]
-    pub fn as_str(&self) -> Option<&str> {
-        if let Self::String(s) = self {
-            Some(s.as_ref())
-        } else {
-            None
-        }
-    }
-
-    /// Returns a borrowed table if this is a [`Self::Table`]
-    #[inline]
-    pub fn as_table(&self) -> Option<&Table<'de>> {
-        if let ValueInner::Table(t) = self {
-            Some(t)
-        } else {
-            None
-        }
-    }
-
-    /// Returns a borrowed array if this is a [`Self::Array`]
-    #[inline]
-    pub fn as_array(&self) -> Option<&Array<'de>> {
-        if let ValueInner::Array(a) = self {
-            Some(a)
-        } else {
-            None
-        }
-    }
-
-    /// Returns an `i64` if this is a [`Self::Integer`]
-    #[inline]
-    pub fn as_integer(&self) -> Option<i64> {
-        if let ValueInner::Integer(i) = self {
-            Some(*i)
-        } else {
-            None
-        }
-    }
-
-    /// Returns an `f64` if this is a [`Self::Float`]
-    #[inline]
-    pub fn as_float(&self) -> Option<f64> {
-        if let ValueInner::Float(f) = self {
-            Some(*f)
-        } else {
-            None
-        }
-    }
-
-    /// Returns a `bool` if this is a [`Self::Boolean`]
-    #[inline]
-    pub fn as_bool(&self) -> Option<bool> {
-        if let ValueInner::Boolean(b) = self {
-            Some(*b)
-        } else {
-            None
-        }
-    }
-}

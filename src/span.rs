@@ -3,10 +3,8 @@
 /// A start and end location within a toml document
 #[derive(Copy, Clone, PartialEq, Eq, Default, Debug)]
 pub struct Span {
-    /// The start byte index
-    pub start: u32,
-    /// The end (exclusive) byte index
-    pub end: u32,
+    start: u32,
+    end: u32,
 }
 
 impl Span {
@@ -14,6 +12,18 @@ impl Span {
     #[inline]
     pub fn new(start: u32, end: u32) -> Self {
         Self { start, end }
+    }
+
+    /// The start byte index
+    #[inline]
+    pub fn start(&self) -> u32 {
+        self.start
+    }
+
+    /// The end (exclusive) byte index
+    #[inline]
+    pub fn end(&self) -> u32 {
+        self.end
     }
 
     /// Checks if the start and end are the same, and thus the span is empty
@@ -24,41 +34,32 @@ impl Span {
 }
 
 impl From<Span> for (u32, u32) {
-    fn from(Span { start, end }: Span) -> (u32, u32) {
-        (start, end)
+    fn from(s: Span) -> (u32, u32) {
+        (s.start(), s.end())
     }
 }
 
 impl From<Span> for (usize, usize) {
-    fn from(Span { start, end }: Span) -> (usize, usize) {
-        (start as usize, end as usize)
+    fn from(s: Span) -> (usize, usize) {
+        (s.start() as usize, s.end() as usize)
     }
 }
 
 impl From<std::ops::Range<u32>> for Span {
     fn from(s: std::ops::Range<u32>) -> Self {
-        Self {
-            start: s.start,
-            end: s.end,
-        }
+        Self::new(s.start, s.end)
     }
 }
 
 impl From<Span> for std::ops::Range<u32> {
     fn from(s: Span) -> Self {
-        Self {
-            start: s.start,
-            end: s.end,
-        }
+        s.start()..s.end()
     }
 }
 
 impl From<Span> for std::ops::Range<usize> {
     fn from(s: Span) -> Self {
-        Self {
-            start: s.start as usize,
-            end: s.end as usize,
-        }
+        s.start() as usize..s.end() as usize
     }
 }
 
@@ -188,7 +189,7 @@ where
 {
     #[inline]
     fn deserialize(value: &mut crate::value::Value<'de>) -> Result<Self, crate::DeserError> {
-        let span = value.span;
+        let span = value.span();
         let value = T::deserialize(value)?;
         Ok(Self { span, value })
     }

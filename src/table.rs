@@ -6,7 +6,7 @@ use std::ptr::NonNull;
 
 type TableEntry<'de> = (Key<'de>, Value<'de>);
 
-const MIN_CAP: u32 = 8;
+const MIN_CAP: u32 = 2;
 
 /// A TOML table: a flat list of key-value pairs with linear lookup.
 ///
