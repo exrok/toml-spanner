@@ -16,7 +16,8 @@ categories = ["parser-implementations", "config"]
 
 [workspace]
 resolver = "3"
-members = ["integ-tests"]
+members = ["benchmark", "integ-tests"]
+exclude = ["fuzz"]
 
 [features]
 serde = ["dep:serde"]

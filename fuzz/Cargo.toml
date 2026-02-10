@@ -1,0 +1,23 @@
+[package]
+name = "benchmark-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2024"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+toml = { version = "0.9.11", features = ["preserve_order"] }
+
+
+[dependencies.toml-spanner]
+path = ".."
+
+[[bin]]
+name = "parse_value"
+path = "fuzz_targets/parse_value.rs"
+test = false
+doc = false
+bench = false

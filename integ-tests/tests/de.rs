@@ -5,7 +5,7 @@ use toml_spanner::{
     DeserError, Deserialize,
     de_helpers::*,
     span::Spanned,
-    value::{Value, ValueKindOwned},
+    value::{Value, ValueOwned},
 };
 
 #[derive(Debug)]
@@ -53,18 +53,18 @@ impl<'de> Deserialize<'de> for Package {
 
         let span = value.span();
         match value.take() {
-            ValueKindOwned::String(s) => {
+            ValueOwned::String(s) => {
                 let (name, version) = from_str(&s);
 
                 Ok(Self { name, version })
             }
-            ValueKindOwned::Table(tab) => {
+            ValueOwned::Table(tab) => {
                 let mut th = TableHelper::from((tab, span));
 
                 if let Some(mut val) = th.table.remove("crate") {
                     let val_span = val.span();
                     let (name, version) = match val.take() {
-                        ValueKindOwned::String(s) => from_str(&s),
+                        ValueOwned::String(s) => from_str(&s),
                         found => {
                             th.errors
                                 .push(expected("a package string", found, val_span));

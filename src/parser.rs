@@ -538,13 +538,10 @@ impl<'a> Parser<'a> {
                                 ErrorKind::InvalidCharInString('\n'),
                             ));
                         }
-                        if !owned {
-                            self.string_buf.clear();
-                            self.string_buf
-                                .extend_from_slice(&self.bytes[content_start..i]);
-                            owned = true;
+                        if owned {
+                            self.string_buf.push(b'\r');
+                            self.string_buf.push(b'\n');
                         }
-                        self.string_buf.push(b'\n');
                     } else {
                         return Err(self.set_error(i, None, ErrorKind::InvalidCharInString('\r')));
                     }
