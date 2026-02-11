@@ -217,7 +217,7 @@ impl<'de> Str<'de> {
     fn from_box(s: Box<str>) -> Self {
         let len = s.len();
         // SAFETY: Box::into_raw always returns a non-null pointer.
-        let ptr = unsafe { NonNull::new_unchecked(Box::into_raw(s) as *mut u8) };
+        let ptr = unsafe { NonNull::new_unchecked(Box::into_raw(s).cast::<u8>()) };
         Self {
             ptr,
             len_and_tag: len | OWNED_BIT,

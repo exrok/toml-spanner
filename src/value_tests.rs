@@ -355,7 +355,7 @@ fn set_table_replaces() {
 #[test]
 fn spanned_table_set_span_preserves_tag() {
     let mut v = Value::table_header(Table::new(), sp(10, 20));
-    let st = unsafe { v.as_spanned_table_mut() };
+    let st = unsafe { v.as_spanned_table_mut_unchecked() };
 
     st.set_span_start(99);
     assert_eq!(v.tag(), TAG_TABLE_HEADER);

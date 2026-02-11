@@ -1,3 +1,4 @@
+#![allow(clippy::question_mark)]
 use crate::Span;
 use std::fmt::{self, Debug, Display};
 

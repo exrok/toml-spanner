@@ -1,7 +1,6 @@
 #![allow(unsafe_code)]
 
-use crate::Span;
-use crate::value::{Key, SpannedTable, Value};
+use crate::value::{Key, Value};
 use std::alloc::{Layout, alloc, dealloc, realloc};
 use std::ptr::NonNull;
 
@@ -155,7 +154,7 @@ impl<'de> Table<'de> {
     pub(crate) fn get_key_value_at(&self, index: usize) -> (&Key<'de>, &Value<'de>) {
         debug_assert!(index < self.len as usize);
         unsafe {
-            let entry = &*self.ptr.as_ptr().add(index as usize);
+            let entry = &*self.ptr.as_ptr().add(index);
             (&entry.0, &entry.1)
         }
     }
@@ -164,7 +163,7 @@ impl<'de> Table<'de> {
     #[inline]
     pub(crate) fn get_mut_at(&mut self, index: usize) -> &mut Value<'de> {
         debug_assert!(index < self.len as usize);
-        unsafe { &mut (*self.ptr.as_ptr().add(index as usize)).1 }
+        unsafe { &mut (*self.ptr.as_ptr().add(index)).1 }
     }
 
     /// Returns a slice of all entries.
@@ -174,7 +173,7 @@ impl<'de> Table<'de> {
     }
 
     #[inline]
-    fn entries_mut(&mut self) -> &mut [TableEntry<'de>] {
+    pub(crate) fn entries_mut(&mut self) -> &mut [TableEntry<'de>] {
         unsafe { std::slice::from_raw_parts_mut(self.ptr.as_ptr(), self.len as usize) }
     }
 
@@ -189,12 +188,12 @@ impl<'de> Table<'de> {
 
     /// Remove entry at `idx`, shifting subsequent entries left.
     fn remove_at(&mut self, idx: usize) -> (Key<'de>, Value<'de>) {
-        let ptr = unsafe { self.ptr.as_ptr().add(idx as usize) };
+        let ptr = unsafe { self.ptr.as_ptr().add(idx) };
         let entry = unsafe { ptr.read() };
         let remaining = self.len as usize - idx - 1;
         if remaining > 0 {
             unsafe {
-                std::ptr::copy(ptr.add(1), ptr, remaining as usize);
+                std::ptr::copy(ptr.add(1), ptr, remaining);
             }
         }
         self.len -= 1;

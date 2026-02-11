@@ -528,9 +528,9 @@ impl<'de> Value<'de> {
     /// SAFETY: The caller must ensure `self.is_table()` is true. Both types
     /// are `#[repr(C)]` with identical layout when the payload is a table.
     #[inline]
-    pub(crate) unsafe fn as_spanned_table_mut(&mut self) -> &mut SpannedTable<'de> {
+    pub(crate) unsafe fn as_spanned_table_mut_unchecked(&mut self) -> &mut SpannedTable<'de> {
         debug_assert!(self.is_table());
-        unsafe { &mut *(self as *mut Value<'de> as *mut SpannedTable<'de>) }
+        unsafe { &mut *(self as *mut Value<'de>).cast::<SpannedTable<'de>>() }
     }
 
     /// Returns true if the value is a table and is non-empty.
