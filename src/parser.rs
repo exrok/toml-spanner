@@ -24,13 +24,11 @@ use std::ptr::NonNull;
 struct ParseError;
 
 // ---------------------------------------------------------------------------
-// Context stack entry -- tracks the current table scope during parsing.
+// Current table context -- tracks the active table scope during parsing.
 // ---------------------------------------------------------------------------
 
 struct Ctx<'a> {
-    // /// Pointer to the `Table` we are inserting key-value pairs into.
-    // table: *mut value::Table<'a>,
-    /// Pointer to the Value containing that table (for span updates).
+    /// Pointer to the Value containing the current table (for span updates).
     value_ptr: *mut Value<'a>,
     /// If this table is an entry in an array-of-tables, points to the Array Value
     /// so its span can be extended alongside the entry.
@@ -101,9 +99,6 @@ struct Parser<'a> {
     // Reusable scratch buffers
     string_buf: Vec<u8>,
 
-    // Navigation stack for direct construction
-    ctx: Vec<Ctx<'a>>,
-
     // Global key-index for O(1) lookups in large tables.
     // Maps (table-discriminator, key-name) → entry index in the table.
     table_index: foldhash::HashMap<KeyIndex, usize>,
@@ -118,7 +113,6 @@ impl<'a> Parser<'a> {
             error_span: Span::new(0, 0),
             error_kind: None,
             string_buf: Vec::new(),
-            ctx: Vec::new(),
             table_index: HashMap::default(),
         }
     }
@@ -1298,13 +1292,14 @@ impl<'a> Parser<'a> {
     /// Navigate an intermediate segment of a table header (e.g. `a` in `[a.b.c]`).
     /// Creates implicit tables (no flag bits) if not found.
     /// Handles arrays-of-tables by navigating into the last element.
+    ///
+    /// Returns a pointer to the `Value` containing the table navigated into.
     fn navigate_header_intermediate(
         &mut self,
+        ctx_value_ptr: *mut Value<'a>,
         key: &Key<'a>,
-        header_start: u32,
-        header_end: u32,
-    ) -> Result<(), ParseError> {
-        let table_ptr = self.current_table();
+    ) -> Result<*mut Value<'a>, ParseError> {
+        let table_ptr = Self::table_from_value_ptr(ctx_value_ptr);
         let table_ref = unsafe { &mut *table_ptr };
 
         if let Some(idx) = self.indexed_find(table_ref, key.name.as_ref()) {
@@ -1327,12 +1322,10 @@ impl<'a> Parser<'a> {
                     ));
                 }
                 let existing = table_ref.get_mut_at(idx);
-                self.push_table_ctx(existing as *mut _, None);
-                Ok(())
+                Ok(existing as *mut _)
             } else if is_array && is_aot {
                 let existing = table_ref.get_mut_at(idx);
-                let arr_ptr = unsafe { NonNull::new_unchecked(existing as *mut Value<'a>) };
-                let arr = unsafe { (*arr_ptr.as_ptr()).as_array_mut() }.unwrap();
+                let arr = unsafe { (*(existing as *mut Value<'a>)).as_array_mut() }.unwrap();
                 let last = arr.last_mut().unwrap();
                 if !last.is_table() {
                     return Err(self.set_error(
@@ -1344,8 +1337,7 @@ impl<'a> Parser<'a> {
                         },
                     ));
                 }
-                self.push_table_ctx(last as *mut _, Some(arr_ptr));
-                Ok(())
+                Ok(last as *mut _)
             } else {
                 Err(self.set_error(
                     key.span.start() as usize,
@@ -1357,25 +1349,27 @@ impl<'a> Parser<'a> {
                 ))
             }
         } else {
-            let span = Span::new(header_start, header_end);
-            let new_val = Value::table(value::Table::new(), span);
+            let new_val = Value::table(value::Table::new(), key.span);
             table_ref.insert(key.clone(), new_val);
             self.index_after_insert(unsafe { &*table_ptr });
             let last_idx = (unsafe { &*table_ptr }).len() - 1;
             let inserted = (unsafe { &mut *table_ptr }).get_mut_at(last_idx);
-            self.push_table_ctx(inserted as *mut _, None);
-            Ok(())
+            Ok(inserted as *mut _)
         }
     }
 
     /// Handle the final segment of a standard table header `[a.b.c]`.
+    ///
+    /// Returns the [`Ctx`] for the table that subsequent key-value pairs
+    /// should be inserted into.
     fn navigate_header_table_final(
         &mut self,
+        ctx_value_ptr: *mut Value<'a>,
         key: &Key<'a>,
         header_start: u32,
         header_end: u32,
-    ) -> Result<(), ParseError> {
-        let table_ptr = self.current_table();
+    ) -> Result<Ctx<'a>, ParseError> {
+        let table_ptr = Self::table_from_value_ptr(ctx_value_ptr);
         let table_ref = unsafe { &mut *table_ptr };
 
         if let Some(idx) = self.indexed_find(table_ref, key.name.as_ref()) {
@@ -1432,8 +1426,7 @@ impl<'a> Parser<'a> {
             existing.set_header_tag();
             existing.set_span_start(header_start);
             existing.set_span_end(header_end);
-            self.push_table_ctx(existing as *mut _, None);
-            Ok(())
+            Ok(Ctx { value_ptr: existing as *mut _, array_ptr: None })
         } else {
             let new_val =
                 Value::table_header(value::Table::new(), Span::new(header_start, header_end));
@@ -1441,19 +1434,22 @@ impl<'a> Parser<'a> {
             self.index_after_insert(unsafe { &*table_ptr });
             let last_idx = (unsafe { &*table_ptr }).len() - 1;
             let inserted = (unsafe { &mut *table_ptr }).get_mut_at(last_idx);
-            self.push_table_ctx(inserted as *mut _, None);
-            Ok(())
+            Ok(Ctx { value_ptr: inserted as *mut _, array_ptr: None })
         }
     }
 
     /// Handle the final segment of an array-of-tables header `[[a.b.c]]`.
+    ///
+    /// Returns the [`Ctx`] for the new table entry that subsequent key-value
+    /// pairs should be inserted into.
     fn navigate_header_array_final(
         &mut self,
+        ctx_value_ptr: *mut Value<'a>,
         key: &Key<'a>,
         header_start: u32,
         header_end: u32,
-    ) -> Result<(), ParseError> {
-        let table_ptr = self.current_table();
+    ) -> Result<Ctx<'a>, ParseError> {
+        let table_ptr = Self::table_from_value_ptr(ctx_value_ptr);
         let table_ref = unsafe { &mut *table_ptr };
 
         if let Some(idx) = self.indexed_find(table_ref, key.name.as_ref()) {
@@ -1469,8 +1465,7 @@ impl<'a> Parser<'a> {
                 let entry_span = Span::new(header_start, header_end);
                 arr.push(Value::table_header(value::Table::new(), entry_span));
                 let entry = arr.last_mut().unwrap();
-                self.push_table_ctx(entry as *mut _, Some(arr_ptr));
-                Ok(())
+                Ok(Ctx { value_ptr: entry as *mut _, array_ptr: Some(arr_ptr) })
             } else if is_table {
                 Err(self.set_error(
                     header_start as usize,
@@ -1500,8 +1495,7 @@ impl<'a> Parser<'a> {
             let arr_ptr = unsafe { NonNull::new_unchecked(inserted as *mut Value<'a>) };
             let arr = unsafe { (*arr_ptr.as_ptr()).as_array_mut() }.unwrap();
             let entry = arr.last_mut().unwrap();
-            self.push_table_ctx(entry as *mut _, Some(arr_ptr));
-            Ok(())
+            Ok(Ctx { value_ptr: entry as *mut _, array_ptr: Some(arr_ptr) })
         }
     }
 
@@ -1593,34 +1587,20 @@ impl<'a> Parser<'a> {
 
     // -- context helpers ------------------------------------------------------
 
-    #[inline]
-    fn current_table(&self) -> *mut value::Table<'a> {
-        unsafe { self.ctx.last().unwrap().value_ptr.byte_add(8).cast() }
-    }
-
-    /// Push a context entry for a `Value` known to contain a `Table`.
+    /// Derive a `*mut Table` from a `*mut Value` known to contain a table.
     ///
     /// SAFETY: `value_ptr` must point to a live `Value` whose tag is a table
-    /// variant. The table pointer is derived from `value_ptr` so its provenance
-    /// is a child — later span-field projections on `value_ptr` will not
-    /// invalidate the table tag under Stacked Borrows.
-    fn push_table_ctx(&mut self, value_ptr: *mut Value<'a>, array_ptr: Option<NonNull<Value<'a>>>) {
-        self.ctx.push(Ctx {
-            value_ptr,
-            array_ptr,
-        });
-    }
-
-    fn reset_to_root(&mut self, root_value: *mut Value<'a>) {
-        self.ctx.clear();
-        self.ctx.push(Ctx {
-            value_ptr: root_value,
-            array_ptr: None,
-        });
+    /// variant.
+    #[inline]
+    fn table_from_value_ptr(value_ptr: *mut Value<'a>) -> *mut value::Table<'a> {
+        unsafe { value_ptr.byte_add(8).cast() }
     }
 
     fn parse_document(&mut self, root_value: *mut Value<'a>) -> Result<(), ParseError> {
-        self.reset_to_root(root_value);
+        let mut ctx = Ctx {
+            value_ptr: root_value,
+            array_ptr: None,
+        };
 
         loop {
             self.eat_whitespace();
@@ -1636,15 +1616,16 @@ impl<'a> Parser<'a> {
             match self.peek_byte() {
                 None => break,
                 Some(b'[') => {
-                    if let Err(e) = self.process_table_header(root_value) {
-                        return Err(e);
-                    }
+                    ctx = match self.process_table_header(root_value) {
+                        Ok(c) => c,
+                        Err(e) => return Err(e),
+                    };
                 }
                 Some(b'\r') => {
                     return Err(self.set_error(self.cursor, None, ErrorKind::Unexpected('\r')));
                 }
                 Some(_) => {
-                    if let Err(e) = self.process_key_value() {
+                    if let Err(e) = self.process_key_value(&ctx) {
                         return Err(e);
                     }
                 }
@@ -1653,15 +1634,14 @@ impl<'a> Parser<'a> {
         Ok(())
     }
 
-    fn process_table_header(&mut self, root_value: *mut Value<'a>) -> Result<(), ParseError> {
+    fn process_table_header(&mut self, root_value: *mut Value<'a>) -> Result<Ctx<'a>, ParseError> {
         let header_start = self.cursor as u32;
         if let Err(e) = self.expect_byte(b'[') {
             return Err(e);
         }
         let is_array = self.eat_byte(b'[');
 
-        self.reset_to_root(root_value);
-        let ctx_base = self.ctx.len();
+        let mut current = root_value;
 
         // Parse and navigate key segments inline
         self.eat_whitespace();
@@ -1673,12 +1653,10 @@ impl<'a> Parser<'a> {
             self.eat_whitespace();
             if self.eat_byte(b'.') {
                 self.eat_whitespace();
-                // Navigate intermediate key (header_end not yet known; use 0
-                // as placeholder — patched below after we parse the closing
-                // bracket).
-                if let Err(e) = self.navigate_header_intermediate(&key, header_start, 0) {
-                    return Err(e);
-                }
+                current = match self.navigate_header_intermediate(current, &key) {
+                    Ok(p) => p,
+                    Err(e) => return Err(e),
+                };
                 key = match self.read_table_key() {
                     Ok(k) => k,
                     Err(e) => return Err(e),
@@ -1708,29 +1686,16 @@ impl<'a> Parser<'a> {
         }
         let header_end = self.cursor as u32;
 
-        // Patch header_end on any implicit tables created during intermediate
-        // navigation (they were inserted with end=0 as a placeholder).
-        //
-        // Use raw-pointer field writes to avoid `&mut Value` Unique retags
-        // that would invalidate sibling table pointers in each Ctx.
-        for ctx in &self.ctx[ctx_base..] {
-            unsafe {
-                if Value::ptr_raw_end(ctx.value_ptr) == 0 {
-                    Value::ptr_set_span_end(ctx.value_ptr, header_end);
-                }
-            }
-        }
-
         if is_array {
-            self.navigate_header_array_final(&key, header_start, header_end)
+            self.navigate_header_array_final(current, &key, header_start, header_end)
         } else {
-            self.navigate_header_table_final(&key, header_start, header_end)
+            self.navigate_header_table_final(current, &key, header_start, header_end)
         }
     }
 
-    fn process_key_value(&mut self) -> Result<(), ParseError> {
+    fn process_key_value(&mut self, ctx: &Ctx<'a>) -> Result<(), ParseError> {
         let line_start = self.cursor as u32;
-        let mut table_ptr = self.current_table();
+        let mut table_ptr = Self::table_from_value_ptr(ctx.value_ptr);
 
         // Read first key
         let mut key = match self.read_table_key() {
@@ -1785,8 +1750,7 @@ impl<'a> Parser<'a> {
         //
         // Use raw-pointer field writes to avoid creating `&mut Value`, which
         // would produce a Unique retag that invalidates the sibling table
-        // pointer stored in `ctx.table`.
-        let ctx = self.ctx.last().unwrap();
+        // pointer stored in `ctx`.
         unsafe {
             let start = Value::ptr_raw_start(ctx.value_ptr);
             Value::ptr_set_span_start(ctx.value_ptr, start.min(line_start));

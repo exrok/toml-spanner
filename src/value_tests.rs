@@ -67,7 +67,10 @@ fn array_create_and_drop() {
 fn table_create_and_drop() {
     let mut tab = Table::new();
     tab.insert(
-        Key { name: Str::from("k"), span: sp(0, 1) },
+        Key {
+            name: Str::from("k"),
+            span: sp(0, 1),
+        },
         Value::integer(10, sp(2, 4)),
     );
     let v = Value::table(tab, sp(0, 4));
@@ -103,8 +106,14 @@ fn span_roundtrip_all_tags() {
         (TAG_BOOLEAN, Value::boolean(false, sp(100, 200))),
         (TAG_ARRAY, Value::array(Array::new(), sp(100, 200))),
         (TAG_TABLE, Value::table(Table::new(), sp(100, 200))),
-        (TAG_TABLE_HEADER, Value::table_header(Table::new(), sp(100, 200))),
-        (TAG_TABLE_DOTTED, Value::table_dotted(Table::new(), sp(100, 200))),
+        (
+            TAG_TABLE_HEADER,
+            Value::table_header(Table::new(), sp(100, 200)),
+        ),
+        (
+            TAG_TABLE_DOTTED,
+            Value::table_dotted(Table::new(), sp(100, 200)),
+        ),
     ];
     for (expected_tag, v) in &tags_and_constructors {
         assert_eq!(v.tag(), *expected_tag);
@@ -212,7 +221,10 @@ fn as_mut_modify_table() {
     let mut v = Value::table(Table::new(), sp(0, 2));
     if let ValueMut::Table(t) = v.as_mut() {
         t.insert(
-            Key { name: Str::from("x"), span: sp(0, 1) },
+            Key {
+                name: Str::from("x"),
+                span: sp(0, 1),
+            },
             Value::integer(1, sp(0, 1)),
         );
     }
@@ -224,14 +236,18 @@ fn as_mut_modify_table() {
 #[test]
 fn into_kind_string() {
     let v = Value::string(Str::from(String::from("owned")), sp(0, 5));
-    let ValueOwned::String(s) = v.into_kind() else { panic!("expected string") };
+    let ValueOwned::String(s) = v.into_kind() else {
+        panic!("expected string")
+    };
     assert_eq!(&*s, "owned");
 }
 
 #[test]
 fn into_kind_integer() {
     let v = Value::integer(42, sp(0, 2));
-    let ValueOwned::Integer(i) = v.into_kind() else { panic!("expected integer") };
+    let ValueOwned::Integer(i) = v.into_kind() else {
+        panic!("expected integer")
+    };
     assert_eq!(i, 42);
 }
 
@@ -241,7 +257,9 @@ fn into_kind_array() {
     arr.push(Value::integer(1, sp(0, 1)));
     arr.push(Value::integer(2, sp(0, 1)));
     let v = Value::array(arr, sp(0, 5));
-    let ValueOwned::Array(a) = v.into_kind() else { panic!("expected array") };
+    let ValueOwned::Array(a) = v.into_kind() else {
+        panic!("expected array")
+    };
     assert_eq!(a.len(), 2);
 }
 
@@ -249,11 +267,16 @@ fn into_kind_array() {
 fn into_kind_table() {
     let mut tab = Table::new();
     tab.insert(
-        Key { name: Str::from("k"), span: sp(0, 1) },
+        Key {
+            name: Str::from("k"),
+            span: sp(0, 1),
+        },
         Value::integer(1, sp(0, 1)),
     );
     let v = Value::table(tab, sp(0, 5));
-    let ValueOwned::Table(t) = v.into_kind() else { panic!("expected table") };
+    let ValueOwned::Table(t) = v.into_kind() else {
+        panic!("expected table")
+    };
     assert_eq!(t.len(), 1);
 }
 
@@ -289,7 +312,9 @@ fn negative_type_checks() {
 fn take_replaces_with_boolean() {
     let mut v = Value::integer(42, sp(3, 7));
     let taken = v.take();
-    let ValueOwned::Integer(i) = taken else { panic!("expected integer") };
+    let ValueOwned::Integer(i) = taken else {
+        panic!("expected integer")
+    };
     assert_eq!(i, 42);
     assert_eq!(v.as_bool(), Some(false));
     assert_eq!(v.span(), sp(3, 7));
@@ -313,7 +338,10 @@ fn set_table_replaces() {
     let mut v = Value::integer(42, sp(0, 5));
     let mut tab = Table::new();
     tab.insert(
-        Key { name: Str::from("k"), span: sp(0, 1) },
+        Key {
+            name: Str::from("k"),
+            span: sp(0, 1),
+        },
         Value::integer(1, sp(0, 1)),
     );
     v.set_table(tab);
@@ -323,47 +351,6 @@ fn set_table_replaces() {
 }
 
 // -- Raw pointer span helpers -----------------------------------------------
-
-#[test]
-fn ptr_span_helpers() {
-    let mut v = Value::integer(42, sp(10, 20));
-    let p = &mut v as *mut Value<'_>;
-
-    unsafe {
-        assert_eq!(Value::ptr_raw_start(p), 10);
-        assert_eq!(Value::ptr_raw_end(p), 20);
-
-        Value::ptr_set_span_start(p, 50);
-        assert_eq!(Value::ptr_raw_start(p), 50);
-        assert_eq!(v.tag(), TAG_INTEGER);
-
-        Value::ptr_set_span_end(p, 100);
-        assert_eq!(Value::ptr_raw_end(p), 100);
-
-        Value::ptr_extend_span_end(p, 80);
-        assert_eq!(Value::ptr_raw_end(p), 100);
-
-        Value::ptr_extend_span_end(p, 200);
-        assert_eq!(Value::ptr_raw_end(p), 200);
-    }
-    assert_eq!(v.as_integer(), Some(42));
-}
-
-#[test]
-fn ptr_span_preserves_flag() {
-    let mut v = Value::array_aot(Array::new(), sp(10, 20));
-    let p = &mut v as *mut Value<'_>;
-
-    unsafe {
-        Value::ptr_set_span_end(p, 50);
-        assert!(v.is_frozen());
-        assert_eq!(Value::ptr_raw_end(p), 50);
-
-        Value::ptr_extend_span_end(p, 100);
-        assert!(v.is_frozen());
-        assert_eq!(Value::ptr_raw_end(p), 100);
-    }
-}
 
 #[test]
 fn ptr_span_preserves_tag() {
@@ -387,8 +374,14 @@ fn type_str_values() {
     assert_eq!(Value::boolean(false, sp(0, 0)).type_str(), "boolean");
     assert_eq!(Value::array(Array::new(), sp(0, 0)).type_str(), "array");
     assert_eq!(Value::table(Table::new(), sp(0, 0)).type_str(), "table");
-    assert_eq!(Value::table_header(Table::new(), sp(0, 0)).type_str(), "table");
-    assert_eq!(Value::table_dotted(Table::new(), sp(0, 0)).type_str(), "table");
+    assert_eq!(
+        Value::table_header(Table::new(), sp(0, 0)).type_str(),
+        "table"
+    );
+    assert_eq!(
+        Value::table_dotted(Table::new(), sp(0, 0)).type_str(),
+        "table"
+    );
 }
 
 #[test]
@@ -398,7 +391,10 @@ fn has_keys_and_has_key() {
 
     let mut tab = Table::new();
     tab.insert(
-        Key { name: Str::from("x"), span: sp(0, 1) },
+        Key {
+            name: Str::from("x"),
+            span: sp(0, 1),
+        },
         Value::integer(1, sp(0, 1)),
     );
     let v = Value::table(tab, sp(0, 1));

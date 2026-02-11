@@ -276,11 +276,6 @@ impl<'de> Value<'de> {
     }
 
     #[inline]
-    pub(crate) unsafe fn ptr_raw_end(p: *const Self) -> u32 {
-        unsafe { std::ptr::addr_of!((*p).end_and_flag).read() >> FLAG_SHIFT }
-    }
-
-    #[inline]
     pub(crate) unsafe fn ptr_set_span_start(p: *mut Self, v: u32) {
         unsafe {
             let field = std::ptr::addr_of_mut!((*p).start_and_tag);
@@ -296,15 +291,6 @@ impl<'de> Value<'de> {
             let old = field.read();
             let current = old >> FLAG_SHIFT;
             field.write((current.max(new_end) << FLAG_SHIFT) | (old & FLAG_BIT));
-        }
-    }
-
-    #[inline]
-    pub(crate) unsafe fn ptr_set_span_end(p: *mut Self, v: u32) {
-        unsafe {
-            let field = std::ptr::addr_of_mut!((*p).end_and_flag);
-            let old = field.read();
-            field.write((v << FLAG_SHIFT) | (old & FLAG_BIT));
         }
     }
 }

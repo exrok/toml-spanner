@@ -34,11 +34,10 @@ note[table]: root_fruit_apple_taste
   │       ^^^^^
 
 note[table]: root_fruit_apple
-  ┌─ table_9_reverse_valid:1:1
-  │  
-1 │ ╭ [fruit.apple.texture]  # you can add sub-tables
-2 │ │ smooth = true
-  │ ╰^
+  ┌─ table_9_reverse_valid:1:8
+  │
+1 │ [fruit.apple.texture]  # you can add sub-tables
+  │        ^^^^^
 
 note[table]: root_fruit
   ┌─ table_9_reverse_valid:4:1

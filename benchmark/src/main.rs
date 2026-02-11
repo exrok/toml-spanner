@@ -3,8 +3,6 @@ use jsony_bench::Bencher;
 mod static_input;
 
 fn bench_end2end_config_toml_span(bench: &mut Bencher, configs: &[(&str, &str)]) {
-    let mut bench = jsony_bench::Bencher::new();
-    bench.calibrate();
     for (name, source) in configs {
         let stat = bench.func(|| {
             let mut result = toml_span::parse(source);
@@ -25,8 +23,6 @@ fn bench_end2end_config_toml_span(bench: &mut Bencher, configs: &[(&str, &str)])
 }
 
 fn bench_end2end_config_toml_parser(bench: &mut Bencher, configs: &[(&str, &str)]) {
-    let mut bench = jsony_bench::Bencher::new();
-    bench.calibrate();
     for (name, source) in configs {
         let stat = bench.func(|| {
             let mut result = toml_spanner::parse(source);

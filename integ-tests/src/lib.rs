@@ -161,11 +161,7 @@ macro_rules! error_snapshot {
 
 use codespan_reporting::diagnostic::Diagnostic;
 
-pub fn collect_spans(
-    key: &str,
-    val: &toml_spanner::value::Value<'_>,
-    diags: &mut Vec<Diagnostic<()>>,
-) {
+pub fn collect_spans(key: &str, val: &toml_spanner::Value<'_>, diags: &mut Vec<Diagnostic<()>>) {
     use codespan_reporting::diagnostic::Label;
     use toml_spanner::ValueRef;
 

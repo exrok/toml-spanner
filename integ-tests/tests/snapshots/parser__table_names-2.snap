@@ -10,11 +10,10 @@ note[table]: root_a_b
   │ ╰^
 
 note[table]: root_a
-  ┌─ table_names:1:1
-  │  
-1 │ ╭ [a."b"]
-2 │ │ ["f f"]
-  │ ╰^
+  ┌─ table_names:1:2
+  │
+1 │ [a."b"]
+  │  ^
 
 note[table]: root_f f
   ┌─ table_names:2:1
