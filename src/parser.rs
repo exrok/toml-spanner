@@ -8,7 +8,7 @@ use crate::{
     Span,
     error::{Error, ErrorKind},
     str::Str,
-    value::{self, Key, Value},
+    value::{self, Key, SpannedTable, Value},
 };
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
@@ -27,12 +27,14 @@ struct ParseError;
 // Current table context -- tracks the active table scope during parsing.
 // ---------------------------------------------------------------------------
 
-struct Ctx<'a> {
-    /// Pointer to the Value containing the current table (for span updates).
-    value_ptr: *mut Value<'a>,
-    /// If this table is an entry in an array-of-tables, points to the Array Value
-    /// so its span can be extended alongside the entry.
-    array_ptr: Option<NonNull<Value<'a>>>,
+struct Ctx<'b, 'a> {
+    /// The current table context — a `SpannedTable` view into a table `Value`.
+    /// Gives direct mutable access to both the span fields and the `Table` payload.
+    st: &'b mut SpannedTable<'a>,
+    /// If this table is an entry in an array-of-tables, a disjoint borrow of
+    /// the parent array Value's `end_and_flag` field so its span can be
+    /// extended alongside the entry.
+    array_end_span: Option<&'b mut u32>,
 }
 
 // ---------------------------------------------------------------------------
@@ -1135,7 +1137,7 @@ impl<'a> Parser<'a> {
         }
         loop {
             // Parse key, navigating through dotted segments
-            let mut table_ptr: *mut value::Table<'a> = out;
+            let mut table_ref: &mut value::Table<'a> = &mut *out;
             let mut key = match self.read_table_key() {
                 Ok(k) => k,
                 Err(e) => return Err(e),
@@ -1147,8 +1149,8 @@ impl<'a> Parser<'a> {
                 if let Err(e) = self.eat_inline_table_whitespace() {
                     return Err(e);
                 }
-                table_ptr = match self.navigate_dotted_key(table_ptr, &key) {
-                    Ok(p) => p,
+                table_ref = match self.navigate_dotted_key(table_ref, &key) {
+                    Ok(t) => t,
                     Err(e) => return Err(e),
                 };
                 key = match self.read_table_key() {
@@ -1169,7 +1171,7 @@ impl<'a> Parser<'a> {
                 Ok(v) => v,
                 Err(e) => return Err(e),
             };
-            if let Err(e) = self.insert_value(table_ptr, key, val) {
+            if let Err(e) = self.insert_value(table_ref, key, val) {
                 return Err(e);
             }
 
@@ -1252,15 +1254,13 @@ impl<'a> Parser<'a> {
     /// Navigate into an existing or new table for a dotted-key intermediate
     /// segment. Checks frozen and header bits.
     /// New tables are created with the `DOTTED` tag.
-    fn navigate_dotted_key(
+    fn navigate_dotted_key<'t>(
         &mut self,
-        table: *mut value::Table<'a>,
+        table: &'t mut value::Table<'a>,
         key: &Key<'a>,
-    ) -> Result<*mut value::Table<'a>, ParseError> {
-        let table_ref = unsafe { &mut *table };
-
-        if let Some(idx) = self.indexed_find(table_ref, key.name.as_ref()) {
-            let (existing_key, existing_val) = table_ref.get_key_value_at(idx);
+    ) -> Result<&'t mut value::Table<'a>, ParseError> {
+        if let Some(idx) = self.indexed_find(table, key.name.as_ref()) {
+            let (existing_key, existing_val) = table.get_key_value_at(idx);
             let first_key_span = existing_key.span;
             let ok = existing_val.is_table()
                 && !existing_val.is_frozen()
@@ -1275,17 +1275,15 @@ impl<'a> Parser<'a> {
                     },
                 ));
             }
-            let existing = table_ref.get_mut_at(idx);
-            let t = unsafe { existing.as_table_mut_unchecked() };
-            Ok(t as *mut _)
+            let existing = table.get_mut_at(idx);
+            unsafe { Ok(existing.as_table_mut_unchecked()) }
         } else {
             let new_val = Value::table_dotted(value::Table::new(), key.span);
-            table_ref.insert(key.clone(), new_val);
-            self.index_after_insert(unsafe { &*table });
-            let last_idx = (unsafe { &*table }).len() as usize - 1;
-            let inserted = (unsafe { &mut *table }).get_mut_at(last_idx);
-            let t = unsafe { inserted.as_table_mut_unchecked() };
-            Ok(t as *mut _)
+            table.insert(key.clone(), new_val);
+            self.index_after_insert(table);
+            let last_idx = table.len() - 1;
+            let inserted = table.get_mut_at(last_idx);
+            unsafe { Ok(inserted.as_table_mut_unchecked()) }
         }
     }
 
@@ -1293,17 +1291,16 @@ impl<'a> Parser<'a> {
     /// Creates implicit tables (no flag bits) if not found.
     /// Handles arrays-of-tables by navigating into the last element.
     ///
-    /// Returns a pointer to the `Value` containing the table navigated into.
-    fn navigate_header_intermediate(
+    /// Returns a `SpannedTable` view of the table navigated into.
+    fn navigate_header_intermediate<'b>(
         &mut self,
-        ctx_value_ptr: *mut Value<'a>,
+        st: &'b mut SpannedTable<'a>,
         key: &Key<'a>,
-    ) -> Result<*mut Value<'a>, ParseError> {
-        let table_ptr = Self::table_from_value_ptr(ctx_value_ptr);
-        let table_ref = unsafe { &mut *table_ptr };
+    ) -> Result<&'b mut SpannedTable<'a>, ParseError> {
+        let table = &mut *st.value;
 
-        if let Some(idx) = self.indexed_find(table_ref, key.name.as_ref()) {
-            let (existing_key, existing_val) = table_ref.get_key_value_at(idx);
+        if let Some(idx) = self.indexed_find(table, key.name.as_ref()) {
+            let (existing_key, existing_val) = table.get_key_value_at(idx);
             let first_key_span = existing_key.span;
             let is_table = existing_val.is_table();
             let is_array = existing_val.is_array();
@@ -1321,11 +1318,11 @@ impl<'a> Parser<'a> {
                         },
                     ));
                 }
-                let existing = table_ref.get_mut_at(idx);
-                Ok(existing as *mut _)
+                let existing = table.get_mut_at(idx);
+                unsafe { Ok(existing.as_spanned_table_mut()) }
             } else if is_array && is_aot {
-                let existing = table_ref.get_mut_at(idx);
-                let arr = unsafe { (*(existing as *mut Value<'a>)).as_array_mut() }.unwrap();
+                let existing = table.get_mut_at(idx);
+                let arr = existing.as_array_mut().unwrap();
                 let last = arr.last_mut().unwrap();
                 if !last.is_table() {
                     return Err(self.set_error(
@@ -1337,7 +1334,7 @@ impl<'a> Parser<'a> {
                         },
                     ));
                 }
-                Ok(last as *mut _)
+                unsafe { Ok(last.as_spanned_table_mut()) }
             } else {
                 Err(self.set_error(
                     key.span.start() as usize,
@@ -1350,11 +1347,11 @@ impl<'a> Parser<'a> {
             }
         } else {
             let new_val = Value::table(value::Table::new(), key.span);
-            table_ref.insert(key.clone(), new_val);
-            self.index_after_insert(unsafe { &*table_ptr });
-            let last_idx = (unsafe { &*table_ptr }).len() - 1;
-            let inserted = (unsafe { &mut *table_ptr }).get_mut_at(last_idx);
-            Ok(inserted as *mut _)
+            table.insert(key.clone(), new_val);
+            self.index_after_insert(table);
+            let last_idx = table.len() - 1;
+            let inserted = table.get_mut_at(last_idx);
+            unsafe { Ok(inserted.as_spanned_table_mut()) }
         }
     }
 
@@ -1362,18 +1359,17 @@ impl<'a> Parser<'a> {
     ///
     /// Returns the [`Ctx`] for the table that subsequent key-value pairs
     /// should be inserted into.
-    fn navigate_header_table_final(
+    fn navigate_header_table_final<'b>(
         &mut self,
-        ctx_value_ptr: *mut Value<'a>,
+        st: &'b mut SpannedTable<'a>,
         key: &Key<'a>,
         header_start: u32,
         header_end: u32,
-    ) -> Result<Ctx<'a>, ParseError> {
-        let table_ptr = Self::table_from_value_ptr(ctx_value_ptr);
-        let table_ref = unsafe { &mut *table_ptr };
+    ) -> Result<Ctx<'b, 'a>, ParseError> {
+        let table = &mut *st.value;
 
-        if let Some(idx) = self.indexed_find(table_ref, key.name.as_ref()) {
-            let (existing_key, existing_val) = table_ref.get_key_value_at(idx);
+        if let Some(idx) = self.indexed_find(table, key.name.as_ref()) {
+            let (existing_key, existing_val) = table.get_key_value_at(idx);
             let first_key_span = existing_key.span;
             let is_table = existing_val.is_table();
             let is_frozen = existing_val.is_frozen();
@@ -1422,19 +1418,26 @@ impl<'a> Parser<'a> {
                 ));
             }
             // Implicitly created table — now explicitly define it.
-            let existing = table_ref.get_mut_at(idx);
-            existing.set_header_tag();
-            existing.set_span_start(header_start);
-            existing.set_span_end(header_end);
-            Ok(Ctx { value_ptr: existing as *mut _, array_ptr: None })
+            let existing = table.get_mut_at(idx);
+            let st = unsafe { existing.as_spanned_table_mut() };
+            st.set_header_tag();
+            st.set_span_start(header_start);
+            st.set_span_end(header_end);
+            Ok(Ctx {
+                st,
+                array_end_span: None,
+            })
         } else {
             let new_val =
                 Value::table_header(value::Table::new(), Span::new(header_start, header_end));
-            table_ref.insert(key.clone(), new_val);
-            self.index_after_insert(unsafe { &*table_ptr });
-            let last_idx = (unsafe { &*table_ptr }).len() - 1;
-            let inserted = (unsafe { &mut *table_ptr }).get_mut_at(last_idx);
-            Ok(Ctx { value_ptr: inserted as *mut _, array_ptr: None })
+            table.insert(key.clone(), new_val);
+            self.index_after_insert(table);
+            let last_idx = table.len() - 1;
+            let inserted = table.get_mut_at(last_idx);
+            Ok(Ctx {
+                st: unsafe { inserted.as_spanned_table_mut() },
+                array_end_span: None,
+            })
         }
     }
 
@@ -1442,30 +1445,31 @@ impl<'a> Parser<'a> {
     ///
     /// Returns the [`Ctx`] for the new table entry that subsequent key-value
     /// pairs should be inserted into.
-    fn navigate_header_array_final(
+    fn navigate_header_array_final<'b>(
         &mut self,
-        ctx_value_ptr: *mut Value<'a>,
+        st: &'b mut SpannedTable<'a>,
         key: &Key<'a>,
         header_start: u32,
         header_end: u32,
-    ) -> Result<Ctx<'a>, ParseError> {
-        let table_ptr = Self::table_from_value_ptr(ctx_value_ptr);
-        let table_ref = unsafe { &mut *table_ptr };
+    ) -> Result<Ctx<'b, 'a>, ParseError> {
+        let table = &mut *st.value;
 
-        if let Some(idx) = self.indexed_find(table_ref, key.name.as_ref()) {
-            let (existing_key, existing_val) = table_ref.get_key_value_at(idx);
+        if let Some(idx) = self.indexed_find(table, key.name.as_ref()) {
+            let (existing_key, existing_val) = table.get_key_value_at(idx);
             let first_key_span = existing_key.span;
             let is_aot = existing_val.is_aot();
             let is_table = existing_val.is_table();
 
             if is_aot {
-                let existing = table_ref.get_mut_at(idx);
-                let arr_ptr = unsafe { NonNull::new_unchecked(existing as *mut Value<'a>) };
-                let arr = unsafe { (*arr_ptr.as_ptr()).as_array_mut() }.unwrap();
+                let existing = table.get_mut_at(idx);
+                let (end_flag, arr) = unsafe { existing.split_array_end_flag() };
                 let entry_span = Span::new(header_start, header_end);
                 arr.push(Value::table_header(value::Table::new(), entry_span));
                 let entry = arr.last_mut().unwrap();
-                Ok(Ctx { value_ptr: entry as *mut _, array_ptr: Some(arr_ptr) })
+                Ok(Ctx {
+                    st: unsafe { entry.as_spanned_table_mut() },
+                    array_end_span: Some(end_flag),
+                })
             } else if is_table {
                 Err(self.set_error(
                     header_start as usize,
@@ -1487,29 +1491,29 @@ impl<'a> Parser<'a> {
             let first_entry = Value::table_header(value::Table::new(), entry_span);
             let array_span = Span::new(header_start, header_end);
             let array_val = Value::array_aot(value::Array::with_single(first_entry), array_span);
-            table_ref.insert(key.clone(), array_val);
-            self.index_after_insert(unsafe { &*table_ptr });
+            table.insert(key.clone(), array_val);
+            self.index_after_insert(table);
 
-            let last_idx = (unsafe { &*table_ptr }).len() - 1;
-            let inserted = (unsafe { &mut *table_ptr }).get_mut_at(last_idx);
-            let arr_ptr = unsafe { NonNull::new_unchecked(inserted as *mut Value<'a>) };
-            let arr = unsafe { (*arr_ptr.as_ptr()).as_array_mut() }.unwrap();
+            let last_idx = table.len() - 1;
+            let inserted = table.get_mut_at(last_idx);
+            let (end_flag, arr) = unsafe { inserted.split_array_end_flag() };
             let entry = arr.last_mut().unwrap();
-            Ok(Ctx { value_ptr: entry as *mut _, array_ptr: Some(arr_ptr) })
+            Ok(Ctx {
+                st: unsafe { entry.as_spanned_table_mut() },
+                array_end_span: Some(end_flag),
+            })
         }
     }
 
     /// Insert a value into a table, checking for duplicates.
     fn insert_value(
         &mut self,
-        table: *mut value::Table<'a>,
+        table: &mut value::Table<'a>,
         key: Key<'a>,
         val: Value<'a>,
     ) -> Result<(), ParseError> {
-        let table_ref = unsafe { &mut *table };
-
-        if let Some(idx) = self.indexed_find(table_ref, key.name.as_ref()) {
-            let (existing_key, _) = table_ref.get_key_value_at(idx);
+        if let Some(idx) = self.indexed_find(table, key.name.as_ref()) {
+            let (existing_key, _) = table.get_key_value_at(idx);
             let first_span = existing_key.span;
             return Err(self.set_error(
                 key.span.start() as usize,
@@ -1521,8 +1525,8 @@ impl<'a> Parser<'a> {
             ));
         }
 
-        table_ref.insert(key, val);
-        self.index_after_insert(unsafe { &*table });
+        table.insert(key, val);
+        self.index_after_insert(table);
         Ok(())
     }
 
@@ -1585,21 +1589,10 @@ impl<'a> Parser<'a> {
         self.table_index.insert(ki, idx);
     }
 
-    // -- context helpers ------------------------------------------------------
-
-    /// Derive a `*mut Table` from a `*mut Value` known to contain a table.
-    ///
-    /// SAFETY: `value_ptr` must point to a live `Value` whose tag is a table
-    /// variant.
-    #[inline]
-    fn table_from_value_ptr(value_ptr: *mut Value<'a>) -> *mut value::Table<'a> {
-        unsafe { value_ptr.byte_add(8).cast() }
-    }
-
-    fn parse_document(&mut self, root_value: *mut Value<'a>) -> Result<(), ParseError> {
+    fn parse_document(&mut self, root_st: &mut SpannedTable<'a>) -> Result<(), ParseError> {
         let mut ctx = Ctx {
-            value_ptr: root_value,
-            array_ptr: None,
+            st: root_st,
+            array_end_span: None,
         };
 
         loop {
@@ -1616,7 +1609,7 @@ impl<'a> Parser<'a> {
             match self.peek_byte() {
                 None => break,
                 Some(b'[') => {
-                    ctx = match self.process_table_header(root_value) {
+                    ctx = match self.process_table_header(root_st) {
                         Ok(c) => c,
                         Err(e) => return Err(e),
                     };
@@ -1625,7 +1618,7 @@ impl<'a> Parser<'a> {
                     return Err(self.set_error(self.cursor, None, ErrorKind::Unexpected('\r')));
                 }
                 Some(_) => {
-                    if let Err(e) = self.process_key_value(&ctx) {
+                    if let Err(e) = self.process_key_value(&mut ctx) {
                         return Err(e);
                     }
                 }
@@ -1634,14 +1627,17 @@ impl<'a> Parser<'a> {
         Ok(())
     }
 
-    fn process_table_header(&mut self, root_value: *mut Value<'a>) -> Result<Ctx<'a>, ParseError> {
+    fn process_table_header<'b>(
+        &mut self,
+        root_st: &'b mut SpannedTable<'a>,
+    ) -> Result<Ctx<'b, 'a>, ParseError> {
         let header_start = self.cursor as u32;
         if let Err(e) = self.expect_byte(b'[') {
             return Err(e);
         }
         let is_array = self.eat_byte(b'[');
 
-        let mut current = root_value;
+        let mut current = root_st;
 
         // Parse and navigate key segments inline
         self.eat_whitespace();
@@ -1693,9 +1689,12 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn process_key_value(&mut self, ctx: &Ctx<'a>) -> Result<(), ParseError> {
+    fn process_key_value(&mut self, ctx: &mut Ctx<'_, 'a>) -> Result<(), ParseError> {
         let line_start = self.cursor as u32;
-        let mut table_ptr = Self::table_from_value_ptr(ctx.value_ptr);
+        // Borrow the Table payload from the SpannedTable. NLL drops this
+        // borrow at its last use (the insert_value call), freeing ctx.st
+        // for the span updates that follow.
+        let mut table_ref: &mut value::Table<'a> = &mut ctx.st.value;
 
         // Read first key
         let mut key = match self.read_table_key() {
@@ -1707,8 +1706,8 @@ impl<'a> Parser<'a> {
         // Navigate through dotted key segments
         while self.eat_byte(b'.') {
             self.eat_whitespace();
-            table_ptr = match self.navigate_dotted_key(table_ptr, &key) {
-                Ok(p) => p,
+            table_ref = match self.navigate_dotted_key(table_ref, &key) {
+                Ok(t) => t,
                 Err(e) => return Err(e),
             };
             key = match self.read_table_key() {
@@ -1741,25 +1740,21 @@ impl<'a> Parser<'a> {
             Err(e) => return Err(e),
         }
 
-        // Insert and extend current table span
-        if let Err(e) = self.insert_value(table_ptr, key, val) {
+        // Insert — last use of table_ref, NLL drops the borrow here.
+        if let Err(e) = self.insert_value(table_ref, key, val) {
             return Err(e);
         }
 
-        // Extend the span of the current context's table value.
-        //
-        // Use raw-pointer field writes to avoid creating `&mut Value`, which
-        // would produce a Unique retag that invalidates the sibling table
-        // pointer stored in `ctx`.
-        unsafe {
-            let start = Value::ptr_raw_start(ctx.value_ptr);
-            Value::ptr_set_span_start(ctx.value_ptr, start.min(line_start));
-            Value::ptr_extend_span_end(ctx.value_ptr, line_end);
+        // Extend the span of the current context's SpannedTable.
+        let start = ctx.st.span_start();
+        ctx.st.set_span_start(start.min(line_start));
+        ctx.st.extend_span_end(line_end);
 
-            // Also extend the parent array-of-tables span if applicable
-            if let Some(arr_ptr) = ctx.array_ptr {
-                Value::ptr_extend_span_end(arr_ptr.as_ptr(), line_end);
-            }
+        // Also extend the parent array-of-tables span if applicable.
+        if let Some(end_flag) = &mut ctx.array_end_span {
+            let old = **end_flag;
+            let current = old >> value::FLAG_SHIFT;
+            **end_flag = (current.max(line_end) << value::FLAG_SHIFT) | (old & value::FLAG_BIT);
         }
 
         Ok(())
@@ -1787,12 +1782,11 @@ pub fn parse(s: &str) -> Result<Value<'_>, Error> {
 
     let mut root = Value::table(value::Table::new(), Span::new(0, s.len() as u32));
 
-    // SAFETY: derive root_value first, then root_table from it, so that
-    // root_table's provenance is a child of root_value (not invalidated by it).
-    let root_value: *mut Value<'_> = &mut root;
+    // SAFETY: root is a table, so the SpannedTable reinterpretation is valid.
+    let root_st = unsafe { root.as_spanned_table_mut() };
 
     let mut parser = Parser::new(s);
-    match parser.parse_document(root_value) {
+    match parser.parse_document(root_st) {
         Ok(()) => {}
         Err(_) => return Err(parser.take_error()),
     }

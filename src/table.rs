@@ -1,6 +1,7 @@
 #![allow(unsafe_code)]
 
-use crate::value::{Key, Value};
+use crate::Span;
+use crate::value::{Key, SpannedTable, Value};
 use std::alloc::{Layout, alloc, dealloc, realloc};
 use std::ptr::NonNull;
 
@@ -38,11 +39,12 @@ impl<'de> Table<'de> {
     /// Inserts a key-value pair. Does **not** check for duplicates; use
     /// [`entry`](Self::entry) when duplicate detection is needed.
     pub fn insert(&mut self, key: Key<'de>, value: Value<'de>) {
+        let len = self.len;
         if self.len == self.cap {
             self.grow();
         }
         unsafe {
-            self.ptr.as_ptr().add(self.len as usize).write((key, value));
+            self.ptr.as_ptr().add(len as usize).write((key, value));
         }
         self.len += 1;
     }

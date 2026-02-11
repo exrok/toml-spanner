@@ -16,11 +16,10 @@ note[table]: root_a_b_c
   │ ╰───────────^
 
 note[table]: root_a_b
-  ┌─ implicit_and_explicit_after:2:1
-  │  
-2 │ ╭ [a.b.c]
-3 │ │ answer = 42
-  │ ╰^
+  ┌─ implicit_and_explicit_after:2:4
+  │
+2 │ [a.b.c]
+  │    ^
 
 note[integer]: root_a_better
   ┌─ implicit_and_explicit_after:6:10

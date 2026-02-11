@@ -29,7 +29,7 @@ pub(crate) const TAG_TABLE_HEADER: u32 = 6;
 pub(crate) const TAG_TABLE_DOTTED: u32 = 7;
 
 pub(crate) const FLAG_BIT: u32 = 1;
-const FLAG_SHIFT: u32 = 1;
+pub(crate) const FLAG_SHIFT: u32 = 1;
 
 // ---------------------------------------------------------------------------
 // Tagged union payload
@@ -43,6 +43,48 @@ union Payload<'de> {
     boolean: bool,
     array: ManuallyDrop<Array<'de>>,
     table: ManuallyDrop<Table<'de>>,
+}
+
+#[repr(C)]
+pub(crate) struct SpannedTable<'de> {
+    /// Bits 2-0: tag, bits 31-3: span.start
+    start_and_tag: u32,
+    /// Bit 0: flag bit (parser-internal), bits 31-1: span.end
+    end_and_flag: u32,
+    pub(crate) value: ManuallyDrop<Table<'de>>,
+}
+
+const _: () = assert!(std::mem::size_of::<SpannedTable<'_>>() == std::mem::size_of::<Value<'_>>());
+const _: () =
+    assert!(std::mem::align_of::<SpannedTable<'_>>() == std::mem::align_of::<Value<'_>>());
+
+impl<'de> SpannedTable<'de> {
+    #[inline]
+    pub(crate) fn span_start(&self) -> u32 {
+        self.start_and_tag >> TAG_SHIFT
+    }
+
+    #[inline]
+    pub(crate) fn set_span_start(&mut self, v: u32) {
+        self.start_and_tag = (v << TAG_SHIFT) | (self.start_and_tag & TAG_MASK);
+    }
+
+    #[inline]
+    pub(crate) fn set_span_end(&mut self, v: u32) {
+        self.end_and_flag = (v << FLAG_SHIFT) | (self.end_and_flag & FLAG_BIT);
+    }
+
+    #[inline]
+    pub(crate) fn extend_span_end(&mut self, new_end: u32) {
+        let old = self.end_and_flag;
+        let current = old >> FLAG_SHIFT;
+        self.end_and_flag = (current.max(new_end) << FLAG_SHIFT) | (old & FLAG_BIT);
+    }
+
+    #[inline]
+    pub(crate) fn set_header_tag(&mut self) {
+        self.start_and_tag = (self.start_and_tag & !TAG_MASK) | TAG_TABLE_HEADER;
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -243,54 +285,19 @@ impl<'de> Value<'de> {
         self.tag() == TAG_TABLE_DOTTED
     }
 
-    // -- parser-internal mutation ---
-
-    /// Change tag to table-header (from plain table).
+    /// Split this array `Value` into disjoint borrows: `&mut u32` for the
+    /// `end_and_flag` span field (bytes \[4..8\)) and `&mut Array` for the
+    /// payload (bytes \[8..24\)).
+    ///
+    /// SAFETY: The caller must ensure `self.is_array()` is true.
     #[inline]
-    pub(crate) fn set_header_tag(&mut self) {
-        self.start_and_tag = (self.start_and_tag & !TAG_MASK) | TAG_TABLE_HEADER;
-    }
-
-    /// Set span.start, preserving the tag bits.
-    #[inline]
-    pub(crate) fn set_span_start(&mut self, v: u32) {
-        self.start_and_tag = (v << TAG_SHIFT) | (self.start_and_tag & TAG_MASK);
-    }
-
-    /// Set span.end, preserving the flag bit.
-    #[inline]
-    pub(crate) fn set_span_end(&mut self, v: u32) {
-        self.end_and_flag = (v << FLAG_SHIFT) | (self.end_and_flag & FLAG_BIT);
-    }
-
-    // -- Raw-pointer span helpers ---------------------------------------------
-    //
-    // These access span fields through `addr_of[_mut]!` without creating
-    // `&mut Value`, so they never produce a Unique retag that would
-    // invalidate sibling pointers (e.g. a table pointer derived from
-    // the same `Value`).
-
-    #[inline]
-    pub(crate) unsafe fn ptr_raw_start(p: *const Self) -> u32 {
-        unsafe { std::ptr::addr_of!((*p).start_and_tag).read() >> TAG_SHIFT }
-    }
-
-    #[inline]
-    pub(crate) unsafe fn ptr_set_span_start(p: *mut Self, v: u32) {
+    pub(crate) unsafe fn split_array_end_flag(&mut self) -> (&mut u32, &mut Array<'de>) {
+        debug_assert!(self.is_array());
+        let ptr = self as *mut Value<'de>;
         unsafe {
-            let field = std::ptr::addr_of_mut!((*p).start_and_tag);
-            let old = field.read();
-            field.write((v << TAG_SHIFT) | (old & TAG_MASK));
-        }
-    }
-
-    #[inline]
-    pub(crate) unsafe fn ptr_extend_span_end(p: *mut Self, new_end: u32) {
-        unsafe {
-            let field = std::ptr::addr_of_mut!((*p).end_and_flag);
-            let old = field.read();
-            let current = old >> FLAG_SHIFT;
-            field.write((current.max(new_end) << FLAG_SHIFT) | (old & FLAG_BIT));
+            let end_flag = &mut *std::ptr::addr_of_mut!((*ptr).end_and_flag);
+            let array = &mut *std::ptr::addr_of_mut!((*ptr).payload.array).cast::<Array<'de>>();
+            (end_flag, array)
         }
     }
 }
@@ -514,6 +521,16 @@ impl<'de> Value<'de> {
     pub(crate) unsafe fn as_table_mut_unchecked(&mut self) -> &mut Table<'de> {
         debug_assert!(self.is_table());
         unsafe { &mut self.payload.table }
+    }
+
+    /// Reinterpret this `Value` as a `SpannedTable`.
+    ///
+    /// SAFETY: The caller must ensure `self.is_table()` is true. Both types
+    /// are `#[repr(C)]` with identical layout when the payload is a table.
+    #[inline]
+    pub(crate) unsafe fn as_spanned_table_mut(&mut self) -> &mut SpannedTable<'de> {
+        debug_assert!(self.is_table());
+        unsafe { &mut *(self as *mut Value<'de> as *mut SpannedTable<'de>) }
     }
 
     /// Returns true if the value is a table and is non-empty.

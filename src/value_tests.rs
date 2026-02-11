@@ -350,18 +350,16 @@ fn set_table_replaces() {
     assert_eq!(v.span(), sp(0, 5));
 }
 
-// -- Raw pointer span helpers -----------------------------------------------
+// -- SpannedTable span helpers ----------------------------------------------
 
 #[test]
-fn ptr_span_preserves_tag() {
+fn spanned_table_set_span_preserves_tag() {
     let mut v = Value::table_header(Table::new(), sp(10, 20));
-    let p = &mut v as *mut Value<'_>;
+    let st = unsafe { v.as_spanned_table_mut() };
 
-    unsafe {
-        Value::ptr_set_span_start(p, 99);
-        assert_eq!(v.tag(), TAG_TABLE_HEADER);
-        assert_eq!(Value::ptr_raw_start(p), 99);
-    }
+    st.set_span_start(99);
+    assert_eq!(v.tag(), TAG_TABLE_HEADER);
+    assert_eq!(v.span().start(), 99);
 }
 
 // -- type_str / has_keys / has_key ------------------------------------------
