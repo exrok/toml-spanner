@@ -402,10 +402,7 @@ impl<'a> Parser<'a> {
                         ErrorKind::MultilineStringKey,
                     ));
                 }
-                Ok(Key {
-                    span,
-                    name: val,
-                })
+                Ok(Key { span, name: val })
             }
             Some(b'\'') => {
                 let start = self.cursor;
@@ -421,10 +418,7 @@ impl<'a> Parser<'a> {
                         ErrorKind::MultilineStringKey,
                     ));
                 }
-                Ok(Key {
-                    span,
-                    name: val,
-                })
+                Ok(Key { span, name: val })
             }
             Some(b) if is_keylike_byte(b) => {
                 let start = self.cursor;
@@ -572,15 +566,10 @@ impl<'a> Parser<'a> {
         multiline: bool,
         delim: u8,
     ) -> Result<(Span, Str<'a>, bool), ParseError> {
-        let mut owned = false;
+        let mut flush_from = content_start;
         loop {
             // Fast-scan past plain bytes (8 at a time via SWAR).
-            let plain_start = self.cursor;
             self.skip_string_plain(delim);
-            if owned && plain_start < self.cursor {
-                self.string_buf
-                    .extend_from_slice(&self.bytes[plain_start..self.cursor]);
-            }
 
             let i = self.cursor;
             let Some(&b) = self.bytes.get(i) else {
@@ -598,10 +587,6 @@ impl<'a> Parser<'a> {
                                 ErrorKind::InvalidCharInString('\n'),
                             ));
                         }
-                        if owned {
-                            self.string_buf.push(b'\r');
-                            self.string_buf.push(b'\n');
-                        }
                     } else {
                         return Err(self.set_error(i, None, ErrorKind::InvalidCharInString('\r')));
                     }
@@ -610,36 +595,20 @@ impl<'a> Parser<'a> {
                     if !multiline {
                         return Err(self.set_error(i, None, ErrorKind::InvalidCharInString('\n')));
                     }
-                    if owned {
-                        self.string_buf.push(b'\n');
-                    }
                 }
                 d if d == delim => {
                     if multiline {
                         if !self.eat_byte(delim) {
-                            if owned {
-                                self.string_buf.push(delim);
-                            }
                             continue;
                         }
                         if !self.eat_byte(delim) {
-                            if owned {
-                                self.string_buf.push(delim);
-                                self.string_buf.push(delim);
-                            }
                             continue;
                         }
                         let mut extra = 0usize;
                         if self.eat_byte(delim) {
-                            if owned {
-                                self.string_buf.push(delim);
-                            }
                             extra += 1;
                         }
                         if self.eat_byte(delim) {
-                            if owned {
-                                self.string_buf.push(delim);
-                            }
                             extra += 1;
                         }
 
@@ -653,7 +622,9 @@ impl<'a> Parser<'a> {
                         };
 
                         let span = Span::new((start + start_off) as u32, (self.cursor - 3) as u32);
-                        let val = if owned {
+                        let val = if flush_from != content_start {
+                            self.string_buf
+                                .extend_from_slice(&self.bytes[flush_from..i + extra]);
                             // SAFETY: string_buf contains valid UTF-8.
                             let s: &str =
                                 unsafe { std::str::from_utf8_unchecked(&self.string_buf) };
@@ -667,10 +638,11 @@ impl<'a> Parser<'a> {
                     }
 
                     let span = Span::new((start + 1) as u32, (self.cursor - 1) as u32);
-                    let val = if owned {
+                    let val = if flush_from != content_start {
+                        self.string_buf
+                            .extend_from_slice(&self.bytes[flush_from..i]);
                         // SAFETY: string_buf contains valid UTF-8.
-                        let s: &str =
-                            unsafe { std::str::from_utf8_unchecked(&self.string_buf) };
+                        let s: &str = unsafe { std::str::from_utf8_unchecked(&self.string_buf) };
                         let boxed: Box<str> = s.into();
                         self.string_buf.clear();
                         Str::from(boxed)
@@ -680,23 +652,20 @@ impl<'a> Parser<'a> {
                     return Ok((span, val, false));
                 }
                 b'\\' if delim == b'"' => {
-                    if !owned {
+                    if flush_from == content_start {
+                        // Fast path: avoid copying if there are no escapes.
                         self.string_buf.clear();
-                        self.string_buf
-                            .extend_from_slice(&self.bytes[content_start..i]);
-                        owned = true;
                     }
+                    self.string_buf
+                        .extend_from_slice(&self.bytes[flush_from..i]);
                     if let Err(e) = self.read_basic_escape(start, multiline) {
                         return Err(e);
                     }
+                    flush_from = self.cursor;
                 }
                 // Tab or backslash-in-literal-string: benign false positives
                 // from the SWAR scan.
-                0x09 | 0x20..=0x7E | 0x80.. => {
-                    if owned {
-                        self.string_buf.push(b);
-                    }
-                }
+                0x09 | 0x20..=0x7E | 0x80.. => {}
                 _ => {
                     return Err(self.set_error(i, None, ErrorKind::InvalidCharInString(b as char)));
                 }
