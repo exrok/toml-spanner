@@ -1,4 +1,4 @@
-# `toml-spanner`
+# toml-spanner
 
 This crate is a fork of `toml-span` that has diverged significantly from the
 original, with major performance improvements, a much smaller memory footprint,

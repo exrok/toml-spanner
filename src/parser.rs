@@ -10,7 +10,6 @@ use crate::{
     str::Str,
     value::{self, Key, Value},
 };
-use std::borrow::Cow;
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 use std::ptr::NonNull;
@@ -405,7 +404,7 @@ impl<'a> Parser<'a> {
                 }
                 Ok(Key {
                     span,
-                    name: Str::from(val),
+                    name: val,
                 })
             }
             Some(b'\'') => {
@@ -424,7 +423,7 @@ impl<'a> Parser<'a> {
                 }
                 Ok(Key {
                     span,
-                    name: Str::from(val),
+                    name: val,
                 })
             }
             Some(b) if is_keylike_byte(b) => {
@@ -467,7 +466,7 @@ impl<'a> Parser<'a> {
         &mut self,
         start: usize,
         delim: u8,
-    ) -> Result<(Span, Cow<'a, str>, bool), ParseError> {
+    ) -> Result<(Span, Str<'a>, bool), ParseError> {
         let mut multiline = false;
         if self.eat_byte(delim) {
             if self.eat_byte(delim) {
@@ -475,7 +474,7 @@ impl<'a> Parser<'a> {
             } else {
                 return Ok((
                     Span::new(start as u32, (start + 1) as u32),
-                    Cow::Borrowed(""),
+                    Str::from(""),
                     false,
                 ));
             }
@@ -572,7 +571,7 @@ impl<'a> Parser<'a> {
         content_start: usize,
         multiline: bool,
         delim: u8,
-    ) -> Result<(Span, Cow<'a, str>, bool), ParseError> {
+    ) -> Result<(Span, Str<'a>, bool), ParseError> {
         let mut owned = false;
         loop {
             // Fast-scan past plain bytes (8 at a time via SWAR).
@@ -655,22 +654,28 @@ impl<'a> Parser<'a> {
 
                         let span = Span::new((start + start_off) as u32, (self.cursor - 3) as u32);
                         let val = if owned {
-                            Cow::Owned(unsafe {
-                                String::from_utf8_unchecked(std::mem::take(&mut self.string_buf))
-                            })
+                            // SAFETY: string_buf contains valid UTF-8.
+                            let s: &str =
+                                unsafe { std::str::from_utf8_unchecked(&self.string_buf) };
+                            let boxed: Box<str> = s.into();
+                            self.string_buf.clear();
+                            Str::from(boxed)
                         } else {
-                            Cow::Borrowed(unsafe { self.str_slice(content_start, i + extra) })
+                            Str::from(unsafe { self.str_slice(content_start, i + extra) })
                         };
                         return Ok((span, val, true));
                     }
 
                     let span = Span::new((start + 1) as u32, (self.cursor - 1) as u32);
                     let val = if owned {
-                        Cow::Owned(unsafe {
-                            String::from_utf8_unchecked(std::mem::take(&mut self.string_buf))
-                        })
+                        // SAFETY: string_buf contains valid UTF-8.
+                        let s: &str =
+                            unsafe { std::str::from_utf8_unchecked(&self.string_buf) };
+                        let boxed: Box<str> = s.into();
+                        self.string_buf.clear();
+                        Str::from(boxed)
                     } else {
-                        Cow::Borrowed(unsafe { self.str_slice(content_start, i) })
+                        Str::from(unsafe { self.str_slice(content_start, i) })
                     };
                     return Ok((span, val, false));
                 }
@@ -1085,7 +1090,7 @@ impl<'a> Parser<'a> {
                     Ok(v) => v,
                     Err(e) => return Err(e),
                 };
-                Ok(Value::string(Str::from(val), span))
+                Ok(Value::string(val, span))
             }
             b'\'' => {
                 self.advance();
@@ -1093,7 +1098,7 @@ impl<'a> Parser<'a> {
                     Ok(v) => v,
                     Err(e) => return Err(e),
                 };
-                Ok(Value::string(Str::from(val), span))
+                Ok(Value::string(val, span))
             }
             b'{' => {
                 let start = self.cursor as u32;

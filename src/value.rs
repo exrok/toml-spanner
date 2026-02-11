@@ -77,9 +77,8 @@ impl<'de> Value<'de> {
         }
     }
 
-    /// Creates a string value.
     #[inline]
-    pub fn string(s: Str<'de>, span: Span) -> Self {
+    pub(crate) fn string(s: Str<'de>, span: Span) -> Self {
         Self::raw(
             TAG_STRING,
             span.start(),
@@ -90,9 +89,8 @@ impl<'de> Value<'de> {
         )
     }
 
-    /// Creates an integer value.
     #[inline]
-    pub fn integer(i: i64, span: Span) -> Self {
+    pub(crate) fn integer(i: i64, span: Span) -> Self {
         Self::raw(
             TAG_INTEGER,
             span.start(),
@@ -101,15 +99,13 @@ impl<'de> Value<'de> {
         )
     }
 
-    /// Creates a float value.
     #[inline]
-    pub fn float(f: f64, span: Span) -> Self {
+    pub(crate) fn float(f: f64, span: Span) -> Self {
         Self::raw(TAG_FLOAT, span.start(), span.end(), Payload { float: f })
     }
 
-    /// Creates a boolean value.
     #[inline]
-    pub fn boolean(b: bool, span: Span) -> Self {
+    pub(crate) fn boolean(b: bool, span: Span) -> Self {
         Self::raw(
             TAG_BOOLEAN,
             span.start(),
@@ -118,9 +114,8 @@ impl<'de> Value<'de> {
         )
     }
 
-    /// Creates an array value.
     #[inline]
-    pub fn array(a: Array<'de>, span: Span) -> Self {
+    pub(crate) fn array(a: Array<'de>, span: Span) -> Self {
         Self::raw(
             TAG_ARRAY,
             span.start(),
@@ -131,9 +126,8 @@ impl<'de> Value<'de> {
         )
     }
 
-    /// Creates a table value.
     #[inline]
-    pub fn table(t: Table<'de>, span: Span) -> Self {
+    pub(crate) fn table(t: Table<'de>, span: Span) -> Self {
         Self::raw(
             TAG_TABLE,
             span.start(),

@@ -15,10 +15,12 @@ mod str;
 mod table;
 mod value;
 
+pub use array::Array;
 pub use de::parse;
 pub use error::{DeserError, Error, ErrorKind};
 pub use span::{Span, Spanned};
 pub use str::Str;
+pub use table::Table;
 pub use value::{Key, Value, ValueOwned, ValueRef};
 
 #[cfg(feature = "serde")]
