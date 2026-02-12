@@ -28,7 +28,7 @@ impl From<(ErrorKind, Span)> for Error {
 }
 
 /// Errors that can occur when deserializing a type.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub enum ErrorKind {
     /// EOF was reached when looking for a value.
     UnexpectedEof,
@@ -168,6 +168,12 @@ impl Display for ErrorKind {
     }
 }
 
+impl Debug for ErrorKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        Display::fmt(self, f)
+    }
+}
+
 struct Escape(char);
 
 impl fmt::Display for Escape {
@@ -253,10 +259,31 @@ impl Display for Error {
             ErrorKind::DottedKeyInvalidType { .. } => {
                 f.write_str("dotted key attempted to extend non-table type")
             }
-            ErrorKind::UnexpectedKeys { keys, expected } => write!(
-                f,
-                "unexpected keys in table: `{keys:?}`\nexpected: {expected:?}"
-            ),
+            ErrorKind::UnexpectedKeys { keys, expected } => {
+                rtry!(f.write_str("unexpected keys in table: ["));
+                let mut first = true;
+                for (key, _) in keys {
+                    if !first {
+                        rtry!(f.write_str(", "));
+                    }
+                    first = false;
+                    rtry!(f.write_str("\""));
+                    rtry!(f.write_str(key));
+                    rtry!(f.write_str("\""));
+                }
+                rtry!(f.write_str("]\nexpected: ["));
+                let mut first = true;
+                for key in expected {
+                    if !first {
+                        rtry!(f.write_str(", "));
+                    }
+                    first = false;
+                    rtry!(f.write_str("\""));
+                    rtry!(f.write_str(key));
+                    rtry!(f.write_str("\""));
+                }
+                f.write_str("]")
+            }
             ErrorKind::UnquotedString => {
                 f.write_str("invalid TOML value, did you mean to use a quoted string?")
             }
@@ -273,7 +300,16 @@ impl Display for Error {
                 f.write_str("' has replaced it")
             }
             ErrorKind::UnexpectedValue { expected, .. } => {
-                write!(f, "expected '{expected:?}'")
+                rtry!(f.write_str("expected '["));
+                let mut first = true;
+                for val in *expected {
+                    if !first {
+                        rtry!(f.write_str(", "));
+                    }
+                    first = false;
+                    rtry!(f.write_str(val));
+                }
+                f.write_str("]'")
             }
         }
     }
