@@ -8,7 +8,8 @@ fuzz_target!(|data: &[u8]| {
         return;
     };
 
-    let spanner_result = toml_spanner::parse(text);
+    let arena = toml_spanner::Arena::new();
+    let spanner_result = toml_spanner::parse(text, &arena);
     // Parse as a Table (full TOML document), not Value, since Value::from_str
     // can interpret top-level constructs like [[header]] as inline arrays.
     // The toml crate has internal panics on some inputs (e.g. assertion

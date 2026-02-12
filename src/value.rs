@@ -5,7 +5,7 @@
 use crate::str::Str;
 use crate::{Error, ErrorKind, Span};
 use std::mem::ManuallyDrop;
-use std::{fmt, ptr};
+use std::fmt;
 
 /// A toml array
 pub use crate::array::Array;
@@ -29,7 +29,7 @@ pub(crate) const FLAG_SHIFT: u32 = 1;
 
 #[repr(C)]
 union Payload<'de> {
-    string: ManuallyDrop<Str<'de>>,
+    string: Str<'de>,
     integer: i64,
     float: f64,
     boolean: bool,
@@ -111,9 +111,7 @@ impl<'de> Value<'de> {
             TAG_STRING,
             span.start(),
             span.end(),
-            Payload {
-                string: ManuallyDrop::new(s),
-            },
+            Payload { string: s },
         )
     }
 
@@ -399,12 +397,12 @@ impl<'de> Value<'de> {
         let me = ManuallyDrop::new(self);
         unsafe {
             match tag {
-                TAG_STRING => ValueOwned::String(ptr::read(&*me.payload.string)),
+                TAG_STRING => ValueOwned::String(me.payload.string),
                 TAG_INTEGER => ValueOwned::Integer(me.payload.integer),
                 TAG_FLOAT => ValueOwned::Float(me.payload.float),
                 TAG_BOOLEAN => ValueOwned::Boolean(me.payload.boolean),
-                TAG_ARRAY => ValueOwned::Array(ptr::read(&*me.payload.array)),
-                _ => ValueOwned::Table(ptr::read(&*me.payload.table)),
+                TAG_ARRAY => ValueOwned::Array(std::ptr::read(&*me.payload.array)),
+                _ => ValueOwned::Table(std::ptr::read(&*me.payload.table)),
             }
         }
     }
@@ -559,7 +557,6 @@ impl<'de> Value<'de> {
 impl Drop for Value<'_> {
     fn drop(&mut self) {
         match self.tag() {
-            TAG_STRING => unsafe { ManuallyDrop::drop(&mut self.payload.string) },
             TAG_ARRAY => unsafe { ManuallyDrop::drop(&mut self.payload.array) },
             TAG_TABLE | TAG_TABLE_HEADER | TAG_TABLE_DOTTED => unsafe {
                 ManuallyDrop::drop(&mut self.payload.table);
@@ -616,10 +613,9 @@ impl serde::Serialize for Value<'_> {
 }
 
 /// A toml table key
-#[derive(Clone)]
+#[derive(Copy, Clone)]
 pub struct Key<'de> {
-    /// The key itself, in most cases it will be borrowed, but may be owned
-    /// if escape characters are present in the original source
+    /// The key name, borrowed from the TOML source or the parser arena
     pub name: Str<'de>,
     /// The span for the key in the original document
     pub span: Span,

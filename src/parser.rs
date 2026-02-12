@@ -6,6 +6,7 @@
 
 use crate::{
     Span,
+    arena::Arena,
     error::{Error, ErrorKind},
     str::Str,
     value::{self, Key, SpannedTable, Value},
@@ -19,12 +20,12 @@ use std::{char, collections::HashMap};
 #[derive(Copy, Clone)]
 struct ParseError;
 
-struct Ctx<'b, 'a> {
+struct Ctx<'b, 'de> {
     /// The current table context — a `SpannedTable` view into a table `Value`.
     /// Gives direct mutable access to both the span fields and the `Table` payload.
-    st: &'b mut SpannedTable<'a>,
+    st: &'b mut SpannedTable<'de>,
     /// If this table is an entry in an array-of-tables, a disjoint borrow of
-    /// the parent array Value's `end_and_flag` field so its span can be
+    /// the parent array Value'arena `end_and_flag` field so its span can be
     /// extended alongside the entry.
     array_end_span: Option<&'b mut u32>,
 }
@@ -51,10 +52,9 @@ static HEX: [i8; 256] = build_hex_table();
 
 /// Hash-map key that identifies a (table, key-name) pair without owning the
 /// string data.  The raw `key_ptr`/`len` point into either the input buffer
-/// (borrowed `Str`) or the heap allocation of an owned `Str`; both are stable
-/// for the lifetime of the parse.  `first_key_span` is the `span.start()` of
-/// the **first** key ever inserted into the table and serves as a cheap,
-/// collision-free table discriminator.
+/// or the arena; both are stable for the lifetime of the parse.
+/// `first_key_span` is the `span.start()` of the **first** key ever inserted
+/// into the table and serves as a cheap, collision-free table discriminator.
 struct KeyIndex {
     key_ptr: NonNull<u8>,
     len: u32,
@@ -90,10 +90,11 @@ impl PartialEq for KeyIndex {
 
 impl Eq for KeyIndex {}
 
-struct Parser<'a> {
+struct Parser<'de> {
     /// Raw bytes of the input. Always valid UTF-8 (derived from `&str`).
-    bytes: &'a [u8],
+    bytes: &'de [u8],
     cursor: usize,
+    arena: &'de Arena,
 
     // Error context -- populated just before returning ParseError
     error_span: Span,
@@ -104,83 +105,13 @@ struct Parser<'a> {
     table_index: foldhash::HashMap<KeyIndex, usize>,
 }
 
-// A string with span, that might borrowed from the input or scratch buffer
-// High bit set on u64: (from buffer, (needs allocation to convert to Str<'a> or Key<'a>))
-// No high bit set on u64: (from scratch, already owned Str<'a> or Key<'a>)
-#[derive(Clone, Copy)]
-struct RawStr<'de, 's> {
-    ptr: NonNull<u8>,
-    len_and_tag: u64,
-    pub span: Span,
-    _marker: std::marker::PhantomData<(&'de str, &'s [u8])>,
-}
-
-impl<'de, 's> RawStr<'de, 's> {
-    pub fn len(&self) -> usize {
-        (self.len_and_tag & 0x7fff_ffff_ffff_ffff) as usize
-    }
-
-    /// SAFETY: `scratch` must contain valid UTF-8.
-    pub unsafe fn from_scratch(scratch: &'s [u8], span: Span) -> RawStr<'de, 's> {
-        unsafe {
-            RawStr {
-                ptr: NonNull::new_unchecked(scratch.as_ptr() as *mut u8),
-                len_and_tag: scratch.len() as u64,
-                span,
-                _marker: std::marker::PhantomData,
-            }
-        }
-    }
-
-    pub fn from_input(input: &'de str, span: Span) -> RawStr<'de, 's> {
-        unsafe {
-            RawStr {
-                ptr: NonNull::new_unchecked(input.as_ptr() as *mut u8),
-                len_and_tag: input.len() as u64 | 0x8000_0000_0000_0000,
-                span,
-                _marker: std::marker::PhantomData,
-            }
-        }
-    }
-
-    #[inline]
-    fn as_str(&self) -> &str {
-        unsafe {
-            std::str::from_utf8_unchecked(std::slice::from_raw_parts(self.ptr.as_ptr(), self.len()))
-        }
-    }
-}
-impl<'de, 's> From<RawStr<'de, 's>> for Key<'de> {
-    fn from(raw: RawStr<'de, 's>) -> Self {
-        Key {
-            span: raw.span,
-            name: raw.into(),
-        }
-    }
-}
-impl<'de, 's> From<RawStr<'de, 's>> for Str<'de> {
-    fn from(raw: RawStr<'de, 's>) -> Self {
-        let len = raw.len();
-        let s = unsafe {
-            std::str::from_utf8_unchecked(std::slice::from_raw_parts(raw.ptr.as_ptr(), len))
-        };
-        if (raw.len_and_tag as i64) < 0 {
-            // From input buffer: borrow directly
-            Str::from(s)
-        } else {
-            // From scratch buffer: allocate owned copy
-            let boxed: Box<str> = s.into();
-            Str::from(boxed)
-        }
-    }
-}
-
 #[allow(unsafe_code)]
-impl<'a> Parser<'a> {
-    fn new(input: &'a str) -> Self {
+impl<'de> Parser<'de> {
+    fn new(input: &'de str, arena: &'de Arena) -> Self {
         Parser {
             bytes: input.as_bytes(),
             cursor: 0,
+            arena,
             error_span: Span::new(0, 0),
             error_kind: None,
             table_index: HashMap::default(),
@@ -191,7 +122,7 @@ impl<'a> Parser<'a> {
     /// SAFETY: `self.bytes` is always valid UTF-8, and callers must ensure
     /// `start..end` falls on UTF-8 char boundaries.
     #[inline]
-    unsafe fn str_slice(&self, start: usize, end: usize) -> &'a str {
+    unsafe fn str_slice(&self, start: usize, end: usize) -> &'de str {
         #[cfg(not(debug_assertions))]
         unsafe {
             std::str::from_utf8_unchecked(&self.bytes[start..end])
@@ -418,7 +349,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn read_keylike(&mut self) -> &'a str {
+    fn read_keylike(&mut self) -> &'de str {
         let start = self.cursor;
         while let Some(b) = self.peek_byte() {
             if !is_keylike_byte(b) {
@@ -430,22 +361,19 @@ impl<'a> Parser<'a> {
         unsafe { self.str_slice(start, self.cursor) }
     }
 
-    fn read_table_key<'s>(
-        &mut self,
-        scratch: &'s mut Vec<u8>,
-    ) -> Result<RawStr<'a, 's>, ParseError> {
+    fn read_table_key(&mut self) -> Result<Key<'de>, ParseError> {
         match self.peek_byte() {
             Some(b'"') => {
                 let start = self.cursor;
                 self.advance();
-                let (key, multiline) = match self.read_string(scratch, start, b'"') {
+                let (key, multiline) = match self.read_string(start, b'"') {
                     Ok(v) => v,
                     Err(e) => return Err(e),
                 };
                 if multiline {
                     return Err(self.set_error(
                         start,
-                        Some(start + key.len()),
+                        Some(key.span.end() as usize),
                         ErrorKind::MultilineStringKey,
                     ));
                 }
@@ -454,14 +382,14 @@ impl<'a> Parser<'a> {
             Some(b'\'') => {
                 let start = self.cursor;
                 self.advance();
-                let (key, multiline) = match self.read_string(scratch, start, b'\'') {
+                let (key, multiline) = match self.read_string(start, b'\'') {
                     Ok(v) => v,
                     Err(e) => return Err(e),
                 };
                 if multiline {
                     return Err(self.set_error(
                         start,
-                        Some(start + key.len()),
+                        Some(key.span.end() as usize),
                         ErrorKind::MultilineStringKey,
                     ));
                 }
@@ -471,7 +399,7 @@ impl<'a> Parser<'a> {
                 let start = self.cursor;
                 let k = self.read_keylike();
                 let span = Span::new(start as u32, self.cursor as u32);
-                Ok(RawStr::from_input(k, span))
+                Ok(Key { name: Str::from(k), span })
             }
             Some(_) => {
                 let start = self.cursor;
@@ -498,19 +426,21 @@ impl<'a> Parser<'a> {
 
     /// Read a basic (double-quoted) string. `start` is the byte offset of the
     /// opening quote. The cursor should be positioned right after the opening `"`.
-    fn read_string<'s>(
+    fn read_string(
         &mut self,
-        scratch: &'s mut Vec<u8>,
         start: usize,
         delim: u8,
-    ) -> Result<(RawStr<'a, 's>, bool), ParseError> {
+    ) -> Result<(Key<'de>, bool), ParseError> {
         let mut multiline = false;
         if self.eat_byte(delim) {
             if self.eat_byte(delim) {
                 multiline = true;
             } else {
                 return Ok((
-                    RawStr::from_input("", Span::new(start as u32, (start + 1) as u32)),
+                    Key {
+                        name: Str::from(""),
+                        span: Span::new(start as u32, (start + 1) as u32),
+                    },
                     false,
                 ));
             }
@@ -531,7 +461,7 @@ impl<'a> Parser<'a> {
             }
         }
 
-        self.read_string_loop(scratch, start, content_start, multiline, delim)
+        self.read_string_loop(start, content_start, multiline, delim)
     }
 
     /// Advance `self.cursor` past bytes that do not require special handling
@@ -601,15 +531,15 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn read_string_loop<'s>(
+    fn read_string_loop(
         &mut self,
-        scratch: &'s mut Vec<u8>,
         start: usize,
         content_start: usize,
         multiline: bool,
         delim: u8,
-    ) -> Result<(RawStr<'a, 's>, bool), ParseError> {
+    ) -> Result<(Key<'de>, bool), ParseError> {
         let mut flush_from = content_start;
+        let mut scratch: Option<crate::arena::Scratch<'de>> = None;
         loop {
             self.skip_string_plain(delim);
 
@@ -664,18 +594,26 @@ impl<'a> Parser<'a> {
                         };
 
                         let span = Span::new((start + start_off) as u32, (self.cursor - 3) as u32);
-                        if flush_from != content_start {
-                            scratch.extend_from_slice(&self.bytes[flush_from..i + extra]);
-                            unsafe {
-                                return Ok((RawStr::from_scratch(&*scratch, span), true));
-                            }
+                        if let Some(mut s) = scratch {
+                            s.extend(&self.bytes[flush_from..i + extra]);
+                            let committed = s.commit();
+                            // Safety: scratch contents are valid UTF-8 (built from
+                            // validated input and well-formed escape sequences).
+                            let str_ref =
+                                unsafe { std::str::from_utf8_unchecked(committed) };
+                            return Ok((
+                                Key { name: Str::from(str_ref), span },
+                                true,
+                            ));
                         } else {
                             unsafe {
                                 return Ok((
-                                    RawStr::from_input(
-                                        self.str_slice(content_start, i + extra),
+                                    Key {
+                                        name: Str::from(
+                                            self.str_slice(content_start, i + extra),
+                                        ),
                                         span,
-                                    ),
+                                    },
                                     true,
                                 ));
                             }
@@ -683,26 +621,32 @@ impl<'a> Parser<'a> {
                     }
 
                     let span = Span::new((start + 1) as u32, (self.cursor - 1) as u32);
-                    if flush_from != content_start {
-                        scratch.extend_from_slice(&self.bytes[flush_from..i]);
-                        unsafe {
-                            return Ok((RawStr::from_scratch(&*scratch, span), false));
-                        }
+                    if let Some(mut s) = scratch {
+                        s.extend(&self.bytes[flush_from..i]);
+                        let committed = s.commit();
+                        // Safety: scratch contents are valid UTF-8.
+                        let str_ref = unsafe { std::str::from_utf8_unchecked(committed) };
+                        return Ok((
+                            Key { name: Str::from(str_ref), span },
+                            false,
+                        ));
                     } else {
                         unsafe {
                             return Ok((
-                                RawStr::from_input(self.str_slice(content_start, i), span),
+                                Key {
+                                    name: Str::from(self.str_slice(content_start, i)),
+                                    span,
+                                },
                                 false,
                             ));
                         }
                     };
                 }
                 b'\\' if delim == b'"' => {
-                    if flush_from == content_start {
-                        scratch.clear();
-                    }
-                    scratch.extend_from_slice(&self.bytes[flush_from..i]);
-                    if let Err(e) = self.read_basic_escape(scratch, start, multiline) {
+                    let arena = self.arena;
+                    let s = scratch.get_or_insert_with(|| unsafe { arena.scratch() });
+                    s.extend(&self.bytes[flush_from..i]);
+                    if let Err(e) = self.read_basic_escape(s, start, multiline) {
                         return Err(e);
                     }
                     flush_from = self.cursor;
@@ -719,7 +663,7 @@ impl<'a> Parser<'a> {
 
     fn read_basic_escape(
         &mut self,
-        scratch: &mut Vec<u8>,
+        scratch: &mut crate::arena::Scratch<'_>,
         string_start: usize,
         multi: bool,
     ) -> Result<(), ParseError> {
@@ -744,7 +688,7 @@ impl<'a> Parser<'a> {
                     Ok(ch) => {
                         let mut buf = [0u8; 4];
                         let len = ch.encode_utf8(&mut buf).len();
-                        scratch.extend_from_slice(&buf[..len]);
+                        scratch.extend(&buf[..len]);
                     }
                     Err(e) => return Err(e),
                 }
@@ -755,7 +699,7 @@ impl<'a> Parser<'a> {
                     Ok(ch) => {
                         let mut buf = [0u8; 4];
                         let len = ch.encode_utf8(&mut buf).len();
-                        scratch.extend_from_slice(&buf[..len]);
+                        scratch.extend(&buf[..len]);
                     }
                     Err(e) => return Err(e),
                 }
@@ -766,7 +710,7 @@ impl<'a> Parser<'a> {
                     Ok(ch) => {
                         let mut buf = [0u8; 4];
                         let len = ch.encode_utf8(&mut buf).len();
-                        scratch.extend_from_slice(&buf[..len]);
+                        scratch.extend(&buf[..len]);
                     }
                     Err(e) => return Err(e),
                 }
@@ -866,11 +810,10 @@ impl<'a> Parser<'a> {
 
     fn number(
         &mut self,
-        scratch: &mut Vec<u8>,
         start: u32,
         end: u32,
-        s: &'a str,
-    ) -> Result<Value<'a>, ParseError> {
+        s: &'de str,
+    ) -> Result<Value<'de>, ParseError> {
         let bytes = s.as_bytes();
 
         // Base-prefixed integers (0x, 0o, 0b).
@@ -889,7 +832,7 @@ impl<'a> Parser<'a> {
             return match self.peek_byte() {
                 Some(b) if is_keylike_byte(b) => {
                     let after = self.read_keylike();
-                    match self.float(scratch, start, end, s, Some(after)) {
+                    match self.float(start, end, s, Some(after)) {
                         Ok(f) => Ok(Value::float(f, Span::new(start, self.cursor as u32))),
                         Err(e) => Err(e),
                     }
@@ -921,7 +864,7 @@ impl<'a> Parser<'a> {
         }
 
         if bytes.iter().any(|&b| b == b'e' || b == b'E') {
-            return match self.float(scratch, start, end, s, None) {
+            return match self.float(start, end, s, None) {
                 Ok(f) => Ok(Value::float(f, Span::new(start, self.cursor as u32))),
                 Err(e) => Err(e),
             };
@@ -932,14 +875,13 @@ impl<'a> Parser<'a> {
 
     fn number_leading_plus(
         &mut self,
-        scratch: &mut Vec<u8>,
         plus_start: u32,
-    ) -> Result<Value<'a>, ParseError> {
+    ) -> Result<Value<'de>, ParseError> {
         match self.peek_byte() {
             Some(b) if is_keylike_byte(b) => {
                 let s = self.read_keylike();
                 let end = self.cursor as u32;
-                self.number(scratch, plus_start, end, s)
+                self.number(plus_start, end, s)
             }
             _ => Err(self.set_error(
                 plus_start as usize,
@@ -949,7 +891,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn integer_decimal(&mut self, bytes: &'a [u8], span: Span) -> Result<Value<'a>, ParseError> {
+    fn integer_decimal(&mut self, bytes: &'de [u8], span: Span) -> Result<Value<'de>, ParseError> {
         let mut acc: u64 = 0;
         let mut prev_underscore = false;
         let mut has_digit = false;
@@ -1016,7 +958,7 @@ impl<'a> Parser<'a> {
         Err(ParseError)
     }
 
-    fn integer_hex(&mut self, bytes: &'a [u8], span: Span) -> Result<Value<'a>, ParseError> {
+    fn integer_hex(&mut self, bytes: &'de [u8], span: Span) -> Result<Value<'de>, ParseError> {
         let mut acc: u64 = 0;
         let mut prev_underscore = false;
         let mut has_digit = false;
@@ -1059,7 +1001,7 @@ impl<'a> Parser<'a> {
         return Err(ParseError);
     }
 
-    fn integer_octal(&mut self, bytes: &'a [u8], span: Span) -> Result<Value<'a>, ParseError> {
+    fn integer_octal(&mut self, bytes: &'de [u8], span: Span) -> Result<Value<'de>, ParseError> {
         let mut acc: u64 = 0;
         let mut prev_underscore = false;
         let mut has_digit = false;
@@ -1101,7 +1043,7 @@ impl<'a> Parser<'a> {
         Err(ParseError)
     }
 
-    fn integer_binary(&mut self, bytes: &'a [u8], span: Span) -> Result<Value<'a>, ParseError> {
+    fn integer_binary(&mut self, bytes: &'de [u8], span: Span) -> Result<Value<'de>, ParseError> {
         let mut acc: u64 = 0;
         let mut prev_underscore = false;
         let mut has_digit = false;
@@ -1145,11 +1087,10 @@ impl<'a> Parser<'a> {
 
     fn float(
         &mut self,
-        scratch: &mut Vec<u8>,
         start: u32,
         end: u32,
-        s: &'a str,
-        after_decimal: Option<&'a str>,
+        s: &'de str,
+        after_decimal: Option<&'de str>,
     ) -> Result<f64, ParseError> {
         let s_start = start as usize;
         let s_end = end as usize;
@@ -1164,7 +1105,8 @@ impl<'a> Parser<'a> {
             return Err(self.set_error(s_start, Some(s_end), ErrorKind::InvalidNumber));
         }
 
-        scratch.clear();
+        // Safety: no other Scratch or arena.alloc() is active during float parsing.
+        let mut scratch = unsafe { self.arena.scratch() };
 
         for &b in s.as_bytes() {
             if b != b'_' {
@@ -1207,12 +1149,19 @@ impl<'a> Parser<'a> {
             }
         }
 
-        let n: f64 = match unsafe { std::str::from_utf8_unchecked(scratch) }.parse() {
-            Ok(n) => n,
-            Err(_) => {
-                return Err(self.set_error(s_start, Some(s_end), ErrorKind::InvalidNumber));
-            }
-        };
+        // Scratch is not committed — arena pointer stays unchanged, space is
+        // reused by subsequent allocations.
+        let n: f64 =
+            match unsafe { std::str::from_utf8_unchecked(scratch.as_bytes()) }.parse() {
+                Ok(n) => n,
+                Err(_) => {
+                    return Err(self.set_error(
+                        s_start,
+                        Some(s_end),
+                        ErrorKind::InvalidNumber,
+                    ));
+                }
+            };
         if n.is_finite() {
             Ok(n)
         } else {
@@ -1220,7 +1169,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn value(&mut self, scratch: &mut Vec<u8>) -> Result<Value<'a>, ParseError> {
+    fn value(&mut self) -> Result<Value<'de>, ParseError> {
         let at = self.cursor;
         let Some(byte) = self.peek_byte() else {
             return Err(self.set_error(self.bytes.len(), None, ErrorKind::UnexpectedEof));
@@ -1228,25 +1177,25 @@ impl<'a> Parser<'a> {
         match byte {
             b'"' => {
                 self.advance();
-                let (raw, _multiline) = match self.read_string(scratch, self.cursor - 1, b'"') {
+                let (key, _multiline) = match self.read_string(self.cursor - 1, b'"') {
                     Ok(v) => v,
                     Err(e) => return Err(e),
                 };
-                Ok(Value::string(raw.into(), raw.span))
+                Ok(Value::string(key.name, key.span))
             }
             b'\'' => {
                 self.advance();
-                let (raw, _multiline) = match self.read_string(scratch, self.cursor - 1, b'\'') {
+                let (key, _multiline) = match self.read_string(self.cursor - 1, b'\'') {
                     Ok(v) => v,
                     Err(e) => return Err(e),
                 };
-                Ok(Value::string(raw.into(), raw.span))
+                Ok(Value::string(key.name, key.span))
             }
             b'{' => {
                 let start = self.cursor as u32;
                 self.advance();
                 let mut table = value::Table::new();
-                let end_span = match self.inline_table_contents(scratch, &mut table) {
+                let end_span = match self.inline_table_contents(&mut table) {
                     Ok(v) => v,
                     Err(e) => return Err(e),
                 };
@@ -1256,7 +1205,7 @@ impl<'a> Parser<'a> {
                 let start = self.cursor as u32;
                 self.advance();
                 let mut arr = value::Array::new();
-                let end_span = match self.array_contents(scratch, &mut arr) {
+                let end_span = match self.array_contents(&mut arr) {
                     Ok(v) => v,
                     Err(e) => return Err(e),
                 };
@@ -1265,7 +1214,7 @@ impl<'a> Parser<'a> {
             b'+' => {
                 let start = self.cursor as u32;
                 self.advance();
-                self.number_leading_plus(scratch, start)
+                self.number_leading_plus(start)
             }
             b if is_keylike_byte(b) => {
                 let start = self.cursor as u32;
@@ -1276,11 +1225,11 @@ impl<'a> Parser<'a> {
                 match key {
                     "true" => Ok(Value::boolean(true, span)),
                     "false" => Ok(Value::boolean(false, span)),
-                    "inf" | "nan" => self.number(scratch, start, end, key),
+                    "inf" | "nan" => self.number(start, end, key),
                     _ => {
                         let first_char = key.chars().next().expect("key should not be empty");
                         match first_char {
-                            '-' | '0'..='9' => self.number(scratch, start, end, key),
+                            '-' | '0'..='9' => self.number(start, end, key),
                             _ => Err(self.set_error(
                                 at,
                                 Some(end as usize),
@@ -1306,8 +1255,7 @@ impl<'a> Parser<'a> {
 
     fn inline_table_contents(
         &mut self,
-        scratch: &mut Vec<u8>,
-        out: &mut value::Table<'a>,
+        out: &mut value::Table<'de>,
     ) -> Result<Span, ParseError> {
         if let Err(e) = self.eat_inline_table_whitespace() {
             return Err(e);
@@ -1316,8 +1264,8 @@ impl<'a> Parser<'a> {
             return Ok(span);
         }
         loop {
-            let mut table_ref: &mut value::Table<'a> = &mut *out;
-            let mut key = match self.read_table_key(scratch) {
+            let mut table_ref: &mut value::Table<'de> = &mut *out;
+            let mut key = match self.read_table_key() {
                 Ok(k) => k,
                 Err(e) => return Err(e),
             };
@@ -1332,7 +1280,7 @@ impl<'a> Parser<'a> {
                     Ok(t) => t,
                     Err(e) => return Err(e),
                 };
-                key = match self.read_table_key(scratch) {
+                key = match self.read_table_key() {
                     Ok(k) => k,
                     Err(e) => return Err(e),
                 };
@@ -1347,8 +1295,7 @@ impl<'a> Parser<'a> {
                 return Err(e);
             }
             {
-                let key: Key<'a> = key.into();
-                let val = match self.value(scratch) {
+                let val = match self.value() {
                     Ok(v) => v,
                     Err(e) => return Err(e),
                 };
@@ -1377,8 +1324,7 @@ impl<'a> Parser<'a> {
 
     fn array_contents(
         &mut self,
-        scratch: &mut Vec<u8>,
-        out: &mut value::Array<'a>,
+        out: &mut value::Array<'de>,
     ) -> Result<Span, ParseError> {
         loop {
             if let Err(e) = self.eat_intermediate() {
@@ -1387,7 +1333,7 @@ impl<'a> Parser<'a> {
             if let Some(span) = self.eat_byte_spanned(b']') {
                 return Ok(span);
             }
-            let val = match self.value(scratch) {
+            let val = match self.value() {
                 Ok(v) => v,
                 Err(e) => return Err(e),
             };
@@ -1440,10 +1386,10 @@ impl<'a> Parser<'a> {
     /// New tables are created with the `DOTTED` tag.
     fn navigate_dotted_key<'t>(
         &mut self,
-        table: &'t mut value::Table<'a>,
-        key: RawStr<'a, '_>,
-    ) -> Result<&'t mut value::Table<'a>, ParseError> {
-        if let Some(idx) = self.indexed_find(table, key.as_str()) {
+        table: &'t mut value::Table<'de>,
+        key: Key<'de>,
+    ) -> Result<&'t mut value::Table<'de>, ParseError> {
+        if let Some(idx) = self.indexed_find(table, &key.name) {
             // Safety: Indexed find guarantee index exists.
             let (existing_key, value) = unsafe { table.get_mut_unchecked(idx) };
             let ok = value.is_table() && !value.is_frozen() && !value.has_header_bit();
@@ -1460,10 +1406,11 @@ impl<'a> Parser<'a> {
             // Safety: check above ensures value is table
             unsafe { Ok(value.as_table_mut_unchecked()) }
         } else {
+            let span = key.span;
             let inserted = self.insert_into_table(
                 table,
                 key,
-                Value::table_dotted(value::Table::new(), key.span),
+                Value::table_dotted(value::Table::new(), span),
             );
             unsafe { Ok(inserted.as_table_mut_unchecked()) }
         }
@@ -1476,12 +1423,12 @@ impl<'a> Parser<'a> {
     /// Returns a `SpannedTable` view of the table navigated into.
     fn navigate_header_intermediate<'b>(
         &mut self,
-        st: &'b mut SpannedTable<'a>,
-        key: RawStr<'a, '_>,
-    ) -> Result<&'b mut SpannedTable<'a>, ParseError> {
+        st: &'b mut SpannedTable<'de>,
+        key: Key<'de>,
+    ) -> Result<&'b mut SpannedTable<'de>, ParseError> {
         let table = &mut *st.value;
 
-        if let Some(idx) = self.indexed_find(table, key.as_str()) {
+        if let Some(idx) = self.indexed_find(table, &key.name) {
             let (existing_key, existing_val) = table.get_key_value_at(idx);
             let first_key_span = existing_key.span;
             let is_table = existing_val.is_table();
@@ -1494,7 +1441,7 @@ impl<'a> Parser<'a> {
                     return Err(self.set_duplicate_key_error(
                         first_key_span,
                         key.span,
-                        key.as_str(),
+                        &key.name,
                     ));
                 }
                 let existing = table.get_mut_at(idx);
@@ -1507,31 +1454,27 @@ impl<'a> Parser<'a> {
                     return Err(self.set_duplicate_key_error(
                         first_key_span,
                         key.span,
-                        key.as_str(),
+                        &key.name,
                     ));
                 }
                 unsafe { Ok(last.as_spanned_table_mut_unchecked()) }
             } else {
-                return Err(self.set_duplicate_key_error(first_key_span, key.span, key.as_str()));
+                return Err(self.set_duplicate_key_error(first_key_span, key.span, &key.name));
             }
         } else {
+            let span = key.span;
             let inserted =
-                self.insert_into_table(table, key, Value::table(value::Table::new(), key.span));
-            // let new_val = Value::table(value::Table::new(), key.span);
-            // table.insert(key.into(), new_val);
-            // self.index_after_insert(table);
-            // let last_idx = table.len() - 1;
-            // let inserted = table.get_mut_at(last_idx);
+                self.insert_into_table(table, key, Value::table(value::Table::new(), span));
             unsafe { Ok(inserted.as_spanned_table_mut_unchecked()) }
         }
     }
     fn insert_into_table<'t>(
         &mut self,
-        table: &'t mut value::Table<'a>,
-        key: RawStr<'a, '_>,
-        value: Value<'a>,
-    ) -> &'t mut value::Value<'a> {
-        table.insert(key.into(), value);
+        table: &'t mut value::Table<'de>,
+        key: Key<'de>,
+        value: Value<'de>,
+    ) -> &'t mut value::Value<'de> {
+        table.insert(key, value);
         self.index_after_insert(table);
         let last_idx = table.len() - 1;
         table.get_mut_at(last_idx)
@@ -1543,14 +1486,14 @@ impl<'a> Parser<'a> {
     /// should be inserted into.
     fn navigate_header_table_final<'b>(
         &mut self,
-        st: &'b mut SpannedTable<'a>,
-        key: RawStr<'a, '_>,
+        st: &'b mut SpannedTable<'de>,
+        key: Key<'de>,
         header_start: u32,
         header_end: u32,
-    ) -> Result<Ctx<'b, 'a>, ParseError> {
+    ) -> Result<Ctx<'b, 'de>, ParseError> {
         let table = &mut *st.value;
 
-        if let Some(idx) = self.indexed_find(table, key.as_str()) {
+        if let Some(idx) = self.indexed_find(table, &key.name) {
             let (existing_key, existing_val) = table.get_key_value_at(idx);
             let first_key_span = existing_key.span;
             let is_table = existing_val.is_table();
@@ -1560,20 +1503,20 @@ impl<'a> Parser<'a> {
             let val_span = existing_val.span();
 
             if !is_table || is_frozen {
-                return Err(self.set_duplicate_key_error(first_key_span, key.span, key.as_str()));
+                return Err(self.set_duplicate_key_error(first_key_span, key.span, &key.name));
             }
             if has_header {
                 return Err(self.set_error(
                     header_start as usize,
                     Some(header_end as usize),
                     ErrorKind::DuplicateTable {
-                        name: key.as_str().to_string(),
+                        name: String::from(&*key.name),
                         first: val_span,
                     },
                 ));
             }
             if has_dotted {
-                return Err(self.set_duplicate_key_error(first_key_span, key.span, key.as_str()));
+                return Err(self.set_duplicate_key_error(first_key_span, key.span, &key.name));
             }
             let existing = table.get_mut_at(idx);
             let st = unsafe { existing.as_spanned_table_mut_unchecked() };
@@ -1603,14 +1546,14 @@ impl<'a> Parser<'a> {
     /// pairs should be inserted into.
     fn navigate_header_array_final<'b>(
         &mut self,
-        st: &'b mut SpannedTable<'a>,
-        key: RawStr<'a, '_>,
+        st: &'b mut SpannedTable<'de>,
+        key: Key<'de>,
         header_start: u32,
         header_end: u32,
-    ) -> Result<Ctx<'b, 'a>, ParseError> {
+    ) -> Result<Ctx<'b, 'de>, ParseError> {
         let table = &mut *st.value;
 
-        if let Some(idx) = self.indexed_find(table, key.as_str()) {
+        if let Some(idx) = self.indexed_find(table, &key.name) {
             let (existing_key, existing_val) = table.get_key_value_at(idx);
             let first_key_span = existing_key.span;
             let is_aot = existing_val.is_aot();
@@ -1633,7 +1576,7 @@ impl<'a> Parser<'a> {
                     ErrorKind::RedefineAsArray,
                 ))
             } else {
-                return Err(self.set_duplicate_key_error(first_key_span, key.span, key.as_str()));
+                return Err(self.set_duplicate_key_error(first_key_span, key.span, &key.name));
             }
         } else {
             let entry_span = Span::new(header_start, header_end);
@@ -1653,9 +1596,9 @@ impl<'a> Parser<'a> {
     /// Insert a value into a table, checking for duplicates.
     fn insert_value(
         &mut self,
-        table: &mut value::Table<'a>,
-        key: Key<'a>,
-        val: Value<'a>,
+        table: &mut value::Table<'de>,
+        key: Key<'de>,
+        val: Value<'de>,
     ) -> Result<(), ParseError> {
         if let Some(idx) = self.indexed_find(table, &key.name) {
             let (existing_key, _) = table.get_key_value_at(idx);
@@ -1670,7 +1613,7 @@ impl<'a> Parser<'a> {
     /// Look up a key name in a table, returning its entry index.
     /// Uses the hash index for tables at or above the threshold, otherwise
     /// falls back to a linear scan.
-    fn indexed_find(&self, table: &value::Table<'a>, name: &str) -> Option<usize> {
+    fn indexed_find(&self, table: &value::Table<'de>, name: &str) -> Option<usize> {
         // NOTE: I would return a refernce to actual entry here, however this
         // runs into all sorts of NLL limitations.
         if table.len() >= INDEXED_TABLE_THRESHOLD {
@@ -1690,7 +1633,7 @@ impl<'a> Parser<'a> {
 
     /// After inserting an entry into a table, update the hash index if the
     /// table has reached or exceeded the indexing threshold.
-    fn index_after_insert(&mut self, table: &value::Table<'a>) {
+    fn index_after_insert(&mut self, table: &value::Table<'de>) {
         let len = table.len();
         if len >= INDEXED_TABLE_THRESHOLD {
             if len == INDEXED_TABLE_THRESHOLD {
@@ -1703,7 +1646,7 @@ impl<'a> Parser<'a> {
 
     /// Populate the hash index with all entries of a table that just reached
     /// the threshold.
-    fn bulk_index_table(&mut self, table: &value::Table<'a>) {
+    fn bulk_index_table(&mut self, table: &value::Table<'de>) {
         let first_key_span = table.first_key_span_start();
         for (i, (key, _)) in table.entries().iter().enumerate() {
             let (ptr, slen) = key.name.as_raw_parts();
@@ -1717,7 +1660,7 @@ impl<'a> Parser<'a> {
     }
 
     /// Index only the last (just-inserted) entry of an already-indexed table.
-    fn index_last_entry(&mut self, table: &value::Table<'a>) {
+    fn index_last_entry(&mut self, table: &value::Table<'de>) {
         let idx = table.len() - 1;
         let first_key_span = table.first_key_span_start();
         let (key, _) = table.get_key_value_at(idx);
@@ -1732,8 +1675,7 @@ impl<'a> Parser<'a> {
 
     fn parse_document(
         &mut self,
-        scratch: &mut Vec<u8>,
-        root_st: &mut SpannedTable<'a>,
+        root_st: &mut SpannedTable<'de>,
     ) -> Result<(), ParseError> {
         let mut ctx = Ctx {
             st: root_st,
@@ -1754,7 +1696,7 @@ impl<'a> Parser<'a> {
             match self.peek_byte() {
                 None => break,
                 Some(b'[') => {
-                    ctx = match self.process_table_header(scratch, root_st) {
+                    ctx = match self.process_table_header(root_st) {
                         Ok(c) => c,
                         Err(e) => return Err(e),
                     };
@@ -1763,7 +1705,7 @@ impl<'a> Parser<'a> {
                     return Err(self.set_error(self.cursor, None, ErrorKind::Unexpected('\r')));
                 }
                 Some(_) => {
-                    if let Err(e) = self.process_key_value(scratch, &mut ctx) {
+                    if let Err(e) = self.process_key_value(&mut ctx) {
                         return Err(e);
                     }
                 }
@@ -1774,9 +1716,8 @@ impl<'a> Parser<'a> {
 
     fn process_table_header<'b>(
         &mut self,
-        scratch: &mut Vec<u8>,
-        root_st: &'b mut SpannedTable<'a>,
-    ) -> Result<Ctx<'b, 'a>, ParseError> {
+        root_st: &'b mut SpannedTable<'de>,
+    ) -> Result<Ctx<'b, 'de>, ParseError> {
         let header_start = self.cursor as u32;
         if let Err(e) = self.expect_byte(b'[') {
             return Err(e);
@@ -1786,7 +1727,7 @@ impl<'a> Parser<'a> {
         let mut current = root_st;
 
         self.eat_whitespace();
-        let mut key = match self.read_table_key(scratch) {
+        let mut key = match self.read_table_key() {
             Ok(k) => k,
             Err(e) => return Err(e),
         };
@@ -1798,7 +1739,7 @@ impl<'a> Parser<'a> {
                     Ok(p) => p,
                     Err(e) => return Err(e),
                 };
-                key = match self.read_table_key(scratch) {
+                key = match self.read_table_key() {
                     Ok(k) => k,
                     Err(e) => return Err(e),
                 };
@@ -1836,16 +1777,15 @@ impl<'a> Parser<'a> {
 
     fn process_key_value(
         &mut self,
-        scratch: &mut Vec<u8>,
-        ctx: &mut Ctx<'_, 'a>,
+        ctx: &mut Ctx<'_, 'de>,
     ) -> Result<(), ParseError> {
         let line_start = self.cursor as u32;
         // Borrow the Table payload from the SpannedTable. NLL drops this
         // borrow at its last use (the insert_value call), freeing ctx.st
         // for the span updates that follow.
-        let mut table_ref: &mut value::Table<'a> = &mut ctx.st.value;
+        let mut table_ref: &mut value::Table<'de> = &mut ctx.st.value;
 
-        let mut key = match self.read_table_key(scratch) {
+        let mut key = match self.read_table_key() {
             Ok(k) => k,
             Err(e) => return Err(e),
         };
@@ -1857,7 +1797,7 @@ impl<'a> Parser<'a> {
                 Ok(t) => t,
                 Err(e) => return Err(e),
             };
-            key = match self.read_table_key(scratch) {
+            key = match self.read_table_key() {
                 Ok(k) => k,
                 Err(e) => return Err(e),
             };
@@ -1868,8 +1808,7 @@ impl<'a> Parser<'a> {
             return Err(e);
         }
         self.eat_whitespace();
-        let key: Key<'a> = key.into();
-        let val = match self.value(scratch) {
+        let val = match self.value() {
             Ok(v) => v,
             Err(e) => return Err(e),
         };
@@ -1904,8 +1843,12 @@ impl<'a> Parser<'a> {
     }
 }
 
-/// Parses a toml string into a table [`Value`]
-pub fn parse(s: &str) -> Result<Value<'_>, Error> {
+/// Parses a toml string into a table [`Value`].
+///
+/// The caller must supply an [`Arena`] that shares the `'de` lifetime with
+/// the input. All escaped strings are committed into the arena so that
+/// `Str<'de>` can borrow from it without per-string heap allocation.
+pub fn parse<'de>(s: &'de str, arena: &'de Arena) -> Result<Value<'de>, Error> {
     // Tag bits use the low 3 bits of start_and_tag, limiting span.start to
     // 29 bits (512 MiB). The FLAG_BIT uses the low bit of end_and_flag,
     // limiting span.end to 31 bits (2 GiB).
@@ -1924,9 +1867,8 @@ pub fn parse(s: &str) -> Result<Value<'_>, Error> {
     // SAFETY: root is a table, so the SpannedTable reinterpretation is valid.
     let root_st = unsafe { root.as_spanned_table_mut_unchecked() };
 
-    let mut parser = Parser::new(s);
-    let mut scratch = Vec::new();
-    match parser.parse_document(&mut scratch, root_st) {
+    let mut parser = Parser::new(s, arena);
+    match parser.parse_document(root_st) {
         Ok(()) => {}
         Err(_) => return Err(parser.take_error()),
     }

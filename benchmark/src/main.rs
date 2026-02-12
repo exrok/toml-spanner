@@ -25,7 +25,8 @@ fn bench_end2end_config_toml_span(bench: &mut Bencher, configs: &[(&str, &str)])
 fn bench_end2end_config_toml_parser(bench: &mut Bencher, configs: &[(&str, &str)]) {
     for (name, source) in configs {
         let stat = bench.func(|| {
-            let mut result = toml_spanner::parse(source);
+            let arena = toml_spanner::Arena::new();
+            let mut result = toml_spanner::parse(source, &arena);
             std::hint::black_box(&mut result);
         });
         println!("{name}: {stat}");
@@ -35,7 +36,8 @@ fn bench_end2end_config_toml_parser(bench: &mut Bencher, configs: &[(&str, &str)
     let stat = bench.bench_with_generator(
         || configs[rng.rand_range(0..configs.len() as u32) as usize].1,
         |source| {
-            let mut result = toml_spanner::parse(source);
+            let arena = toml_spanner::Arena::new();
+            let mut result = toml_spanner::parse(source, &arena);
             std::hint::black_box(&mut result);
         },
     );

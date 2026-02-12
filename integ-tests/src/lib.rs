@@ -8,7 +8,8 @@ macro_rules! valid {
         fn $name() {
             let toml_str = std::fs::read_to_string(concat!("data/", stringify!($name), ".toml"))
                 .expect(concat!("failed to load ", stringify!($name), ".toml"));
-            let valid_toml = toml_spanner::parse(&toml_str).expect("failed to parse toml");
+            let arena = toml_spanner::Arena::new();
+            let valid_toml = toml_spanner::parse(&toml_str, &arena).expect("failed to parse toml");
             insta::assert_json_snapshot!(valid_toml);
 
             $crate::emit_spans!($name, valid_toml, &toml_str);
@@ -17,7 +18,8 @@ macro_rules! valid {
     ($name:ident, $toml:literal) => {
         #[test]
         fn $name() {
-            let valid_toml = toml_spanner::parse($toml).expect("failed to parse toml");
+            let arena = toml_spanner::Arena::new();
+            let valid_toml = toml_spanner::parse($toml, &arena).expect("failed to parse toml");
             insta::assert_json_snapshot!(valid_toml);
 
             $crate::emit_spans!($name, valid_toml, $toml);
@@ -44,7 +46,8 @@ macro_rules! valid_de {
         fn $name() {
             let toml_str = std::fs::read_to_string(concat!("data/", stringify!($name), ".toml"))
                 .expect(concat!("failed to load ", stringify!($name), ".toml"));
-            let mut valid_toml = toml_spanner::parse(&toml_str).expect("failed to parse toml");
+            let arena = toml_spanner::Arena::new();
+            let mut valid_toml = toml_spanner::parse(&toml_str, &arena).expect("failed to parse toml");
 
             match <$kind>::deserialize(&mut valid_toml) {
                 Ok(de) => {
@@ -63,7 +66,8 @@ macro_rules! valid_de {
     ($name:ident, $kind:ty, $toml:literal) => {
         #[test]
         fn $name() {
-            let mut valid_toml = toml_spanner::parse($toml).expect("failed to parse toml");
+            let arena = toml_spanner::Arena::new();
+            let mut valid_toml = toml_spanner::parse($toml, &arena).expect("failed to parse toml");
 
             match <$kind>::deserialize(&mut valid_toml) {
                 Ok(de) => {
@@ -90,7 +94,8 @@ macro_rules! invalid_de {
         fn $name() {
             let toml_str = std::fs::read_to_string(concat!("data/", stringify!($name), ".toml"))
                 .expect(concat!("failed to load ", stringify!($name), ".toml"));
-            let mut valid_toml = toml_spanner::parse(&toml_str).expect("failed to parse toml");
+            let arena = toml_spanner::Arena::new();
+            let mut valid_toml = toml_spanner::parse(&toml_str, &arena).expect("failed to parse toml");
 
             match <$kind>::deserialize(&mut valid_toml) {
                 Ok(de) => {
@@ -109,7 +114,8 @@ macro_rules! invalid_de {
     ($name:ident, $kind:ty, $toml:literal) => {
         #[test]
         fn $name() {
-            let mut valid_toml = toml_spanner::parse($toml).expect("failed to parse toml");
+            let arena = toml_spanner::Arena::new();
+            let mut valid_toml = toml_spanner::parse($toml, &arena).expect("failed to parse toml");
 
             match <$kind>::deserialize(&mut valid_toml) {
                 Ok(de) => {
@@ -217,14 +223,16 @@ macro_rules! invalid {
             let toml_str =
                 std::fs::read_to_string(dbg!(concat!("data/", stringify!($name), ".toml")))
                     .expect(concat!("failed to load ", stringify!($name), ".toml"));
-            let error = toml_spanner::parse(&toml_str).unwrap_err();
+            let arena = toml_spanner::Arena::new();
+            let error = toml_spanner::parse(&toml_str, &arena).unwrap_err();
             $crate::error_snapshot!($name, Some(error.to_diagnostic(())), &toml_str);
         }
     };
     ($name:ident, $toml:expr) => {
         #[test]
         fn $name() {
-            let error = toml_spanner::parse($toml).unwrap_err();
+            let arena = toml_spanner::Arena::new();
+            let error = toml_spanner::parse($toml, &arena).unwrap_err();
             $crate::error_snapshot!($name, Some(error.to_diagnostic(())), $toml);
         }
     };

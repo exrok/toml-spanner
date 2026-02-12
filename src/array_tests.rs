@@ -259,9 +259,9 @@ fn into_iter_size_hint() {
 #[test]
 fn drop_with_owned_strings() {
     let mut a = Array::new();
-    a.push(Value::string(Str::from(String::from("owned1")), sp()));
-    a.push(Value::string(Str::from(String::from("owned2")), sp()));
-    a.push(Value::string(Str::from(String::from("owned3")), sp()));
+    a.push(Value::string(Str::from("owned1"), sp()));
+    a.push(Value::string(Str::from("owned2"), sp()));
+    a.push(Value::string(Str::from("owned3"), sp()));
     drop(a);
 }
 

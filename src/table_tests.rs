@@ -340,8 +340,8 @@ fn into_keys_all() {
 #[test]
 fn drop_with_owned_strings() {
     let mut t = Table::new();
-    t.insert(key("a"), Value::string(Str::from(String::from("owned1")), sp()));
-    t.insert(key("b"), Value::string(Str::from(String::from("owned2")), sp()));
+    t.insert(key("a"), Value::string(Str::from("owned1"), sp()));
+    t.insert(key("b"), Value::string(Str::from("owned2"), sp()));
     drop(t);
 }
 

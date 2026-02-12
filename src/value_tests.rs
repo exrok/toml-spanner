@@ -17,7 +17,7 @@ fn string_create_and_drop() {
 
 #[test]
 fn string_owned_create_and_drop() {
-    let v = Value::string(Str::from(String::from("owned")), sp(1, 6));
+    let v = Value::string(Str::from("owned"), sp(1, 6));
     assert_eq!(v.as_str(), Some("owned"));
 }
 
@@ -235,7 +235,7 @@ fn as_mut_modify_table() {
 
 #[test]
 fn into_kind_string() {
-    let v = Value::string(Str::from(String::from("owned")), sp(0, 5));
+    let v = Value::string(Str::from("owned"), sp(0, 5));
     let ValueOwned::String(s) = v.into_kind() else {
         panic!("expected string")
     };

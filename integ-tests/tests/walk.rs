@@ -8,7 +8,8 @@ fn parse_all_data_files() {
         if path.extension().is_some_and(|e| e == "toml") {
             let src = fs::read_to_string(&path).unwrap();
             // Discard the result; invalid files are expected.
-            let _ = toml_spanner::parse(&src);
+            let arena = toml_spanner::Arena::new();
+            let _ = toml_spanner::parse(&src, &arena);
         }
     }
 }
