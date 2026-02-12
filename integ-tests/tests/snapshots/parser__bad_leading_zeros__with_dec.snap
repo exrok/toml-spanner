@@ -3,9 +3,7 @@ source: integ-tests/tests/parser.rs
 expression: error
 ---
 error[invalid-number]: 
-  ┌─ with_dec:1:6
+  ┌─ with_dec:1:5
   │
 1 │ a = 00.0
-  │      ^ unable to parse number
-
-
+  │     ^^ unable to parse number

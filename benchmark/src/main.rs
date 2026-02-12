@@ -62,6 +62,19 @@ fn bench_end2end_config_toml(bench: &mut Bencher, configs: &[(&str, &str)]) {
     println!("mixed: {stat}");
 }
 
+// fn main_for_profile() {
+//     let inputs = &[
+//         static_input::ZED_CARGO_TOML,
+//         static_input::EXTASK_TOML,
+//         static_input::DEVSM_TOML,
+//     ];
+//     let mut rng = oorandom::Rand32::new(0xdeadbeaf);
+//     for _ in 0..1000000 {
+//         let stat = inputs[rng.rand_range(0..inputs.len() as u32) as usize];
+//         let mut result = toml_spanner::parse(stat);
+//         std::hint::black_box(&mut result);
+//     }
+// }
 fn main() {
     let mut bench = jsony_bench::Bencher::new();
     bench.calibrate();
@@ -72,6 +85,7 @@ fn main() {
             ("zed", static_input::ZED_CARGO_TOML),
             ("extask", static_input::EXTASK_TOML),
             ("devsm", static_input::DEVSM_TOML),
+            ("random", static_input::RANDOM_TOML),
         ],
     );
     println!("===== toml =======");
@@ -81,6 +95,7 @@ fn main() {
             ("zed", static_input::ZED_CARGO_TOML),
             ("extask", static_input::EXTASK_TOML),
             ("devsm", static_input::DEVSM_TOML),
+            ("random", static_input::RANDOM_TOML),
         ],
     );
     println!("===== toml_span =======");
@@ -90,6 +105,7 @@ fn main() {
             ("zed", static_input::ZED_CARGO_TOML),
             ("extask", static_input::EXTASK_TOML),
             ("devsm", static_input::DEVSM_TOML),
+            ("random", static_input::RANDOM_TOML),
         ],
     );
 }

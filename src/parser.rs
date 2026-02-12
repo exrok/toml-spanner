@@ -44,6 +44,23 @@ struct Ctx<'b, 'a> {
 /// Tables with at least this many entries use the hash index for lookups.
 const INDEXED_TABLE_THRESHOLD: usize = 6;
 
+const fn build_hex_table() -> [i8; 256] {
+    let mut table = [-1i8; 256];
+    let mut ch = 0usize;
+    while ch < 256 {
+        table[ch] = match ch as u8 {
+            b'0'..=b'9' => (ch as u8 - b'0') as i8,
+            b'A'..=b'F' => (ch as u8 - b'A' + 10) as i8,
+            b'a'..=b'f' => (ch as u8 - b'a' + 10) as i8,
+            _ => -1,
+        };
+        ch += 1;
+    }
+    table
+}
+
+static HEX: [i8; 256] = build_hex_table();
+
 /// Hash-map key that identifies a (table, key-name) pair without owning the
 /// string data.  The raw `key_ptr`/`len` point into either the input buffer
 /// (borrowed `Str`) or the heap allocation of an owned `Str`; both are stable
@@ -206,7 +223,6 @@ impl<'a> Parser<'a> {
     }
 
     // -- error helpers ------------------------------------------------------
-
     #[cold]
     fn set_error(&mut self, start: usize, end: Option<usize>, kind: ErrorKind) -> ParseError {
         self.error_span = Span::new(start as u32, end.unwrap_or(start + 1) as u32);
@@ -350,7 +366,6 @@ impl<'a> Parser<'a> {
         if !self.eat_byte(b'#') {
             return Ok(false);
         }
-        // Consume comment content (valid bytes: tab, 0x20..=0x7E, 0x80..=0xFF)
         while let Some(0x09 | 0x20..=0x7E | 0x80..) = self.peek_byte() {
             self.cursor += 1;
         }
@@ -854,13 +869,14 @@ impl<'a> Parser<'a> {
         string_start: usize,
         escape_start: usize,
     ) -> Result<char, ParseError> {
-        let mut buf = [0u8; 8];
-        for b in buf[..n].iter_mut() {
+        let mut val: u32 = 0;
+        for _ in 0..n {
             let Some(&byte) = self.bytes.get(self.cursor) else {
                 return Err(self.set_error(string_start, None, ErrorKind::UnterminatedString));
             };
-            if byte.is_ascii_hexdigit() {
-                *b = byte;
+            let digit = HEX[byte as usize];
+            if digit >= 0 {
+                val = (val << 4) | digit as u32;
                 self.cursor += 1;
             } else {
                 if byte < 0x80 {
@@ -872,8 +888,6 @@ impl<'a> Parser<'a> {
                 return Err(self.set_error(i, None, ErrorKind::InvalidHexEscape(ch)));
             }
         }
-        let val =
-            u32::from_str_radix(unsafe { std::str::from_utf8_unchecked(&buf[..n]) }, 16).unwrap();
         match char::from_u32(val) {
             Some(ch) => Ok(ch),
             None => Err(self.set_error(
@@ -893,53 +907,69 @@ impl<'a> Parser<'a> {
         end: u32,
         s: &'a str,
     ) -> Result<Value<'a>, ParseError> {
-        let span = |s, e| Span::new(s, e);
-        if let Some(s) = s.strip_prefix("0x") {
-            match self.integer(s, 16) {
-                Ok(v) => Ok(Value::integer(v, span(start, end))),
-                Err(e) => Err(e),
+        let bytes = s.as_bytes();
+
+        // Base-prefixed integers (0x, 0o, 0b).
+        // TOML forbids signs on these, so only match when first byte is '0'.
+        if let [b'0', format, rest @ ..] = s.as_bytes() {
+            match format {
+                b'x' => return self.integer_hex(rest, Span::new(start, end)),
+                b'o' => return self.integer_octal(rest, Span::new(start, end)),
+                b'b' => return self.integer_binary(rest, Span::new(start, end)),
+                _ => {}
             }
-        } else if let Some(s) = s.strip_prefix("0o") {
-            match self.integer(s, 8) {
-                Ok(v) => Ok(Value::integer(v, span(start, end))),
-                Err(e) => Err(e),
-            }
-        } else if let Some(s) = s.strip_prefix("0b") {
-            match self.integer(s, 2) {
-                Ok(v) => Ok(Value::integer(v, span(start, end))),
-                Err(e) => Err(e),
-            }
-        } else if s.contains('e') || s.contains('E') {
-            match self.float(scratch, s, None) {
-                Ok(f) => Ok(Value::float(f, span(start, self.cursor as u32))),
-                Err(e) => Err(e),
-            }
-        } else if self.eat_byte(b'.') {
+        }
+
+        // Decimal point → float with fractional part.
+        if self.eat_byte(b'.') {
             let at = self.cursor;
-            match self.peek_byte() {
+            return match self.peek_byte() {
                 Some(b) if is_keylike_byte(b) => {
                     let after = self.read_keylike();
                     match self.float(scratch, s, Some(after)) {
-                        Ok(f) => Ok(Value::float(f, span(start, self.cursor as u32))),
+                        Ok(f) => Ok(Value::float(f, Span::new(start, self.cursor as u32))),
                         Err(e) => Err(e),
                     }
                 }
                 _ => Err(self.set_error(at, Some(end as usize), ErrorKind::InvalidNumber)),
-            }
-        } else if s == "inf" {
-            Ok(Value::float(f64::INFINITY, span(start, end)))
-        } else if s == "-inf" {
-            Ok(Value::float(f64::NEG_INFINITY, span(start, end)))
-        } else if s == "nan" {
-            Ok(Value::float(f64::NAN.copysign(1.0), span(start, end)))
-        } else if s == "-nan" {
-            Ok(Value::float(f64::NAN.copysign(-1.0), span(start, end)))
-        } else {
-            match self.integer(s, 10) {
-                Ok(v) => Ok(Value::integer(v, span(start, end))),
-                Err(e) => Err(e),
-            }
+            };
         }
+
+        // Special float literals (inf, nan and signed variants).
+        // Guard behind first-significant-byte check to skip string
+        // comparisons for the common digit-only case.
+        let off = usize::from(bytes.first() == Some(&b'-'));
+        if let Some(&b'i' | &b'n') = bytes.get(off) {
+            return match s {
+                "inf" => Ok(Value::float(f64::INFINITY, Span::new(start, end))),
+                "-inf" => Ok(Value::float(f64::NEG_INFINITY, Span::new(start, end))),
+                "nan" => Ok(Value::float(f64::NAN.copysign(1.0), Span::new(start, end))),
+                "-nan" => Ok(Value::float(f64::NAN.copysign(-1.0), Span::new(start, end))),
+                _ => {
+                    let s_start = self.substr_offset(s);
+                    Err(self.set_error(s_start, Some(s_start + s.len()), ErrorKind::InvalidNumber))
+                }
+            };
+        }
+
+        // Most common path: try plain decimal integer.
+        if let Ok(v) = self.integer_decimal(bytes, Span::new(start, end)) {
+            return Ok(v);
+        }
+
+        // integer_decimal rejected the input — if an exponent marker (e/E)
+        // is present this is a float like "1e2". Single combined check
+        // replaces two separate contains() calls. Only reached on the cold
+        // (non-integer) path.
+        if bytes.iter().any(|&b| b == b'e' || b == b'E') {
+            return match self.float(scratch, s, None) {
+                Ok(f) => Ok(Value::float(f, Span::new(start, self.cursor as u32))),
+                Err(e) => Err(e),
+            };
+        }
+
+        // Genuine parse failure — error already recorded by integer_decimal.
+        Err(ParseError)
     }
 
     fn number_leading_plus(
@@ -961,23 +991,198 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn integer(&mut self, s: &'a str, radix: u32) -> Result<i64, ParseError> {
-        let allow_sign = radix == 10;
-        let allow_leading_zeros = radix != 10;
-        let (prefix, suffix) = match self.parse_integer(s, allow_sign, allow_leading_zeros, radix) {
-            Ok(v) => v,
-            Err(e) => return Err(e),
-        };
-        let s_start = self.substr_offset(s);
-        if !suffix.is_empty() {
-            return Err(self.set_error(s_start, Some(s_start + s.len()), ErrorKind::InvalidNumber));
-        }
-        match i64::from_str_radix(prefix.replace('_', "").trim_start_matches('+'), radix) {
-            Ok(v) => Ok(v),
-            Err(_) => {
-                Err(self.set_error(s_start, Some(s_start + s.len()), ErrorKind::InvalidNumber))
+    fn integer_decimal(&mut self, bytes: &'a [u8], span: Span) -> Result<Value<'a>, ParseError> {
+        let mut acc: u64 = 0;
+        let mut prev_underscore = false;
+        let mut has_digit = false;
+        let mut leading_zero = false;
+        'error: {
+            let (negative, digits) = match bytes.first() {
+                Some(&b'+') => (false, &bytes[1..]),
+                Some(&b'-') => (true, &bytes[1..]),
+                _ => (false, bytes),
+            };
+
+            if digits.is_empty() {
+                break 'error;
             }
+
+            for &b in digits {
+                if b == b'_' {
+                    if !has_digit || prev_underscore {
+                        break 'error;
+                    }
+                    prev_underscore = true;
+                    continue;
+                }
+                if !b.is_ascii_digit() {
+                    break 'error;
+                }
+                if leading_zero {
+                    break 'error;
+                }
+                if !has_digit && b == b'0' {
+                    leading_zero = true;
+                }
+                has_digit = true;
+                prev_underscore = false;
+                let digit = (b - b'0') as u64;
+                acc = match acc.checked_mul(10).and_then(|a| a.checked_add(digit)) {
+                    Some(v) => v,
+                    None => break 'error,
+                };
+            }
+
+            if !has_digit || prev_underscore {
+                break 'error;
+            }
+
+            let max = if negative {
+                (i64::MAX as u64) + 1
+            } else {
+                i64::MAX as u64
+            };
+            if acc > max {
+                break 'error;
+            }
+
+            let val = if negative {
+                (acc as i64).wrapping_neg()
+            } else {
+                acc as i64
+            };
+            return Ok(Value::integer(val, span));
         }
+        self.error_span = span;
+        self.error_kind = Some(ErrorKind::InvalidNumber);
+        Err(ParseError)
+    }
+
+    fn integer_hex(&mut self, bytes: &'a [u8], span: Span) -> Result<Value<'a>, ParseError> {
+        let mut acc: u64 = 0;
+        let mut prev_underscore = false;
+        let mut has_digit = false;
+        'error: {
+            if bytes.is_empty() {
+                break 'error;
+            }
+
+            for &b in bytes {
+                if b == b'_' {
+                    if !has_digit || prev_underscore {
+                        break 'error;
+                    }
+                    prev_underscore = true;
+                    continue;
+                }
+                let digit = HEX[b as usize];
+                if digit < 0 {
+                    break 'error;
+                }
+                has_digit = true;
+                prev_underscore = false;
+                if acc >> 60 != 0 {
+                    break 'error;
+                }
+                acc = (acc << 4) | digit as u64;
+            }
+
+            if !has_digit || prev_underscore {
+                break 'error;
+            }
+
+            if acc > i64::MAX as u64 {
+                break 'error;
+            }
+            return Ok(Value::integer(acc as i64, span));
+        }
+        self.error_span = span;
+        self.error_kind = Some(ErrorKind::InvalidNumber);
+        return Err(ParseError);
+    }
+
+    fn integer_octal(&mut self, bytes: &'a [u8], span: Span) -> Result<Value<'a>, ParseError> {
+        let mut acc: u64 = 0;
+        let mut prev_underscore = false;
+        let mut has_digit = false;
+        'error: {
+            if bytes.is_empty() {
+                break 'error;
+            }
+
+            for &b in bytes {
+                if b == b'_' {
+                    if !has_digit || prev_underscore {
+                        break 'error;
+                    }
+                    prev_underscore = true;
+                    continue;
+                }
+                if !b.is_ascii_digit() || b > b'7' {
+                    break 'error;
+                }
+                has_digit = true;
+                prev_underscore = false;
+                if acc >> 61 != 0 {
+                    break 'error;
+                }
+                acc = (acc << 3) | (b - b'0') as u64;
+            }
+
+            if !has_digit || prev_underscore {
+                break 'error;
+            }
+
+            if acc > i64::MAX as u64 {
+                break 'error;
+            }
+            return Ok(Value::integer(acc as i64, span));
+        }
+        self.error_span = span;
+        self.error_kind = Some(ErrorKind::InvalidNumber);
+        Err(ParseError)
+    }
+
+    fn integer_binary(&mut self, bytes: &'a [u8], span: Span) -> Result<Value<'a>, ParseError> {
+        let mut acc: u64 = 0;
+        let mut prev_underscore = false;
+        let mut has_digit = false;
+        'error: {
+            if bytes.is_empty() {
+                break 'error;
+            }
+
+            for &b in bytes {
+                if b == b'_' {
+                    if !has_digit || prev_underscore {
+                        break 'error;
+                    }
+                    prev_underscore = true;
+                    continue;
+                }
+                if b != b'0' && b != b'1' {
+                    break 'error;
+                }
+                has_digit = true;
+                prev_underscore = false;
+                if acc >> 63 != 0 {
+                    break 'error;
+                }
+                acc = (acc << 1) | (b - b'0') as u64;
+            }
+
+            if !has_digit || prev_underscore {
+                break 'error;
+            }
+
+            if acc > i64::MAX as u64 {
+                break 'error;
+            }
+            return Ok(Value::integer(acc as i64, span));
+        }
+        self.error_span = span;
+        self.error_kind = Some(ErrorKind::InvalidNumber);
+        Err(ParseError)
     }
 
     fn parse_integer(
