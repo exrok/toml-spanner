@@ -135,8 +135,6 @@ impl<'de> Table<'de> {
         }
     }
 
-    // -- internal helpers ---------------------------------------------------
-
     /// Returns the span start of the first key. Used as a table discriminator
     /// in the parser's hash index.
     ///
@@ -149,6 +147,12 @@ impl<'de> Table<'de> {
         unsafe { (*self.ptr.as_ptr()).0.span.start() }
     }
 
+    /// Returns key-value references at a given index (unchecked in release).
+    #[inline]
+    pub(crate) unsafe fn get_mut_unchecked(&mut self, index: usize) -> &mut (Key<'de>, Value<'de>) {
+        debug_assert!(index < self.len as usize);
+        unsafe { &mut *self.ptr.as_ptr().add(index) }
+    }
     /// Returns key-value references at a given index (unchecked in release).
     #[inline]
     pub(crate) fn get_key_value_at(&self, index: usize) -> (&Key<'de>, &Value<'de>) {
@@ -256,7 +260,6 @@ impl std::fmt::Debug for Table<'_> {
     }
 }
 
-// &Table -> yields (&Key, &Value)
 impl<'a, 'de> IntoIterator for &'a Table<'de> {
     type Item = (&'a Key<'de>, &'a Value<'de>);
     type IntoIter = Iter<'a, 'de>;
@@ -287,7 +290,6 @@ impl<'a, 'de> Iterator for Iter<'a, 'de> {
 
 impl ExactSizeIterator for Iter<'_, '_> {}
 
-// Consuming iterator: Table -> yields (Key, Value)
 impl<'de> IntoIterator for Table<'de> {
     type Item = (Key<'de>, Value<'de>);
     type IntoIter = IntoIter<'de>;
@@ -355,10 +357,6 @@ impl<'de> Iterator for IntoKeys<'de> {
         self.inner.size_hint()
     }
 }
-
-// ---------------------------------------------------------------------------
-// Entry API
-// ---------------------------------------------------------------------------
 
 /// A view into a single entry in a [`Table`], which may be vacant or occupied.
 pub enum Entry<'a, 'de> {

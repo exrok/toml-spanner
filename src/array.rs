@@ -192,7 +192,6 @@ impl std::fmt::Debug for Array<'_> {
     }
 }
 
-// &Array -> yields &Value
 impl<'a, 'de> IntoIterator for &'a Array<'de> {
     type Item = &'a Value<'de>;
     type IntoIter = std::slice::Iter<'a, Value<'de>>;
@@ -202,7 +201,6 @@ impl<'a, 'de> IntoIterator for &'a Array<'de> {
     }
 }
 
-// &mut Array -> yields &mut Value
 impl<'a, 'de> IntoIterator for &'a mut Array<'de> {
     type Item = &'a mut Value<'de>;
     type IntoIter = std::slice::IterMut<'a, Value<'de>>;
@@ -241,14 +239,13 @@ impl<'de> ExactSizeIterator for IntoIter<'de> {}
 
 impl<'de> Drop for IntoIter<'de> {
     fn drop(&mut self) {
-        // Drop remaining elements that weren't consumed
         while self.index < self.arr.len {
             unsafe {
                 std::ptr::drop_in_place(self.arr.ptr.as_ptr().add(self.index as usize));
             }
             self.index += 1;
         }
-        // Prevent Array::drop from double-dropping the elements
+        // IntoIter takes ownership: zero len so Array::drop won't double-free
         self.arr.len = 0;
     }
 }

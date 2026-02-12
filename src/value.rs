@@ -12,10 +12,6 @@ pub use crate::array::Array;
 /// A toml table: flat list of key-value pairs in insertion order
 pub use crate::table::Table;
 
-// ---------------------------------------------------------------------------
-// Tag / flag constants
-// ---------------------------------------------------------------------------
-
 const TAG_MASK: u32 = 0x7;
 const TAG_SHIFT: u32 = 3;
 
@@ -30,10 +26,6 @@ pub(crate) const TAG_TABLE_DOTTED: u32 = 7;
 
 pub(crate) const FLAG_BIT: u32 = 1;
 pub(crate) const FLAG_SHIFT: u32 = 1;
-
-// ---------------------------------------------------------------------------
-// Tagged union payload
-// ---------------------------------------------------------------------------
 
 #[repr(C)]
 union Payload<'de> {
@@ -87,10 +79,6 @@ impl<'de> SpannedTable<'de> {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Value
-// ---------------------------------------------------------------------------
-
 /// A parsed TOML value with inline span information.
 ///
 /// This is a 24-byte `#[repr(C)]` tagged union. The tag and span are packed
@@ -106,8 +94,6 @@ pub struct Value<'de> {
 
 const _: () = assert!(std::mem::size_of::<Value<'_>>() == 24);
 const _: () = assert!(std::mem::align_of::<Value<'_>>() == 8);
-
-// -- Constructors -----------------------------------------------------------
 
 impl<'de> Value<'de> {
     #[inline]
@@ -223,8 +209,6 @@ impl<'de> Value<'de> {
     }
 }
 
-// -- Tag / span access ------------------------------------------------------
-
 impl<'de> Value<'de> {
     #[inline]
     pub(crate) fn tag(&self) -> u32 {
@@ -252,8 +236,6 @@ impl<'de> Value<'de> {
             _ => "table",
         }
     }
-
-    // -- parser-internal queries ---
 
     #[inline]
     pub(crate) fn is_table(&self) -> bool {
@@ -301,8 +283,6 @@ impl<'de> Value<'de> {
         }
     }
 }
-
-// -- Kind enums for matching ------------------------------------------------
 
 /// Borrowed view into a [`Value`] for pattern matching.
 pub enum ValueRef<'a, 'de> {
@@ -379,8 +359,6 @@ impl fmt::Debug for ValueOwned<'_> {
     }
 }
 
-// -- kind / kind_mut / into_kind -------------------------------------------
-
 impl<'de> Value<'de> {
     /// Returns a borrowed view for pattern matching.
     #[inline]
@@ -418,7 +396,6 @@ impl<'de> Value<'de> {
     #[inline]
     pub fn into_kind(self) -> ValueOwned<'de> {
         let tag = self.tag();
-        // Prevent drop from running — we're moving out of the payload
         let me = ManuallyDrop::new(self);
         unsafe {
             match tag {
@@ -432,8 +409,6 @@ impl<'de> Value<'de> {
         }
     }
 }
-
-// -- Direct accessors -------------------------------------------------------
 
 impl<'de> Value<'de> {
     /// Returns a borrowed string if this is a string value.
@@ -546,8 +521,6 @@ impl<'de> Value<'de> {
     }
 }
 
-// -- take / set for deserialization -----------------------------------------
-
 impl<'de> Value<'de> {
     /// Takes the payload, replacing self with `Boolean(false)`.
     /// The span is preserved.
@@ -583,8 +556,6 @@ impl<'de> Value<'de> {
     }
 }
 
-// -- Drop -------------------------------------------------------------------
-
 impl Drop for Value<'_> {
     fn drop(&mut self) {
         match self.tag() {
@@ -597,8 +568,6 @@ impl Drop for Value<'_> {
         }
     }
 }
-
-// -- Debug ------------------------------------------------------------------
 
 impl fmt::Debug for Value<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -614,8 +583,6 @@ impl fmt::Debug for Value<'_> {
         }
     }
 }
-
-// -- serde ------------------------------------------------------------------
 
 #[cfg(feature = "serde")]
 impl serde::Serialize for Value<'_> {
@@ -647,10 +614,6 @@ impl serde::Serialize for Value<'_> {
         }
     }
 }
-
-// ---------------------------------------------------------------------------
-// Key
-// ---------------------------------------------------------------------------
 
 /// A toml table key
 #[derive(Clone)]

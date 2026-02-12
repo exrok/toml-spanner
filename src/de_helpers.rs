@@ -195,7 +195,7 @@ impl<'de> TableHelper<'de> {
             Ok(())
         } else {
             Err(DeserError {
-                errors: self.errors,
+                errors: Box::new(self.errors),
             })
         }
     }
@@ -235,40 +235,67 @@ impl<'de> Deserialize<'de> for bool {
     }
 }
 
+fn deser_integer(
+    value: &mut Value<'_>,
+    min: i64,
+    max: i64,
+    name: &'static str,
+) -> Result<i64, DeserError> {
+    let span = value.span();
+    match value.take() {
+        ValueOwned::Integer(i) if i >= min && i <= max => Ok(i),
+        ValueOwned::Integer(_) => Err(DeserError::from(Error {
+            kind: ErrorKind::OutOfRange(name),
+            span,
+            line_info: None,
+        })),
+        other => Err(expected("an integer", other, span).into()),
+    }
+}
+
 macro_rules! integer {
-    ($num:ty) => {
+    ($($num:ty),+) => {$(
         impl<'de> Deserialize<'de> for $num {
             fn deserialize(value: &mut Value<'de>) -> Result<Self, DeserError> {
-                let span = value.span();
-                match value.take() {
-                    ValueOwned::Integer(i) => {
-                        let i = i.try_into().map_err(|_| {
-                            DeserError::from(Error {
-                                kind: ErrorKind::OutOfRange(stringify!($num)),
-                                span,
-                                line_info: None,
-                            })
-                        })?;
-
-                        Ok(i)
-                    }
-                    other => Err(expected(stringify!($num), other, span).into()),
+                match deser_integer(value, <$num>::MIN as i64, <$num>::MAX as i64, stringify!($num)) {
+                    Ok(i) => Ok(i as $num),
+                    Err(e) => Err(e),
                 }
             }
         }
-    };
+    )+};
 }
 
-integer!(u8);
-integer!(u16);
-integer!(u32);
-integer!(u64);
-integer!(i8);
-integer!(i16);
-integer!(i32);
-integer!(i64);
-integer!(usize);
-integer!(isize);
+integer!(i8, i16, i32, isize, u8, u16, u32);
+
+impl<'de> Deserialize<'de> for i64 {
+    fn deserialize(value: &mut Value<'de>) -> Result<Self, DeserError> {
+        deser_integer(value, i64::MIN, i64::MAX, "i64")
+    }
+}
+
+impl<'de> Deserialize<'de> for u64 {
+    fn deserialize(value: &mut Value<'de>) -> Result<Self, DeserError> {
+        match deser_integer(value, 0, i64::MAX, "u64") {
+            Ok(i) => Ok(i as u64),
+            Err(e) => Err(e),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for usize {
+    fn deserialize(value: &mut Value<'de>) -> Result<Self, DeserError> {
+        const MAX: i64 = if usize::BITS < 64 {
+            usize::MAX as i64
+        } else {
+            i64::MAX
+        };
+        match deser_integer(value, 0, MAX, "usize") {
+            Ok(i) => Ok(i as usize),
+            Err(e) => Err(e),
+        }
+    }
+}
 
 impl<'de> Deserialize<'de> for f32 {
     fn deserialize(value: &mut Value<'de>) -> Result<Self, DeserError> {
@@ -310,7 +337,9 @@ where
                 if errors.is_empty() {
                     Ok(s)
                 } else {
-                    Err(DeserError { errors })
+                    Err(DeserError {
+                        errors: Box::new(errors),
+                    })
                 }
             }
             other => Err(expected("an array", other, span).into()),

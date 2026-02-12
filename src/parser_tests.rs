@@ -13,8 +13,6 @@ fn root_table<'a, 'de>(v: &'a Value<'de>) -> &'a crate::value::Table<'de> {
     v.as_table().expect("root should be a table")
 }
 
-// == Group A: Basic value types =============================================
-
 #[test]
 fn empty_document() {
     let v = parse_ok("");
@@ -68,18 +66,22 @@ fn multiple_keys_span_extension() {
     assert_eq!(t.get("c").unwrap().as_integer(), Some(3));
 }
 
-// == Group B: Strings & escapes =============================================
-
 #[test]
 fn escape_newline() {
     let v = parse_ok(r#"a = "line1\nline2""#);
-    assert_eq!(root_table(&v).get("a").unwrap().as_str(), Some("line1\nline2"));
+    assert_eq!(
+        root_table(&v).get("a").unwrap().as_str(),
+        Some("line1\nline2")
+    );
 }
 
 #[test]
 fn escape_tab() {
     let v = parse_ok(r#"a = "col1\tcol2""#);
-    assert_eq!(root_table(&v).get("a").unwrap().as_str(), Some("col1\tcol2"));
+    assert_eq!(
+        root_table(&v).get("a").unwrap().as_str(),
+        Some("col1\tcol2")
+    );
 }
 
 #[test]
@@ -91,7 +93,10 @@ fn escape_backslash() {
 #[test]
 fn escape_quote() {
     let v = parse_ok(r#"a = "say \"hi\"""#);
-    assert_eq!(root_table(&v).get("a").unwrap().as_str(), Some("say \"hi\""));
+    assert_eq!(
+        root_table(&v).get("a").unwrap().as_str(),
+        Some("say \"hi\"")
+    );
 }
 
 #[test]
@@ -109,19 +114,28 @@ fn unicode_escape_long() {
 #[test]
 fn multiline_basic_string() {
     let v = parse_ok("a = \"\"\"\nhello\nworld\"\"\"");
-    assert_eq!(root_table(&v).get("a").unwrap().as_str(), Some("hello\nworld"));
+    assert_eq!(
+        root_table(&v).get("a").unwrap().as_str(),
+        Some("hello\nworld")
+    );
 }
 
 #[test]
 fn multiline_literal_string() {
     let v = parse_ok("a = '''\nhello\nworld'''");
-    assert_eq!(root_table(&v).get("a").unwrap().as_str(), Some("hello\nworld"));
+    assert_eq!(
+        root_table(&v).get("a").unwrap().as_str(),
+        Some("hello\nworld")
+    );
 }
 
 #[test]
 fn literal_string_no_escapes() {
     let v = parse_ok(r#"a = 'no\escape'"#);
-    assert_eq!(root_table(&v).get("a").unwrap().as_str(), Some("no\\escape"));
+    assert_eq!(
+        root_table(&v).get("a").unwrap().as_str(),
+        Some("no\\escape")
+    );
 }
 
 #[test]
@@ -129,8 +143,6 @@ fn empty_string() {
     let v = parse_ok(r#"a = """#);
     assert_eq!(root_table(&v).get("a").unwrap().as_str(), Some(""));
 }
-
-// == Group C: Number formats ================================================
 
 #[test]
 fn hex_integer() {
@@ -153,13 +165,19 @@ fn binary_integer() {
 #[test]
 fn float_inf() {
     let v = parse_ok("a = inf");
-    assert_eq!(root_table(&v).get("a").unwrap().as_float(), Some(f64::INFINITY));
+    assert_eq!(
+        root_table(&v).get("a").unwrap().as_float(),
+        Some(f64::INFINITY)
+    );
 }
 
 #[test]
 fn float_neg_inf() {
     let v = parse_ok("a = -inf");
-    assert_eq!(root_table(&v).get("a").unwrap().as_float(), Some(f64::NEG_INFINITY));
+    assert_eq!(
+        root_table(&v).get("a").unwrap().as_float(),
+        Some(f64::NEG_INFINITY)
+    );
 }
 
 #[test]
@@ -193,7 +211,10 @@ fn float_exponent_negative() {
 #[test]
 fn integer_underscores() {
     let v = parse_ok("a = 1_000_000");
-    assert_eq!(root_table(&v).get("a").unwrap().as_integer(), Some(1_000_000));
+    assert_eq!(
+        root_table(&v).get("a").unwrap().as_integer(),
+        Some(1_000_000)
+    );
 }
 
 #[test]
@@ -202,8 +223,6 @@ fn float_underscores() {
     let f = root_table(&v).get("a").unwrap().as_float().unwrap();
     assert!((f - 1000.5).abs() < f64::EPSILON);
 }
-
-// == Group D: Compound structures ===========================================
 
 #[test]
 fn array_of_integers() {
@@ -263,8 +282,6 @@ fn array_of_inline_tables() {
     assert_eq!(t0.get("x").unwrap().as_integer(), Some(1));
 }
 
-// == Group E: Table headers & dotted keys ===================================
-
 #[test]
 fn table_header_simple() {
     let v = parse_ok("[table]\nkey = 1");
@@ -276,8 +293,26 @@ fn table_header_simple() {
 fn table_header_multiple() {
     let v = parse_ok("[a]\nx = 1\n[b]\ny = 2");
     let root = root_table(&v);
-    assert_eq!(root.get("a").unwrap().as_table().unwrap().get("x").unwrap().as_integer(), Some(1));
-    assert_eq!(root.get("b").unwrap().as_table().unwrap().get("y").unwrap().as_integer(), Some(2));
+    assert_eq!(
+        root.get("a")
+            .unwrap()
+            .as_table()
+            .unwrap()
+            .get("x")
+            .unwrap()
+            .as_integer(),
+        Some(1)
+    );
+    assert_eq!(
+        root.get("b")
+            .unwrap()
+            .as_table()
+            .unwrap()
+            .get("y")
+            .unwrap()
+            .as_integer(),
+        Some(2)
+    );
 }
 
 #[test]
@@ -336,8 +371,6 @@ fn implicit_table_via_header() {
     assert_eq!(b.get("x").unwrap().as_integer(), Some(1));
 }
 
-// == Group F: Index threshold (INDEXED_TABLE_THRESHOLD = 6) =================
-
 #[test]
 fn table_5_keys_linear_scan() {
     let input = "a = 1\nb = 2\nc = 3\nd = 4\ne = 5";
@@ -393,8 +426,6 @@ fn subtable_6_keys_triggers_index() {
     assert_eq!(sub.get("k5").unwrap().as_integer(), Some(5));
 }
 
-// == Group G: Error paths ===================================================
-
 #[test]
 fn duplicate_key_error() {
     let e = parse_err("a = 1\na = 2");
@@ -410,6 +441,7 @@ fn unterminated_string_error() {
 #[test]
 fn invalid_escape_error() {
     let e = parse_err(r#"a = "\z""#);
+    println!("{}", e);
     assert!(matches!(e.kind, ErrorKind::InvalidEscape('z')));
 }
 
@@ -434,16 +466,20 @@ fn invalid_number_error() {
 #[test]
 fn redefine_value_as_table() {
     let e = parse_err("a = 1\n[a]\nb = 2");
-    assert!(matches!(e.kind, ErrorKind::DuplicateTable { .. } | ErrorKind::DuplicateKey { .. }));
+    assert!(matches!(
+        e.kind,
+        ErrorKind::DuplicateTable { .. } | ErrorKind::DuplicateKey { .. }
+    ));
 }
 
 #[test]
 fn inline_table_is_frozen() {
     let e = parse_err("a = {x = 1}\n[a]\ny = 2");
-    assert!(matches!(e.kind, ErrorKind::DuplicateTable { .. } | ErrorKind::DuplicateKey { .. }));
+    assert!(matches!(
+        e.kind,
+        ErrorKind::DuplicateTable { .. } | ErrorKind::DuplicateKey { .. }
+    ));
 }
-
-// == Group H: Comments and whitespace =======================================
 
 #[test]
 fn comments_ignored() {
@@ -457,31 +493,35 @@ fn blank_lines() {
     assert_eq!(root_table(&v).get("a").unwrap().as_integer(), Some(1));
 }
 
-// == Group I: into_kind on parsed values ====================================
-
 #[test]
 fn parsed_value_into_kind() {
     let mut v = parse_ok("a = \"hello\"\nb = 42\nc = [1, 2]\nd = {x = 1}");
     let t = v.as_table_mut().unwrap();
 
     let a = t.get_mut("a").unwrap().take();
-    let ValueOwned::String(s) = a else { panic!("expected string") };
+    let ValueOwned::String(s) = a else {
+        panic!("expected string")
+    };
     assert_eq!(&*s, "hello");
 
     let b = t.get_mut("b").unwrap().take();
-    let ValueOwned::Integer(i) = b else { panic!("expected integer") };
+    let ValueOwned::Integer(i) = b else {
+        panic!("expected integer")
+    };
     assert_eq!(i, 42);
 
     let c = t.get_mut("c").unwrap().take();
-    let ValueOwned::Array(arr) = c else { panic!("expected array") };
+    let ValueOwned::Array(arr) = c else {
+        panic!("expected array")
+    };
     assert_eq!(arr.len(), 2);
 
     let d = t.get_mut("d").unwrap().take();
-    let ValueOwned::Table(tab) = d else { panic!("expected table") };
+    let ValueOwned::Table(tab) = d else {
+        panic!("expected table")
+    };
     assert_eq!(tab.len(), 1);
 }
-
-// == Group J: Mixed content stress test =====================================
 
 #[test]
 fn mixed_content() {
@@ -528,27 +568,35 @@ sku = 284758393
     assert_eq!(p0.get("name").unwrap().as_str(), Some("Hammer"));
 }
 
-// == Group K: Quoted keys ===================================================
-
 #[test]
 fn quoted_key_basic() {
     let v = parse_ok(r#""quoted key" = 1"#);
-    assert_eq!(root_table(&v).get("quoted key").unwrap().as_integer(), Some(1));
+    assert_eq!(
+        root_table(&v).get("quoted key").unwrap().as_integer(),
+        Some(1)
+    );
 }
 
 #[test]
 fn quoted_key_with_escape() {
     let v = parse_ok(r#""key\nwith\nnewlines" = 1"#);
-    assert_eq!(root_table(&v).get("key\nwith\nnewlines").unwrap().as_integer(), Some(1));
+    assert_eq!(
+        root_table(&v)
+            .get("key\nwith\nnewlines")
+            .unwrap()
+            .as_integer(),
+        Some(1)
+    );
 }
 
 #[test]
 fn literal_quoted_key() {
     let v = parse_ok("'literal key' = 1");
-    assert_eq!(root_table(&v).get("literal key").unwrap().as_integer(), Some(1));
+    assert_eq!(
+        root_table(&v).get("literal key").unwrap().as_integer(),
+        Some(1)
+    );
 }
-
-// == Group L: Span correctness ==============================================
 
 #[test]
 fn span_for_simple_value() {

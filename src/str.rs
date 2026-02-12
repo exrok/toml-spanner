@@ -24,15 +24,11 @@ pub struct Str<'de> {
     _marker: PhantomData<&'de str>,
 }
 
-// -- Size assertion ---------------------------------------------------------
-
 const _: () = assert!(std::mem::size_of::<Str<'_>>() == 16);
 
 // SAFETY: The inner data is either a &str (Send+Sync) or a Box<str> (Send+Sync).
 unsafe impl Send for Str<'_> {}
 unsafe impl Sync for Str<'_> {}
-
-// -- Internal helpers -------------------------------------------------------
 
 impl Str<'_> {
     #[inline]
@@ -51,8 +47,6 @@ impl Str<'_> {
         (self.ptr, self.str_len())
     }
 }
-
-// -- Core trait impls -------------------------------------------------------
 
 impl Deref for Str<'_> {
     type Target = str;
@@ -80,17 +74,13 @@ impl Borrow<str> for Str<'_> {
     }
 }
 
-// -- Clone ------------------------------------------------------------------
-
 impl Clone for Str<'_> {
     fn clone(&self) -> Self {
         if self.is_owned() {
-            // Re-allocate a new Box<str>
             let s: &str = self;
             let boxed: Box<str> = s.into();
             Self::from_box(boxed)
         } else {
-            // Borrowed: just copy the pointer + length
             Self {
                 ptr: self.ptr,
                 len_and_tag: self.len_and_tag,
@@ -99,8 +89,6 @@ impl Clone for Str<'_> {
         }
     }
 }
-
-// -- Drop -------------------------------------------------------------------
 
 impl Drop for Str<'_> {
     fn drop(&mut self) {
@@ -114,8 +102,6 @@ impl Drop for Str<'_> {
     }
 }
 
-// -- Display / Debug --------------------------------------------------------
-
 impl fmt::Display for Str<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(self)
@@ -127,8 +113,6 @@ impl fmt::Debug for Str<'_> {
         fmt::Debug::fmt(&**self, f)
     }
 }
-
-// -- Comparison -------------------------------------------------------------
 
 impl PartialEq for Str<'_> {
     #[inline]
@@ -174,16 +158,12 @@ impl Hash for Str<'_> {
     }
 }
 
-// -- Default ----------------------------------------------------------------
-
 impl Default for Str<'_> {
     #[inline]
     fn default() -> Self {
         Self::from_borrowed("")
     }
 }
-
-// -- Construction -----------------------------------------------------------
 
 impl<'de> Str<'de> {
     /// Borrow
@@ -225,8 +205,6 @@ impl<'de> Str<'de> {
         }
     }
 }
-
-// -- Conversions ------------------------------------------------------------
 
 impl<'de> From<&'de str> for Str<'de> {
     #[inline]
