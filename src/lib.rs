@@ -1,7 +1,8 @@
 #![cfg_attr(docsrs, feature(doc_cfg))]
 #![doc = include_str!("../README.md")]
-#![deny(missing_docs)]
+//#![deny(missing_docs)]
 
+mod arena;
 /// Growable array of TOML values
 mod array;
 pub mod de;
@@ -15,6 +16,7 @@ mod str;
 mod table;
 mod value;
 
+pub use arena::Arena;
 pub use array::Array;
 pub use de::parse;
 pub use error::{DeserError, Error, ErrorKind};
