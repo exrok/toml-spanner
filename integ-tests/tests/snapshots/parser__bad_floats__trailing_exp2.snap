@@ -3,9 +3,7 @@ source: integ-tests/tests/parser.rs
 expression: error
 ---
 error[invalid-number]: 
-  ┌─ trailing_exp2:1:7
+  ┌─ trailing_exp2:1:5
   │
 1 │ a = 0.E
-  │       ^ unable to parse number
-
-
+  │     ^ unable to parse number

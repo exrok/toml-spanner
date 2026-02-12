@@ -10,9 +10,9 @@ use crate::{
     str::Str,
     value::{self, Key, SpannedTable, Value},
 };
-use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 use std::ptr::NonNull;
+use std::{char, collections::HashMap};
 
 // ---------------------------------------------------------------------------
 // Lightweight internal error -- zero-sized, no drop glue.
@@ -330,28 +330,6 @@ impl<'a> Parser<'a> {
         }
     }
 
-    /// Read the next character (with CRLF folding).
-    fn next_char(&mut self) -> Option<(usize, char)> {
-        let i = self.cursor;
-        let &b = self.bytes.get(i)?;
-
-        if b == b'\r' && self.bytes.get(i + 1) == Some(&b'\n') {
-            self.cursor = i + 2;
-            return Some((i, '\n'));
-        }
-
-        if b < 0x80 {
-            self.cursor = i + 1;
-            Some((i, b as char))
-        } else {
-            // SAFETY: self.bytes is valid UTF-8
-            let remaining = unsafe { std::str::from_utf8_unchecked(&self.bytes[i..]) };
-            let ch = remaining.chars().next().unwrap();
-            self.cursor = i + ch.len_utf8();
-            Some((i, ch))
-        }
-    }
-
     fn eat_whitespace(&mut self) {
         while let Some(b) = self.peek_byte() {
             if b == b' ' || b == b'\t' {
@@ -583,10 +561,10 @@ impl<'a> Parser<'a> {
     fn skip_string_plain(&mut self, delim: u8) {
         // Quick bail-out for EOF or an immediately-interesting byte.
         // Avoids SWAR setup cost for consecutive specials (e.g. \n\n).
-        if self.cursor >= self.bytes.len() {
+        let Some(&b) = self.bytes.get(self.cursor) else {
             return;
-        }
-        let b = self.bytes[self.cursor];
+        };
+
         if b == delim || b == b'\\' || b == 0x7F || (b < 0x20 && b != 0x09) {
             return;
         }
@@ -647,7 +625,6 @@ impl<'a> Parser<'a> {
     ) -> Result<(RawStr<'a, 's>, bool), ParseError> {
         let mut flush_from = content_start;
         loop {
-            // Fast-scan past plain bytes (8 at a time via SWAR).
             self.skip_string_plain(delim);
 
             let i = self.cursor;
@@ -850,17 +827,24 @@ impl<'a> Parser<'a> {
                 }
             }
             _ => {
-                // Decode the byte as a char for the error message
-                if b < 0x80 {
-                    return Err(self.set_error(i, None, ErrorKind::InvalidEscape(b as char)));
-                }
-                // Multi-byte UTF-8 char in escape position
-                self.cursor = i; // back up
-                let (ei, ec) = self.next_char().unwrap();
-                return Err(self.set_error(ei, None, ErrorKind::InvalidEscape(ec)));
+                return Err(self.set_error(
+                    self.cursor,
+                    None,
+                    ErrorKind::InvalidEscape(self.next_char_for_error()),
+                ));
             }
         }
         Ok(())
+    }
+
+    fn next_char_for_error(&self) -> char {
+        // Safety: The input was valid UTF-8 via a &str
+        let text = unsafe { std::str::from_utf8_unchecked(&self.bytes) };
+        if let Some(value) = text.get(self.cursor..) {
+            value.chars().next().unwrap_or(char::REPLACEMENT_CHARACTER)
+        } else {
+            char::REPLACEMENT_CHARACTER
+        }
     }
 
     fn read_hex(
@@ -879,13 +863,11 @@ impl<'a> Parser<'a> {
                 val = (val << 4) | digit as u32;
                 self.cursor += 1;
             } else {
-                if byte < 0x80 {
-                    let i = self.cursor;
-                    self.cursor += 1;
-                    return Err(self.set_error(i, None, ErrorKind::InvalidHexEscape(byte as char)));
-                }
-                let (i, ch) = self.next_char().unwrap();
-                return Err(self.set_error(i, None, ErrorKind::InvalidHexEscape(ch)));
+                return Err(self.set_error(
+                    self.cursor,
+                    None,
+                    ErrorKind::InvalidHexEscape(self.next_char_for_error()),
+                ));
             }
         }
         match char::from_u32(val) {
@@ -926,7 +908,7 @@ impl<'a> Parser<'a> {
             return match self.peek_byte() {
                 Some(b) if is_keylike_byte(b) => {
                     let after = self.read_keylike();
-                    match self.float(scratch, s, Some(after)) {
+                    match self.float(scratch, start, end, s, Some(after)) {
                         Ok(f) => Ok(Value::float(f, Span::new(start, self.cursor as u32))),
                         Err(e) => Err(e),
                     }
@@ -945,10 +927,11 @@ impl<'a> Parser<'a> {
                 "-inf" => Ok(Value::float(f64::NEG_INFINITY, Span::new(start, end))),
                 "nan" => Ok(Value::float(f64::NAN.copysign(1.0), Span::new(start, end))),
                 "-nan" => Ok(Value::float(f64::NAN.copysign(-1.0), Span::new(start, end))),
-                _ => {
-                    let s_start = self.substr_offset(s);
-                    Err(self.set_error(s_start, Some(s_start + s.len()), ErrorKind::InvalidNumber))
-                }
+                _ => Err(self.set_error(
+                    start as usize,
+                    Some(end as usize),
+                    ErrorKind::InvalidNumber,
+                )),
             };
         }
 
@@ -962,7 +945,7 @@ impl<'a> Parser<'a> {
         // replaces two separate contains() calls. Only reached on the cold
         // (non-integer) path.
         if bytes.iter().any(|&b| b == b'e' || b == b'E') {
-            return match self.float(scratch, s, None) {
+            return match self.float(scratch, start, end, s, None) {
                 Ok(f) => Ok(Value::float(f, Span::new(start, self.cursor as u32))),
                 Err(e) => Err(e),
             };
@@ -1185,154 +1168,81 @@ impl<'a> Parser<'a> {
         Err(ParseError)
     }
 
-    fn parse_integer(
-        &mut self,
-        s: &'a str,
-        allow_sign: bool,
-        allow_leading_zeros: bool,
-        radix: u32,
-    ) -> Result<(&'a str, &'a str), ParseError> {
-        let s_start = self.substr_offset(s);
-        let send = s_start + s.len();
-
-        let mut first = true;
-        let mut first_zero = false;
-        let mut underscore = false;
-        let mut end = s.len();
-        for (i, c) in s.char_indices() {
-            let at = i + s_start;
-            if i == 0 && (c == '+' || c == '-') && allow_sign {
-                continue;
-            }
-
-            if c == '0' && first {
-                first_zero = true;
-            } else if c.is_digit(radix) {
-                if !first && first_zero && !allow_leading_zeros {
-                    return Err(self.set_error(at, Some(send), ErrorKind::InvalidNumber));
-                }
-                underscore = false;
-            } else if c == '_' && first {
-                return Err(self.set_error(at, Some(send), ErrorKind::InvalidNumber));
-            } else if c == '_' && !underscore {
-                underscore = true;
-            } else {
-                end = i;
-                break;
-            }
-            first = false;
-        }
-        if first || underscore {
-            return Err(self.set_error(s_start, Some(send), ErrorKind::InvalidNumber));
-        }
-        Ok((&s[..end], &s[end..]))
-    }
-
     fn float(
         &mut self,
         scratch: &mut Vec<u8>,
+        start: u32,
+        end: u32,
         s: &'a str,
         after_decimal: Option<&'a str>,
     ) -> Result<f64, ParseError> {
-        let (integral, mut suffix) = match self.parse_integer(s, true, false, 10) {
-            Ok(v) => v,
-            Err(e) => return Err(e),
-        };
-        let s_start = self.substr_offset(integral);
+        let s_start = start as usize;
+        let s_end = end as usize;
 
-        let mut fraction = None;
-        if let Some(after) = after_decimal {
-            if !suffix.is_empty() {
-                return Err(self.set_error(
-                    s_start,
-                    Some(s_start + s.len()),
-                    ErrorKind::InvalidNumber,
-                ));
-            }
-            let (a, b) = match self.parse_integer(after, false, true, 10) {
-                Ok(v) => v,
-                Err(e) => return Err(e),
-            };
-            fraction = Some(a);
-            suffix = b;
+        // TOML forbids leading zeros in the integer part (e.g. 00.5, -01.0).
+        let unsigned = if s.as_bytes().first() == Some(&b'-') {
+            &s[1..]
+        } else {
+            s
+        };
+        if let [b'0', b'0'..=b'9' | b'_', ..] = unsigned.as_bytes() {
+            return Err(self.set_error(s_start, Some(s_end), ErrorKind::InvalidNumber));
         }
 
-        let mut exponent = None;
-        if suffix.starts_with('e') || suffix.starts_with('E') {
-            let (a, b) = if suffix.len() == 1 {
-                self.eat_byte(b'+');
-                match self.peek_byte() {
-                    Some(b) if is_keylike_byte(b) => {
-                        let next = self.read_keylike();
-                        match self.parse_integer(next, false, true, 10) {
-                            Ok(v) => v,
-                            Err(e) => return Err(e),
+        scratch.clear();
+
+        for &b in s.as_bytes() {
+            if b != b'_' {
+                scratch.push(b);
+            }
+        }
+
+        let mut last = s;
+
+        if let Some(after) = after_decimal {
+            if !matches!(after.as_bytes().first(), Some(b'0'..=b'9')) {
+                return Err(self.set_error(s_start, Some(s_end), ErrorKind::InvalidNumber));
+            }
+            scratch.push(b'.');
+            for &b in after.as_bytes() {
+                if b != b'_' {
+                    scratch.push(b);
+                }
+            }
+            last = after;
+        }
+
+        // When the last keylike token ends with e/E, the '+' and exponent
+        // digits are separate tokens in the stream ('-' IS keylike so
+        // e.g. "1e-5" stays in one token and needs no special handling).
+        if matches!(last.as_bytes().last(), Some(b'e' | b'E')) {
+            self.eat_byte(b'+');
+            match self.peek_byte() {
+                Some(b) if is_keylike_byte(b) => {
+                    let next = self.read_keylike();
+                    for &b in next.as_bytes() {
+                        if b != b'_' {
+                            scratch.push(b);
                         }
                     }
-                    _ => {
-                        return Err(self.set_error(
-                            s_start,
-                            Some(s_start + s.len()),
-                            ErrorKind::InvalidNumber,
-                        ));
-                    }
                 }
-            } else {
-                match self.parse_integer(&suffix[1..], true, true, 10) {
-                    Ok(v) => v,
-                    Err(e) => return Err(e),
+                _ => {
+                    return Err(self.set_error(s_start, Some(s_end), ErrorKind::InvalidNumber));
                 }
-            };
-            if !b.is_empty() {
-                return Err(self.set_error(
-                    s_start,
-                    Some(s_start + s.len()),
-                    ErrorKind::InvalidNumber,
-                ));
             }
-            exponent = Some(a);
-        } else if !suffix.is_empty() {
-            return Err(self.set_error(s_start, Some(s_start + s.len()), ErrorKind::InvalidNumber));
         }
 
-        // Build the float string in scratch to avoid allocation
-        scratch.clear();
-        scratch.extend(
-            integral
-                .trim_start_matches('+')
-                .bytes()
-                .filter(|b| *b != b'_'),
-        );
-        if let Some(fraction) = fraction {
-            scratch.push(b'.');
-            scratch.extend(fraction.bytes().filter(|b| *b != b'_'));
-        }
-        if let Some(exponent) = exponent {
-            scratch.push(b'E');
-            scratch.extend(exponent.bytes().filter(|b| *b != b'_'));
-        }
         let n: f64 = match unsafe { std::str::from_utf8_unchecked(scratch) }.parse() {
             Ok(n) => n,
             Err(_) => {
-                return Err(self.set_error(
-                    s_start,
-                    Some(s_start + s.len()),
-                    ErrorKind::InvalidNumber,
-                ));
+                return Err(self.set_error(s_start, Some(s_end), ErrorKind::InvalidNumber));
             }
         };
         if n.is_finite() {
             Ok(n)
         } else {
-            Err(self.set_error(s_start, Some(s_start + s.len()), ErrorKind::InvalidNumber))
+            Err(self.set_error(s_start, Some(s_end), ErrorKind::InvalidNumber))
         }
-    }
-
-    fn substr_offset(&self, s: &str) -> usize {
-        let a = self.bytes.as_ptr() as usize;
-        let b = s.as_ptr() as usize;
-        assert!(a <= b);
-        b - a
     }
 
     // -- value parsing ------------------------------------------------------
