@@ -43,7 +43,6 @@ fn deser_integer(
         Some(_) => Err(Error {
             kind: ErrorKind::OutOfRange(name),
             span,
-            line_info: None,
         }),
         None => Err(value.expected("an integer")),
     }

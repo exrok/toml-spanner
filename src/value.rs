@@ -403,7 +403,6 @@ impl<'de> Item<'de> {
                 found: self.type_str(),
             },
             span: self.span(),
-            line_info: None,
         }
     }
 
@@ -422,7 +421,6 @@ impl<'de> Item<'de> {
             Err(err) => Err(Error {
                 kind: ErrorKind::Custom(format!("failed to parse string: {err}").into()),
                 span: self.span(),
-                line_info: None,
             }),
         }
     }
@@ -439,7 +437,6 @@ impl<'de> Item<'de> {
                     found: self.type_str(),
                 },
                 span,
-                line_info: None,
             }),
         }
     }

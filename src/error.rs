@@ -11,19 +11,13 @@ pub struct Error {
     ///
     /// Note some [`ErrorKind`] contain additional span information
     pub span: Span,
-    /// Line and column information, only available for errors coming from the parser
-    pub line_info: Option<(usize, usize)>,
 }
 
 impl std::error::Error for Error {}
 
 impl From<(ErrorKind, Span)> for Error {
     fn from((kind, span): (ErrorKind, Span)) -> Self {
-        Self {
-            kind,
-            span,
-            line_info: None,
-        }
+        Self { kind, span }
     }
 }
 
@@ -408,4 +402,3 @@ impl Error {
         }
     }
 }
-

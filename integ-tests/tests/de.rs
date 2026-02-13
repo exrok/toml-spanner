@@ -63,13 +63,10 @@ impl<'de> Deserialize<'de> for Package {
 
                 Ok(Self { name, version })
             } else {
-                let name = table.required_s("name")?;
+                let name = table.required("name")?;
                 let version = table.optional("version")?;
 
-                Ok(Self {
-                    name: name.value,
-                    version,
-                })
+                Ok(Self { name, version })
             }
         } else {
             Err(value.expected("a string or table").into())
@@ -173,7 +170,9 @@ impl<'de> Deserialize<'de> for Ohno {
         };
         let year = table.required("year")?;
 
-        if let Some(snbh) = table.optional_s::<std::borrow::Cow<'de, str>>("this-is-deprecated")? {
+        if let Some(snbh) =
+            table.optional::<Spanned<std::borrow::Cow<'de, str>>>("this-is-deprecated")?
+        {
             return Err(toml_spanner::Error::from((
                 toml_spanner::ErrorKind::Custom("this-is-deprecated is deprecated".into()),
                 snbh.span,

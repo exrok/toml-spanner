@@ -435,7 +435,6 @@ impl<'de> Table<'de> {
             return Err(Error {
                 kind: ErrorKind::MissingField(name),
                 span: self.span(),
-                line_info: None,
             });
         };
 
@@ -458,21 +457,27 @@ impl<'de> Table<'de> {
     ///
     /// Returns [`ErrorKind::UnexpectedKeys`] if the table still has entries.
     pub fn expect_empty(&self) -> Result<(), Error> {
-        if !self.value.is_empty() {
-            let keys = self
-                .value
-                .entries()
-                .iter()
-                .map(|(key, _)| (key.name.into(), key.span))
-                .collect();
-
-            return Err(Error::from((
-                ErrorKind::UnexpectedKeys { keys },
-                self.span(),
-            )));
+        if self.value.is_empty() {
+            return Ok(());
         }
 
-        Ok(())
+        // let keys = self
+        //     .value
+        //     .entries()
+        //     .iter()
+        //     .map(|(key, _)| (key.name.into(), key.span))
+        //     .collect();
+        // Note: collect version ends up generating a lot of code bloat
+        // despite being more efficient in theory.
+        let mut keys = Vec::with_capacity(self.value.len());
+        for (key, _) in self.value.entries() {
+            keys.push((key.name.into(), key.span));
+        }
+
+        Err(Error::from((
+            ErrorKind::UnexpectedKeys { keys },
+            self.span(),
+        )))
     }
 }
 
