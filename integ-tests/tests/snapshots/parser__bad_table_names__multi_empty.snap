@@ -6,6 +6,4 @@ error[multiline-string-key]:
   ┌─ multi_empty:1:2
   │
 1 │ ['''''']
-  │  ^ multiline keys are not allowed
-
-
+  │  ^^^ multiline keys are not allowed

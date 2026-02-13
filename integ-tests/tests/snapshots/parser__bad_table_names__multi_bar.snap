@@ -6,6 +6,4 @@ error[multiline-string-key]:
   ┌─ multi_bar:1:2
   │
 1 │ ["""bar"""]
-  │  ^^^ multiline keys are not allowed
-
-
+  │  ^^^^^^ multiline keys are not allowed

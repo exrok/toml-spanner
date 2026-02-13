@@ -852,9 +852,17 @@ impl<'de> Parser<'de> {
 
     fn number_leading_plus(&mut self, plus_start: u32) -> Result<Value<'de>, ParseError> {
         match self.peek_byte() {
-            Some(b) if is_keylike_byte(b) => {
+            Some(b'0'..=b'9' | b'i' | b'n') => {
                 let s = self.read_keylike();
                 let end = self.cursor as u32;
+                // TOML forbids signs on base-prefixed integers.
+                if let [b'0', b'x' | b'o' | b'b', ..] = s.as_bytes() {
+                    return Err(self.set_error(
+                        plus_start as usize,
+                        Some(end as usize),
+                        ErrorKind::InvalidNumber,
+                    ));
+                }
                 self.number(plus_start, end, s)
             }
             _ => Err(self.set_error(
@@ -1082,10 +1090,8 @@ impl<'de> Parser<'de> {
         // Safety: no other Scratch or arena.alloc() is active during float parsing.
         let mut scratch = unsafe { self.arena.scratch() };
 
-        for &b in s.as_bytes() {
-            if b != b'_' {
-                scratch.push(b);
-            }
+        if !scratch.push_strip_underscores(s.as_bytes()) {
+            return Err(self.set_error(s_start, Some(s_end), ErrorKind::InvalidNumber));
         }
 
         let mut last = s;
@@ -1095,10 +1101,8 @@ impl<'de> Parser<'de> {
                 return Err(self.set_error(s_start, Some(s_end), ErrorKind::InvalidNumber));
             }
             scratch.push(b'.');
-            for &b in after.as_bytes() {
-                if b != b'_' {
-                    scratch.push(b);
-                }
+            if !scratch.push_strip_underscores(after.as_bytes()) {
+                return Err(self.set_error(s_start, Some(s_end), ErrorKind::InvalidNumber));
             }
             last = after;
         }
@@ -1111,10 +1115,12 @@ impl<'de> Parser<'de> {
             match self.peek_byte() {
                 Some(b) if is_keylike_byte(b) => {
                     let next = self.read_keylike();
-                    for &b in next.as_bytes() {
-                        if b != b'_' {
-                            scratch.push(b);
-                        }
+                    if !scratch.push_strip_underscores(next.as_bytes()) {
+                        return Err(self.set_error(
+                            s_start,
+                            Some(s_end),
+                            ErrorKind::InvalidNumber,
+                        ));
                     }
                 }
                 _ => {
@@ -1198,7 +1204,17 @@ impl<'de> Parser<'de> {
                     _ => {
                         let first_char = key.chars().next().expect("key should not be empty");
                         match first_char {
-                            '-' | '0'..='9' => self.number(start, end, key),
+                            '-' => match key.as_bytes().get(1) {
+                                Some(b'0'..=b'9' | b'i' | b'n') => {
+                                    self.number(start, end, key)
+                                }
+                                _ => Err(self.set_error(
+                                    start as usize,
+                                    Some(end as usize),
+                                    ErrorKind::InvalidNumber,
+                                )),
+                            },
+                            '0'..='9' => self.number(start, end, key),
                             _ => Err(self.set_error(
                                 at,
                                 Some(end as usize),

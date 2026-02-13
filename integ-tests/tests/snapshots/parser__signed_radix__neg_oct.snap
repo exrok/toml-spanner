@@ -1,0 +1,9 @@
+---
+source: integ-tests/tests/parser.rs
+expression: error
+---
+error[invalid-number]: 
+  ┌─ neg_oct:1:5
+  │
+1 │ a = -0o0
+  │     ^^^^ unable to parse number

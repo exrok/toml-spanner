@@ -78,6 +78,17 @@ mod bad_leading_zeros {
     invalid!(pos_with_dec, "a = +00.0");
 }
 
+mod signed_radix {
+    use super::invalid;
+
+    invalid!(plus_bin, "a = +0b0");
+    invalid!(plus_oct, "a = +0o0");
+    invalid!(plus_hex, "a = +0x0");
+    invalid!(neg_bin, "a = -0b0");
+    invalid!(neg_oct, "a = -0o0");
+    invalid!(neg_hex, "a = -0x0");
+}
+
 mod bad_floats {
     use super::invalid;
 
@@ -88,6 +99,14 @@ mod bad_floats {
     invalid!(trailing_exp4, "a = 0.0e");
     invalid!(trailing_neg, "a = 0.0e-");
     invalid!(trailing_pos, "a = 0.0e+");
+    invalid!(no_digit_before_dot_neg, "a = -.7");
+    invalid!(no_digit_before_dot_pos, "a = +.7");
+    invalid!(no_digit_after_neg, "a = -_2");
+    invalid!(no_digit_after_pos, "a = +_2");
+    invalid!(underscore_before_exp, "a = 73_e3");
+    invalid!(underscore_after_exp, "a = 73e_3");
+    invalid!(underscore_before_dot, "a = 73_.5");
+    invalid!(underscore_after_dot, "a = 1._5");
 }
 
 mod bad_keys {

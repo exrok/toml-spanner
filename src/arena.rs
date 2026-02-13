@@ -214,6 +214,27 @@ impl<'a> Scratch<'a> {
         self.len += bytes.len();
     }
 
+    /// Push bytes while stripping underscores. Returns `false` if any
+    /// underscore is not placed between two ASCII digits.
+    #[inline]
+    pub(crate) fn push_strip_underscores(&mut self, bytes: &[u8]) -> bool {
+        let mut prev = 0u8;
+        for &b in bytes {
+            if b == b'_' {
+                if !prev.is_ascii_digit() {
+                    return false;
+                }
+            } else {
+                if prev == b'_' && !b.is_ascii_digit() {
+                    return false;
+                }
+                self.push(b);
+            }
+            prev = b;
+        }
+        prev != b'_'
+    }
+
     #[inline]
     pub fn as_bytes(&self) -> &[u8] {
         if self.len == 0 {
