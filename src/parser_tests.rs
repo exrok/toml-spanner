@@ -528,6 +528,87 @@ fn value_into_kind() {
 }
 
 #[test]
+fn recursion_depth_at_limit() {
+    let depth = super::MAX_RECURSION_DEPTH as usize;
+    let ctx = TestCtx::new();
+
+    // Nested arrays: [[[...1...]]]
+    let mut input = String::from("a = ");
+    for _ in 0..depth {
+        input.push('[');
+    }
+    input.push('1');
+    for _ in 0..depth {
+        input.push(']');
+    }
+    ctx.parse_ok(&input);
+
+    // Nested inline tables: {b= {b= {b= ...1...}}}
+    let mut input = String::from("a = ");
+    for _ in 0..depth {
+        input.push_str("{b= ");
+    }
+    input.push('1');
+    for _ in 0..depth {
+        input.push('}');
+    }
+    ctx.parse_ok(&input);
+
+    // Mixed: [{b= [{b= ...1...}]}]
+    let mut input = String::from("a = ");
+    for _ in 0..depth / 2 {
+        input.push_str("[{b= ");
+    }
+    input.push('1');
+    for _ in 0..depth / 2 {
+        input.push_str("}]");
+    }
+    ctx.parse_ok(&input);
+}
+
+#[test]
+fn recursion_depth_over_limit() {
+    let depth = super::MAX_RECURSION_DEPTH as usize;
+    let ctx = TestCtx::new();
+
+    // Nested arrays one past the limit
+    let mut input = String::from("a = ");
+    for _ in 0..=depth {
+        input.push('[');
+    }
+    input.push('1');
+    for _ in 0..=depth {
+        input.push(']');
+    }
+    let e = ctx.parse_err(&input);
+    assert!(matches!(e.kind, ErrorKind::OutOfRange("Max recursion depth exceeded")));
+
+    // Nested inline tables one past the limit
+    let mut input = String::from("a = ");
+    for _ in 0..=depth {
+        input.push_str("{b= ");
+    }
+    input.push('1');
+    for _ in 0..=depth {
+        input.push('}');
+    }
+    let e = ctx.parse_err(&input);
+    assert!(matches!(e.kind, ErrorKind::OutOfRange("Max recursion depth exceeded")));
+
+    // Mixed nesting one past the limit
+    let mut input = String::from("a = ");
+    for _ in 0..=depth / 2 {
+        input.push_str("[{b= ");
+    }
+    input.push('1');
+    for _ in 0..=depth / 2 {
+        input.push_str("}]");
+    }
+    let e = ctx.parse_err(&input);
+    assert!(matches!(e.kind, ErrorKind::OutOfRange("Max recursion depth exceeded")));
+}
+
+#[test]
 fn mixed_content() {
     let ctx = TestCtx::new();
     let input = r#"
@@ -571,4 +652,22 @@ sku = 284758393
     assert_eq!(products.len(), 2);
     let p0 = products.get(0).unwrap().as_table().unwrap();
     assert_eq!(p0.get("name").unwrap().as_str(), Some("Hammer"));
+}
+
+#[test]
+fn utf8_bom_is_skipped() {
+    let ctx = TestCtx::new();
+
+    // BOM-only input → empty table
+    let v = ctx.parse_ok("\u{FEFF}");
+    assert!(root_table(&v).is_empty());
+
+    // BOM followed by key-value
+    let v = ctx.parse_ok("\u{FEFF}a = 1");
+    assert_eq!(root_table(&v).get("a").unwrap().as_integer(), Some(1));
+
+    // BOM followed by table header
+    let v = ctx.parse_ok("\u{FEFF}[section]\nkey = \"val\"");
+    let section = root_table(&v).get("section").unwrap().as_table().unwrap();
+    assert_eq!(section.get("key").unwrap().as_str(), Some("val"));
 }

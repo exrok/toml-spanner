@@ -4,6 +4,10 @@
 #![allow(clippy::question_mark)]
 #![allow(unsafe_code)]
 
+#[cfg(test)]
+#[path = "./parser_tests.rs"]
+mod tests;
+
 use crate::{
     Span,
     arena::Arena,
@@ -15,6 +19,7 @@ use std::hash::{Hash, Hasher};
 use std::ptr::NonNull;
 use std::{char, collections::HashMap};
 
+const MAX_RECURSION_DEPTH: i16 = 256;
 // When a method returns Err(ParseError), the full error details have already
 // been written into Parser::error_kind / Parser::error_span.
 #[derive(Copy, Clone)]
@@ -108,9 +113,16 @@ struct Parser<'de> {
 #[allow(unsafe_code)]
 impl<'de> Parser<'de> {
     fn new(input: &'de str, arena: &'de Arena) -> Self {
+        let bytes = input.as_bytes();
+        // Skip UTF-8 BOM (U+FEFF = EF BB BF) if present at the start.
+        let cursor = if bytes.starts_with(b"\xef\xbb\xbf") {
+            3
+        } else {
+            0
+        };
         Parser {
-            bytes: input.as_bytes(),
-            cursor: 0,
+            bytes,
+            cursor,
             arena,
             error_span: Span::new(0, 0),
             error_kind: None,
@@ -1126,7 +1138,7 @@ impl<'de> Parser<'de> {
         }
     }
 
-    fn value(&mut self) -> Result<Value<'de>, ParseError> {
+    fn value(&mut self, depth_remaining: i16) -> Result<Value<'de>, ParseError> {
         let at = self.cursor;
         let Some(byte) = self.peek_byte() else {
             return Err(self.set_error(self.bytes.len(), None, ErrorKind::UnexpectedEof));
@@ -1152,7 +1164,7 @@ impl<'de> Parser<'de> {
                 let start = self.cursor as u32;
                 self.advance();
                 let mut table = value::Table::new();
-                let end_span = match self.inline_table_contents(&mut table) {
+                let end_span = match self.inline_table_contents(&mut table, depth_remaining - 1) {
                     Ok(v) => v,
                     Err(e) => return Err(e),
                 };
@@ -1162,7 +1174,7 @@ impl<'de> Parser<'de> {
                 let start = self.cursor as u32;
                 self.advance();
                 let mut arr = value::Array::new();
-                let end_span = match self.array_contents(&mut arr) {
+                let end_span = match self.array_contents(&mut arr, depth_remaining - 1) {
                     Ok(v) => v,
                     Err(e) => return Err(e),
                 };
@@ -1210,7 +1222,18 @@ impl<'de> Parser<'de> {
         }
     }
 
-    fn inline_table_contents(&mut self, out: &mut value::Table<'de>) -> Result<Span, ParseError> {
+    fn inline_table_contents(
+        &mut self,
+        out: &mut value::Table<'de>,
+        depth_remaining: i16,
+    ) -> Result<Span, ParseError> {
+        if depth_remaining < 0 {
+            return Err(self.set_error(
+                self.cursor,
+                None,
+                ErrorKind::OutOfRange("Max recursion depth exceeded"),
+            ));
+        }
         if let Err(e) = self.eat_inline_table_whitespace() {
             return Err(e);
         }
@@ -1249,7 +1272,7 @@ impl<'de> Parser<'de> {
                 return Err(e);
             }
             {
-                let val = match self.value() {
+                let val = match self.value(depth_remaining) {
                     Ok(v) => v,
                     Err(e) => return Err(e),
                 };
@@ -1276,7 +1299,18 @@ impl<'de> Parser<'de> {
         }
     }
 
-    fn array_contents(&mut self, out: &mut value::Array<'de>) -> Result<Span, ParseError> {
+    fn array_contents(
+        &mut self,
+        out: &mut value::Array<'de>,
+        depth_remaining: i16,
+    ) -> Result<Span, ParseError> {
+        if depth_remaining < 0 {
+            return Err(self.set_error(
+                self.cursor,
+                None,
+                ErrorKind::OutOfRange("Max recursion depth exceeded"),
+            ));
+        }
         loop {
             if let Err(e) = self.eat_intermediate() {
                 return Err(e);
@@ -1284,7 +1318,7 @@ impl<'de> Parser<'de> {
             if let Some(span) = self.eat_byte_spanned(b']') {
                 return Ok(span);
             }
-            let val = match self.value() {
+            let val = match self.value(depth_remaining) {
                 Ok(v) => v,
                 Err(e) => return Err(e),
             };
@@ -1748,7 +1782,7 @@ impl<'de> Parser<'de> {
             return Err(e);
         }
         self.eat_whitespace();
-        let val = match self.value() {
+        let val = match self.value(MAX_RECURSION_DEPTH) {
             Ok(v) => v,
             Err(e) => return Err(e),
         };
@@ -1839,7 +1873,3 @@ fn byte_describe(b: u8) -> &'static str {
         _ => "a character",
     }
 }
-
-#[cfg(test)]
-#[path = "./parser_tests.rs"]
-mod tests;
