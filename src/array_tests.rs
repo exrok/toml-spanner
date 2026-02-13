@@ -7,8 +7,8 @@ fn sp() -> Span {
     Span::new(0, 0)
 }
 
-fn ival(i: i64) -> Value<'static> {
-    Value::integer(i, sp())
+fn ival(i: i64) -> Item<'static> {
+    Item::integer(i, sp())
 }
 
 // -- Empty array ------------------------------------------------------------
@@ -278,9 +278,9 @@ fn into_iter_size_hint() {
 fn drop_with_owned_strings() {
     let arena = Arena::new();
     let mut a = Array::new();
-    a.push(Value::string(Str::from("owned1"), sp()), &arena);
-    a.push(Value::string(Str::from("owned2"), sp()), &arena);
-    a.push(Value::string(Str::from("owned3"), sp()), &arena);
+    a.push(Item::string(Str::from("owned1"), sp()), &arena);
+    a.push(Item::string(Str::from("owned2"), sp()), &arena);
+    a.push(Item::string(Str::from("owned3"), sp()), &arena);
 }
 
 #[test]
@@ -290,7 +290,7 @@ fn drop_with_nested_arrays() {
     inner.push(ival(1), &arena);
     inner.push(ival(2), &arena);
     let mut outer = Array::new();
-    outer.push(Value::array(inner, sp()), &arena);
+    outer.push(Item::array(inner, sp()), &arena);
     outer.push(ival(3), &arena);
 }
 

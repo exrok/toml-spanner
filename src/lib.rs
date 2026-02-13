@@ -22,7 +22,7 @@ pub use parser::parse;
 pub use span::{Span, Spanned};
 pub use str::Str;
 pub use table::Table;
-pub use value::{Key, Value, ValueOwned, ValueRef};
+pub use value::{Item, Key, ValueMut, ValueRef};
 
 #[cfg(feature = "serde")]
 pub mod impl_serde;
@@ -31,7 +31,7 @@ pub mod impl_serde;
 pub trait Deserialize<'de>: Sized {
     /// Given a mutable [`Value`], allows you to deserialize the type from it,
     /// or accumulate 1 or more errors
-    fn deserialize(value: &mut Value<'de>) -> Result<Self, DeserError>;
+    fn deserialize(value: &mut Item<'de>) -> Result<Self, DeserError>;
 }
 
 /// This crate's equivalent to [`serde::DeserializeOwned`](https://docs.rs/serde/latest/serde/de/trait.DeserializeOwned.html)

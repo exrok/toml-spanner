@@ -76,7 +76,7 @@ fn tables_match(spanner: &toml_spanner::Table<'_>, toml_val: &toml::Table) -> bo
 /// Strict recursive comparison between a `toml_spanner::Value` and a
 /// `toml::Value`. Since both parsers succeeded, no datetimes can be present
 /// (toml-spanner would have rejected the input). Any mismatch is a real bug.
-fn values_match(spanner: &toml_spanner::Value<'_>, toml_val: &toml::Value) -> bool {
+fn values_match(spanner: &toml_spanner::Item<'_>, toml_val: &toml::Value) -> bool {
     match (spanner.as_ref(), toml_val) {
         (ValueRef::String(s), toml::Value::String(t)) => &**s == t,
         (ValueRef::Integer(a), toml::Value::Integer(b)) => a == *b,

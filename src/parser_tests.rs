@@ -1,4 +1,3 @@
-use crate::value::ValueOwned;
 use crate::{ErrorKind, Table};
 
 struct TestCtx {
@@ -464,29 +463,17 @@ fn value_into_kind() {
     let ctx = TestCtx::new();
     let mut v = ctx.parse_ok("a = \"hello\"\nb = 42\nc = [1, 2]\nd = {x = 1}");
 
-    let a = v.get_mut("a").unwrap().take();
-    let ValueOwned::String(s) = a else {
-        panic!("expected string")
-    };
-    assert_eq!(&*s, "hello");
+    let a = v.remove("a").unwrap();
+    assert_eq!(a.as_str().unwrap(), "hello");
 
-    let b = v.get_mut("b").unwrap().take();
-    let ValueOwned::Integer(i) = b else {
-        panic!("expected integer")
-    };
-    assert_eq!(i, 42);
+    let b = v.remove("b").unwrap();
+    assert_eq!(b.as_integer().unwrap(), 42);
 
-    let c = v.get_mut("c").unwrap().take();
-    let ValueOwned::Array(arr) = c else {
-        panic!("expected array")
-    };
-    assert_eq!(arr.len(), 2);
+    let c = v.remove("c").unwrap();
+    assert_eq!(c.as_array().unwrap().len(), 2);
 
-    let d = v.get_mut("d").unwrap().take();
-    let ValueOwned::Table(tab) = d else {
-        panic!("expected table")
-    };
-    assert_eq!(tab.len(), 1);
+    let d = v.remove("d").unwrap();
+    assert_eq!(d.as_table().unwrap().len(), 1);
 }
 
 #[test]

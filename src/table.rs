@@ -5,11 +5,11 @@
 mod tests;
 
 use crate::arena::Arena;
-use crate::value::{Key, Value};
+use crate::value::{Item, Key};
 use std::alloc::Layout;
 use std::ptr::NonNull;
 
-type TableEntry<'de> = (Key<'de>, Value<'de>);
+type TableEntry<'de> = (Key<'de>, Item<'de>);
 
 const MIN_CAP: u32 = 2;
 
@@ -38,7 +38,7 @@ impl<'de> Table<'de> {
     }
 
     /// Inserts a key-value pair. Does **not** check for duplicates.
-    pub fn insert(&mut self, key: Key<'de>, value: Value<'de>, arena: &Arena) {
+    pub fn insert(&mut self, key: Key<'de>, value: Item<'de>, arena: &Arena) {
         let len = self.len;
         if self.len == self.cap {
             self.grow(arena);
@@ -62,7 +62,7 @@ impl<'de> Table<'de> {
     }
 
     /// Linear scan for a key, returning both key and value references.
-    pub fn get_key_value(&self, name: &str) -> Option<(&Key<'de>, &Value<'de>)> {
+    pub fn get_key_value(&self, name: &str) -> Option<(&Key<'de>, &Item<'de>)> {
         for entry in self.entries() {
             if entry.0.name == name {
                 return Some((&entry.0, &entry.1));
@@ -72,7 +72,7 @@ impl<'de> Table<'de> {
     }
 
     /// Returns a reference to the value for `name`.
-    pub fn get(&self, name: &str) -> Option<&Value<'de>> {
+    pub fn get(&self, name: &str) -> Option<&Item<'de>> {
         for entry in self.entries() {
             if entry.0.name == name {
                 return Some(&entry.1);
@@ -82,7 +82,7 @@ impl<'de> Table<'de> {
     }
 
     /// Returns a mutable reference to the value for `name`.
-    pub fn get_mut(&mut self, name: &str) -> Option<&mut Value<'de>> {
+    pub fn get_mut(&mut self, name: &str) -> Option<&mut Item<'de>> {
         for entry in self.entries_mut() {
             if entry.0.name == name {
                 return Some(&mut entry.1);
@@ -99,18 +99,18 @@ impl<'de> Table<'de> {
 
     /// Removes the first entry matching `name`, returning its value.
     /// Shifts subsequent entries to fill the gap (preserves order).
-    pub fn remove(&mut self, name: &str) -> Option<Value<'de>> {
+    pub fn remove(&mut self, name: &str) -> Option<Item<'de>> {
         self.remove_entry(name).map(|(_, v)| v)
     }
 
     /// Removes the first entry matching `name`, returning the key-value pair.
-    pub fn remove_entry(&mut self, name: &str) -> Option<(Key<'de>, Value<'de>)> {
+    pub fn remove_entry(&mut self, name: &str) -> Option<(Key<'de>, Item<'de>)> {
         let idx = self.find_index(name)?;
         Some(self.remove_at(idx))
     }
 
     /// Returns an iterator over mutable references to the values.
-    pub fn values_mut(&mut self) -> impl Iterator<Item = &mut Value<'de>> {
+    pub fn values_mut(&mut self) -> impl Iterator<Item = &mut Item<'de>> {
         self.entries_mut().iter_mut().map(|(_, v)| v)
     }
 
@@ -135,13 +135,13 @@ impl<'de> Table<'de> {
 
     /// Returns key-value references at a given index (unchecked in release).
     #[inline]
-    pub(crate) unsafe fn get_mut_unchecked(&mut self, index: usize) -> &mut (Key<'de>, Value<'de>) {
+    pub(crate) unsafe fn get_mut_unchecked(&mut self, index: usize) -> &mut (Key<'de>, Item<'de>) {
         debug_assert!(index < self.len as usize);
         unsafe { &mut *self.ptr.as_ptr().add(index) }
     }
     /// Returns key-value references at a given index (unchecked in release).
     #[inline]
-    pub(crate) fn get_key_value_at(&self, index: usize) -> (&Key<'de>, &Value<'de>) {
+    pub(crate) fn get_key_value_at(&self, index: usize) -> (&Key<'de>, &Item<'de>) {
         debug_assert!(index < self.len as usize);
         unsafe {
             let entry = &*self.ptr.as_ptr().add(index);
@@ -151,7 +151,7 @@ impl<'de> Table<'de> {
 
     /// Returns a mutable value reference at a given index (unchecked in release).
     #[inline]
-    pub(crate) fn get_mut_at(&mut self, index: usize) -> &mut Value<'de> {
+    pub(crate) fn get_mut_at(&mut self, index: usize) -> &mut Item<'de> {
         debug_assert!(index < self.len as usize);
         unsafe { &mut (*self.ptr.as_ptr().add(index)).1 }
     }
@@ -177,7 +177,7 @@ impl<'de> Table<'de> {
     }
 
     /// Remove entry at `idx`, shifting subsequent entries left.
-    fn remove_at(&mut self, idx: usize) -> (Key<'de>, Value<'de>) {
+    fn remove_at(&mut self, idx: usize) -> (Key<'de>, Item<'de>) {
         let ptr = unsafe { self.ptr.as_ptr().add(idx) };
         let entry = unsafe { ptr.read() };
         let remaining = self.len as usize - idx - 1;
@@ -232,7 +232,7 @@ impl std::fmt::Debug for Table<'_> {
 }
 
 impl<'a, 'de> IntoIterator for &'a Table<'de> {
-    type Item = (&'a Key<'de>, &'a Value<'de>);
+    type Item = (&'a Key<'de>, &'a Item<'de>);
     type IntoIter = Iter<'a, 'de>;
 
     fn into_iter(self) -> Self::IntoIter {
@@ -248,7 +248,7 @@ pub struct Iter<'a, 'de> {
 }
 
 impl<'a, 'de> Iterator for Iter<'a, 'de> {
-    type Item = (&'a Key<'de>, &'a Value<'de>);
+    type Item = (&'a Key<'de>, &'a Item<'de>);
 
     fn next(&mut self) -> Option<Self::Item> {
         self.inner.next().map(|(k, v)| (k, v))
@@ -262,7 +262,7 @@ impl<'a, 'de> Iterator for Iter<'a, 'de> {
 impl ExactSizeIterator for Iter<'_, '_> {}
 
 impl<'de> IntoIterator for Table<'de> {
-    type Item = (Key<'de>, Value<'de>);
+    type Item = (Key<'de>, Item<'de>);
     type IntoIter = IntoIter<'de>;
 
     fn into_iter(self) -> Self::IntoIter {
@@ -280,7 +280,7 @@ pub struct IntoIter<'de> {
 }
 
 impl<'de> Iterator for IntoIter<'de> {
-    type Item = (Key<'de>, Value<'de>);
+    type Item = (Key<'de>, Item<'de>);
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.index < self.table.len {

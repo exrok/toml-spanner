@@ -13,7 +13,7 @@ use crate::{
     arena::Arena,
     error::{Error, ErrorKind},
     str::Str,
-    value::{self, Key, SpannedTable, Value},
+    value::{self, Key, SpannedTable, Item},
 };
 use std::ptr::NonNull;
 use std::{char, collections::HashMap};
@@ -793,7 +793,7 @@ impl<'de> Parser<'de> {
         }
     }
 
-    fn number(&mut self, start: u32, end: u32, s: &'de str) -> Result<Value<'de>, ParseError> {
+    fn number(&mut self, start: u32, end: u32, s: &'de str) -> Result<Item<'de>, ParseError> {
         let bytes = s.as_bytes();
 
         // Base-prefixed integers (0x, 0o, 0b).
@@ -813,7 +813,7 @@ impl<'de> Parser<'de> {
                 Some(b) if is_keylike_byte(b) => {
                     let after = self.read_keylike();
                     match self.float(start, end, s, Some(after)) {
-                        Ok(f) => Ok(Value::float(f, Span::new(start, self.cursor as u32))),
+                        Ok(f) => Ok(Item::float(f, Span::new(start, self.cursor as u32))),
                         Err(e) => Err(e),
                     }
                 }
@@ -827,10 +827,10 @@ impl<'de> Parser<'de> {
         let off = usize::from(bytes.first() == Some(&b'-'));
         if let Some(&b'i' | &b'n') = bytes.get(off) {
             return match s {
-                "inf" => Ok(Value::float(f64::INFINITY, Span::new(start, end))),
-                "-inf" => Ok(Value::float(f64::NEG_INFINITY, Span::new(start, end))),
-                "nan" => Ok(Value::float(f64::NAN.copysign(1.0), Span::new(start, end))),
-                "-nan" => Ok(Value::float(f64::NAN.copysign(-1.0), Span::new(start, end))),
+                "inf" => Ok(Item::float(f64::INFINITY, Span::new(start, end))),
+                "-inf" => Ok(Item::float(f64::NEG_INFINITY, Span::new(start, end))),
+                "nan" => Ok(Item::float(f64::NAN.copysign(1.0), Span::new(start, end))),
+                "-nan" => Ok(Item::float(f64::NAN.copysign(-1.0), Span::new(start, end))),
                 _ => Err(self.set_error(
                     start as usize,
                     Some(end as usize),
@@ -845,7 +845,7 @@ impl<'de> Parser<'de> {
 
         if bytes.iter().any(|&b| b == b'e' || b == b'E') {
             return match self.float(start, end, s, None) {
-                Ok(f) => Ok(Value::float(f, Span::new(start, self.cursor as u32))),
+                Ok(f) => Ok(Item::float(f, Span::new(start, self.cursor as u32))),
                 Err(e) => Err(e),
             };
         }
@@ -853,7 +853,7 @@ impl<'de> Parser<'de> {
         Err(ParseError)
     }
 
-    fn number_leading_plus(&mut self, plus_start: u32) -> Result<Value<'de>, ParseError> {
+    fn number_leading_plus(&mut self, plus_start: u32) -> Result<Item<'de>, ParseError> {
         match self.peek_byte() {
             Some(b'0'..=b'9' | b'i' | b'n') => {
                 let s = self.read_keylike();
@@ -876,7 +876,7 @@ impl<'de> Parser<'de> {
         }
     }
 
-    fn integer_decimal(&mut self, bytes: &'de [u8], span: Span) -> Result<Value<'de>, ParseError> {
+    fn integer_decimal(&mut self, bytes: &'de [u8], span: Span) -> Result<Item<'de>, ParseError> {
         let mut acc: u64 = 0;
         let mut prev_underscore = false;
         let mut has_digit = false;
@@ -936,14 +936,14 @@ impl<'de> Parser<'de> {
             } else {
                 acc as i64
             };
-            return Ok(Value::integer(val, span));
+            return Ok(Item::integer(val, span));
         }
         self.error_span = span;
         self.error_kind = Some(ErrorKind::InvalidNumber);
         Err(ParseError)
     }
 
-    fn integer_hex(&mut self, bytes: &'de [u8], span: Span) -> Result<Value<'de>, ParseError> {
+    fn integer_hex(&mut self, bytes: &'de [u8], span: Span) -> Result<Item<'de>, ParseError> {
         let mut acc: u64 = 0;
         let mut prev_underscore = false;
         let mut has_digit = false;
@@ -979,14 +979,14 @@ impl<'de> Parser<'de> {
             if acc > i64::MAX as u64 {
                 break 'error;
             }
-            return Ok(Value::integer(acc as i64, span));
+            return Ok(Item::integer(acc as i64, span));
         }
         self.error_span = span;
         self.error_kind = Some(ErrorKind::InvalidNumber);
         return Err(ParseError);
     }
 
-    fn integer_octal(&mut self, bytes: &'de [u8], span: Span) -> Result<Value<'de>, ParseError> {
+    fn integer_octal(&mut self, bytes: &'de [u8], span: Span) -> Result<Item<'de>, ParseError> {
         let mut acc: u64 = 0;
         let mut prev_underscore = false;
         let mut has_digit = false;
@@ -1021,14 +1021,14 @@ impl<'de> Parser<'de> {
             if acc > i64::MAX as u64 {
                 break 'error;
             }
-            return Ok(Value::integer(acc as i64, span));
+            return Ok(Item::integer(acc as i64, span));
         }
         self.error_span = span;
         self.error_kind = Some(ErrorKind::InvalidNumber);
         Err(ParseError)
     }
 
-    fn integer_binary(&mut self, bytes: &'de [u8], span: Span) -> Result<Value<'de>, ParseError> {
+    fn integer_binary(&mut self, bytes: &'de [u8], span: Span) -> Result<Item<'de>, ParseError> {
         let mut acc: u64 = 0;
         let mut prev_underscore = false;
         let mut has_digit = false;
@@ -1063,7 +1063,7 @@ impl<'de> Parser<'de> {
             if acc > i64::MAX as u64 {
                 break 'error;
             }
-            return Ok(Value::integer(acc as i64, span));
+            return Ok(Item::integer(acc as i64, span));
         }
         self.error_span = span;
         self.error_kind = Some(ErrorKind::InvalidNumber);
@@ -1143,7 +1143,7 @@ impl<'de> Parser<'de> {
         }
     }
 
-    fn value(&mut self, depth_remaining: i16) -> Result<Value<'de>, ParseError> {
+    fn value(&mut self, depth_remaining: i16) -> Result<Item<'de>, ParseError> {
         let at = self.cursor;
         let Some(byte) = self.peek_byte() else {
             return Err(self.set_error(self.bytes.len(), None, ErrorKind::UnexpectedEof));
@@ -1155,7 +1155,7 @@ impl<'de> Parser<'de> {
                     Ok(v) => v,
                     Err(e) => return Err(e),
                 };
-                Ok(Value::string(key.name, key.span))
+                Ok(Item::string(key.name, key.span))
             }
             b'\'' => {
                 self.advance();
@@ -1163,7 +1163,7 @@ impl<'de> Parser<'de> {
                     Ok(v) => v,
                     Err(e) => return Err(e),
                 };
-                Ok(Value::string(key.name, key.span))
+                Ok(Item::string(key.name, key.span))
             }
             b'{' => {
                 let start = self.cursor as u32;
@@ -1173,7 +1173,7 @@ impl<'de> Parser<'de> {
                     Ok(v) => v,
                     Err(e) => return Err(e),
                 };
-                Ok(Value::table_frozen(table, Span::new(start, end_span.end())))
+                Ok(Item::table_frozen(table, Span::new(start, end_span.end())))
             }
             b'[' => {
                 let start = self.cursor as u32;
@@ -1183,7 +1183,7 @@ impl<'de> Parser<'de> {
                     Ok(v) => v,
                     Err(e) => return Err(e),
                 };
-                Ok(Value::array(arr, Span::new(start, end_span.end())))
+                Ok(Item::array(arr, Span::new(start, end_span.end())))
             }
             b'+' => {
                 let start = self.cursor as u32;
@@ -1197,8 +1197,8 @@ impl<'de> Parser<'de> {
                 let span = Span::new(start, end);
 
                 match key {
-                    "true" => Ok(Value::boolean(true, span)),
-                    "false" => Ok(Value::boolean(false, span)),
+                    "true" => Ok(Item::boolean(true, span)),
+                    "false" => Ok(Item::boolean(false, span)),
                     "inf" | "nan" => self.number(start, end, key),
                     _ => {
                         let first_char = key.chars().next().expect("key should not be empty");
@@ -1406,7 +1406,7 @@ impl<'de> Parser<'de> {
         } else {
             let span = key.span;
             let inserted =
-                self.insert_into_table(table, key, Value::table_dotted(value::Table::new(), span));
+                self.insert_into_table(table, key, Item::table_dotted(value::Table::new(), span));
             unsafe { Ok(inserted.as_table_mut_unchecked()) }
         }
     }
@@ -1451,7 +1451,7 @@ impl<'de> Parser<'de> {
         } else {
             let span = key.span;
             let inserted =
-                self.insert_into_table(table, key, Value::table(value::Table::new(), span));
+                self.insert_into_table(table, key, Item::table(value::Table::new(), span));
             unsafe { Ok(inserted.as_spanned_table_mut_unchecked()) }
         }
     }
@@ -1459,8 +1459,8 @@ impl<'de> Parser<'de> {
         &mut self,
         table: &'t mut value::Table<'de>,
         key: Key<'de>,
-        value: Value<'de>,
-    ) -> &'t mut value::Value<'de> {
+        value: Item<'de>,
+    ) -> &'t mut value::Item<'de> {
         table.insert(key, value, self.arena);
         self.index_after_insert(table);
         let last_idx = table.len() - 1;
@@ -1518,7 +1518,7 @@ impl<'de> Parser<'de> {
             let inserted = self.insert_into_table(
                 table,
                 key,
-                Value::table_header(value::Table::new(), Span::new(header_start, header_end)),
+                Item::table_header(value::Table::new(), Span::new(header_start, header_end)),
             );
             Ok(Ctx {
                 st: unsafe { inserted.as_spanned_table_mut_unchecked() },
@@ -1551,7 +1551,7 @@ impl<'de> Parser<'de> {
                 let (end_flag, arr) = unsafe { existing.split_array_end_flag() };
                 let entry_span = Span::new(header_start, header_end);
                 arr.push(
-                    Value::table_header(value::Table::new(), entry_span),
+                    Item::table_header(value::Table::new(), entry_span),
                     self.arena,
                 );
                 let entry = arr.last_mut().unwrap();
@@ -1570,9 +1570,9 @@ impl<'de> Parser<'de> {
             }
         } else {
             let entry_span = Span::new(header_start, header_end);
-            let first_entry = Value::table_header(value::Table::new(), entry_span);
+            let first_entry = Item::table_header(value::Table::new(), entry_span);
             let array_span = Span::new(header_start, header_end);
-            let array_val = Value::array_aot(
+            let array_val = Item::array_aot(
                 value::Array::with_single(first_entry, self.arena),
                 array_span,
             );
@@ -1591,7 +1591,7 @@ impl<'de> Parser<'de> {
         &mut self,
         table: &mut value::Table<'de>,
         key: Key<'de>,
-        val: Value<'de>,
+        val: Item<'de>,
     ) -> Result<(), ParseError> {
         if let Some(idx) = self.indexed_find(table, &key.name) {
             let (existing_key, _) = table.get_key_value_at(idx);
@@ -1849,7 +1849,7 @@ pub fn parse<'de>(s: &'de str, arena: &'de Arena) -> Result<Table<'de>, Error> {
         });
     }
 
-    let mut root = Value::table(value::Table::new(), Span::new(0, s.len() as u32));
+    let mut root = Item::table(value::Table::new(), Span::new(0, s.len() as u32));
 
     // SAFETY: root is a table, so the SpannedTable reinterpretation is valid.
     let root_st = unsafe { root.as_spanned_table_mut_unchecked() };

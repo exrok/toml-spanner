@@ -7,11 +7,3 @@ error[out-of-range]: number is out of range of 'u8'
   │
 1 │ year = 40_000
   │        ^^^^^^
-
-error[custom]: this-is-deprecated is deprecated
-  ┌─ custom_error:2:23
-  │
-2 │ this-is-deprecated = 'this should not be here'
-  │                       ^^^^^^^^^^^^^^^^^^^^^^^
-
-

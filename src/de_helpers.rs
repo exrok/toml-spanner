@@ -4,18 +4,15 @@ use crate::{
     DeserError, Deserialize, Error, ErrorKind, Span,
     span::Spanned,
     str::Str,
-    value::{self, Table, Value, ValueOwned},
+    value::{self, Item, Table},
 };
 use std::{fmt::Display, str::FromStr};
 
-/// Helper for construction an [`ErrorKind::Wanted`]
+/// Helper for constructing an [`ErrorKind::Wanted`]
 #[inline]
-pub fn expected(expected: &'static str, found: ValueOwned<'_>, span: Span) -> Error {
+pub fn expected(expected: &'static str, found: &'static str, span: Span) -> Error {
     Error {
-        kind: ErrorKind::Wanted {
-            expected,
-            found: found.type_str(),
-        },
+        kind: ErrorKind::Wanted { expected, found },
         span,
         line_info: None,
     }
@@ -24,7 +21,7 @@ pub fn expected(expected: &'static str, found: ValueOwned<'_>, span: Span) -> Er
 /// Attempts to acquire a string and parse it, returning an error
 /// if the value is not a string, or the parse implementation fails
 #[inline]
-pub fn parse<T, E>(value: &mut Value<'_>) -> Result<T, Error>
+pub fn parse<T, E>(value: &mut Item<'_>) -> Result<T, Error>
 where
     T: FromStr<Err = E>,
     E: Display,
@@ -44,42 +41,26 @@ where
 pub struct TableHelper<'de> {
     /// The table the helper is operating upon
     pub table: Table<'de>,
-    /// The errors accumulated while deserializing
-    pub errors: Vec<Error>,
-    /// The list of keys that have been requested by the user, this is used to
-    /// show a list of keys that _could_ be used in the case the finalize method
-    /// fails due to keys still being present in the map
-    expected: Vec<&'static str>,
     /// The span for the table location
     span: Span,
 }
 
 impl<'de> From<(Table<'de>, Span)> for TableHelper<'de> {
     fn from((table, span): (Table<'de>, Span)) -> Self {
-        Self {
-            table,
-            span,
-            expected: Vec::new(),
-            errors: Vec::new(),
-        }
+        Self { table, span }
     }
 }
 
 impl<'de> TableHelper<'de> {
     /// Creates a helper for the value, failing if it is not a table
-    pub fn new(value: &mut Value<'de>) -> Result<Self, DeserError> {
+    pub fn new(value: &mut Item<'de>) -> Result<Self, DeserError> {
         let span = value.span();
-        let table = match value.take() {
-            ValueOwned::Table(table) => table,
-            other => return Err(expected("a table", other, span).into()),
+        let value::ValueMut::Table(t) = value.as_mut() else {
+            return Err(expected("a table", value.type_str(), span).into());
         };
+        let table = std::mem::take(t);
 
-        Ok(Self {
-            errors: Vec::new(),
-            table,
-            expected: Vec::new(),
-            span,
-        })
+        Ok(Self { table, span })
     }
 
     /// Returns true if the table contains the specified key
@@ -90,22 +71,20 @@ impl<'de> TableHelper<'de> {
 
     /// Takes the specified key and its value if it exists
     #[inline]
-    pub fn take(&mut self, name: &'static str) -> Option<(value::Key<'de>, Value<'de>)> {
-        self.expected.push(name);
+    pub fn take(&mut self, name: &str) -> Option<(value::Key<'de>, Item<'de>)> {
         self.table.remove_entry(name)
     }
 
     /// Attempts to deserialize the specified key
     ///
-    /// Errors that occur when calling this method are automatically added to
-    /// the set of errors that are reported from [`Self::finalize`], so not early
-    /// returning if this method fails will still report the error by default
-    ///
     /// # Errors
     /// - The key does not exist
     /// - The [`Deserialize`] implementation for the type returns an error
     #[inline]
-    pub fn required<T: Deserialize<'de>>(&mut self, name: &'static str) -> Result<T, Error> {
+    pub fn required<T: Deserialize<'de>>(
+        &mut self,
+        name: &'static str,
+    ) -> Result<T, DeserError> {
         Ok(self.required_s(name)?.value)
     }
 
@@ -113,63 +92,49 @@ impl<'de> TableHelper<'de> {
     pub fn required_s<T: Deserialize<'de>>(
         &mut self,
         name: &'static str,
-    ) -> Result<Spanned<T>, Error> {
-        self.expected.push(name);
-
+    ) -> Result<Spanned<T>, DeserError> {
         let Some(mut val) = self.table.remove(name) else {
-            let missing = Error {
+            return Err(Error {
                 kind: ErrorKind::MissingField(name),
                 span: self.span,
                 line_info: None,
-            };
-            self.errors.push(missing.clone());
-            return Err(missing);
+            }
+            .into());
         };
 
-        Spanned::<T>::deserialize(&mut val).map_err(|mut errs| {
-            let err = errs.errors.last().unwrap().clone();
-            self.errors.append(&mut errs.errors);
-            err
-        })
+        Spanned::<T>::deserialize(&mut val)
     }
 
     /// Attempts to deserialize the specified key, if it exists
-    ///
-    /// Note that if the key exists but deserialization fails, an error will be
-    /// appended and if [`Self::finalize`] is called it will return that error
-    /// along with any others that occurred
     #[inline]
-    pub fn optional<T: Deserialize<'de>>(&mut self, name: &'static str) -> Option<T> {
-        self.optional_s(name).map(|v| v.value)
+    pub fn optional<T: Deserialize<'de>>(
+        &mut self,
+        name: &str,
+    ) -> Result<Option<T>, DeserError> {
+        Ok(self.optional_s(name)?.map(|v| v.value))
     }
 
     /// The same as [`Self::optional`], except it returns a [`Spanned`]
-    pub fn optional_s<T: Deserialize<'de>>(&mut self, name: &'static str) -> Option<Spanned<T>> {
-        self.expected.push(name);
+    pub fn optional_s<T: Deserialize<'de>>(
+        &mut self,
+        name: &str,
+    ) -> Result<Option<Spanned<T>>, DeserError> {
+        let Some(mut val) = self.table.remove(name) else {
+            return Ok(None);
+        };
 
-        let mut val = self.table.remove(name)?;
-
-        match Spanned::<T>::deserialize(&mut val) {
-            Ok(v) => Some(v),
-            Err(mut err) => {
-                self.errors.append(&mut err.errors);
-                None
-            }
-        }
+        Spanned::<T>::deserialize(&mut val).map(Some)
     }
 
     /// Called when you are finished with this [`TableHelper`]
     ///
-    /// If errors have been accumulated when using this [`TableHelper`], this will
-    /// return an error with all of those errors.
+    /// If [`Option::None`] is passed, any keys that still exist in the table
+    /// will produce an [`ErrorKind::UnexpectedKeys`] error, equivalent to
+    /// [`#[serde(deny_unknown_fields)]`](https://serde.rs/container-attrs.html#deny_unknown_fields)
     ///
-    /// Additionally, if [`Option::None`] is passed, any keys that still exist
-    /// in the table will be added to an [`ErrorKind::UnexpectedKeys`] error,
-    /// which can be considered equivalent to [`#[serde(deny_unknown_fields)]`](https://serde.rs/container-attrs.html#deny_unknown_fields)
-    ///
-    /// If you want simulate [`#[serde(flatten)]`](https://serde.rs/field-attrs.html#flatten)
+    /// If you want to simulate [`#[serde(flatten)]`](https://serde.rs/field-attrs.html#flatten)
     /// you can instead put that table back in its original value during this step
-    pub fn finalize(mut self, original: Option<&mut Value<'de>>) -> Result<(), DeserError> {
+    pub fn finalize(self, original: Option<&mut Item<'de>>) -> Result<(), DeserError> {
         if let Some(original) = original {
             original.set_table(self.table);
         } else if !self.table.is_empty() {
@@ -179,30 +144,15 @@ impl<'de> TableHelper<'de> {
                 .map(|key| (key.name.into(), key.span))
                 .collect();
 
-            self.errors.push(
-                (
-                    ErrorKind::UnexpectedKeys {
-                        keys,
-                        expected: self.expected.into_iter().map(String::from).collect(),
-                    },
-                    self.span,
-                )
-                    .into(),
-            );
+            return Err(Error::from((ErrorKind::UnexpectedKeys { keys }, self.span)).into());
         }
 
-        if self.errors.is_empty() {
-            Ok(())
-        } else {
-            Err(DeserError {
-                errors: Box::new(self.errors),
-            })
-        }
+        Ok(())
     }
 }
 
 impl<'de> Deserialize<'de> for String {
-    fn deserialize(value: &mut Value<'de>) -> Result<Self, DeserError> {
+    fn deserialize(value: &mut Item<'de>) -> Result<Self, DeserError> {
         value
             .take_string(None)
             .map(String::from)
@@ -211,13 +161,13 @@ impl<'de> Deserialize<'de> for String {
 }
 
 impl<'de> Deserialize<'de> for Str<'de> {
-    fn deserialize(value: &mut Value<'de>) -> Result<Self, DeserError> {
+    fn deserialize(value: &mut Item<'de>) -> Result<Self, DeserError> {
         value.take_string(None).map_err(DeserError::from)
     }
 }
 
 impl<'de> Deserialize<'de> for std::borrow::Cow<'de, str> {
-    fn deserialize(value: &mut Value<'de>) -> Result<Self, DeserError> {
+    fn deserialize(value: &mut Item<'de>) -> Result<Self, DeserError> {
         value
             .take_string(None)
             .map(std::borrow::Cow::from)
@@ -226,37 +176,36 @@ impl<'de> Deserialize<'de> for std::borrow::Cow<'de, str> {
 }
 
 impl<'de> Deserialize<'de> for bool {
-    fn deserialize(value: &mut Value<'de>) -> Result<Self, DeserError> {
-        let span = value.span();
-        match value.take() {
-            ValueOwned::Boolean(b) => Ok(b),
-            other => Err(expected("a bool", other, span).into()),
+    fn deserialize(value: &mut Item<'de>) -> Result<Self, DeserError> {
+        match value.as_bool() {
+            Some(b) => Ok(b),
+            None => Err(expected("a bool", value.type_str(), value.span()).into()),
         }
     }
 }
 
 fn deser_integer(
-    value: &mut Value<'_>,
+    value: &mut Item<'_>,
     min: i64,
     max: i64,
     name: &'static str,
 ) -> Result<i64, DeserError> {
     let span = value.span();
-    match value.take() {
-        ValueOwned::Integer(i) if i >= min && i <= max => Ok(i),
-        ValueOwned::Integer(_) => Err(DeserError::from(Error {
+    match value.as_integer() {
+        Some(i) if i >= min && i <= max => Ok(i),
+        Some(_) => Err(DeserError::from(Error {
             kind: ErrorKind::OutOfRange(name),
             span,
             line_info: None,
         })),
-        other => Err(expected("an integer", other, span).into()),
+        None => Err(expected("an integer", value.type_str(), span).into()),
     }
 }
 
 macro_rules! integer {
     ($($num:ty),+) => {$(
         impl<'de> Deserialize<'de> for $num {
-            fn deserialize(value: &mut Value<'de>) -> Result<Self, DeserError> {
+            fn deserialize(value: &mut Item<'de>) -> Result<Self, DeserError> {
                 match deser_integer(value, <$num>::MIN as i64, <$num>::MAX as i64, stringify!($num)) {
                     Ok(i) => Ok(i as $num),
                     Err(e) => Err(e),
@@ -269,13 +218,13 @@ macro_rules! integer {
 integer!(i8, i16, i32, isize, u8, u16, u32);
 
 impl<'de> Deserialize<'de> for i64 {
-    fn deserialize(value: &mut Value<'de>) -> Result<Self, DeserError> {
+    fn deserialize(value: &mut Item<'de>) -> Result<Self, DeserError> {
         deser_integer(value, i64::MIN, i64::MAX, "i64")
     }
 }
 
 impl<'de> Deserialize<'de> for u64 {
-    fn deserialize(value: &mut Value<'de>) -> Result<Self, DeserError> {
+    fn deserialize(value: &mut Item<'de>) -> Result<Self, DeserError> {
         match deser_integer(value, 0, i64::MAX, "u64") {
             Ok(i) => Ok(i as u64),
             Err(e) => Err(e),
@@ -284,7 +233,7 @@ impl<'de> Deserialize<'de> for u64 {
 }
 
 impl<'de> Deserialize<'de> for usize {
-    fn deserialize(value: &mut Value<'de>) -> Result<Self, DeserError> {
+    fn deserialize(value: &mut Item<'de>) -> Result<Self, DeserError> {
         const MAX: i64 = if usize::BITS < 64 {
             usize::MAX as i64
         } else {
@@ -298,21 +247,19 @@ impl<'de> Deserialize<'de> for usize {
 }
 
 impl<'de> Deserialize<'de> for f32 {
-    fn deserialize(value: &mut Value<'de>) -> Result<Self, DeserError> {
-        let span = value.span();
-        match value.take() {
-            ValueOwned::Float(f) => Ok(f as f32),
-            other => Err(expected("a float", other, span).into()),
+    fn deserialize(value: &mut Item<'de>) -> Result<Self, DeserError> {
+        match value.as_float() {
+            Some(f) => Ok(f as f32),
+            None => Err(expected("a float", value.type_str(), value.span()).into()),
         }
     }
 }
 
 impl<'de> Deserialize<'de> for f64 {
-    fn deserialize(value: &mut Value<'de>) -> Result<Self, DeserError> {
-        let span = value.span();
-        match value.take() {
-            ValueOwned::Float(f) => Ok(f),
-            other => Err(expected("a float", other, span).into()),
+    fn deserialize(value: &mut Item<'de>) -> Result<Self, DeserError> {
+        match value.as_float() {
+            Some(f) => Ok(f),
+            None => Err(expected("a float", value.type_str(), value.span()).into()),
         }
     }
 }
@@ -321,28 +268,28 @@ impl<'de, T> Deserialize<'de> for Vec<T>
 where
     T: Deserialize<'de>,
 {
-    fn deserialize(value: &mut value::Value<'de>) -> Result<Self, DeserError> {
+    fn deserialize(value: &mut value::Item<'de>) -> Result<Self, DeserError> {
         let span = value.span();
-        match value.take() {
-            ValueOwned::Array(arr) => {
-                let mut errors = Vec::new();
-                let mut s = Vec::new();
-                for mut v in arr {
-                    match T::deserialize(&mut v) {
-                        Ok(v) => s.push(v),
-                        Err(mut err) => errors.append(&mut err.errors),
-                    }
-                }
+        let value::ValueMut::Array(arr) = value.as_mut() else {
+            return Err(expected("an array", value.type_str(), span).into());
+        };
+        let arr = std::mem::take(arr);
 
-                if errors.is_empty() {
-                    Ok(s)
-                } else {
-                    Err(DeserError {
-                        errors: Box::new(errors),
-                    })
-                }
+        let mut errors = Vec::new();
+        let mut s = Vec::new();
+        for mut v in arr {
+            match T::deserialize(&mut v) {
+                Ok(v) => s.push(v),
+                Err(mut err) => errors.append(&mut err.errors),
             }
-            other => Err(expected("an array", other, span).into()),
+        }
+
+        if errors.is_empty() {
+            Ok(s)
+        } else {
+            Err(DeserError {
+                errors: Box::new(errors),
+            })
         }
     }
 }

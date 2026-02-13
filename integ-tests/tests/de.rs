@@ -1,11 +1,7 @@
 #![allow(dead_code)]
 
 use integ_tests::{invalid_de, valid_de};
-use toml_spanner::{
-    DeserError, Deserialize, Spanned,
-    de_helpers::*,
-    {Value, ValueOwned},
-};
+use toml_spanner::{DeserError, Deserialize, Item, Spanned, de_helpers::*};
 
 #[derive(Debug)]
 struct Boop {
@@ -14,11 +10,11 @@ struct Boop {
 }
 
 impl<'de> Deserialize<'de> for Boop {
-    fn deserialize(value: &mut Value<'de>) -> Result<Self, DeserError> {
+    fn deserialize(value: &mut Item<'de>) -> Result<Self, DeserError> {
         let mut mh = TableHelper::new(value)?;
 
         let s = mh.required("s")?;
-        let os = mh.optional("os");
+        let os = mh.optional("os")?;
 
         mh.finalize(None)?;
 
@@ -41,7 +37,7 @@ struct Package {
 }
 
 impl<'de> Deserialize<'de> for Package {
-    fn deserialize(value: &mut Value<'de>) -> Result<Self, DeserError> {
+    fn deserialize(value: &mut Item<'de>) -> Result<Self, DeserError> {
         fn from_str(s: &str) -> (String, Option<String>) {
             if let Some((name, version)) = s.split_once(':') {
                 (name.to_owned(), Some(version.to_owned()))
@@ -51,43 +47,33 @@ impl<'de> Deserialize<'de> for Package {
         }
 
         let span = value.span();
-        match value.take() {
-            ValueOwned::String(s) => {
+        if value.as_str().is_some() {
+            let s = value.take_string(None).map_err(DeserError::from)?;
+            let (name, version) = from_str(&s);
+            Ok(Self { name, version })
+        } else if value.as_table().is_some() {
+            let mut th = TableHelper::new(value)?;
+
+            if let Some(mut val) = th.table.remove("crate") {
+                let s = val.take_string(Some("a package string")).map_err(DeserError::from)?;
                 let (name, version) = from_str(&s);
 
+                th.finalize(Some(value))?;
+
                 Ok(Self { name, version })
+            } else {
+                let name = th.required_s("name")?;
+                let version = th.optional("version")?;
+
+                th.finalize(Some(value))?;
+
+                Ok(Self {
+                    name: name.value,
+                    version,
+                })
             }
-            ValueOwned::Table(tab) => {
-                let mut th = TableHelper::from((tab, span));
-
-                if let Some(mut val) = th.table.remove("crate") {
-                    let val_span = val.span();
-                    let (name, version) = match val.take() {
-                        ValueOwned::String(s) => from_str(&s),
-                        found => {
-                            th.errors
-                                .push(expected("a package string", found, val_span));
-                            th.finalize(Some(value))?;
-                            unreachable!();
-                        }
-                    };
-
-                    th.finalize(Some(value))?;
-
-                    Ok(Self { name, version })
-                } else {
-                    let name = th.required_s("name")?;
-                    let version = th.optional("version");
-
-                    th.finalize(Some(value))?;
-
-                    Ok(Self {
-                        name: name.value,
-                        version,
-                    })
-                }
-            }
-            other => Err(expected("a string or table", other, span).into()),
+        } else {
+            Err(expected("a string or table", value.type_str(), span).into())
         }
     }
 }
@@ -98,7 +84,7 @@ struct Array {
 }
 
 impl<'de> Deserialize<'de> for Array {
-    fn deserialize(value: &mut Value<'de>) -> Result<Self, DeserError> {
+    fn deserialize(value: &mut Item<'de>) -> Result<Self, DeserError> {
         let mut th = TableHelper::new(value)?;
         let packages = th.required("packages")?;
         th.finalize(Some(value))?;
@@ -129,7 +115,7 @@ impl<'de, T> Deserialize<'de> for PackageSpecOrExtended<T>
 where
     T: Deserialize<'de>,
 {
-    fn deserialize(value: &mut Value<'de>) -> Result<Self, DeserError> {
+    fn deserialize(value: &mut Item<'de>) -> Result<Self, DeserError> {
         let spec = Package::deserialize(value)?;
 
         let inner = if value.has_keys() {
@@ -148,7 +134,7 @@ struct Reason {
 }
 
 impl<'de> Deserialize<'de> for Reason {
-    fn deserialize(value: &mut Value<'de>) -> Result<Self, DeserError> {
+    fn deserialize(value: &mut Item<'de>) -> Result<Self, DeserError> {
         let mut th = TableHelper::new(value)?;
         let reason = th.required("reason")?;
         th.finalize(None)?;
@@ -162,7 +148,7 @@ struct Flattened {
 }
 
 impl<'de> Deserialize<'de> for Flattened {
-    fn deserialize(value: &mut Value<'de>) -> Result<Self, DeserError> {
+    fn deserialize(value: &mut Item<'de>) -> Result<Self, DeserError> {
         let mut th = TableHelper::new(value)?;
         let flattened = th.required("flattened")?;
         th.finalize(Some(value))?;
@@ -178,24 +164,20 @@ struct Ohno {
 }
 
 impl<'de> Deserialize<'de> for Ohno {
-    fn deserialize(value: &mut Value<'de>) -> Result<Self, DeserError> {
+    fn deserialize(value: &mut Item<'de>) -> Result<Self, DeserError> {
         let mut th = TableHelper::new(value)?;
-        let year = th.required("year").ok();
+        let year = th.required("year")?;
 
-        if let Some(snbh) = th.optional_s::<std::borrow::Cow<'de, str>>("this-is-deprecated") {
-            th.errors.push(
-                (
-                    toml_spanner::ErrorKind::Custom("this-is-deprecated is deprecated".into()),
-                    snbh.span,
-                )
-                    .into(),
-            );
+        if let Some(snbh) = th.optional_s::<std::borrow::Cow<'de, str>>("this-is-deprecated")? {
+            return Err(toml_spanner::Error::from((
+                toml_spanner::ErrorKind::Custom("this-is-deprecated is deprecated".into()),
+                snbh.span,
+            ))
+            .into());
         }
 
         th.finalize(Some(value))?;
-        Ok(Self {
-            year: year.unwrap(),
-        })
+        Ok(Self { year })
     }
 }
 

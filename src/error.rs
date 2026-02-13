@@ -111,8 +111,6 @@ pub enum ErrorKind {
     UnexpectedKeys {
         /// The unexpected keys.
         keys: Vec<(String, Span)>,
-        /// The list of keys that were expected for the table
-        expected: Vec<String>,
     },
 
     /// Unquoted string was found when quoted one was expected.
@@ -259,21 +257,10 @@ impl Display for Error {
             ErrorKind::DottedKeyInvalidType { .. } => {
                 f.write_str("dotted key attempted to extend non-table type")
             }
-            ErrorKind::UnexpectedKeys { keys, expected } => {
+            ErrorKind::UnexpectedKeys { keys } => {
                 rtry!(f.write_str("unexpected keys in table: ["));
                 let mut first = true;
                 for (key, _) in keys {
-                    if !first {
-                        rtry!(f.write_str(", "));
-                    }
-                    first = false;
-                    rtry!(f.write_str("\""));
-                    rtry!(f.write_str(key));
-                    rtry!(f.write_str("\""));
-                }
-                rtry!(f.write_str("]\nexpected: ["));
-                let mut first = true;
-                for key in expected {
                     if !first {
                         rtry!(f.write_str(", "));
                     }
@@ -376,11 +363,8 @@ impl Error {
             ErrorKind::UnquotedString => diag.with_labels(vec![
                 Label::primary(fid, self.span).with_message("string is not quoted"),
             ]),
-            ErrorKind::UnexpectedKeys { keys, expected } => diag
-                .with_message(format!(
-                    "found {} unexpected keys, expected: {expected:?}",
-                    keys.len()
-                ))
+            ErrorKind::UnexpectedKeys { keys } => diag
+                .with_message(format!("found {} unexpected keys", keys.len()))
                 .with_labels(
                     keys.iter()
                         .map(|(_name, span)| Label::secondary(fid, *span))

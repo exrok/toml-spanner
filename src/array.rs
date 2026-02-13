@@ -1,7 +1,7 @@
 #![allow(unsafe_code)]
 
 use crate::arena::Arena;
-use crate::value::Value;
+use crate::value::Item;
 use std::alloc::Layout;
 use std::ptr::NonNull;
 
@@ -12,7 +12,7 @@ const MIN_CAP: u32 = 4;
 pub struct Array<'de> {
     len: u32,
     cap: u32,
-    ptr: NonNull<Value<'de>>,
+    ptr: NonNull<Item<'de>>,
 }
 
 impl<'de> Default for Array<'de> {
@@ -42,7 +42,7 @@ impl<'de> Array<'de> {
     }
 
     /// Creates an array containing a single value.
-    pub fn with_single(value: Value<'de>, arena: &Arena) -> Self {
+    pub fn with_single(value: Item<'de>, arena: &Arena) -> Self {
         let mut arr = Self::with_capacity(MIN_CAP, arena);
         unsafe {
             arr.ptr.as_ptr().write(value);
@@ -53,7 +53,7 @@ impl<'de> Array<'de> {
 
     /// Appends a value to the end of the array.
     #[inline]
-    pub fn push(&mut self, value: Value<'de>, arena: &Arena) {
+    pub fn push(&mut self, value: Item<'de>, arena: &Arena) {
         let len = self.len;
         if len == self.cap {
             self.grow(arena);
@@ -78,7 +78,7 @@ impl<'de> Array<'de> {
 
     /// Returns a reference to the element at the given index.
     #[inline]
-    pub fn get(&self, index: usize) -> Option<&Value<'de>> {
+    pub fn get(&self, index: usize) -> Option<&Item<'de>> {
         if index < self.len as usize {
             Some(unsafe { &*self.ptr.as_ptr().add(index) })
         } else {
@@ -88,7 +88,7 @@ impl<'de> Array<'de> {
 
     /// Returns a mutable reference to the element at the given index.
     #[inline]
-    pub fn get_mut(&mut self, index: usize) -> Option<&mut Value<'de>> {
+    pub fn get_mut(&mut self, index: usize) -> Option<&mut Item<'de>> {
         if index < self.len as usize {
             Some(unsafe { &mut *self.ptr.as_ptr().add(index) })
         } else {
@@ -98,7 +98,7 @@ impl<'de> Array<'de> {
 
     /// Removes and returns the last element, or `None` if empty.
     #[inline]
-    pub fn pop(&mut self) -> Option<Value<'de>> {
+    pub fn pop(&mut self) -> Option<Item<'de>> {
         if self.len == 0 {
             None
         } else {
@@ -109,7 +109,7 @@ impl<'de> Array<'de> {
 
     /// Returns a mutable reference to the last element.
     #[inline]
-    pub fn last_mut(&mut self) -> Option<&mut Value<'de>> {
+    pub fn last_mut(&mut self) -> Option<&mut Item<'de>> {
         if self.len == 0 {
             None
         } else {
@@ -119,13 +119,13 @@ impl<'de> Array<'de> {
 
     /// Returns an iterator over references to the elements.
     #[inline]
-    pub fn iter(&self) -> std::slice::Iter<'_, Value<'de>> {
+    pub fn iter(&self) -> std::slice::Iter<'_, Item<'de>> {
         self.as_slice().iter()
     }
 
     /// Returns the contents as a slice.
     #[inline]
-    pub fn as_slice(&self) -> &[Value<'de>] {
+    pub fn as_slice(&self) -> &[Item<'de>] {
         if self.len == 0 {
             &[]
         } else {
@@ -135,7 +135,7 @@ impl<'de> Array<'de> {
 
     /// Returns the contents as a mutable slice.
     #[inline]
-    pub fn as_mut_slice(&mut self) -> &mut [Value<'de>] {
+    pub fn as_mut_slice(&mut self) -> &mut [Item<'de>] {
         if self.len == 0 {
             &mut []
         } else {
@@ -154,8 +154,8 @@ impl<'de> Array<'de> {
     }
 
     fn grow_to(&mut self, new_cap: u32, arena: &Arena) {
-        let new_layout = Layout::array::<Value<'_>>(new_cap as usize).expect("layout overflow");
-        let new_ptr = arena.alloc(new_layout).cast::<Value<'de>>();
+        let new_layout = Layout::array::<Item<'_>>(new_cap as usize).expect("layout overflow");
+        let new_ptr = arena.alloc(new_layout).cast::<Item<'de>>();
         if self.cap > 0 {
             // Safety: old buffer has self.len initialized Values; new buffer
             // has room for new_cap >= self.len elements.
@@ -180,8 +180,8 @@ impl std::fmt::Debug for Array<'_> {
 }
 
 impl<'a, 'de> IntoIterator for &'a Array<'de> {
-    type Item = &'a Value<'de>;
-    type IntoIter = std::slice::Iter<'a, Value<'de>>;
+    type Item = &'a Item<'de>;
+    type IntoIter = std::slice::Iter<'a, Item<'de>>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.as_slice().iter()
@@ -189,8 +189,8 @@ impl<'a, 'de> IntoIterator for &'a Array<'de> {
 }
 
 impl<'a, 'de> IntoIterator for &'a mut Array<'de> {
-    type Item = &'a mut Value<'de>;
-    type IntoIter = std::slice::IterMut<'a, Value<'de>>;
+    type Item = &'a mut Item<'de>;
+    type IntoIter = std::slice::IterMut<'a, Item<'de>>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.as_mut_slice().iter_mut()
@@ -204,7 +204,7 @@ pub struct IntoIter<'de> {
 }
 
 impl<'de> Iterator for IntoIter<'de> {
-    type Item = Value<'de>;
+    type Item = Item<'de>;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.index < self.arr.len {
@@ -225,7 +225,7 @@ impl<'de> Iterator for IntoIter<'de> {
 impl<'de> ExactSizeIterator for IntoIter<'de> {}
 
 impl<'de> IntoIterator for Array<'de> {
-    type Item = Value<'de>;
+    type Item = Item<'de>;
     type IntoIter = IntoIter<'de>;
 
     fn into_iter(self) -> Self::IntoIter {

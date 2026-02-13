@@ -188,7 +188,7 @@ where
     T: crate::Deserialize<'de>,
 {
     #[inline]
-    fn deserialize(value: &mut crate::value::Value<'de>) -> Result<Self, crate::DeserError> {
+    fn deserialize(value: &mut crate::value::Item<'de>) -> Result<Self, crate::DeserError> {
         let span = value.span();
         let value = T::deserialize(value)?;
         Ok(Self { span, value })

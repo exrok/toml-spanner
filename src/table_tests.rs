@@ -1,7 +1,7 @@
 use super::*;
 use crate::arena::Arena;
 use crate::str::Str;
-use crate::value::Value;
+use crate::value::Item;
 use crate::Span;
 
 fn sp() -> Span {
@@ -12,8 +12,8 @@ fn key(name: &str) -> Key<'_> {
     Key { name: Str::from(name), span: sp() }
 }
 
-fn ival(i: i64) -> Value<'static> {
-    Value::integer(i, sp())
+fn ival(i: i64) -> Item<'static> {
+    Item::integer(i, sp())
 }
 
 // -- Empty table ------------------------------------------------------------
@@ -340,8 +340,8 @@ fn into_keys_all() {
 fn drop_with_owned_strings() {
     let arena = Arena::new();
     let mut t = Table::new();
-    t.insert(key("a"), Value::string(Str::from("owned1"), sp()), &arena);
-    t.insert(key("b"), Value::string(Str::from("owned2"), sp()), &arena);
+    t.insert(key("a"), Item::string(Str::from("owned1"), sp()), &arena);
+    t.insert(key("b"), Item::string(Str::from("owned2"), sp()), &arena);
 }
 
 #[test]
@@ -350,7 +350,7 @@ fn drop_with_nested_tables() {
     let mut inner = Table::new();
     inner.insert(key("inner_key"), ival(1), &arena);
     let mut outer = Table::new();
-    outer.insert(key("nested"), Value::table(inner, sp()), &arena);
+    outer.insert(key("nested"), Item::table(inner, sp()), &arena);
     outer.insert(key("plain"), ival(2), &arena);
 }
 

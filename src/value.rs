@@ -46,9 +46,8 @@ pub(crate) struct SpannedTable<'de> {
     pub(crate) value: ManuallyDrop<Table<'de>>,
 }
 
-const _: () = assert!(std::mem::size_of::<SpannedTable<'_>>() == std::mem::size_of::<Value<'_>>());
-const _: () =
-    assert!(std::mem::align_of::<SpannedTable<'_>>() == std::mem::align_of::<Value<'_>>());
+const _: () = assert!(std::mem::size_of::<SpannedTable<'_>>() == std::mem::size_of::<Item<'_>>());
+const _: () = assert!(std::mem::align_of::<SpannedTable<'_>>() == std::mem::align_of::<Item<'_>>());
 
 impl<'de> SpannedTable<'de> {
     #[inline]
@@ -81,7 +80,7 @@ impl<'de> SpannedTable<'de> {
 
 /// A parsed TOML value with span information.
 #[repr(C)]
-pub struct Value<'de> {
+pub struct Item<'de> {
     /// Bits 2-0: tag, bits 31-3: span.start
     start_and_tag: u32,
     /// Bit 0: flag bit (parser-internal), bits 31-1: span.end
@@ -89,10 +88,10 @@ pub struct Value<'de> {
     payload: Payload<'de>,
 }
 
-const _: () = assert!(std::mem::size_of::<Value<'_>>() == 24);
-const _: () = assert!(std::mem::align_of::<Value<'_>>() == 8);
+const _: () = assert!(std::mem::size_of::<Item<'_>>() == 24);
+const _: () = assert!(std::mem::align_of::<Item<'_>>() == 8);
 
-impl<'de> Value<'de> {
+impl<'de> Item<'de> {
     #[inline]
     fn raw(tag: u32, start: u32, end: u32, payload: Payload<'de>) -> Self {
         Self {
@@ -199,7 +198,7 @@ impl<'de> Value<'de> {
     }
 }
 
-impl<'de> Value<'de> {
+impl<'de> Item<'de> {
     #[inline]
     pub(crate) fn tag(&self) -> u32 {
         self.start_and_tag & TAG_MASK
@@ -265,7 +264,7 @@ impl<'de> Value<'de> {
     #[inline]
     pub(crate) unsafe fn split_array_end_flag(&mut self) -> (&mut u32, &mut Array<'de>) {
         debug_assert!(self.is_array());
-        let ptr = self as *mut Value<'de>;
+        let ptr = self as *mut Item<'de>;
         unsafe {
             let end_flag = &mut *std::ptr::addr_of_mut!((*ptr).end_and_flag);
             let array = &mut *std::ptr::addr_of_mut!((*ptr).payload.array).cast::<Array<'de>>();
@@ -276,80 +275,25 @@ impl<'de> Value<'de> {
 
 /// Borrowed view into a [`Value`] for pattern matching.
 pub enum ValueRef<'a, 'de> {
-    /// A string
     String(&'a Str<'de>),
-    /// An integer
     Integer(i64),
-    /// A float
     Float(f64),
-    /// A boolean
     Boolean(bool),
-    /// An array
     Array(&'a Array<'de>),
-    /// A table
     Table(&'a Table<'de>),
 }
 
 /// Mutable view into a [`Value`] for pattern matching.
 pub enum ValueMut<'a, 'de> {
-    /// A string
     String(&'a mut Str<'de>),
-    /// An integer
     Integer(&'a mut i64),
-    /// A float
     Float(&'a mut f64),
-    /// A boolean
     Boolean(&'a mut bool),
-    /// An array
     Array(&'a mut Array<'de>),
-    /// A table
     Table(&'a mut Table<'de>),
 }
 
-/// Owned value extracted from a [`Value`] for pattern matching.
-pub enum ValueOwned<'de> {
-    /// A string
-    String(Str<'de>),
-    /// An integer
-    Integer(i64),
-    /// A float
-    Float(f64),
-    /// A boolean
-    Boolean(bool),
-    /// An array
-    Array(Array<'de>),
-    /// A table
-    Table(Table<'de>),
-}
-
-impl ValueOwned<'_> {
-    /// Gets the type of the value as a string.
-    pub fn type_str(&self) -> &'static str {
-        match self {
-            Self::String(..) => "string",
-            Self::Integer(..) => "integer",
-            Self::Float(..) => "float",
-            Self::Boolean(..) => "boolean",
-            Self::Array(..) => "array",
-            Self::Table(..) => "table",
-        }
-    }
-}
-
-impl fmt::Debug for ValueOwned<'_> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::String(s) => s.fmt(f),
-            Self::Integer(i) => i.fmt(f),
-            Self::Float(v) => v.fmt(f),
-            Self::Boolean(b) => b.fmt(f),
-            Self::Array(a) => a.fmt(f),
-            Self::Table(t) => t.fmt(f),
-        }
-    }
-}
-
-impl<'de> Value<'de> {
+impl<'de> Item<'de> {
     /// Returns a borrowed view for pattern matching.
     #[inline]
     pub fn as_ref(&self) -> ValueRef<'_, 'de> {
@@ -379,28 +323,9 @@ impl<'de> Value<'de> {
             }
         }
     }
-
-    /// Consumes the value and returns an owned kind for pattern matching.
-    ///
-    /// The span information is lost; call [`Self::span()`] before this if needed.
-    #[inline]
-    pub fn into_kind(self) -> ValueOwned<'de> {
-        let tag = self.tag();
-        let me = ManuallyDrop::new(self);
-        unsafe {
-            match tag {
-                TAG_STRING => ValueOwned::String(me.payload.string),
-                TAG_INTEGER => ValueOwned::Integer(me.payload.integer),
-                TAG_FLOAT => ValueOwned::Float(me.payload.float),
-                TAG_BOOLEAN => ValueOwned::Boolean(me.payload.boolean),
-                TAG_ARRAY => ValueOwned::Array(std::ptr::read(&*me.payload.array)),
-                _ => ValueOwned::Table(std::ptr::read(&*me.payload.table)),
-            }
-        }
-    }
 }
 
-impl<'de> Value<'de> {
+impl<'de> Item<'de> {
     /// Returns a borrowed string if this is a string value.
     #[inline]
     pub fn as_str(&self) -> Option<&str> {
@@ -495,7 +420,7 @@ impl<'de> Value<'de> {
     #[inline]
     pub(crate) unsafe fn as_spanned_table_mut_unchecked(&mut self) -> &mut SpannedTable<'de> {
         debug_assert!(self.is_table());
-        unsafe { &mut *(self as *mut Value<'de>).cast::<SpannedTable<'de>>() }
+        unsafe { &mut *(self as *mut Item<'de>).cast::<SpannedTable<'de>>() }
     }
 
     /// Returns true if the value is a table and is non-empty.
@@ -511,26 +436,17 @@ impl<'de> Value<'de> {
     }
 }
 
-impl<'de> Value<'de> {
-    /// Takes the payload, replacing self with `Boolean(false)`.
-    /// The span is preserved.
-    #[inline]
-    pub fn take(&mut self) -> ValueOwned<'de> {
-        let span = self.span();
-        let old = std::mem::replace(self, Value::boolean(false, span));
-        old.into_kind()
-    }
-
+impl<'de> Item<'de> {
     /// Takes the value as a string, returning an error if it is not a string.
     #[inline]
     pub fn take_string(&mut self, msg: Option<&'static str>) -> Result<Str<'de>, Error> {
         let span = self.span();
-        match self.take() {
-            ValueOwned::String(s) => Ok(s),
-            other => Err(Error {
+        match self.as_ref() {
+            ValueRef::String(s) => Ok(*s),
+            _ => Err(Error {
                 kind: ErrorKind::Wanted {
                     expected: msg.unwrap_or("a string"),
-                    found: other.type_str(),
+                    found: self.type_str(),
                 },
                 span,
                 line_info: None,
@@ -541,11 +457,11 @@ impl<'de> Value<'de> {
     /// Replace payload with a table, preserving the span.
     pub fn set_table(&mut self, table: Table<'de>) {
         let span = self.span();
-        *self = Value::table(table, span);
+        *self = Item::table(table, span);
     }
 }
 
-impl fmt::Debug for Value<'_> {
+impl fmt::Debug for Item<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         unsafe {
             match self.tag() {
@@ -561,7 +477,7 @@ impl fmt::Debug for Value<'_> {
 }
 
 #[cfg(feature = "serde")]
-impl serde::Serialize for Value<'_> {
+impl serde::Serialize for Item<'_> {
     fn serialize<S>(&self, ser: S) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
@@ -613,6 +529,12 @@ pub struct Key<'de> {
     pub name: Str<'de>,
     /// The span for the key in the original document
     pub span: Span,
+}
+impl<'de> Key<'de> {
+    /// Creates a new key with the given name and span.
+    pub fn as_str(&self) -> &'de str {
+        self.name.as_str()
+    }
 }
 
 const _: () = assert!(std::mem::size_of::<Key<'_>>() == 24);

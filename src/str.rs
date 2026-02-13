@@ -126,8 +126,11 @@ impl Default for Str<'_> {
 
 impl<'de> Str<'de> {
     /// Borrow
-    pub fn as_str(&self) -> &str {
-        self
+    pub fn as_str(&self) -> &'de str {
+        unsafe {
+            let slice = std::slice::from_raw_parts(self.ptr.as_ptr(), self.len);
+            str::from_utf8_unchecked(slice)
+        }
     }
 
     #[inline]
@@ -158,9 +161,8 @@ impl<'de> From<Str<'de>> for Cow<'de, str> {
     #[inline]
     fn from(s: Str<'de>) -> Self {
         // Safety: Str's pointer is valid for 'de and contains valid UTF-8.
-        let borrowed: &'de str = unsafe {
-            str::from_utf8_unchecked(std::slice::from_raw_parts(s.ptr.as_ptr(), s.len))
-        };
+        let borrowed: &'de str =
+            unsafe { str::from_utf8_unchecked(std::slice::from_raw_parts(s.ptr.as_ptr(), s.len)) };
         Cow::Borrowed(borrowed)
     }
 }
