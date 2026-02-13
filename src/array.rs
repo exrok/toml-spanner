@@ -1,7 +1,8 @@
 #![allow(unsafe_code)]
 
+use crate::arena::Arena;
 use crate::value::Value;
-use std::alloc::{Layout, alloc, dealloc, realloc};
+use std::alloc::Layout;
 use std::ptr::NonNull;
 
 const MIN_CAP: u32 = 4;
@@ -32,17 +33,17 @@ impl<'de> Array<'de> {
     }
 
     /// Creates an array with pre-allocated capacity.
-    pub fn with_capacity(cap: u32) -> Self {
+    pub fn with_capacity(cap: u32, arena: &Arena) -> Self {
         let mut arr = Self::new();
         if cap > 0 {
-            arr.grow_to(cap);
+            arr.grow_to(cap, arena);
         }
         arr
     }
 
     /// Creates an array containing a single value.
-    pub fn with_single(value: Value<'de>) -> Self {
-        let mut arr = Self::with_capacity(MIN_CAP);
+    pub fn with_single(value: Value<'de>, arena: &Arena) -> Self {
+        let mut arr = Self::with_capacity(MIN_CAP, arena);
         unsafe {
             arr.ptr.as_ptr().write(value);
         }
@@ -52,14 +53,15 @@ impl<'de> Array<'de> {
 
     /// Appends a value to the end of the array.
     #[inline]
-    pub fn push(&mut self, value: Value<'de>) {
-        if self.len == self.cap {
-            self.grow();
+    pub fn push(&mut self, value: Value<'de>, arena: &Arena) {
+        let len = self.len;
+        if len == self.cap {
+            self.grow(arena);
         }
         unsafe {
-            self.ptr.as_ptr().add(self.len as usize).write(value);
+            self.ptr.as_ptr().add(len as usize).write(value);
         }
-        self.len += 1;
+        self.len = len + 1;
     }
 
     /// Returns the number of elements.
@@ -142,47 +144,32 @@ impl<'de> Array<'de> {
     }
 
     #[cold]
-    fn grow(&mut self) {
+    fn grow(&mut self, arena: &Arena) {
         let new_cap = if self.cap == 0 {
             MIN_CAP
         } else {
             self.cap.checked_mul(2).expect("capacity overflow")
         };
-        self.grow_to(new_cap);
+        self.grow_to(new_cap, arena);
     }
 
-    fn grow_to(&mut self, new_cap: u32) {
+    fn grow_to(&mut self, new_cap: u32, arena: &Arena) {
         let new_layout = Layout::array::<Value<'_>>(new_cap as usize).expect("layout overflow");
-        let new_ptr = if self.cap == 0 {
-            unsafe { alloc(new_layout) }
-        } else {
-            let old_layout =
-                Layout::array::<Value<'_>>(self.cap as usize).expect("layout overflow");
-            unsafe { realloc(self.ptr.as_ptr().cast(), old_layout, new_layout.size()) }
-        };
-        self.ptr = match NonNull::new(new_ptr.cast()) {
-            Some(p) => p,
-            None => std::alloc::handle_alloc_error(new_layout),
-        };
+        let new_ptr = arena.alloc(new_layout).cast::<Value<'de>>();
+        if self.cap > 0 {
+            // Safety: old buffer has self.len initialized Values; new buffer
+            // has room for new_cap >= self.len elements.
+            unsafe {
+                std::ptr::copy_nonoverlapping(
+                    self.ptr.as_ptr(),
+                    new_ptr.as_ptr(),
+                    self.len as usize,
+                );
+            }
+            // Old buffer is abandoned; the arena reclaims it on drop.
+        }
+        self.ptr = new_ptr;
         self.cap = new_cap;
-    }
-}
-
-impl Drop for Array<'_> {
-    fn drop(&mut self) {
-        if self.cap == 0 {
-            return;
-        }
-        unsafe {
-            std::ptr::drop_in_place(std::ptr::slice_from_raw_parts_mut(
-                self.ptr.as_ptr(),
-                self.len as usize,
-            ));
-            dealloc(
-                self.ptr.as_ptr().cast(),
-                Layout::array::<Value<'_>>(self.cap as usize).unwrap(),
-            );
-        }
     }
 }
 
@@ -236,19 +223,6 @@ impl<'de> Iterator for IntoIter<'de> {
 }
 
 impl<'de> ExactSizeIterator for IntoIter<'de> {}
-
-impl<'de> Drop for IntoIter<'de> {
-    fn drop(&mut self) {
-        while self.index < self.arr.len {
-            unsafe {
-                std::ptr::drop_in_place(self.arr.ptr.as_ptr().add(self.index as usize));
-            }
-            self.index += 1;
-        }
-        // IntoIter takes ownership: zero len so Array::drop won't double-free
-        self.arr.len = 0;
-    }
-}
 
 impl<'de> IntoIterator for Array<'de> {
     type Item = Value<'de>;

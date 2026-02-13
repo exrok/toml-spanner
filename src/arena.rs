@@ -55,7 +55,7 @@ impl Arena {
     ///
     /// Returns a non-null pointer to the allocated region. Aborts on OOM.
     #[inline]
-    pub fn alloc(&self, layout: Layout) -> NonNull<u8> {
+    pub(crate) fn alloc(&self, layout: Layout) -> NonNull<u8> {
         if layout.size() == 0 {
             // Safety: layout.align() is always a non-zero power of two.
             return unsafe { NonNull::new_unchecked(layout.align() as *mut u8) };
@@ -99,7 +99,7 @@ impl Arena {
     ///
     /// The caller must not call `alloc` on this arena while the returned
     /// `Scratch` is alive. The scratch exclusively owns the bump region.
-    pub unsafe fn scratch(&self) -> Scratch<'_> {
+    pub(crate) unsafe fn scratch(&self) -> Scratch<'_> {
         let start = self.ptr.get();
         let cap = self.end.get().as_ptr() as usize - start.as_ptr() as usize;
         Scratch {
@@ -110,8 +110,6 @@ impl Arena {
         }
     }
 
-    #[cold]
-    #[inline(never)]
     fn grow(&self, layout: Layout) {
         let current_size = unsafe { self.slab.get().as_ref().size };
 
@@ -179,7 +177,7 @@ impl Drop for Arena {
 /// pointer. On [`commit`](Scratch::commit) the arena pointer is advanced past
 /// the committed bytes. If the scratch is dropped without committing, the arena
 /// pointer is unchanged and the space is reused by subsequent allocations.
-pub struct Scratch<'a> {
+pub(crate) struct Scratch<'a> {
     arena: &'a Arena,
     start: NonNull<u8>,
     len: usize,
@@ -189,14 +187,15 @@ pub struct Scratch<'a> {
 impl<'a> Scratch<'a> {
     #[inline]
     pub fn push(&mut self, byte: u8) {
-        if self.len == self.cap {
+        let len = self.len;
+        if len == self.cap {
             self.grow_slow(1);
         }
         // Safety: len < cap, so start + len is within the slab.
         unsafe {
-            self.start.as_ptr().add(self.len).write(byte);
+            self.start.as_ptr().add(len).write(byte);
         }
-        self.len += 1;
+        self.len = len + 1;
     }
 
     #[inline]
@@ -222,16 +221,6 @@ impl<'a> Scratch<'a> {
         }
         // Safety: start..start+len was written by us and is within the slab.
         unsafe { std::slice::from_raw_parts(self.start.as_ptr(), self.len) }
-    }
-
-    #[inline]
-    pub fn len(&self) -> usize {
-        self.len
-    }
-
-    #[inline]
-    pub fn clear(&mut self) {
-        self.len = 0;
     }
 
     /// Finalize the scratch data and return it as a byte slice tied to the

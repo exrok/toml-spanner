@@ -399,7 +399,10 @@ impl<'de> Parser<'de> {
                 let start = self.cursor;
                 let k = self.read_keylike();
                 let span = Span::new(start as u32, self.cursor as u32);
-                Ok(Key { name: Str::from(k), span })
+                Ok(Key {
+                    name: Str::from(k),
+                    span,
+                })
             }
             Some(_) => {
                 let start = self.cursor;
@@ -426,11 +429,7 @@ impl<'de> Parser<'de> {
 
     /// Read a basic (double-quoted) string. `start` is the byte offset of the
     /// opening quote. The cursor should be positioned right after the opening `"`.
-    fn read_string(
-        &mut self,
-        start: usize,
-        delim: u8,
-    ) -> Result<(Key<'de>, bool), ParseError> {
+    fn read_string(&mut self, start: usize, delim: u8) -> Result<(Key<'de>, bool), ParseError> {
         let mut multiline = false;
         if self.eat_byte(delim) {
             if self.eat_byte(delim) {
@@ -569,7 +568,7 @@ impl<'de> Parser<'de> {
                     }
                 }
                 d if d == delim => {
-                    if multiline {
+                    let (span, end) = if multiline {
                         if !self.eat_byte(delim) {
                             continue;
                         }
@@ -593,54 +592,25 @@ impl<'de> Parser<'de> {
                             3
                         };
 
-                        let span = Span::new((start + start_off) as u32, (self.cursor - 3) as u32);
-                        if let Some(mut s) = scratch {
-                            s.extend(&self.bytes[flush_from..i + extra]);
-                            let committed = s.commit();
-                            // Safety: scratch contents are valid UTF-8 (built from
-                            // validated input and well-formed escape sequences).
-                            let str_ref =
-                                unsafe { std::str::from_utf8_unchecked(committed) };
-                            return Ok((
-                                Key { name: Str::from(str_ref), span },
-                                true,
-                            ));
-                        } else {
-                            unsafe {
-                                return Ok((
-                                    Key {
-                                        name: Str::from(
-                                            self.str_slice(content_start, i + extra),
-                                        ),
-                                        span,
-                                    },
-                                    true,
-                                ));
-                            }
-                        };
-                    }
-
-                    let span = Span::new((start + 1) as u32, (self.cursor - 1) as u32);
-                    if let Some(mut s) = scratch {
-                        s.extend(&self.bytes[flush_from..i]);
-                        let committed = s.commit();
-                        // Safety: scratch contents are valid UTF-8.
-                        let str_ref = unsafe { std::str::from_utf8_unchecked(committed) };
-                        return Ok((
-                            Key { name: Str::from(str_ref), span },
-                            false,
-                        ));
+                        (
+                            Span::new((start + start_off) as u32, (self.cursor - 3) as u32),
+                            i + extra,
+                        )
                     } else {
-                        unsafe {
-                            return Ok((
-                                Key {
-                                    name: Str::from(self.str_slice(content_start, i)),
-                                    span,
-                                },
-                                false,
-                            ));
-                        }
+                        (Span::new((start + 1) as u32, (self.cursor - 1) as u32), i)
                     };
+
+                    let name = if let Some(mut s) = scratch {
+                        s.extend(&self.bytes[flush_from..end]);
+                        let committed = s.commit();
+                        // Safety: scratch contents are valid UTF-8 (built from
+                        // validated input and well-formed escape sequences).
+                        Str::from(unsafe { std::str::from_utf8_unchecked(committed) })
+                    } else {
+                        // Safety: content_start..end is validated UTF-8.
+                        unsafe { Str::from(self.str_slice(content_start, end)) }
+                    };
+                    return Ok((Key { name, span }, multiline));
                 }
                 b'\\' if delim == b'"' => {
                     let arena = self.arena;
@@ -808,12 +778,7 @@ impl<'de> Parser<'de> {
         }
     }
 
-    fn number(
-        &mut self,
-        start: u32,
-        end: u32,
-        s: &'de str,
-    ) -> Result<Value<'de>, ParseError> {
+    fn number(&mut self, start: u32, end: u32, s: &'de str) -> Result<Value<'de>, ParseError> {
         let bytes = s.as_bytes();
 
         // Base-prefixed integers (0x, 0o, 0b).
@@ -873,10 +838,7 @@ impl<'de> Parser<'de> {
         Err(ParseError)
     }
 
-    fn number_leading_plus(
-        &mut self,
-        plus_start: u32,
-    ) -> Result<Value<'de>, ParseError> {
+    fn number_leading_plus(&mut self, plus_start: u32) -> Result<Value<'de>, ParseError> {
         match self.peek_byte() {
             Some(b) if is_keylike_byte(b) => {
                 let s = self.read_keylike();
@@ -1151,17 +1113,12 @@ impl<'de> Parser<'de> {
 
         // Scratch is not committed — arena pointer stays unchanged, space is
         // reused by subsequent allocations.
-        let n: f64 =
-            match unsafe { std::str::from_utf8_unchecked(scratch.as_bytes()) }.parse() {
-                Ok(n) => n,
-                Err(_) => {
-                    return Err(self.set_error(
-                        s_start,
-                        Some(s_end),
-                        ErrorKind::InvalidNumber,
-                    ));
-                }
-            };
+        let n: f64 = match unsafe { std::str::from_utf8_unchecked(scratch.as_bytes()) }.parse() {
+            Ok(n) => n,
+            Err(_) => {
+                return Err(self.set_error(s_start, Some(s_end), ErrorKind::InvalidNumber));
+            }
+        };
         if n.is_finite() {
             Ok(n)
         } else {
@@ -1253,10 +1210,7 @@ impl<'de> Parser<'de> {
         }
     }
 
-    fn inline_table_contents(
-        &mut self,
-        out: &mut value::Table<'de>,
-    ) -> Result<Span, ParseError> {
+    fn inline_table_contents(&mut self, out: &mut value::Table<'de>) -> Result<Span, ParseError> {
         if let Err(e) = self.eat_inline_table_whitespace() {
             return Err(e);
         }
@@ -1322,10 +1276,7 @@ impl<'de> Parser<'de> {
         }
     }
 
-    fn array_contents(
-        &mut self,
-        out: &mut value::Array<'de>,
-    ) -> Result<Span, ParseError> {
+    fn array_contents(&mut self, out: &mut value::Array<'de>) -> Result<Span, ParseError> {
         loop {
             if let Err(e) = self.eat_intermediate() {
                 return Err(e);
@@ -1337,7 +1288,7 @@ impl<'de> Parser<'de> {
                 Ok(v) => v,
                 Err(e) => return Err(e),
             };
-            out.push(val);
+            out.push(val, self.arena);
             if let Err(e) = self.eat_intermediate() {
                 return Err(e);
             }
@@ -1407,11 +1358,8 @@ impl<'de> Parser<'de> {
             unsafe { Ok(value.as_table_mut_unchecked()) }
         } else {
             let span = key.span;
-            let inserted = self.insert_into_table(
-                table,
-                key,
-                Value::table_dotted(value::Table::new(), span),
-            );
+            let inserted =
+                self.insert_into_table(table, key, Value::table_dotted(value::Table::new(), span));
             unsafe { Ok(inserted.as_table_mut_unchecked()) }
         }
     }
@@ -1438,11 +1386,7 @@ impl<'de> Parser<'de> {
 
             if is_table {
                 if is_frozen {
-                    return Err(self.set_duplicate_key_error(
-                        first_key_span,
-                        key.span,
-                        &key.name,
-                    ));
+                    return Err(self.set_duplicate_key_error(first_key_span, key.span, &key.name));
                 }
                 let existing = table.get_mut_at(idx);
                 unsafe { Ok(existing.as_spanned_table_mut_unchecked()) }
@@ -1451,11 +1395,7 @@ impl<'de> Parser<'de> {
                 let arr = existing.as_array_mut().unwrap();
                 let last = arr.last_mut().unwrap();
                 if !last.is_table() {
-                    return Err(self.set_duplicate_key_error(
-                        first_key_span,
-                        key.span,
-                        &key.name,
-                    ));
+                    return Err(self.set_duplicate_key_error(first_key_span, key.span, &key.name));
                 }
                 unsafe { Ok(last.as_spanned_table_mut_unchecked()) }
             } else {
@@ -1474,7 +1414,7 @@ impl<'de> Parser<'de> {
         key: Key<'de>,
         value: Value<'de>,
     ) -> &'t mut value::Value<'de> {
-        table.insert(key, value);
+        table.insert(key, value, self.arena);
         self.index_after_insert(table);
         let last_idx = table.len() - 1;
         table.get_mut_at(last_idx)
@@ -1563,7 +1503,10 @@ impl<'de> Parser<'de> {
                 let existing = table.get_mut_at(idx);
                 let (end_flag, arr) = unsafe { existing.split_array_end_flag() };
                 let entry_span = Span::new(header_start, header_end);
-                arr.push(Value::table_header(value::Table::new(), entry_span));
+                arr.push(
+                    Value::table_header(value::Table::new(), entry_span),
+                    self.arena,
+                );
                 let entry = arr.last_mut().unwrap();
                 Ok(Ctx {
                     st: unsafe { entry.as_spanned_table_mut_unchecked() },
@@ -1582,7 +1525,10 @@ impl<'de> Parser<'de> {
             let entry_span = Span::new(header_start, header_end);
             let first_entry = Value::table_header(value::Table::new(), entry_span);
             let array_span = Span::new(header_start, header_end);
-            let array_val = Value::array_aot(value::Array::with_single(first_entry), array_span);
+            let array_val = Value::array_aot(
+                value::Array::with_single(first_entry, self.arena),
+                array_span,
+            );
             let inserted = self.insert_into_table(table, key, array_val);
             let (end_flag, arr) = unsafe { inserted.split_array_end_flag() };
             let entry = arr.last_mut().unwrap();
@@ -1605,7 +1551,7 @@ impl<'de> Parser<'de> {
             return Err(self.set_duplicate_key_error(existing_key.span, key.span, &key.name));
         }
 
-        table.insert(key, val);
+        table.insert(key, val, self.arena);
         self.index_after_insert(table);
         Ok(())
     }
@@ -1673,10 +1619,7 @@ impl<'de> Parser<'de> {
         self.table_index.insert(ki, idx);
     }
 
-    fn parse_document(
-        &mut self,
-        root_st: &mut SpannedTable<'de>,
-    ) -> Result<(), ParseError> {
+    fn parse_document(&mut self, root_st: &mut SpannedTable<'de>) -> Result<(), ParseError> {
         let mut ctx = Ctx {
             st: root_st,
             array_end_span: None,
@@ -1775,10 +1718,7 @@ impl<'de> Parser<'de> {
         }
     }
 
-    fn process_key_value(
-        &mut self,
-        ctx: &mut Ctx<'_, 'de>,
-    ) -> Result<(), ParseError> {
+    fn process_key_value(&mut self, ctx: &mut Ctx<'_, 'de>) -> Result<(), ParseError> {
         let line_start = self.cursor as u32;
         // Borrow the Table payload from the SpannedTable. NLL drops this
         // borrow at its last use (the insert_value call), freeing ctx.st

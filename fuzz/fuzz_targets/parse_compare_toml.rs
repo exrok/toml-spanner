@@ -66,7 +66,7 @@ fn contains_datetime(val: &toml::Value) -> bool {
 /// datetime support differences. Tables/arrays that contain datetimes are
 /// skipped (returns `true`).
 fn values_match(spanner: &toml_spanner::Value<'_>, toml_val: &toml::Value) -> bool {
-    match (spanner.kind(), toml_val) {
+    match (spanner.as_ref(), toml_val) {
         (ValueRef::String(s), toml::Value::String(t)) => &**s == t,
         (ValueRef::Integer(a), toml::Value::Integer(b)) => a == *b,
         (ValueRef::Float(a), toml::Value::Float(b)) => {
@@ -93,10 +93,7 @@ fn values_match(spanner: &toml_spanner::Value<'_>, toml_val: &toml::Value) -> bo
         }
         (ValueRef::Table(st), toml::Value::Table(tt)) => {
             // Filter out datetime entries from the toml side.
-            let tt_no_dt: Vec<_> = tt
-                .iter()
-                .filter(|(_, v)| !contains_datetime(v))
-                .collect();
+            let tt_no_dt: Vec<_> = tt.iter().filter(|(_, v)| !contains_datetime(v)).collect();
             if st.len() != tt_no_dt.len() {
                 if tt.len() != tt_no_dt.len() {
                     return true;

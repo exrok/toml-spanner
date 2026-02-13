@@ -4,8 +4,8 @@
 
 use crate::str::Str;
 use crate::{Error, ErrorKind, Span};
-use std::mem::ManuallyDrop;
 use std::fmt;
+use std::mem::ManuallyDrop;
 
 /// A toml array
 pub use crate::array::Array;
@@ -549,20 +549,7 @@ impl<'de> Value<'de> {
     /// Replace payload with a table, preserving the span.
     pub fn set_table(&mut self, table: Table<'de>) {
         let span = self.span();
-        let old = std::mem::replace(self, Value::table(table, span));
-        drop(old);
-    }
-}
-
-impl Drop for Value<'_> {
-    fn drop(&mut self) {
-        match self.tag() {
-            TAG_ARRAY => unsafe { ManuallyDrop::drop(&mut self.payload.array) },
-            TAG_TABLE | TAG_TABLE_HEADER | TAG_TABLE_DOTTED => unsafe {
-                ManuallyDrop::drop(&mut self.payload.table);
-            },
-            _ => {}
-        }
+        *self = Value::table(table, span);
     }
 }
 

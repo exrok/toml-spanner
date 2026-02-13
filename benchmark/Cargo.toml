@@ -9,4 +9,3 @@ jsony_bench.path = "/home/user/Projects/git/jsony/jsony_bench"
 oorandom = "11.1.5"
 toml = { version = "*" }
 toml-span = { version = "*" }
-# toml = { version = "0.9.11", features = ["preserve_order"] }

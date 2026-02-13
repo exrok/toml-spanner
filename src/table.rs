@@ -1,7 +1,12 @@
 #![allow(unsafe_code)]
 
+#[cfg(test)]
+#[path = "./table_tests.rs"]
+mod tests;
+
+use crate::arena::Arena;
 use crate::value::{Key, Value};
-use std::alloc::{Layout, alloc, dealloc, realloc};
+use std::alloc::Layout;
 use std::ptr::NonNull;
 
 type TableEntry<'de> = (Key<'de>, Value<'de>);
@@ -35,17 +40,16 @@ impl<'de> Table<'de> {
         }
     }
 
-    /// Inserts a key-value pair. Does **not** check for duplicates; use
-    /// [`entry`](Self::entry) when duplicate detection is needed.
-    pub fn insert(&mut self, key: Key<'de>, value: Value<'de>) {
+    /// Inserts a key-value pair. Does **not** check for duplicates.
+    pub fn insert(&mut self, key: Key<'de>, value: Value<'de>, arena: &Arena) {
         let len = self.len;
         if self.len == self.cap {
-            self.grow();
+            self.grow(arena);
         }
         unsafe {
             self.ptr.as_ptr().add(len as usize).write((key, value));
         }
-        self.len += 1;
+        self.len = len + 1;
     }
 
     /// Returns the number of entries.
@@ -111,21 +115,6 @@ impl<'de> Table<'de> {
     /// Returns an iterator over mutable references to the values.
     pub fn values_mut(&mut self) -> impl Iterator<Item = &mut Value<'de>> {
         self.entries_mut().iter_mut().map(|(_, v)| v)
-    }
-
-    /// Provides in-place access to an entry via its key.
-    pub fn entry(&mut self, key: Key<'de>) -> Entry<'_, 'de> {
-        let name = &key.name;
-        for i in 0..self.len {
-            let entry = unsafe { &*self.ptr.as_ptr().add(i as usize) };
-            if entry.0.name == *name {
-                return Entry::Occupied(OccupiedEntry {
-                    table: self,
-                    index: i,
-                });
-            }
-        }
-        Entry::Vacant(VacantEntry { table: self, key })
     }
 
     /// Consumes the table and returns an iterator of keys.
@@ -205,48 +194,33 @@ impl<'de> Table<'de> {
     }
 
     #[cold]
-    fn grow(&mut self) {
+    fn grow(&mut self, arena: &Arena) {
         let new_cap = if self.cap == 0 {
             MIN_CAP
         } else {
             self.cap.checked_mul(2).expect("capacity overflow")
         };
-        self.grow_to(new_cap);
+        self.grow_to(new_cap, arena);
     }
 
-    fn grow_to(&mut self, new_cap: u32) {
+    fn grow_to(&mut self, new_cap: u32, arena: &Arena) {
         let new_layout =
             Layout::array::<TableEntry<'_>>(new_cap as usize).expect("layout overflow");
-        let new_ptr = if self.cap == 0 {
-            unsafe { alloc(new_layout) }
-        } else {
-            let old_layout =
-                Layout::array::<TableEntry<'_>>(self.cap as usize).expect("layout overflow");
-            unsafe { realloc(self.ptr.as_ptr().cast(), old_layout, new_layout.size()) }
-        };
-        self.ptr = match NonNull::new(new_ptr.cast()) {
-            Some(p) => p,
-            None => std::alloc::handle_alloc_error(new_layout),
-        };
+        let new_ptr = arena.alloc(new_layout).cast::<TableEntry<'de>>();
+        if self.cap > 0 {
+            // Safety: old buffer has self.len initialized entries; new buffer
+            // has room for new_cap >= self.len entries.
+            unsafe {
+                std::ptr::copy_nonoverlapping(
+                    self.ptr.as_ptr(),
+                    new_ptr.as_ptr(),
+                    self.len as usize,
+                );
+            }
+            // Old buffer is abandoned; the arena reclaims it on drop.
+        }
+        self.ptr = new_ptr;
         self.cap = new_cap;
-    }
-}
-
-impl Drop for Table<'_> {
-    fn drop(&mut self) {
-        if self.cap == 0 {
-            return;
-        }
-        unsafe {
-            std::ptr::drop_in_place(std::ptr::slice_from_raw_parts_mut(
-                self.ptr.as_ptr(),
-                self.len as usize,
-            ));
-            dealloc(
-                self.ptr.as_ptr().cast(),
-                Layout::array::<TableEntry<'_>>(self.cap as usize).unwrap(),
-            );
-        }
     }
 }
 
@@ -329,18 +303,6 @@ impl<'de> Iterator for IntoIter<'de> {
 
 impl ExactSizeIterator for IntoIter<'_> {}
 
-impl Drop for IntoIter<'_> {
-    fn drop(&mut self) {
-        while self.index < self.table.len {
-            unsafe {
-                std::ptr::drop_in_place(self.table.ptr.as_ptr().add(self.index as usize));
-            }
-            self.index += 1;
-        }
-        self.table.len = 0;
-    }
-}
-
 /// Consuming iterator that yields only the keys of a [`Table`].
 pub struct IntoKeys<'de> {
     inner: IntoIter<'de>,
@@ -357,41 +319,3 @@ impl<'de> Iterator for IntoKeys<'de> {
         self.inner.size_hint()
     }
 }
-
-/// A view into a single entry in a [`Table`], which may be vacant or occupied.
-pub enum Entry<'a, 'de> {
-    /// An occupied entry.
-    Occupied(OccupiedEntry<'a, 'de>),
-    /// A vacant entry.
-    Vacant(VacantEntry<'a, 'de>),
-}
-
-/// A view into an occupied entry in a [`Table`].
-pub struct OccupiedEntry<'a, 'de> {
-    table: &'a Table<'de>,
-    index: u32,
-}
-
-impl<'a, 'de> OccupiedEntry<'a, 'de> {
-    /// Returns a reference to the entry's key.
-    pub fn key(&self) -> &Key<'de> {
-        unsafe { &(*self.table.ptr.as_ptr().add(self.index as usize)).0 }
-    }
-}
-
-/// A view into a vacant entry in a [`Table`].
-pub struct VacantEntry<'a, 'de> {
-    table: &'a mut Table<'de>,
-    key: Key<'de>,
-}
-
-impl<'a, 'de> VacantEntry<'a, 'de> {
-    /// Inserts a value into the vacant entry.
-    pub fn insert(self, value: Value<'de>) {
-        self.table.insert(self.key, value);
-    }
-}
-
-#[cfg(test)]
-#[path = "./table_tests.rs"]
-mod tests;

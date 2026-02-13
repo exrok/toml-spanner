@@ -112,20 +112,13 @@ fn scratch_extend() {
 }
 
 #[test]
-fn scratch_len_and_clear() {
+fn scratch_len() {
     let arena = Arena::new();
     arena.alloc(Layout::from_size_align(1, 1).unwrap());
 
     let mut scratch = unsafe { arena.scratch() };
     scratch.extend(b"abc");
-    assert_eq!(scratch.len(), 3);
-
-    scratch.clear();
-    assert_eq!(scratch.len(), 0);
-    assert_eq!(scratch.as_bytes(), b"");
-
-    scratch.extend(b"xy");
-    assert_eq!(scratch.as_bytes(), b"xy");
+    assert_eq!(scratch.as_bytes().len(), 3);
 }
 
 #[test]
@@ -133,7 +126,6 @@ fn scratch_as_bytes_empty() {
     let arena = Arena::new();
     let scratch = unsafe { arena.scratch() };
     assert_eq!(scratch.as_bytes(), b"");
-    assert_eq!(scratch.len(), 0);
 }
 
 #[test]
@@ -211,7 +203,7 @@ fn scratch_grow_on_push() {
     for i in 0..2048u16 {
         scratch.push((i & 0xFF) as u8);
     }
-    assert_eq!(scratch.len(), 2048);
+    assert_eq!(scratch.as_bytes().len(), 2048);
     for (i, &b) in scratch.as_bytes().iter().enumerate() {
         assert_eq!(b, (i & 0xFF) as u8, "mismatch at index {i}");
     }

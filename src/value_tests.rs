@@ -1,4 +1,5 @@
 use super::*;
+use crate::arena::Arena;
 use crate::Span;
 
 fn sp(s: u32, e: u32) -> Span {
@@ -54,9 +55,10 @@ fn boolean_create_access() {
 
 #[test]
 fn array_create_and_drop() {
+    let arena = Arena::new();
     let mut arr = Array::new();
-    arr.push(Value::integer(1, sp(0, 1)));
-    arr.push(Value::integer(2, sp(2, 3)));
+    arr.push(Value::integer(1, sp(0, 1)), &arena);
+    arr.push(Value::integer(2, sp(2, 3)), &arena);
     let v = Value::array(arr, sp(0, 3));
     assert_eq!(v.tag(), TAG_ARRAY);
     let a = v.as_array().unwrap();
@@ -65,6 +67,7 @@ fn array_create_and_drop() {
 
 #[test]
 fn table_create_and_drop() {
+    let arena = Arena::new();
     let mut tab = Table::new();
     tab.insert(
         Key {
@@ -72,6 +75,7 @@ fn table_create_and_drop() {
             span: sp(0, 1),
         },
         Value::integer(10, sp(2, 4)),
+        &arena,
     );
     let v = Value::table(tab, sp(0, 4));
     assert_eq!(v.tag(), TAG_TABLE);
@@ -209,15 +213,17 @@ fn as_mut_modify_boolean() {
 
 #[test]
 fn as_mut_modify_array() {
+    let arena = Arena::new();
     let mut v = Value::array(Array::new(), sp(0, 2));
     if let ValueMut::Array(a) = v.as_mut() {
-        a.push(Value::integer(42, sp(0, 2)));
+        a.push(Value::integer(42, sp(0, 2)), &arena);
     }
     assert_eq!(v.as_array().unwrap().len(), 1);
 }
 
 #[test]
 fn as_mut_modify_table() {
+    let arena = Arena::new();
     let mut v = Value::table(Table::new(), sp(0, 2));
     if let ValueMut::Table(t) = v.as_mut() {
         t.insert(
@@ -226,6 +232,7 @@ fn as_mut_modify_table() {
                 span: sp(0, 1),
             },
             Value::integer(1, sp(0, 1)),
+            &arena,
         );
     }
     assert_eq!(v.as_table().unwrap().len(), 1);
@@ -253,9 +260,10 @@ fn into_kind_integer() {
 
 #[test]
 fn into_kind_array() {
+    let arena = Arena::new();
     let mut arr = Array::new();
-    arr.push(Value::integer(1, sp(0, 1)));
-    arr.push(Value::integer(2, sp(0, 1)));
+    arr.push(Value::integer(1, sp(0, 1)), &arena);
+    arr.push(Value::integer(2, sp(0, 1)), &arena);
     let v = Value::array(arr, sp(0, 5));
     let ValueOwned::Array(a) = v.into_kind() else {
         panic!("expected array")
@@ -265,6 +273,7 @@ fn into_kind_array() {
 
 #[test]
 fn into_kind_table() {
+    let arena = Arena::new();
     let mut tab = Table::new();
     tab.insert(
         Key {
@@ -272,6 +281,7 @@ fn into_kind_table() {
             span: sp(0, 1),
         },
         Value::integer(1, sp(0, 1)),
+        &arena,
     );
     let v = Value::table(tab, sp(0, 5));
     let ValueOwned::Table(t) = v.into_kind() else {
@@ -335,6 +345,7 @@ fn take_string_err() {
 
 #[test]
 fn set_table_replaces() {
+    let arena = Arena::new();
     let mut v = Value::integer(42, sp(0, 5));
     let mut tab = Table::new();
     tab.insert(
@@ -343,6 +354,7 @@ fn set_table_replaces() {
             span: sp(0, 1),
         },
         Value::integer(1, sp(0, 1)),
+        &arena,
     );
     v.set_table(tab);
     assert!(v.as_table().is_some());
@@ -384,6 +396,7 @@ fn type_str_values() {
 
 #[test]
 fn has_keys_and_has_key() {
+    let arena = Arena::new();
     let empty = Value::table(Table::new(), sp(0, 0));
     assert!(!empty.has_keys());
 
@@ -394,6 +407,7 @@ fn has_keys_and_has_key() {
             span: sp(0, 1),
         },
         Value::integer(1, sp(0, 1)),
+        &arena,
     );
     let v = Value::table(tab, sp(0, 1));
     assert!(v.has_keys());

@@ -1,4 +1,5 @@
 use super::*;
+use crate::arena::Arena;
 use crate::str::Str;
 use crate::value::Value;
 use crate::Span;
@@ -22,7 +23,6 @@ fn new_empty_drop() {
     let t = Table::new();
     assert!(t.is_empty());
     assert_eq!(t.len(), 0);
-    drop(t);
 }
 
 #[test]
@@ -35,17 +35,19 @@ fn default_is_empty() {
 
 #[test]
 fn insert_first_triggers_alloc() {
+    let arena = Arena::new();
     let mut t = Table::new();
-    t.insert(key("a"), ival(1));
+    t.insert(key("a"), ival(1), &arena);
     assert_eq!(t.len(), 1);
     assert_eq!(t.get("a").unwrap().as_integer(), Some(1));
 }
 
 #[test]
 fn insert_two_fills_capacity() {
+    let arena = Arena::new();
     let mut t = Table::new();
-    t.insert(key("a"), ival(1));
-    t.insert(key("b"), ival(2));
+    t.insert(key("a"), ival(1), &arena);
+    t.insert(key("b"), ival(2), &arena);
     assert_eq!(t.len(), 2);
     assert_eq!(t.get("a").unwrap().as_integer(), Some(1));
     assert_eq!(t.get("b").unwrap().as_integer(), Some(2));
@@ -53,10 +55,11 @@ fn insert_two_fills_capacity() {
 
 #[test]
 fn insert_realloc_2_to_4() {
+    let arena = Arena::new();
     let mut t = Table::new();
-    t.insert(key("k0"), ival(0));
-    t.insert(key("k1"), ival(1));
-    t.insert(key("k2"), ival(2));
+    t.insert(key("k0"), ival(0), &arena);
+    t.insert(key("k1"), ival(1), &arena);
+    t.insert(key("k2"), ival(2), &arena);
     assert_eq!(t.len(), 3);
     assert_eq!(t.get("k0").unwrap().as_integer(), Some(0));
     assert_eq!(t.get("k1").unwrap().as_integer(), Some(1));
@@ -65,12 +68,13 @@ fn insert_realloc_2_to_4() {
 
 #[test]
 fn insert_realloc_4_to_8() {
+    let arena = Arena::new();
     let mut t = Table::new();
-    t.insert(key("k0"), ival(0));
-    t.insert(key("k1"), ival(1));
-    t.insert(key("k2"), ival(2));
-    t.insert(key("k3"), ival(3));
-    t.insert(key("k4"), ival(4));
+    t.insert(key("k0"), ival(0), &arena);
+    t.insert(key("k1"), ival(1), &arena);
+    t.insert(key("k2"), ival(2), &arena);
+    t.insert(key("k3"), ival(3), &arena);
+    t.insert(key("k4"), ival(4), &arena);
     assert_eq!(t.len(), 5);
     assert_eq!(t.get("k0").unwrap().as_integer(), Some(0));
     assert_eq!(t.get("k4").unwrap().as_integer(), Some(4));
@@ -80,15 +84,17 @@ fn insert_realloc_4_to_8() {
 
 #[test]
 fn get_not_found() {
+    let arena = Arena::new();
     let mut t = Table::new();
-    t.insert(key("a"), ival(1));
+    t.insert(key("a"), ival(1), &arena);
     assert!(t.get("b").is_none());
 }
 
 #[test]
 fn get_key_value_found() {
+    let arena = Arena::new();
     let mut t = Table::new();
-    t.insert(key("mykey"), ival(42));
+    t.insert(key("mykey"), ival(42), &arena);
     let (k, v) = t.get_key_value("mykey").unwrap();
     assert_eq!(&*k.name, "mykey");
     assert_eq!(v.as_integer(), Some(42));
@@ -96,8 +102,9 @@ fn get_key_value_found() {
 
 #[test]
 fn get_mut_modifies() {
+    let arena = Arena::new();
     let mut t = Table::new();
-    t.insert(key("a"), ival(10));
+    t.insert(key("a"), ival(10), &arena);
     let v = t.get_mut("a").unwrap();
     if let crate::value::ValueMut::Integer(i) = v.as_mut() {
         *i = 99;
@@ -107,8 +114,9 @@ fn get_mut_modifies() {
 
 #[test]
 fn get_mut_not_found() {
+    let arena = Arena::new();
     let mut t = Table::new();
-    t.insert(key("a"), ival(1));
+    t.insert(key("a"), ival(1), &arena);
     assert!(t.get_mut("b").is_none());
 }
 
@@ -116,9 +124,10 @@ fn get_mut_not_found() {
 
 #[test]
 fn get_key_value_at_valid() {
+    let arena = Arena::new();
     let mut t = Table::new();
-    t.insert(key("first"), ival(1));
-    t.insert(key("second"), ival(2));
+    t.insert(key("first"), ival(1), &arena);
+    t.insert(key("second"), ival(2), &arena);
     let (k, v) = t.get_key_value_at(0);
     assert_eq!(&*k.name, "first");
     assert_eq!(v.as_integer(), Some(1));
@@ -129,9 +138,10 @@ fn get_key_value_at_valid() {
 
 #[test]
 fn get_mut_at_valid() {
+    let arena = Arena::new();
     let mut t = Table::new();
-    t.insert(key("a"), ival(10));
-    t.insert(key("b"), ival(20));
+    t.insert(key("a"), ival(10), &arena);
+    t.insert(key("b"), ival(20), &arena);
     let v = t.get_mut_at(1);
     if let crate::value::ValueMut::Integer(i) = v.as_mut() {
         *i = 99;
@@ -141,10 +151,12 @@ fn get_mut_at_valid() {
 
 #[test]
 fn first_key_span_start_works() {
+    let arena = Arena::new();
     let mut t = Table::new();
     t.insert(
         Key { name: Str::from("a"), span: Span::new(10, 11) },
         ival(1),
+        &arena,
     );
     assert_eq!(t.first_key_span_start(), 10);
 }
@@ -153,44 +165,20 @@ fn first_key_span_start_works() {
 
 #[test]
 fn contains_key_found_and_not_found() {
+    let arena = Arena::new();
     let mut t = Table::new();
-    t.insert(key("present"), ival(1));
+    t.insert(key("present"), ival(1), &arena);
     assert!(t.contains_key("present"));
     assert!(!t.contains_key("absent"));
-}
-
-// -- Entry API --------------------------------------------------------------
-
-#[test]
-fn entry_vacant_insert() {
-    let mut t = Table::new();
-    t.insert(key("existing"), ival(1));
-    let entry = t.entry(key("new"));
-    assert!(matches!(entry, Entry::Vacant(_)));
-    if let Entry::Vacant(v) = entry {
-        v.insert(ival(2));
-    }
-    assert_eq!(t.len(), 2);
-    assert_eq!(t.get("new").unwrap().as_integer(), Some(2));
-}
-
-#[test]
-fn entry_occupied_key() {
-    let mut t = Table::new();
-    t.insert(key("existing"), ival(1));
-    let entry = t.entry(key("existing"));
-    assert!(matches!(entry, Entry::Occupied(_)));
-    if let Entry::Occupied(o) = entry {
-        assert_eq!(&*o.key().name, "existing");
-    }
 }
 
 // -- Remove -----------------------------------------------------------------
 
 #[test]
 fn remove_only_element() {
+    let arena = Arena::new();
     let mut t = Table::new();
-    t.insert(key("a"), ival(1));
+    t.insert(key("a"), ival(1), &arena);
     let v = t.remove("a").unwrap();
     assert_eq!(v.as_integer(), Some(1));
     assert!(t.is_empty());
@@ -198,10 +186,11 @@ fn remove_only_element() {
 
 #[test]
 fn remove_first_preserves_order() {
+    let arena = Arena::new();
     let mut t = Table::new();
-    t.insert(key("a"), ival(1));
-    t.insert(key("b"), ival(2));
-    t.insert(key("c"), ival(3));
+    t.insert(key("a"), ival(1), &arena);
+    t.insert(key("b"), ival(2), &arena);
+    t.insert(key("c"), ival(3), &arena);
     let v = t.remove("a").unwrap();
     assert_eq!(v.as_integer(), Some(1));
     assert_eq!(t.len(), 2);
@@ -212,10 +201,11 @@ fn remove_first_preserves_order() {
 
 #[test]
 fn remove_middle_preserves_order() {
+    let arena = Arena::new();
     let mut t = Table::new();
-    t.insert(key("a"), ival(1));
-    t.insert(key("b"), ival(2));
-    t.insert(key("c"), ival(3));
+    t.insert(key("a"), ival(1), &arena);
+    t.insert(key("b"), ival(2), &arena);
+    t.insert(key("c"), ival(3), &arena);
     let v = t.remove("b").unwrap();
     assert_eq!(v.as_integer(), Some(2));
     assert_eq!(t.len(), 2);
@@ -226,10 +216,11 @@ fn remove_middle_preserves_order() {
 
 #[test]
 fn remove_last() {
+    let arena = Arena::new();
     let mut t = Table::new();
-    t.insert(key("a"), ival(1));
-    t.insert(key("b"), ival(2));
-    t.insert(key("c"), ival(3));
+    t.insert(key("a"), ival(1), &arena);
+    t.insert(key("b"), ival(2), &arena);
+    t.insert(key("c"), ival(3), &arena);
     let v = t.remove("c").unwrap();
     assert_eq!(v.as_integer(), Some(3));
     assert_eq!(t.len(), 2);
@@ -237,15 +228,17 @@ fn remove_last() {
 
 #[test]
 fn remove_not_found() {
+    let arena = Arena::new();
     let mut t = Table::new();
-    t.insert(key("a"), ival(1));
+    t.insert(key("a"), ival(1), &arena);
     assert!(t.remove("b").is_none());
 }
 
 #[test]
 fn remove_entry_returns_key_and_value() {
+    let arena = Arena::new();
     let mut t = Table::new();
-    t.insert(key("mykey"), ival(42));
+    t.insert(key("mykey"), ival(42), &arena);
     let (k, v) = t.remove_entry("mykey").unwrap();
     assert_eq!(&*k.name, "mykey");
     assert_eq!(v.as_integer(), Some(42));
@@ -255,9 +248,10 @@ fn remove_entry_returns_key_and_value() {
 
 #[test]
 fn values_mut_modifies() {
+    let arena = Arena::new();
     let mut t = Table::new();
-    t.insert(key("a"), ival(1));
-    t.insert(key("b"), ival(2));
+    t.insert(key("a"), ival(1), &arena);
+    t.insert(key("b"), ival(2), &arena);
     for v in t.values_mut() {
         if let crate::value::ValueMut::Integer(i) = v.as_mut() {
             *i += 100;
@@ -271,19 +265,21 @@ fn values_mut_modifies() {
 
 #[test]
 fn borrow_iter() {
+    let arena = Arena::new();
     let mut t = Table::new();
-    t.insert(key("a"), ival(1));
-    t.insert(key("b"), ival(2));
+    t.insert(key("a"), ival(1), &arena);
+    t.insert(key("b"), ival(2), &arena);
     let names: Vec<&str> = (&t).into_iter().map(|(k, _)| &*k.name).collect();
     assert_eq!(names, vec!["a", "b"]);
 }
 
 #[test]
 fn into_iter_full() {
+    let arena = Arena::new();
     let mut t = Table::new();
-    t.insert(key("a"), ival(1));
-    t.insert(key("b"), ival(2));
-    t.insert(key("c"), ival(3));
+    t.insert(key("a"), ival(1), &arena);
+    t.insert(key("b"), ival(2), &arena);
+    t.insert(key("c"), ival(3), &arena);
     let entries: Vec<(String, i64)> = t
         .into_iter()
         .map(|(k, v)| (String::from(&*k.name), v.as_integer().unwrap()))
@@ -297,10 +293,11 @@ fn into_iter_full() {
 
 #[test]
 fn into_iter_partial_drop() {
+    let arena = Arena::new();
     let mut t = Table::new();
-    t.insert(key("a"), ival(1));
-    t.insert(key("b"), ival(2));
-    t.insert(key("c"), ival(3));
+    t.insert(key("a"), ival(1), &arena);
+    t.insert(key("b"), ival(2), &arena);
+    t.insert(key("c"), ival(3), &arena);
     let mut iter = t.into_iter();
     let (k, v) = iter.next().unwrap();
     assert_eq!(&*k.name, "a");
@@ -317,9 +314,10 @@ fn into_iter_empty() {
 
 #[test]
 fn into_iter_size_hint() {
+    let arena = Arena::new();
     let mut t = Table::new();
-    t.insert(key("a"), ival(1));
-    t.insert(key("b"), ival(2));
+    t.insert(key("a"), ival(1), &arena);
+    t.insert(key("b"), ival(2), &arena);
     let mut iter = t.into_iter();
     assert_eq!(iter.size_hint(), (2, Some(2)));
     iter.next();
@@ -328,9 +326,10 @@ fn into_iter_size_hint() {
 
 #[test]
 fn into_keys_all() {
+    let arena = Arena::new();
     let mut t = Table::new();
-    t.insert(key("x"), ival(1));
-    t.insert(key("y"), ival(2));
+    t.insert(key("x"), ival(1), &arena);
+    t.insert(key("y"), ival(2), &arena);
     let keys: Vec<String> = t.into_keys().map(|k| String::from(&*k.name)).collect();
     assert_eq!(keys, vec!["x", "y"]);
 }
@@ -339,28 +338,29 @@ fn into_keys_all() {
 
 #[test]
 fn drop_with_owned_strings() {
+    let arena = Arena::new();
     let mut t = Table::new();
-    t.insert(key("a"), Value::string(Str::from("owned1"), sp()));
-    t.insert(key("b"), Value::string(Str::from("owned2"), sp()));
-    drop(t);
+    t.insert(key("a"), Value::string(Str::from("owned1"), sp()), &arena);
+    t.insert(key("b"), Value::string(Str::from("owned2"), sp()), &arena);
 }
 
 #[test]
 fn drop_with_nested_tables() {
+    let arena = Arena::new();
     let mut inner = Table::new();
-    inner.insert(key("inner_key"), ival(1));
+    inner.insert(key("inner_key"), ival(1), &arena);
     let mut outer = Table::new();
-    outer.insert(key("nested"), Value::table(inner, sp()));
-    outer.insert(key("plain"), ival(2));
-    drop(outer);
+    outer.insert(key("nested"), Value::table(inner, sp()), &arena);
+    outer.insert(key("plain"), ival(2), &arena);
 }
 
 // -- Debug ------------------------------------------------------------------
 
 #[test]
 fn debug_format() {
+    let arena = Arena::new();
     let mut t = Table::new();
-    t.insert(key("a"), ival(1));
+    t.insert(key("a"), ival(1), &arena);
     let s = format!("{t:?}");
     assert!(s.contains('a'));
 }

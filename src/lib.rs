@@ -5,7 +5,6 @@
 mod arena;
 /// Growable array of TOML values
 mod array;
-pub mod de;
 pub mod de_helpers;
 mod error;
 mod parser;
@@ -18,8 +17,8 @@ mod value;
 
 pub use arena::Arena;
 pub use array::Array;
-pub use de::parse;
 pub use error::{DeserError, Error, ErrorKind};
+pub use parser::parse;
 pub use span::{Span, Spanned};
 pub use str::Str;
 pub use table::Table;
