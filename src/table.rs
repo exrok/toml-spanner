@@ -14,9 +14,6 @@ type TableEntry<'de> = (Key<'de>, Value<'de>);
 const MIN_CAP: u32 = 2;
 
 /// A TOML table: a flat list of key-value pairs with linear lookup.
-///
-/// Entries are stored in insertion order. Duplicate keys are not allowed (the
-/// parser enforces this through the [`Entry`] API).
 pub struct Table<'de> {
     len: u32,
     cap: u32,

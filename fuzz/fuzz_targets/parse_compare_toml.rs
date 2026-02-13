@@ -17,10 +17,10 @@ fuzz_target!(|data: &[u8]| {
             // Both parsed successfully — values must match exactly.
             // Datetimes cannot appear here since toml-spanner would have
             // rejected the input if it contained any.
-            let toml_val = toml::Value::Table(toml_tbl);
+
             assert!(
-                values_match(&spanner_val, &toml_val),
-                "values differ for input:\n{text}\nspanner: {spanner_val:?}\ntoml: {toml_val:?}"
+                tables_match(&spanner_val, &toml_tbl),
+                "values differ for input:\n{text}\nspanner: {spanner_val:?}\ntoml: {toml_tbl:?}"
             );
         }
         (Ok(spanner_val), Err(toml_err)) => {
@@ -65,13 +65,22 @@ fn contains_datetime(val: &toml::Value) -> bool {
 /// Strict recursive comparison between a `toml_spanner::Value` and a
 /// `toml::Value`. Since both parsers succeeded, no datetimes can be present
 /// (toml-spanner would have rejected the input). Any mismatch is a real bug.
+fn tables_match(spanner: &toml_spanner::Table<'_>, toml_val: &toml::Table) -> bool {
+    spanner.len() == toml_val.len()
+        && spanner
+            .into_iter()
+            .zip(toml_val.iter())
+            .all(|((sk, sv), (tk, tv))| &*sk.name == tk && values_match(sv, tv))
+}
+
+/// Strict recursive comparison between a `toml_spanner::Value` and a
+/// `toml::Value`. Since both parsers succeeded, no datetimes can be present
+/// (toml-spanner would have rejected the input). Any mismatch is a real bug.
 fn values_match(spanner: &toml_spanner::Value<'_>, toml_val: &toml::Value) -> bool {
     match (spanner.as_ref(), toml_val) {
         (ValueRef::String(s), toml::Value::String(t)) => &**s == t,
         (ValueRef::Integer(a), toml::Value::Integer(b)) => a == *b,
-        (ValueRef::Float(a), toml::Value::Float(b)) => {
-            (a.is_nan() && b.is_nan()) || a == *b
-        }
+        (ValueRef::Float(a), toml::Value::Float(b)) => (a.is_nan() && b.is_nan()) || a == *b,
         (ValueRef::Boolean(a), toml::Value::Boolean(b)) => a == *b,
         (ValueRef::Array(sa), toml::Value::Array(ta)) => {
             sa.len() == ta.len()

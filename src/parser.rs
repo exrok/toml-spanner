@@ -9,15 +9,18 @@
 mod tests;
 
 use crate::{
-    Span,
+    Span, Table,
     arena::Arena,
     error::{Error, ErrorKind},
     str::Str,
     value::{self, Key, SpannedTable, Value},
 };
-use std::hash::{Hash, Hasher};
 use std::ptr::NonNull;
 use std::{char, collections::HashMap};
+use std::{
+    hash::{Hash, Hasher},
+    mem::ManuallyDrop,
+};
 
 const MAX_RECURSION_DEPTH: i16 = 256;
 // When a method returns Err(ParseError), the full error details have already
@@ -1116,11 +1119,7 @@ impl<'de> Parser<'de> {
                 Some(b) if is_keylike_byte(b) => {
                     let next = self.read_keylike();
                     if !scratch.push_strip_underscores(next.as_bytes()) {
-                        return Err(self.set_error(
-                            s_start,
-                            Some(s_end),
-                            ErrorKind::InvalidNumber,
-                        ));
+                        return Err(self.set_error(s_start, Some(s_end), ErrorKind::InvalidNumber));
                     }
                 }
                 _ => {
@@ -1205,9 +1204,7 @@ impl<'de> Parser<'de> {
                         let first_char = key.chars().next().expect("key should not be empty");
                         match first_char {
                             '-' => match key.as_bytes().get(1) {
-                                Some(b'0'..=b'9' | b'i' | b'n') => {
-                                    self.number(start, end, key)
-                                }
+                                Some(b'0'..=b'9' | b'i' | b'n') => self.number(start, end, key),
                                 _ => Err(self.set_error(
                                     start as usize,
                                     Some(end as usize),
@@ -1838,7 +1835,7 @@ impl<'de> Parser<'de> {
 /// The caller must supply an [`Arena`] that shares the `'de` lifetime with
 /// the input. All escaped strings are committed into the arena so that
 /// `Str<'de>` can borrow from it without per-string heap allocation.
-pub fn parse<'de>(s: &'de str, arena: &'de Arena) -> Result<Value<'de>, Error> {
+pub fn parse<'de>(s: &'de str, arena: &'de Arena) -> Result<Table<'de>, Error> {
     // Tag bits use the low 3 bits of start_and_tag, limiting span.start to
     // 29 bits (512 MiB). The FLAG_BIT uses the low bit of end_and_flag,
     // limiting span.end to 31 bits (2 GiB).
@@ -1862,8 +1859,9 @@ pub fn parse<'de>(s: &'de str, arena: &'de Arena) -> Result<Value<'de>, Error> {
         Ok(()) => {}
         Err(_) => return Err(parser.take_error()),
     }
-
-    Ok(root)
+    // Note that root is about the drop (but doesn't implement drop), so we can take
+    // ownership of this table.
+    unsafe { Ok(ManuallyDrop::take(&mut root_st.value)) }
 }
 
 #[inline]

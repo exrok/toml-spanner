@@ -1,22 +1,36 @@
 # toml-spanner
 
-This crate is a fork of `toml-span` that has diverged significantly from the
-original, with major performance improvements, a much smaller memory footprint,
-and preserved insertion order for tables.
+High-performance, fast compiling, span preserving toml parsing for rust.
+Orginally forked from `toml-span` to add TOML 1.1.0 support, `toml-spanner`
+has received significant performance improvements and reductions in compile time.
+
+[![Crates.io](https://img.shields.io/crates/v/toml-spanner?style=flat-square)](https://crates.io/crates/toml-spanner)
+[![Docs.rs](https://img.shields.io/docsrs/toml-spanner?style=flat-square)](https://docs.rs/jsony/latest/toml-spanner/)
+[![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
+
+Like the orginal `toml-span` temporal values such as timestamps or local times are not supported.
 
 ## Divergence from `toml-span`
 
 While `toml-spanner` started as a fork of `toml-span`, it has since undergone
 extensive changes:
 
-- **Up to 10x faster** than `toml-span`, and 4-7x faster than `toml` across
+- 10x faster than `toml-span`, and 5-8x faster than `toml` across
   real-world workloads.
-- **Compact `Value` type** — `size_of::<Value>` is 24 bytes, compared to 48 in
-  `toml_span`, 32 in `toml`, and 80 in `toml` with `preserve_order`.
-- **Small map entries** — table entry size is 48 bytes, versus 88 in
-  `toml_span`, 56 in `toml`, and 104 in `toml` with `preserve_order`.
-- **Preserved index order** — tables retain their insertion order by default,
+- Preserved index order: tables retain their insertion order by default,
   unlike `toml_span` and the default mode of `toml`.
+
+- Compact `Value` type (on 64bit platforms):
+
+  | Crate                 | Value    | TableEntry |
+  | --------------------- | -------- | ---------- |
+  | **toml-spanner**      | 24 bytes | 48 bytes   |
+  | toml-span             | 48 bytes | 88 bytes   |
+  | toml                  | 32 bytes | 56 bytes   |
+  | toml (preserve_order) | 80 bytes | 104 bytes  |
+
+  Note that the `toml` crate `Value` type doesn't contain any span information
+  and that `toml-span` doesn't support table entry order preservation.
 
 ### Trade-offs
 

@@ -79,10 +79,7 @@ impl<'de> SpannedTable<'de> {
     }
 }
 
-/// A parsed TOML value with inline span information.
-///
-/// This is a 24-byte `#[repr(C)]` tagged union. The tag and span are packed
-/// into two `u32` fields; the payload is a 16-byte union.
+/// A parsed TOML value with span information.
 #[repr(C)]
 pub struct Value<'de> {
     /// Bits 2-0: tag, bits 31-3: span.start
@@ -107,12 +104,7 @@ impl<'de> Value<'de> {
 
     #[inline]
     pub(crate) fn string(s: Str<'de>, span: Span) -> Self {
-        Self::raw(
-            TAG_STRING,
-            span.start(),
-            span.end(),
-            Payload { string: s },
-        )
+        Self::raw(TAG_STRING, span.start(), span.end(), Payload { string: s })
     }
 
     #[inline]
@@ -153,7 +145,7 @@ impl<'de> Value<'de> {
     }
 
     #[inline]
-    pub(crate) fn table(t: Table<'de>, span: Span) -> Self {
+    pub fn table(t: Table<'de>, span: Span) -> Self {
         Self::raw(
             TAG_TABLE,
             span.start(),
@@ -596,6 +588,21 @@ impl serde::Serialize for Value<'_> {
                 map.end()
             }
         }
+    }
+}
+
+#[cfg(feature = "serde")]
+impl serde::Serialize for Table<'_> {
+    fn serialize<S>(&self, ser: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeMap;
+        let mut map = ser.serialize_map(Some(self.len()))?;
+        for (k, v) in self {
+            map.serialize_entry(&*k.name, v)?;
+        }
+        map.end()
     }
 }
 
