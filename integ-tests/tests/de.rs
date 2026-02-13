@@ -18,7 +18,7 @@ impl<'de> Deserialize<'de> for Boop {
         let s = table.required("s")?;
         let os = table.optional("os")?;
 
-        table.finalize()?;
+        table.expect_empty()?;
 
         Ok(Self { s, os })
     }
@@ -139,7 +139,7 @@ impl<'de> Deserialize<'de> for Reason {
             return Err(value.expected("a table").into());
         };
         let reason = table.required("reason")?;
-        table.finalize()?;
+        table.expect_empty()?;
         Ok(Self { reason })
     }
 }
@@ -180,7 +180,7 @@ impl<'de> Deserialize<'de> for Ohno {
             )));
         }
 
-        table.finalize()?;
+        table.expect_empty()?;
         Ok(Self { year })
     }
 }

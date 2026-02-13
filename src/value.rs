@@ -10,7 +10,7 @@ use std::mem::ManuallyDrop;
 /// A toml array
 pub use crate::array::Array;
 /// A toml table: flat list of key-value pairs in insertion order
-pub use crate::table::InnerTable;
+use crate::table::InnerTable;
 
 pub(crate) const TAG_MASK: u32 = 0x7;
 pub(crate) const TAG_SHIFT: u32 = 3;
@@ -93,7 +93,7 @@ impl<'de> Item<'de> {
     }
 
     #[inline]
-    pub fn table(t: InnerTable<'de>, span: Span) -> Self {
+    pub(crate) fn table(t: InnerTable<'de>, span: Span) -> Self {
         Self::raw(
             TAG_TABLE,
             span.start,
@@ -327,9 +327,9 @@ impl<'de> Item<'de> {
 
     /// Returns a borrowed table if this is a table value.
     #[inline]
-    pub fn as_table(&self) -> Option<&InnerTable<'de>> {
+    pub fn as_table(&self) -> Option<&Table<'de>> {
         if self.is_table() {
-            Some(unsafe { &self.payload.table })
+            Some(unsafe { self.as_spanned_table_unchecked() })
         } else {
             None
         }
@@ -347,9 +347,9 @@ impl<'de> Item<'de> {
 
     /// Returns a mutable table reference.
     #[inline]
-    pub fn as_table_mut(&mut self) -> Option<&mut InnerTable<'de>> {
+    pub fn as_table_mut(&mut self) -> Option<&mut Table<'de>> {
         if self.is_table() {
-            Some(unsafe { &mut self.payload.table })
+            Some(unsafe { self.as_spanned_table_mut_unchecked() })
         } else {
             None
         }
@@ -442,12 +442,6 @@ impl<'de> Item<'de> {
                 line_info: None,
             }),
         }
-    }
-
-    /// Replace payload with a table, preserving the span.
-    pub fn set_table(&mut self, table: InnerTable<'de>) {
-        let span = self.span();
-        *self = Item::table(table, span);
     }
 }
 

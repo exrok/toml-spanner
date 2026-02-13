@@ -4,7 +4,6 @@
 #[path = "./table_tests.rs"]
 mod tests;
 
-use crate::span::Spanned;
 use crate::value::{
     FLAG_BIT, FLAG_SHIFT, Item, Key, TAG_MASK, TAG_SHIFT, TAG_TABLE, TAG_TABLE_HEADER,
 };
@@ -19,7 +18,7 @@ type TableEntry<'de> = (Key<'de>, Item<'de>);
 const MIN_CAP: u32 = 2;
 
 /// A TOML table: a flat list of key-value pairs with linear lookup.
-pub struct InnerTable<'de> {
+pub(crate) struct InnerTable<'de> {
     len: u32,
     cap: u32,
     ptr: NonNull<TableEntry<'de>>,
@@ -431,16 +430,7 @@ impl<'de> Table<'de> {
     }
 
     /// Deserializes a required field from the table.
-    #[inline]
     pub fn required<T: Deserialize<'de>>(&mut self, name: &'static str) -> Result<T, Error> {
-        Ok(self.required_s(name)?.value)
-    }
-
-    /// Deserializes a required field, returning it with span information.
-    pub fn required_s<T: Deserialize<'de>>(
-        &mut self,
-        name: &'static str,
-    ) -> Result<Spanned<T>, Error> {
         let Some(mut val) = self.value.remove(name) else {
             return Err(Error {
                 kind: ErrorKind::MissingField(name),
@@ -449,31 +439,25 @@ impl<'de> Table<'de> {
             });
         };
 
-        Spanned::<T>::deserialize(&mut val)
+        T::deserialize(&mut val)
     }
 
     /// Deserializes an optional field from the table.
-    #[inline]
     pub fn optional<T: Deserialize<'de>>(&mut self, name: &str) -> Result<Option<T>, Error> {
-        Ok(self.optional_s(name)?.map(|v| v.value))
-    }
-
-    /// Deserializes an optional field, returning it with span information.
-    pub fn optional_s<T: Deserialize<'de>>(
-        &mut self,
-        name: &str,
-    ) -> Result<Option<Spanned<T>>, Error> {
         let Some(mut val) = self.value.remove(name) else {
             return Ok(None);
         };
 
-        Spanned::<T>::deserialize(&mut val).map(Some)
+        match T::deserialize(&mut val) {
+            Ok(value) => Ok(Some(value)),
+            Err(err) => Err(err),
+        }
     }
 
     /// Checks that all keys have been consumed.
     ///
     /// Returns [`ErrorKind::UnexpectedKeys`] if the table still has entries.
-    pub fn finalize(&self) -> Result<(), Error> {
+    pub fn expect_empty(&self) -> Result<(), Error> {
         if !self.value.is_empty() {
             let keys = self
                 .value
@@ -482,7 +466,10 @@ impl<'de> Table<'de> {
                 .map(|(key, _)| (key.name.into(), key.span))
                 .collect();
 
-            return Err(Error::from((ErrorKind::UnexpectedKeys { keys }, self.span())));
+            return Err(Error::from((
+                ErrorKind::UnexpectedKeys { keys },
+                self.span(),
+            )));
         }
 
         Ok(())

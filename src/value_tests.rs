@@ -319,25 +319,6 @@ fn take_string_err() {
     assert!(v.take_string(None).is_err());
 }
 
-#[test]
-fn set_table_replaces() {
-    let arena = Arena::new();
-    let mut v = Item::integer(42, sp(0, 5));
-    let mut tab = InnerTable::new();
-    tab.insert(
-        Key {
-            name: Str::from("k"),
-            span: sp(0, 1),
-        },
-        Item::integer(1, sp(0, 1)),
-        &arena,
-    );
-    v.set_table(tab);
-    assert!(v.as_table().is_some());
-    assert_eq!(v.as_table().unwrap().len(), 1);
-    assert_eq!(v.span(), sp(0, 5));
-}
-
 // -- SpannedTable span helpers ----------------------------------------------
 
 #[test]
