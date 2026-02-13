@@ -3,17 +3,17 @@
 //! Contains the [`Value`] tagged union: a 24-byte TOML value with inline span.
 
 use crate::str::Str;
-use crate::{Error, ErrorKind, Span};
+use crate::{Error, ErrorKind, Span, Table};
 use std::fmt;
 use std::mem::ManuallyDrop;
 
 /// A toml array
 pub use crate::array::Array;
 /// A toml table: flat list of key-value pairs in insertion order
-pub use crate::table::Table;
+pub use crate::table::InnerTable;
 
-const TAG_MASK: u32 = 0x7;
-const TAG_SHIFT: u32 = 3;
+pub(crate) const TAG_MASK: u32 = 0x7;
+pub(crate) const TAG_SHIFT: u32 = 3;
 
 pub(crate) const TAG_STRING: u32 = 0;
 pub(crate) const TAG_INTEGER: u32 = 1;
@@ -34,48 +34,7 @@ union Payload<'de> {
     float: f64,
     boolean: bool,
     array: ManuallyDrop<Array<'de>>,
-    table: ManuallyDrop<Table<'de>>,
-}
-
-#[repr(C)]
-pub(crate) struct SpannedTable<'de> {
-    /// Bits 2-0: tag, bits 31-3: span.start
-    start_and_tag: u32,
-    /// Bit 0: flag bit (parser-internal), bits 31-1: span.end
-    end_and_flag: u32,
-    pub(crate) value: ManuallyDrop<Table<'de>>,
-}
-
-const _: () = assert!(std::mem::size_of::<SpannedTable<'_>>() == std::mem::size_of::<Item<'_>>());
-const _: () = assert!(std::mem::align_of::<SpannedTable<'_>>() == std::mem::align_of::<Item<'_>>());
-
-impl<'de> SpannedTable<'de> {
-    #[inline]
-    pub(crate) fn span_start(&self) -> u32 {
-        self.start_and_tag >> TAG_SHIFT
-    }
-
-    #[inline]
-    pub(crate) fn set_span_start(&mut self, v: u32) {
-        self.start_and_tag = (v << TAG_SHIFT) | (self.start_and_tag & TAG_MASK);
-    }
-
-    #[inline]
-    pub(crate) fn set_span_end(&mut self, v: u32) {
-        self.end_and_flag = (v << FLAG_SHIFT) | (self.end_and_flag & FLAG_BIT);
-    }
-
-    #[inline]
-    pub(crate) fn extend_span_end(&mut self, new_end: u32) {
-        let old = self.end_and_flag;
-        let current = old >> FLAG_SHIFT;
-        self.end_and_flag = (current.max(new_end) << FLAG_SHIFT) | (old & FLAG_BIT);
-    }
-
-    #[inline]
-    pub(crate) fn set_header_tag(&mut self) {
-        self.start_and_tag = (self.start_and_tag & !TAG_MASK) | TAG_TABLE_HEADER;
-    }
+    table: ManuallyDrop<InnerTable<'de>>,
 }
 
 /// A parsed TOML value with span information.
@@ -103,40 +62,30 @@ impl<'de> Item<'de> {
 
     #[inline]
     pub(crate) fn string(s: Str<'de>, span: Span) -> Self {
-        Self::raw(TAG_STRING, span.start(), span.end(), Payload { string: s })
+        Self::raw(TAG_STRING, span.start, span.end, Payload { string: s })
     }
 
     #[inline]
     pub(crate) fn integer(i: i64, span: Span) -> Self {
-        Self::raw(
-            TAG_INTEGER,
-            span.start(),
-            span.end(),
-            Payload { integer: i },
-        )
+        Self::raw(TAG_INTEGER, span.start, span.end, Payload { integer: i })
     }
 
     #[inline]
     pub(crate) fn float(f: f64, span: Span) -> Self {
-        Self::raw(TAG_FLOAT, span.start(), span.end(), Payload { float: f })
+        Self::raw(TAG_FLOAT, span.start, span.end, Payload { float: f })
     }
 
     #[inline]
     pub(crate) fn boolean(b: bool, span: Span) -> Self {
-        Self::raw(
-            TAG_BOOLEAN,
-            span.start(),
-            span.end(),
-            Payload { boolean: b },
-        )
+        Self::raw(TAG_BOOLEAN, span.start, span.end, Payload { boolean: b })
     }
 
     #[inline]
     pub(crate) fn array(a: Array<'de>, span: Span) -> Self {
         Self::raw(
             TAG_ARRAY,
-            span.start(),
-            span.end(),
+            span.start,
+            span.end,
             Payload {
                 array: ManuallyDrop::new(a),
             },
@@ -144,11 +93,11 @@ impl<'de> Item<'de> {
     }
 
     #[inline]
-    pub fn table(t: Table<'de>, span: Span) -> Self {
+    pub fn table(t: InnerTable<'de>, span: Span) -> Self {
         Self::raw(
             TAG_TABLE,
-            span.start(),
-            span.end(),
+            span.start,
+            span.end,
             Payload {
                 table: ManuallyDrop::new(t),
             },
@@ -165,7 +114,7 @@ impl<'de> Item<'de> {
 
     /// Creates a frozen (inline) table value (flag bit set).
     #[inline]
-    pub(crate) fn table_frozen(t: Table<'de>, span: Span) -> Self {
+    pub(crate) fn table_frozen(t: InnerTable<'de>, span: Span) -> Self {
         let mut v = Self::table(t, span);
         v.end_and_flag |= FLAG_BIT;
         v
@@ -173,11 +122,11 @@ impl<'de> Item<'de> {
 
     /// Creates a table with HEADER tag (explicitly opened by `[header]`).
     #[inline]
-    pub(crate) fn table_header(t: Table<'de>, span: Span) -> Self {
+    pub(crate) fn table_header(t: InnerTable<'de>, span: Span) -> Self {
         Self::raw(
             TAG_TABLE_HEADER,
-            span.start(),
-            span.end(),
+            span.start,
+            span.end,
             Payload {
                 table: ManuallyDrop::new(t),
             },
@@ -186,11 +135,11 @@ impl<'de> Item<'de> {
 
     /// Creates a table with DOTTED tag (created by dotted-key navigation).
     #[inline]
-    pub(crate) fn table_dotted(t: Table<'de>, span: Span) -> Self {
+    pub(crate) fn table_dotted(t: InnerTable<'de>, span: Span) -> Self {
         Self::raw(
             TAG_TABLE_DOTTED,
-            span.start(),
-            span.end(),
+            span.start,
+            span.end,
             Payload {
                 table: ManuallyDrop::new(t),
             },
@@ -304,7 +253,7 @@ impl<'de> Item<'de> {
                 TAG_FLOAT => ValueRef::Float(self.payload.float),
                 TAG_BOOLEAN => ValueRef::Boolean(self.payload.boolean),
                 TAG_ARRAY => ValueRef::Array(&self.payload.array),
-                _ => ValueRef::Table(&self.payload.table),
+                _ => ValueRef::Table(self.as_spanned_table_unchecked()),
             }
         }
     }
@@ -319,7 +268,7 @@ impl<'de> Item<'de> {
                 TAG_FLOAT => ValueMut::Float(&mut self.payload.float),
                 TAG_BOOLEAN => ValueMut::Boolean(&mut self.payload.boolean),
                 TAG_ARRAY => ValueMut::Array(&mut self.payload.array),
-                _ => ValueMut::Table(&mut self.payload.table),
+                _ => ValueMut::Table(self.as_spanned_table_mut_unchecked()),
             }
         }
     }
@@ -378,7 +327,7 @@ impl<'de> Item<'de> {
 
     /// Returns a borrowed table if this is a table value.
     #[inline]
-    pub fn as_table(&self) -> Option<&Table<'de>> {
+    pub fn as_table(&self) -> Option<&InnerTable<'de>> {
         if self.is_table() {
             Some(unsafe { &self.payload.table })
         } else {
@@ -398,7 +347,7 @@ impl<'de> Item<'de> {
 
     /// Returns a mutable table reference.
     #[inline]
-    pub fn as_table_mut(&mut self) -> Option<&mut Table<'de>> {
+    pub fn as_table_mut(&mut self) -> Option<&mut InnerTable<'de>> {
         if self.is_table() {
             Some(unsafe { &mut self.payload.table })
         } else {
@@ -408,7 +357,7 @@ impl<'de> Item<'de> {
 
     /// Returns a mutable table pointer (parser-internal).
     #[inline]
-    pub(crate) unsafe fn as_table_mut_unchecked(&mut self) -> &mut Table<'de> {
+    pub(crate) unsafe fn as_table_mut_unchecked(&mut self) -> &mut InnerTable<'de> {
         debug_assert!(self.is_table());
         unsafe { &mut self.payload.table }
     }
@@ -418,9 +367,15 @@ impl<'de> Item<'de> {
     /// SAFETY: The caller must ensure `self.is_table()` is true. Both types
     /// are `#[repr(C)]` with identical layout when the payload is a table.
     #[inline]
-    pub(crate) unsafe fn as_spanned_table_mut_unchecked(&mut self) -> &mut SpannedTable<'de> {
+    pub(crate) unsafe fn as_spanned_table_mut_unchecked(&mut self) -> &mut Table<'de> {
         debug_assert!(self.is_table());
-        unsafe { &mut *(self as *mut Item<'de>).cast::<SpannedTable<'de>>() }
+        unsafe { &mut *(self as *mut Item<'de>).cast::<Table<'de>>() }
+    }
+
+    #[inline]
+    pub(crate) unsafe fn as_spanned_table_unchecked(&self) -> &Table<'de> {
+        debug_assert!(self.is_table());
+        unsafe { &*(self as *const Item<'de>).cast::<Table<'de>>() }
     }
 
     /// Returns true if the value is a table and is non-empty.
@@ -437,6 +392,41 @@ impl<'de> Item<'de> {
 }
 
 impl<'de> Item<'de> {
+    /// Constructs an [`ErrorKind::Wanted`] error from this value.
+    ///
+    /// Uses `self.type_str()` as the `found` field and `self.span()` as the span.
+    #[inline]
+    pub fn expected(&self, expected: &'static str) -> Error {
+        Error {
+            kind: ErrorKind::Wanted {
+                expected,
+                found: self.type_str(),
+            },
+            span: self.span(),
+            line_info: None,
+        }
+    }
+
+    /// Takes a string value and parses it via [`FromStr`].
+    ///
+    /// Returns an error if the value is not a string or parsing fails.
+    #[inline]
+    pub fn parse<T, E>(&mut self) -> Result<T, Error>
+    where
+        T: std::str::FromStr<Err = E>,
+        E: std::fmt::Display,
+    {
+        let s = self.take_string(None)?;
+        match s.parse() {
+            Ok(v) => Ok(v),
+            Err(err) => Err(Error {
+                kind: ErrorKind::Custom(format!("failed to parse string: {err}").into()),
+                span: self.span(),
+                line_info: None,
+            }),
+        }
+    }
+
     /// Takes the value as a string, returning an error if it is not a string.
     #[inline]
     pub fn take_string(&mut self, msg: Option<&'static str>) -> Result<Str<'de>, Error> {
@@ -455,7 +445,7 @@ impl<'de> Item<'de> {
     }
 
     /// Replace payload with a table, preserving the span.
-    pub fn set_table(&mut self, table: Table<'de>) {
+    pub fn set_table(&mut self, table: InnerTable<'de>) {
         let span = self.span();
         *self = Item::table(table, span);
     }
@@ -508,7 +498,7 @@ impl serde::Serialize for Item<'_> {
 }
 
 #[cfg(feature = "serde")]
-impl serde::Serialize for Table<'_> {
+impl serde::Serialize for InnerTable<'_> {
     fn serialize<S>(&self, ser: S) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
@@ -519,6 +509,16 @@ impl serde::Serialize for Table<'_> {
             map.serialize_entry(&*k.name, v)?;
         }
         map.end()
+    }
+}
+
+#[cfg(feature = "serde")]
+impl serde::Serialize for Table<'_> {
+    fn serialize<S>(&self, ser: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        self.value.serialize(ser)
     }
 }
 

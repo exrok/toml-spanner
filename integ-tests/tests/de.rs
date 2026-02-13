@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 
 use integ_tests::{invalid_de, valid_de};
-use toml_spanner::{DeserError, Deserialize, Item, Spanned, de_helpers::*};
+use toml_spanner::{Deserialize, Error, Item, Spanned};
 
 #[derive(Debug)]
 struct Boop {
@@ -10,13 +10,15 @@ struct Boop {
 }
 
 impl<'de> Deserialize<'de> for Boop {
-    fn deserialize(value: &mut Item<'de>) -> Result<Self, DeserError> {
-        let mut mh = TableHelper::new(value)?;
+    fn deserialize(value: &mut Item<'de>) -> Result<Self, Error> {
+        let toml_spanner::ValueMut::Table(table) = value.as_mut() else {
+            return Err(value.expected("a table").into());
+        };
 
-        let s = mh.required("s")?;
-        let os = mh.optional("os")?;
+        let s = table.required("s")?;
+        let os = table.optional("os")?;
 
-        mh.finalize(None)?;
+        table.finalize()?;
 
         Ok(Self { s, os })
     }
@@ -37,7 +39,7 @@ struct Package {
 }
 
 impl<'de> Deserialize<'de> for Package {
-    fn deserialize(value: &mut Item<'de>) -> Result<Self, DeserError> {
+    fn deserialize(value: &mut Item<'de>) -> Result<Self, Error> {
         fn from_str(s: &str) -> (String, Option<String>) {
             if let Some((name, version)) = s.split_once(':') {
                 (name.to_owned(), Some(version.to_owned()))
@@ -46,26 +48,23 @@ impl<'de> Deserialize<'de> for Package {
             }
         }
 
-        let span = value.span();
         if value.as_str().is_some() {
-            let s = value.take_string(None).map_err(DeserError::from)?;
+            let s = value.take_string(None)?;
             let (name, version) = from_str(&s);
             Ok(Self { name, version })
         } else if value.as_table().is_some() {
-            let mut th = TableHelper::new(value)?;
+            let toml_spanner::ValueMut::Table(table) = value.as_mut() else {
+                unreachable!()
+            };
 
-            if let Some(mut val) = th.table.remove("crate") {
-                let s = val.take_string(Some("a package string")).map_err(DeserError::from)?;
+            if let Some(mut val) = table.remove("crate") {
+                let s = val.take_string(Some("a package string"))?;
                 let (name, version) = from_str(&s);
-
-                th.finalize(Some(value))?;
 
                 Ok(Self { name, version })
             } else {
-                let name = th.required_s("name")?;
-                let version = th.optional("version")?;
-
-                th.finalize(Some(value))?;
+                let name = table.required_s("name")?;
+                let version = table.optional("version")?;
 
                 Ok(Self {
                     name: name.value,
@@ -73,7 +72,7 @@ impl<'de> Deserialize<'de> for Package {
                 })
             }
         } else {
-            Err(expected("a string or table", value.type_str(), span).into())
+            Err(value.expected("a string or table").into())
         }
     }
 }
@@ -84,10 +83,11 @@ struct Array {
 }
 
 impl<'de> Deserialize<'de> for Array {
-    fn deserialize(value: &mut Item<'de>) -> Result<Self, DeserError> {
-        let mut th = TableHelper::new(value)?;
-        let packages = th.required("packages")?;
-        th.finalize(Some(value))?;
+    fn deserialize(value: &mut Item<'de>) -> Result<Self, Error> {
+        let toml_spanner::ValueMut::Table(table) = value.as_mut() else {
+            return Err(value.expected("a table").into());
+        };
+        let packages = table.required("packages")?;
         Ok(Self { packages })
     }
 }
@@ -115,7 +115,7 @@ impl<'de, T> Deserialize<'de> for PackageSpecOrExtended<T>
 where
     T: Deserialize<'de>,
 {
-    fn deserialize(value: &mut Item<'de>) -> Result<Self, DeserError> {
+    fn deserialize(value: &mut Item<'de>) -> Result<Self, Error> {
         let spec = Package::deserialize(value)?;
 
         let inner = if value.has_keys() {
@@ -134,10 +134,12 @@ struct Reason {
 }
 
 impl<'de> Deserialize<'de> for Reason {
-    fn deserialize(value: &mut Item<'de>) -> Result<Self, DeserError> {
-        let mut th = TableHelper::new(value)?;
-        let reason = th.required("reason")?;
-        th.finalize(None)?;
+    fn deserialize(value: &mut Item<'de>) -> Result<Self, Error> {
+        let toml_spanner::ValueMut::Table(table) = value.as_mut() else {
+            return Err(value.expected("a table").into());
+        };
+        let reason = table.required("reason")?;
+        table.finalize()?;
         Ok(Self { reason })
     }
 }
@@ -148,10 +150,11 @@ struct Flattened {
 }
 
 impl<'de> Deserialize<'de> for Flattened {
-    fn deserialize(value: &mut Item<'de>) -> Result<Self, DeserError> {
-        let mut th = TableHelper::new(value)?;
-        let flattened = th.required("flattened")?;
-        th.finalize(Some(value))?;
+    fn deserialize(value: &mut Item<'de>) -> Result<Self, Error> {
+        let toml_spanner::ValueMut::Table(table) = value.as_mut() else {
+            return Err(value.expected("a table").into());
+        };
+        let flattened = table.required("flattened")?;
         Ok(Self { flattened })
     }
 }
@@ -164,19 +167,20 @@ struct Ohno {
 }
 
 impl<'de> Deserialize<'de> for Ohno {
-    fn deserialize(value: &mut Item<'de>) -> Result<Self, DeserError> {
-        let mut th = TableHelper::new(value)?;
-        let year = th.required("year")?;
+    fn deserialize(value: &mut Item<'de>) -> Result<Self, Error> {
+        let toml_spanner::ValueMut::Table(table) = value.as_mut() else {
+            return Err(value.expected("a table").into());
+        };
+        let year = table.required("year")?;
 
-        if let Some(snbh) = th.optional_s::<std::borrow::Cow<'de, str>>("this-is-deprecated")? {
+        if let Some(snbh) = table.optional_s::<std::borrow::Cow<'de, str>>("this-is-deprecated")? {
             return Err(toml_spanner::Error::from((
                 toml_spanner::ErrorKind::Custom("this-is-deprecated is deprecated".into()),
                 snbh.span,
-            ))
-            .into());
+            )));
         }
 
-        th.finalize(Some(value))?;
+        table.finalize()?;
         Ok(Self { year })
     }
 }

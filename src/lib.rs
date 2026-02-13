@@ -5,7 +5,7 @@
 mod arena;
 /// Growable array of TOML values
 mod array;
-pub mod de_helpers;
+mod de;
 mod error;
 mod parser;
 mod span;
@@ -17,7 +17,7 @@ mod value;
 
 pub use arena::Arena;
 pub use array::Array;
-pub use error::{DeserError, Error, ErrorKind};
+pub use error::{Error, ErrorKind};
 pub use parser::parse;
 pub use span::{Span, Spanned};
 pub use str::Str;
@@ -31,7 +31,7 @@ pub mod impl_serde;
 pub trait Deserialize<'de>: Sized {
     /// Given a mutable [`Value`], allows you to deserialize the type from it,
     /// or accumulate 1 or more errors
-    fn deserialize(value: &mut Item<'de>) -> Result<Self, DeserError>;
+    fn deserialize(value: &mut Item<'de>) -> Result<Self, Error>;
 }
 
 /// This crate's equivalent to [`serde::DeserializeOwned`](https://docs.rs/serde/latest/serde/de/trait.DeserializeOwned.html)

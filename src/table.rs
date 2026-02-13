@@ -4,29 +4,34 @@
 #[path = "./table_tests.rs"]
 mod tests;
 
-use crate::arena::Arena;
-use crate::value::{Item, Key};
+use crate::span::Spanned;
+use crate::value::{
+    FLAG_BIT, FLAG_SHIFT, Item, Key, TAG_MASK, TAG_SHIFT, TAG_TABLE, TAG_TABLE_HEADER,
+};
+use crate::{Deserialize, Error, ErrorKind, Span};
 use std::alloc::Layout;
 use std::ptr::NonNull;
+
+use crate::arena::Arena;
 
 type TableEntry<'de> = (Key<'de>, Item<'de>);
 
 const MIN_CAP: u32 = 2;
 
 /// A TOML table: a flat list of key-value pairs with linear lookup.
-pub struct Table<'de> {
+pub struct InnerTable<'de> {
     len: u32,
     cap: u32,
     ptr: NonNull<TableEntry<'de>>,
 }
 
-impl<'de> Default for Table<'de> {
+impl<'de> Default for InnerTable<'de> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<'de> Table<'de> {
+impl<'de> InnerTable<'de> {
     /// Creates an empty table.
     #[inline]
     pub fn new() -> Self {
@@ -130,7 +135,7 @@ impl<'de> Table<'de> {
     #[inline]
     pub(crate) fn first_key_span_start(&self) -> u32 {
         debug_assert!(self.len > 0);
-        unsafe { (*self.ptr.as_ptr()).0.span.start() }
+        unsafe { (*self.ptr.as_ptr()).0.span.start }
     }
 
     /// Returns key-value references at a given index (unchecked in release).
@@ -221,7 +226,7 @@ impl<'de> Table<'de> {
     }
 }
 
-impl std::fmt::Debug for Table<'_> {
+impl std::fmt::Debug for InnerTable<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut map = f.debug_map();
         for (k, v) in self.entries() {
@@ -231,7 +236,7 @@ impl std::fmt::Debug for Table<'_> {
     }
 }
 
-impl<'a, 'de> IntoIterator for &'a Table<'de> {
+impl<'a, 'de> IntoIterator for &'a InnerTable<'de> {
     type Item = (&'a Key<'de>, &'a Item<'de>);
     type IntoIter = Iter<'a, 'de>;
 
@@ -261,7 +266,7 @@ impl<'a, 'de> Iterator for Iter<'a, 'de> {
 
 impl ExactSizeIterator for Iter<'_, '_> {}
 
-impl<'de> IntoIterator for Table<'de> {
+impl<'de> IntoIterator for InnerTable<'de> {
     type Item = (Key<'de>, Item<'de>);
     type IntoIter = IntoIter<'de>;
 
@@ -275,7 +280,7 @@ impl<'de> IntoIterator for Table<'de> {
 
 /// Consuming iterator over a [`Table`].
 pub struct IntoIter<'de> {
-    table: Table<'de>,
+    table: InnerTable<'de>,
     index: u32,
 }
 
@@ -314,5 +319,222 @@ impl<'de> Iterator for IntoKeys<'de> {
 
     fn size_hint(&self) -> (usize, Option<usize>) {
         self.inner.size_hint()
+    }
+}
+
+#[repr(C)]
+pub struct Table<'de> {
+    /// Bits 2-0: tag, bits 31-3: span.start
+    start_and_tag: u32,
+    /// Bit 0: flag bit (parser-internal), bits 31-1: span.end
+    end_and_flag: u32,
+    pub(crate) value: InnerTable<'de>,
+}
+
+impl<'de> Table<'de> {
+    pub fn new(span: Span) -> Table<'de> {
+        Table {
+            start_and_tag: span.start << TAG_SHIFT | TAG_TABLE,
+            end_and_flag: span.end << FLAG_SHIFT,
+            value: InnerTable::new(),
+        }
+    }
+    pub fn span(&self) -> Span {
+        Span {
+            start: self.start_and_tag >> TAG_SHIFT,
+            end: self.end_and_flag >> FLAG_SHIFT,
+        }
+    }
+}
+
+impl<'de> Default for Table<'de> {
+    fn default() -> Self {
+        Self::new(Span::default())
+    }
+}
+
+impl std::fmt::Debug for Table<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.value.fmt(f)
+    }
+}
+
+impl<'de> Table<'de> {
+    /// Inserts a key-value pair. Does **not** check for duplicates.
+    pub fn insert(&mut self, key: Key<'de>, value: Item<'de>, arena: &Arena) {
+        self.value.insert(key, value, arena);
+    }
+
+    /// Returns the number of entries.
+    #[inline]
+    pub fn len(&self) -> usize {
+        self.value.len()
+    }
+
+    /// Returns `true` if the table has no entries.
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.value.is_empty()
+    }
+
+    /// Linear scan for a key, returning both key and value references.
+    pub fn get_key_value(&self, name: &str) -> Option<(&Key<'de>, &Item<'de>)> {
+        self.value.get_key_value(name)
+    }
+
+    /// Returns a reference to the value for `name`.
+    pub fn get(&self, name: &str) -> Option<&Item<'de>> {
+        self.value.get(name)
+    }
+
+    /// Returns a mutable reference to the value for `name`.
+    pub fn get_mut(&mut self, name: &str) -> Option<&mut Item<'de>> {
+        self.value.get_mut(name)
+    }
+
+    /// Returns `true` if the table contains the key.
+    #[inline]
+    pub fn contains_key(&self, name: &str) -> bool {
+        self.value.contains_key(name)
+    }
+
+    /// Removes the first entry matching `name`, returning its value.
+    pub fn remove(&mut self, name: &str) -> Option<Item<'de>> {
+        self.value.remove(name)
+    }
+
+    /// Removes the first entry matching `name`, returning the key-value pair.
+    pub fn remove_entry(&mut self, name: &str) -> Option<(Key<'de>, Item<'de>)> {
+        self.value.remove_entry(name)
+    }
+
+    /// Returns an iterator over mutable references to the values.
+    pub fn values_mut(&mut self) -> impl Iterator<Item = &mut Item<'de>> {
+        self.value.values_mut()
+    }
+
+    /// Consumes the table and returns an iterator of keys.
+    pub fn into_keys(self) -> IntoKeys<'de> {
+        self.value.into_keys()
+    }
+
+    /// Returns a slice of all entries.
+    #[inline]
+    pub fn entries(&self) -> &[TableEntry<'de>] {
+        self.value.entries()
+    }
+
+    /// Converts this `Table` into an [`Item`] with the same span and payload.
+    pub fn into_item(self) -> Item<'de> {
+        let span = self.span();
+        Item::table(self.value, span)
+    }
+
+    /// Deserializes a required field from the table.
+    #[inline]
+    pub fn required<T: Deserialize<'de>>(&mut self, name: &'static str) -> Result<T, Error> {
+        Ok(self.required_s(name)?.value)
+    }
+
+    /// Deserializes a required field, returning it with span information.
+    pub fn required_s<T: Deserialize<'de>>(
+        &mut self,
+        name: &'static str,
+    ) -> Result<Spanned<T>, Error> {
+        let Some(mut val) = self.value.remove(name) else {
+            return Err(Error {
+                kind: ErrorKind::MissingField(name),
+                span: self.span(),
+                line_info: None,
+            });
+        };
+
+        Spanned::<T>::deserialize(&mut val)
+    }
+
+    /// Deserializes an optional field from the table.
+    #[inline]
+    pub fn optional<T: Deserialize<'de>>(&mut self, name: &str) -> Result<Option<T>, Error> {
+        Ok(self.optional_s(name)?.map(|v| v.value))
+    }
+
+    /// Deserializes an optional field, returning it with span information.
+    pub fn optional_s<T: Deserialize<'de>>(
+        &mut self,
+        name: &str,
+    ) -> Result<Option<Spanned<T>>, Error> {
+        let Some(mut val) = self.value.remove(name) else {
+            return Ok(None);
+        };
+
+        Spanned::<T>::deserialize(&mut val).map(Some)
+    }
+
+    /// Checks that all keys have been consumed.
+    ///
+    /// Returns [`ErrorKind::UnexpectedKeys`] if the table still has entries.
+    pub fn finalize(&self) -> Result<(), Error> {
+        if !self.value.is_empty() {
+            let keys = self
+                .value
+                .entries()
+                .iter()
+                .map(|(key, _)| (key.name.into(), key.span))
+                .collect();
+
+            return Err(Error::from((ErrorKind::UnexpectedKeys { keys }, self.span())));
+        }
+
+        Ok(())
+    }
+}
+
+impl<'a, 'de> IntoIterator for &'a Table<'de> {
+    type Item = (&'a Key<'de>, &'a Item<'de>);
+    type IntoIter = Iter<'a, 'de>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        (&self.value).into_iter()
+    }
+}
+
+impl<'de> IntoIterator for Table<'de> {
+    type Item = (Key<'de>, Item<'de>);
+    type IntoIter = IntoIter<'de>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.value.into_iter()
+    }
+}
+
+const _: () = assert!(std::mem::size_of::<Table<'_>>() == std::mem::size_of::<Item<'_>>());
+const _: () = assert!(std::mem::align_of::<Table<'_>>() == std::mem::align_of::<Item<'_>>());
+
+impl<'de> Table<'de> {
+    #[inline]
+    pub(crate) fn span_start(&self) -> u32 {
+        self.start_and_tag >> TAG_SHIFT
+    }
+
+    #[inline]
+    pub(crate) fn set_span_start(&mut self, v: u32) {
+        self.start_and_tag = (v << TAG_SHIFT) | (self.start_and_tag & TAG_MASK);
+    }
+
+    #[inline]
+    pub(crate) fn set_span_end(&mut self, v: u32) {
+        self.end_and_flag = (v << FLAG_SHIFT) | (self.end_and_flag & FLAG_BIT);
+    }
+
+    #[inline]
+    pub(crate) fn extend_span_end(&mut self, new_end: u32) {
+        let old = self.end_and_flag;
+        let current = old >> FLAG_SHIFT;
+        self.end_and_flag = (current.max(new_end) << FLAG_SHIFT) | (old & FLAG_BIT);
+    }
+
+    #[inline]
+    pub(crate) fn set_header_tag(&mut self) {
+        self.start_and_tag = (self.start_and_tag & !TAG_MASK) | TAG_TABLE_HEADER;
     }
 }

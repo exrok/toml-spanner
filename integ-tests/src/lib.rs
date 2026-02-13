@@ -49,7 +49,7 @@ macro_rules! valid_de {
             let arena = toml_spanner::Arena::new();
             let table = toml_spanner::parse(&toml_str, &arena).expect("failed to parse toml");
             let mut valid_toml =
-                toml_spanner::Item::table(table, toml_spanner::Span::new(0, toml_str.len() as u32));
+                table.into_item();
 
             match <$kind>::deserialize(&mut valid_toml) {
                 Ok(de) => {
@@ -58,7 +58,7 @@ macro_rules! valid_de {
                 Err(err) => {
                     $crate::unexpected!(
                         $name,
-                        err.errors.into_iter().map(|d| d.to_diagnostic(())),
+                        Some(err.to_diagnostic(())),
                         &toml_str
                     );
                 }
@@ -71,7 +71,7 @@ macro_rules! valid_de {
             let arena = toml_spanner::Arena::new();
             let table = toml_spanner::parse($toml, &arena).expect("failed to parse toml");
             let mut valid_toml =
-                toml_spanner::Item::table(table, toml_spanner::Span::new(0, $toml.len() as u32));
+                table.into_item();
 
             match <$kind>::deserialize(&mut valid_toml) {
                 Ok(de) => {
@@ -80,7 +80,7 @@ macro_rules! valid_de {
                 Err(err) => {
                     $crate::unexpected!(
                         $name,
-                        err.errors.into_iter().map(|d| d.to_diagnostic(())),
+                        Some(err.to_diagnostic(())),
                         $toml
                     );
                 }
@@ -100,10 +100,7 @@ macro_rules! invalid_de {
                 .expect(concat!("failed to load ", stringify!($name), ".toml"));
             let arena = toml_spanner::Arena::new();
             let table = toml_spanner::parse(&toml_str, &arena).expect("failed to parse toml");
-            let mut valid_toml = toml_spanner::Value::table(
-                table,
-                toml_spanner::Span::new(0, toml_str.len() as u32),
-            );
+            let mut valid_toml = table.into_item();
 
             match <$kind>::deserialize(&mut valid_toml) {
                 Ok(de) => {
@@ -112,7 +109,7 @@ macro_rules! invalid_de {
                 Err(err) => {
                     $crate::error_snapshot!(
                         $name,
-                        err.errors.into_iter().map(|d| d.to_diagnostic(())),
+                        Some(err.to_diagnostic(())),
                         &toml_str
                     );
                 }
@@ -125,7 +122,7 @@ macro_rules! invalid_de {
             let arena = toml_spanner::Arena::new();
             let table = toml_spanner::parse($toml, &arena).expect("failed to parse toml");
             let mut valid_toml =
-                toml_spanner::Item::table(table, toml_spanner::Span::new(0, $toml.len() as u32));
+                table.into_item();
 
             match <$kind>::deserialize(&mut valid_toml) {
                 Ok(de) => {
@@ -134,7 +131,7 @@ macro_rules! invalid_de {
                 Err(err) => {
                     $crate::error_snapshot!(
                         $name,
-                        err.errors.into_iter().map(|d| d.to_diagnostic(())),
+                        Some(err.to_diagnostic(())),
                         $toml
                     );
                 }
@@ -217,8 +214,7 @@ macro_rules! emit_spans {
 
         let mut spans = Vec::new();
 
-        let root_val =
-            toml_spanner::Item::table($val, toml_spanner::Span::new(0, $toml.len() as u32));
+        let root_val = $val.into_item();
         $crate::collect_spans("root", &root_val, &mut spans);
 
         let spans = $crate::emit_diags(&file, spans);

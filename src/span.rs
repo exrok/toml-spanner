@@ -3,8 +3,8 @@
 /// A start and end location within a toml document
 #[derive(Copy, Clone, PartialEq, Eq, Default, Debug)]
 pub struct Span {
-    start: u32,
-    end: u32,
+    pub start: u32,
+    pub end: u32,
 }
 
 impl Span {
@@ -12,18 +12,6 @@ impl Span {
     #[inline]
     pub fn new(start: u32, end: u32) -> Self {
         Self { start, end }
-    }
-
-    /// The start byte index
-    #[inline]
-    pub fn start(&self) -> u32 {
-        self.start
-    }
-
-    /// The end (exclusive) byte index
-    #[inline]
-    pub fn end(&self) -> u32 {
-        self.end
     }
 
     /// Checks if the start and end are the same, and thus the span is empty
@@ -35,13 +23,13 @@ impl Span {
 
 impl From<Span> for (u32, u32) {
     fn from(s: Span) -> (u32, u32) {
-        (s.start(), s.end())
+        (s.start, s.end)
     }
 }
 
 impl From<Span> for (usize, usize) {
     fn from(s: Span) -> (usize, usize) {
-        (s.start() as usize, s.end() as usize)
+        (s.start as usize, s.end as usize)
     }
 }
 
@@ -53,13 +41,13 @@ impl From<std::ops::Range<u32>> for Span {
 
 impl From<Span> for std::ops::Range<u32> {
     fn from(s: Span) -> Self {
-        s.start()..s.end()
+        s.start..s.end
     }
 }
 
 impl From<Span> for std::ops::Range<usize> {
     fn from(s: Span) -> Self {
-        s.start() as usize..s.end() as usize
+        s.start as usize..s.end as usize
     }
 }
 
@@ -188,7 +176,7 @@ where
     T: crate::Deserialize<'de>,
 {
     #[inline]
-    fn deserialize(value: &mut crate::value::Item<'de>) -> Result<Self, crate::DeserError> {
+    fn deserialize(value: &mut crate::value::Item<'de>) -> Result<Self, crate::Error> {
         let span = value.span();
         let value = T::deserialize(value)?;
         Ok(Self { span, value })

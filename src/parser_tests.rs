@@ -1,4 +1,5 @@
-use crate::{ErrorKind, Table};
+use crate::ErrorKind;
+use crate::table::Table;
 
 struct TestCtx {
     arena: crate::arena::Arena,
@@ -438,13 +439,13 @@ fn quoted_keys_and_spans() {
     let input = "key = 42";
     let v = ctx.parse_ok(input);
     let span = v.get("key").unwrap().span();
-    assert_eq!(&input[span.start() as usize..span.end() as usize], "42");
+    assert_eq!(&input[span.start as usize..span.end as usize], "42");
 
     // span for string value
     let input = "key = \"hello\"";
     let v = ctx.parse_ok(input);
     let span = v.get("key").unwrap().span();
-    assert_eq!(&input[span.start() as usize..span.end() as usize], "hello");
+    assert_eq!(&input[span.start as usize..span.end as usize], "hello");
 }
 
 #[test]

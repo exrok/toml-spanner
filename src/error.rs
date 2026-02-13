@@ -409,38 +409,3 @@ impl Error {
     }
 }
 
-/// When deserializing, it's possible to collect multiple errors instead of earlying
-/// out at the first error
-#[derive(Debug)]
-pub struct DeserError {
-    /// The set of errors that occurred during deserialization
-    pub errors: Box<Vec<Error>>,
-}
-
-impl DeserError {
-    /// Merges errors from another [`Self`]
-    #[inline]
-    pub fn merge(&mut self, mut other: Self) {
-        self.errors.append(&mut other.errors);
-    }
-}
-
-impl std::error::Error for DeserError {}
-
-impl From<Error> for DeserError {
-    fn from(value: Error) -> Self {
-        Self {
-            errors: Box::new(vec![value]),
-        }
-    }
-}
-
-impl fmt::Display for DeserError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        for err in &*self.errors {
-            writeln!(f, "{err}")?;
-        }
-
-        Ok(())
-    }
-}

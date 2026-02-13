@@ -68,7 +68,7 @@ fn array_create_and_drop() {
 #[test]
 fn table_create_and_drop() {
     let arena = Arena::new();
-    let mut tab = Table::new();
+    let mut tab = InnerTable::new();
     tab.insert(
         Key {
             name: Str::from("k"),
@@ -85,7 +85,7 @@ fn table_create_and_drop() {
 
 #[test]
 fn table_header_create_drop() {
-    let v = Item::table_header(Table::new(), sp(0, 10));
+    let v = Item::table_header(InnerTable::new(), sp(0, 10));
     assert_eq!(v.tag(), TAG_TABLE_HEADER);
     assert!(v.has_header_bit());
     assert!(v.as_table().is_some());
@@ -93,7 +93,7 @@ fn table_header_create_drop() {
 
 #[test]
 fn table_dotted_create_drop() {
-    let v = Item::table_dotted(Table::new(), sp(0, 10));
+    let v = Item::table_dotted(InnerTable::new(), sp(0, 10));
     assert_eq!(v.tag(), TAG_TABLE_DOTTED);
     assert!(v.has_dotted_bit());
     assert!(v.as_table().is_some());
@@ -109,14 +109,14 @@ fn span_roundtrip_all_tags() {
         (TAG_FLOAT, Item::float(0.0, sp(100, 200))),
         (TAG_BOOLEAN, Item::boolean(false, sp(100, 200))),
         (TAG_ARRAY, Item::array(Array::new(), sp(100, 200))),
-        (TAG_TABLE, Item::table(Table::new(), sp(100, 200))),
+        (TAG_TABLE, Item::table(InnerTable::new(), sp(100, 200))),
         (
             TAG_TABLE_HEADER,
-            Item::table_header(Table::new(), sp(100, 200)),
+            Item::table_header(InnerTable::new(), sp(100, 200)),
         ),
         (
             TAG_TABLE_DOTTED,
-            Item::table_dotted(Table::new(), sp(100, 200)),
+            Item::table_dotted(InnerTable::new(), sp(100, 200)),
         ),
     ];
     for (expected_tag, v) in &tags_and_constructors {
@@ -130,8 +130,8 @@ fn span_large_values() {
     let max_start = (1u32 << 29) - 1;
     let max_end = (1u32 << 31) - 1;
     let v = Item::integer(0, sp(max_start, max_end));
-    assert_eq!(v.span().start(), max_start);
-    assert_eq!(v.span().end(), max_end);
+    assert_eq!(v.span().start, max_start);
+    assert_eq!(v.span().end, max_end);
 }
 
 #[test]
@@ -152,7 +152,7 @@ fn flag_bit_aot() {
 
 #[test]
 fn flag_bit_frozen_table() {
-    let v = Item::table_frozen(Table::new(), sp(5, 15));
+    let v = Item::table_frozen(InnerTable::new(), sp(5, 15));
     assert!(v.is_frozen());
     assert!(v.as_table().is_some());
     assert_eq!(v.span(), sp(5, 15));
@@ -168,7 +168,7 @@ fn as_ref_all_types() {
         Item::float(1.0, sp(0, 1)),
         Item::boolean(true, sp(0, 1)),
         Item::array(Array::new(), sp(0, 1)),
-        Item::table(Table::new(), sp(0, 1)),
+        Item::table(InnerTable::new(), sp(0, 1)),
     ];
     let expected = ["string", "integer", "float", "boolean", "array", "table"];
     for (v, exp) in vals.iter().zip(expected.iter()) {
@@ -224,7 +224,7 @@ fn as_mut_modify_array() {
 #[test]
 fn as_mut_modify_table() {
     let arena = Arena::new();
-    let mut v = Item::table(Table::new(), sp(0, 2));
+    let mut v = Item::table(InnerTable::new(), sp(0, 2));
     if let ValueMut::Table(t) = v.as_mut() {
         t.insert(
             Key {
@@ -265,7 +265,7 @@ fn accessor_array() {
 #[test]
 fn accessor_table() {
     let arena = Arena::new();
-    let mut tab = Table::new();
+    let mut tab = InnerTable::new();
     tab.insert(
         Key {
             name: Str::from("k"),
@@ -323,7 +323,7 @@ fn take_string_err() {
 fn set_table_replaces() {
     let arena = Arena::new();
     let mut v = Item::integer(42, sp(0, 5));
-    let mut tab = Table::new();
+    let mut tab = InnerTable::new();
     tab.insert(
         Key {
             name: Str::from("k"),
@@ -342,12 +342,12 @@ fn set_table_replaces() {
 
 #[test]
 fn spanned_table_set_span_preserves_tag() {
-    let mut v = Item::table_header(Table::new(), sp(10, 20));
+    let mut v = Item::table_header(InnerTable::new(), sp(10, 20));
     let st = unsafe { v.as_spanned_table_mut_unchecked() };
 
     st.set_span_start(99);
     assert_eq!(v.tag(), TAG_TABLE_HEADER);
-    assert_eq!(v.span().start(), 99);
+    assert_eq!(v.span().start, 99);
 }
 
 // -- type_str / has_keys / has_key ------------------------------------------
@@ -359,13 +359,13 @@ fn type_str_values() {
     assert_eq!(Item::float(0.0, sp(0, 0)).type_str(), "float");
     assert_eq!(Item::boolean(false, sp(0, 0)).type_str(), "boolean");
     assert_eq!(Item::array(Array::new(), sp(0, 0)).type_str(), "array");
-    assert_eq!(Item::table(Table::new(), sp(0, 0)).type_str(), "table");
+    assert_eq!(Item::table(InnerTable::new(), sp(0, 0)).type_str(), "table");
     assert_eq!(
-        Item::table_header(Table::new(), sp(0, 0)).type_str(),
+        Item::table_header(InnerTable::new(), sp(0, 0)).type_str(),
         "table"
     );
     assert_eq!(
-        Item::table_dotted(Table::new(), sp(0, 0)).type_str(),
+        Item::table_dotted(InnerTable::new(), sp(0, 0)).type_str(),
         "table"
     );
 }
@@ -373,10 +373,10 @@ fn type_str_values() {
 #[test]
 fn has_keys_and_has_key() {
     let arena = Arena::new();
-    let empty = Item::table(Table::new(), sp(0, 0));
+    let empty = Item::table(InnerTable::new(), sp(0, 0));
     assert!(!empty.has_keys());
 
-    let mut tab = Table::new();
+    let mut tab = InnerTable::new();
     tab.insert(
         Key {
             name: Str::from("x"),
@@ -401,9 +401,9 @@ fn debug_all_variants() {
         Item::float(3.14, sp(0, 4)),
         Item::boolean(true, sp(0, 4)),
         Item::array(Array::new(), sp(0, 2)),
-        Item::table(Table::new(), sp(0, 2)),
-        Item::table_header(Table::new(), sp(0, 2)),
-        Item::table_dotted(Table::new(), sp(0, 2)),
+        Item::table(InnerTable::new(), sp(0, 2)),
+        Item::table_header(InnerTable::new(), sp(0, 2)),
+        Item::table_dotted(InnerTable::new(), sp(0, 2)),
     ];
     for v in &vals {
         let _ = format!("{v:?}");
