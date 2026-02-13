@@ -77,6 +77,7 @@ fn bench_end2end_config_toml(bench: &mut Bencher, configs: &[(&str, &str)]) {
 //         std::hint::black_box(&mut result);
 //     }
 // }
+
 fn main() {
     let mut bench = jsony_bench::Bencher::new();
     bench.calibrate();

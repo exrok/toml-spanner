@@ -1,6 +1,6 @@
 #![allow(unsafe_code)]
 
-//! Contains the [`Value`] tagged union: a 24-byte TOML value with inline span.
+//! Contains the [`Item`] tagged union: a 24-byte TOML value with inline span.
 
 use crate::str::Str;
 use crate::{Error, ErrorKind, Span, Table};
@@ -205,7 +205,7 @@ impl<'de> Item<'de> {
         self.tag() == TAG_TABLE_DOTTED
     }
 
-    /// Split this array `Value` into disjoint borrows: `&mut u32` for the
+    /// Splits this array [`Item`] into disjoint borrows: `&mut u32` for the
     /// `end_and_flag` span field (bytes \[4..8\)) and `&mut Array` for the
     /// payload (bytes \[8..24\)).
     ///
@@ -222,7 +222,7 @@ impl<'de> Item<'de> {
     }
 }
 
-/// Borrowed view into a [`Value`] for pattern matching.
+/// Borrowed view into an [`Item`] for pattern matching.
 pub enum ValueRef<'a, 'de> {
     String(&'a Str<'de>),
     Integer(i64),
@@ -232,7 +232,7 @@ pub enum ValueRef<'a, 'de> {
     Table(&'a Table<'de>),
 }
 
-/// Mutable view into a [`Value`] for pattern matching.
+/// Mutable view into an [`Item`] for pattern matching.
 pub enum ValueMut<'a, 'de> {
     String(&'a mut Str<'de>),
     Integer(&'a mut i64),
@@ -334,6 +334,20 @@ impl<'de> Item<'de> {
             None
         }
     }
+    pub fn expect_array(&mut self) -> Result<&mut Array<'de>, Error> {
+        if self.is_array() {
+            Ok(unsafe { &mut self.payload.array })
+        } else {
+            Err(self.expected("a array"))
+        }
+    }
+    pub fn expect_table(&mut self) -> Result<&mut Table<'de>, Error> {
+        if self.is_table() {
+            Ok(unsafe { self.as_spanned_table_mut_unchecked() })
+        } else {
+            Err(self.expected("a table"))
+        }
+    }
 
     /// Returns a mutable array reference.
     #[inline]
@@ -362,7 +376,7 @@ impl<'de> Item<'de> {
         unsafe { &mut self.payload.table }
     }
 
-    /// Reinterpret this `Value` as a `SpannedTable`.
+    /// Reinterprets this [`Item`] as a [`Table`].
     ///
     /// SAFETY: The caller must ensure `self.is_table()` is true. Both types
     /// are `#[repr(C)]` with identical layout when the payload is a table.
@@ -406,7 +420,7 @@ impl<'de> Item<'de> {
         }
     }
 
-    /// Takes a string value and parses it via [`FromStr`].
+    /// Takes a string value and parses it via [`std::str::FromStr`].
     ///
     /// Returns an error if the value is not a string or parsing fails.
     #[inline]
@@ -513,16 +527,16 @@ impl serde::Serialize for Table<'_> {
     }
 }
 
-/// A toml table key
+/// A TOML table key with span information.
 #[derive(Copy, Clone)]
 pub struct Key<'de> {
-    /// The key name, borrowed from the TOML source or the parser arena
+    /// The key name, borrowed from the TOML source or the parser arena.
     pub name: Str<'de>,
-    /// The span for the key in the original document
+    /// The span for the key in the original document.
     pub span: Span,
 }
 impl<'de> Key<'de> {
-    /// Creates a new key with the given name and span.
+    /// Returns the key name as a string slice.
     pub fn as_str(&self) -> &'de str {
         self.name.as_str()
     }

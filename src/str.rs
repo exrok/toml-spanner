@@ -125,7 +125,7 @@ impl Default for Str<'_> {
 }
 
 impl<'de> Str<'de> {
-    /// Borrow
+    /// Returns the string slice with the full `'de` lifetime.
     pub fn as_str(&self) -> &'de str {
         unsafe {
             let slice = std::slice::from_raw_parts(self.ptr.as_ptr(), self.len);
@@ -144,7 +144,7 @@ impl<'de> Str<'de> {
         }
     }
 
-    /// Into boxed str
+    /// Copies the contents into a heap-allocated [`Box<str>`].
     pub fn into_boxed_str(self) -> Box<str> {
         (&*self).into()
     }

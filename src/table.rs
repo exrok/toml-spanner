@@ -102,12 +102,13 @@ impl<'de> InnerTable<'de> {
     }
 
     /// Removes the first entry matching `name`, returning its value.
-    /// Shifts subsequent entries to fill the gap (preserves order).
+    /// Uses swap-remove, so the ordering of remaining entries may change.
     pub fn remove(&mut self, name: &str) -> Option<Item<'de>> {
         self.remove_entry(name).map(|(_, v)| v)
     }
 
     /// Removes the first entry matching `name`, returning the key-value pair.
+    /// Uses swap-remove, so the ordering of remaining entries may change.
     pub fn remove_entry(&mut self, name: &str) -> Option<(Key<'de>, Item<'de>)> {
         let idx = self.find_index(name)?;
         Some(self.remove_at(idx))
@@ -180,14 +181,15 @@ impl<'de> InnerTable<'de> {
         None
     }
 
-    /// Remove entry at `idx`, shifting subsequent entries left.
+    /// Remove entry at `idx` by swapping it with the last entry.
     fn remove_at(&mut self, idx: usize) -> (Key<'de>, Item<'de>) {
+        let last = self.len as usize - 1;
         let ptr = unsafe { self.ptr.as_ptr().add(idx) };
         let entry = unsafe { ptr.read() };
-        let remaining = self.len as usize - idx - 1;
-        if remaining > 0 {
+        if idx != last {
+            // Safety: `last` is a valid, initialized index distinct from `idx`.
             unsafe {
-                std::ptr::copy(ptr.add(1), ptr, remaining);
+                ptr.write(self.ptr.as_ptr().add(last).read());
             }
         }
         self.len -= 1;
@@ -246,7 +248,7 @@ impl<'a, 'de> IntoIterator for &'a InnerTable<'de> {
     }
 }
 
-/// Borrowing iterator over a [`Table`], yielding `(&Key, &Value)` pairs.
+/// Borrowing iterator over a [`Table`], yielding `(&Key, &Item)` pairs.
 pub struct Iter<'a, 'de> {
     inner: std::slice::Iter<'a, TableEntry<'de>>,
 }
@@ -321,6 +323,15 @@ impl<'de> Iterator for IntoKeys<'de> {
     }
 }
 
+/// A TOML table with span information.
+///
+/// Wraps a flat list of `(`[`Key`]`, `[`Item`]`)` pairs and tracks the byte
+/// span of the table in the source document.
+///
+/// Entries are stored in insertion order after parsing. Removing entries
+/// (directly via [`remove`](Self::remove) or indirectly via deserialization
+/// helpers like [`required`](Self::required) and [`optional`](Self::optional))
+/// uses swap-remove and may reorder the remaining entries.
 #[repr(C)]
 pub struct Table<'de> {
     /// Bits 2-0: tag, bits 31-3: span.start
@@ -331,6 +342,7 @@ pub struct Table<'de> {
 }
 
 impl<'de> Table<'de> {
+    /// Creates an empty table with the given span.
     pub fn new(span: Span) -> Table<'de> {
         Table {
             start_and_tag: span.start << TAG_SHIFT | TAG_TABLE,
@@ -338,6 +350,7 @@ impl<'de> Table<'de> {
             value: InnerTable::new(),
         }
     }
+    /// Returns the source span of this table.
     pub fn span(&self) -> Span {
         Span {
             start: self.start_and_tag >> TAG_SHIFT,
@@ -398,11 +411,13 @@ impl<'de> Table<'de> {
     }
 
     /// Removes the first entry matching `name`, returning its value.
+    /// Uses swap-remove, so the ordering of remaining entries may change.
     pub fn remove(&mut self, name: &str) -> Option<Item<'de>> {
         self.value.remove(name)
     }
 
     /// Removes the first entry matching `name`, returning the key-value pair.
+    /// Uses swap-remove, so the ordering of remaining entries may change.
     pub fn remove_entry(&mut self, name: &str) -> Option<(Key<'de>, Item<'de>)> {
         self.value.remove_entry(name)
     }

@@ -185,7 +185,7 @@ fn remove_only_element() {
 }
 
 #[test]
-fn remove_first_preserves_order() {
+fn remove_first_swaps_with_last() {
     let arena = Arena::new();
     let mut t = InnerTable::new();
     t.insert(key("a"), ival(1), &arena);
@@ -195,12 +195,12 @@ fn remove_first_preserves_order() {
     assert_eq!(v.as_integer(), Some(1));
     assert_eq!(t.len(), 2);
     let entries = t.entries();
-    assert_eq!(&*entries[0].0.name, "b");
-    assert_eq!(&*entries[1].0.name, "c");
+    assert_eq!(&*entries[0].0.name, "c");
+    assert_eq!(&*entries[1].0.name, "b");
 }
 
 #[test]
-fn remove_middle_preserves_order() {
+fn remove_middle_swaps_with_last() {
     let arena = Arena::new();
     let mut t = InnerTable::new();
     t.insert(key("a"), ival(1), &arena);

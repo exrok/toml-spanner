@@ -27,9 +27,9 @@ const MAX_RECURSION_DEPTH: i16 = 256;
 struct ParseError;
 
 struct Ctx<'b, 'de> {
-    /// The current table context — a `SpannedTable` view into a table `Value`.
+    /// The current table context — a `Table` view into a table `Value`.
     /// Gives direct mutable access to both the span fields and the `Table` payload.
-    st: &'b mut Table<'de>,
+    table: &'b mut Table<'de>,
     /// If this table is an entry in an array-of-tables, a disjoint borrow of
     /// the parent array Value'arena `end_and_flag` field so its span can be
     /// extended alongside the entry.
@@ -177,7 +177,7 @@ impl<'de> Parser<'de> {
         // Removing the following introduces 8% performance
         // regression across the board.
         {
-            let line_info = Some(self.to_linecol(0));
+            let line_info = Some(self.to_linecol(std::hint::black_box(0)));
             std::hint::black_box(&line_info);
         }
 
@@ -1512,7 +1512,7 @@ impl<'de> Parser<'de> {
             st.set_span_start(header_start);
             st.set_span_end(header_end);
             Ok(Ctx {
-                st,
+                table: st,
                 array_end_span: None,
             })
         } else {
@@ -1522,7 +1522,7 @@ impl<'de> Parser<'de> {
                 Item::table_header(InnerTable::new(), Span::new(header_start, header_end)),
             );
             Ok(Ctx {
-                st: unsafe { inserted.as_spanned_table_mut_unchecked() },
+                table: unsafe { inserted.as_spanned_table_mut_unchecked() },
                 array_end_span: None,
             })
         }
@@ -1557,7 +1557,7 @@ impl<'de> Parser<'de> {
                 );
                 let entry = arr.last_mut().unwrap();
                 Ok(Ctx {
-                    st: unsafe { entry.as_spanned_table_mut_unchecked() },
+                    table: unsafe { entry.as_spanned_table_mut_unchecked() },
                     array_end_span: Some(end_flag),
                 })
             } else if is_table {
@@ -1581,7 +1581,7 @@ impl<'de> Parser<'de> {
             let (end_flag, arr) = unsafe { inserted.split_array_end_flag() };
             let entry = arr.last_mut().unwrap();
             Ok(Ctx {
-                st: unsafe { entry.as_spanned_table_mut_unchecked() },
+                table: unsafe { entry.as_spanned_table_mut_unchecked() },
                 array_end_span: Some(end_flag),
             })
         }
@@ -1669,7 +1669,7 @@ impl<'de> Parser<'de> {
 
     fn parse_document(&mut self, root_st: &mut Table<'de>) -> Result<(), ParseError> {
         let mut ctx = Ctx {
-            st: root_st,
+            table: root_st,
             array_end_span: None,
         };
 
@@ -1771,7 +1771,7 @@ impl<'de> Parser<'de> {
         // Borrow the Table payload from the SpannedTable. NLL drops this
         // borrow at its last use (the insert_value call), freeing ctx.st
         // for the span updates that follow.
-        let mut table_ref: &mut InnerTable<'de> = &mut ctx.st.value;
+        let mut table_ref: &mut InnerTable<'de> = &mut ctx.table.value;
 
         let mut key = match self.read_table_key() {
             Ok(k) => k,
@@ -1817,9 +1817,9 @@ impl<'de> Parser<'de> {
             return Err(e);
         }
 
-        let start = ctx.st.span_start();
-        ctx.st.set_span_start(start.min(line_start));
-        ctx.st.extend_span_end(line_end);
+        let start = ctx.table.span_start();
+        ctx.table.set_span_start(start.min(line_start));
+        ctx.table.extend_span_end(line_end);
 
         if let Some(end_flag) = &mut ctx.array_end_span {
             let old = **end_flag;
@@ -1831,7 +1831,7 @@ impl<'de> Parser<'de> {
     }
 }
 
-/// Parses a toml string into a table [`Value`].
+/// Parses a TOML string into a [`Table`].
 ///
 /// The caller must supply an [`Arena`] that shares the `'de` lifetime with
 /// the input. All escaped strings are committed into the arena so that

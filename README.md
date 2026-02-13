@@ -10,6 +10,76 @@ has received significant performance improvements and reductions in compile time
 
 Like the orginal `toml-span` temporal values such as timestamps or local times are not supported.
 
+## Example
+
+```rust
+use toml_spanner::{Deserialize, Error, Item};
+
+#[derive(Debug)]
+struct Things {
+    name: String,
+    value: u32,
+    color: Option<String>,
+}
+
+impl<'de> Deserialize<'de> for Things {
+    fn deserialize(value: &mut Item<'de>) -> Result<Self, Error> {
+        let table = value.expect_table()?;
+        Ok(Things {
+            name: table.required("name")?,
+            value: table.required("value")?,
+            color: table.optional("color")?,
+        })
+    }
+}
+
+struct Config {
+    things: Vec<Things>,
+    dev_mode: bool,
+}
+
+impl Config {
+    pub fn parse(content: &str) -> Result<Config, Error> {
+        let arena = toml_spanner::Arena::new();
+        let mut table = toml_spanner::parse(content, &arena)?;
+        let config = Config {
+            things: table.required("things")?,
+            dev_mode: table.optional("dev-mode")?.unwrap_or(false),
+        };
+
+        // Report unexpected fields
+        table.expect_empty()?;
+
+        Ok(config)
+    }
+}
+
+fn main() {
+    let content = r#"
+    dev-mode = true
+
+    [[things]]
+    name = "hammer"
+    value = 43
+
+    [[things]]
+    name = "drill"
+    value = 300
+    color = "green"
+    "#;
+
+    match Config::parse(content) {
+        Ok(config) => {
+            println!("dev_mode: {}", config.dev_mode);
+            for thing in config.things {
+                println!("thing: {:?}", thing);
+            }
+        }
+        Err(e) => eprintln!("Error parsing config: {e}"),
+    }
+}
+```
+
 ## Divergence from `toml-span`
 
 While `toml-spanner` started as a fork of `toml-span`, it has since undergone
@@ -22,12 +92,12 @@ extensive changes:
 
 - Compact `Value` type (on 64bit platforms):
 
-  | Crate                 | Value    | TableEntry |
-  | --------------------- | -------- | ---------- |
-  | **toml-spanner**      | 24 bytes | 48 bytes   |
-  | toml-span             | 48 bytes | 88 bytes   |
-  | toml                  | 32 bytes | 56 bytes   |
-  | toml (preserve_order) | 80 bytes | 104 bytes  |
+  | Crate                 | Value/Item | TableEntry |
+  | --------------------- | ---------- | ---------- |
+  | **toml-spanner**      | 24 bytes   | 48 bytes   |
+  | toml-span             | 48 bytes   | 88 bytes   |
+  | toml                  | 32 bytes   | 56 bytes   |
+  | toml (preserve_order) | 80 bytes   | 104 bytes  |
 
   Note that the `toml` crate `Value` type doesn't contain any span information
   and that `toml-span` doesn't support table entry order preservation.

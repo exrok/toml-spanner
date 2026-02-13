@@ -7,7 +7,7 @@ use std::ptr::NonNull;
 
 const MIN_CAP: u32 = 4;
 
-/// A growable array of TOML [`Value`]s backed by a flat allocation with 32-bit
+/// A growable array of TOML [`Item`]s backed by a flat allocation with 32-bit
 /// length and capacity.
 pub struct Array<'de> {
     len: u32,

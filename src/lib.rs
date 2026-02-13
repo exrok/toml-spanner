@@ -1,17 +1,67 @@
-#![cfg_attr(docsrs, feature(doc_cfg))]
-#![doc = include_str!("../README.md")]
-//#![deny(missing_docs)]
+//! A high-performance TOML parser that preserves byte-offset span information
+//! for every parsed value.
+//!
+//! All values are represented as compact 24-byte [`Item`]s with bit-packed
+//! spans. Strings are zero-copy where possible, borrowing directly from the
+//! input; escape sequences are committed into a caller-supplied [`Arena`].
+//!
+//! # Examples
+//!
+//! ```
+//! use toml_spanner::{Arena, Deserialize, Error, Item};
+//!
+//! #[derive(Debug)]
+//! struct Things {
+//!     name: String,
+//!     value: u32,
+//!     color: Option<String>,
+//! }
+//!
+//! impl<'de> Deserialize<'de> for Things {
+//!     fn deserialize(value: &mut Item<'de>) -> Result<Self, Error> {
+//!         let table = value.expect_table()?;
+//!         Ok(Things {
+//!             name: table.required("name")?,
+//!             value: table.required("value")?,
+//!             color: table.optional("color")?,
+//!         })
+//!     }
+//! }
+//!
+//! let content = r#"
+//! dev-mode = true
+//!
+//! [[things]]
+//! name = "hammer"
+//! value = 43
+//!
+//! [[things]]
+//! name = "drill"
+//! value = 300
+//! color = "green"
+//! "#;
+//!
+//! let arena = Arena::new();
+//! let mut table = toml_spanner::parse(content, &arena)?;
+//!
+//! let things: Vec<Things> = table.required("things")?;
+//! let dev_mode: bool = table.optional("dev-mode")?.unwrap_or(false);
+//! // Error if unused fields exist.
+//! table.expect_empty()?;
+//!
+//! assert_eq!(things.len(), 2);
+//! assert_eq!(things[0].name, "hammer");
+//! assert!(dev_mode);
+//! # Ok::<(), Error>(())
+//! ```
 
 mod arena;
-/// Growable array of TOML values
 mod array;
 mod de;
 mod error;
 mod parser;
 mod span;
-/// A 16-byte string type for borrowed or owned string data
 mod str;
-/// TOML table: flat list of key-value pairs
 mod table;
 mod value;
 
@@ -27,15 +77,14 @@ pub use value::{Item, Key, ValueMut, ValueRef};
 #[cfg(feature = "serde")]
 pub mod impl_serde;
 
-/// This crate's equivalent to [`serde::Deserialize`](https://docs.rs/serde/latest/serde/de/trait.Deserialize.html)
+/// This crate's equivalent to [`serde::Deserialize`](https://docs.rs/serde/latest/serde/de/trait.Deserialize.html).
 pub trait Deserialize<'de>: Sized {
-    /// Given a mutable [`Value`], allows you to deserialize the type from it,
-    /// or accumulate 1 or more errors
+    /// Deserializes `Self` from the given [`Item`], returning an error on failure.
     fn deserialize(value: &mut Item<'de>) -> Result<Self, Error>;
 }
 
-/// This crate's equivalent to [`serde::DeserializeOwned`](https://docs.rs/serde/latest/serde/de/trait.DeserializeOwned.html)
+/// This crate's equivalent to [`serde::DeserializeOwned`](https://docs.rs/serde/latest/serde/de/trait.DeserializeOwned.html).
 ///
-/// This is useful if you want to use trait bounds
+/// Useful for trait bounds that require deserialization from any lifetime.
 pub trait DeserializeOwned: for<'de> Deserialize<'de> {}
 impl<T> DeserializeOwned for T where T: for<'de> Deserialize<'de> {}
