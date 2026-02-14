@@ -119,13 +119,6 @@ impl<'de> InnerTable<'de> {
         self.entries_mut().iter_mut().map(|(_, v)| v)
     }
 
-    /// Consumes the table and returns an iterator of keys.
-    pub fn into_keys(self) -> IntoKeys<'de> {
-        IntoKeys {
-            inner: self.into_iter(),
-        }
-    }
-
     /// Returns the span start of the first key. Used as a table discriminator
     /// in the parser's hash index.
     ///
@@ -229,48 +222,6 @@ impl std::fmt::Debug for InnerTable<'_> {
     }
 }
 
-impl<'a, 'de> IntoIterator for &'a InnerTable<'de> {
-    type Item = (&'a Key<'de>, &'a Item<'de>);
-    type IntoIter = Iter<'a, 'de>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        Iter {
-            inner: self.entries().iter(),
-        }
-    }
-}
-
-/// Borrowing iterator over a [`Table`], yielding `(&Key, &Item)` pairs.
-pub struct Iter<'a, 'de> {
-    inner: std::slice::Iter<'a, TableEntry<'de>>,
-}
-
-impl<'a, 'de> Iterator for Iter<'a, 'de> {
-    type Item = (&'a Key<'de>, &'a Item<'de>);
-
-    fn next(&mut self) -> Option<Self::Item> {
-        self.inner.next().map(|(k, v)| (k, v))
-    }
-
-    fn size_hint(&self) -> (usize, Option<usize>) {
-        self.inner.size_hint()
-    }
-}
-
-impl ExactSizeIterator for Iter<'_, '_> {}
-
-impl<'de> IntoIterator for InnerTable<'de> {
-    type Item = (Key<'de>, Item<'de>);
-    type IntoIter = IntoIter<'de>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        IntoIter {
-            table: self,
-            index: 0,
-        }
-    }
-}
-
 /// Consuming iterator over a [`Table`].
 pub struct IntoIter<'de> {
     table: InnerTable<'de>,
@@ -297,23 +248,6 @@ impl<'de> Iterator for IntoIter<'de> {
 }
 
 impl ExactSizeIterator for IntoIter<'_> {}
-
-/// Consuming iterator that yields only the keys of a [`Table`].
-pub struct IntoKeys<'de> {
-    inner: IntoIter<'de>,
-}
-
-impl<'de> Iterator for IntoKeys<'de> {
-    type Item = Key<'de>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        self.inner.next().map(|(k, _)| k)
-    }
-
-    fn size_hint(&self) -> (usize, Option<usize>) {
-        self.inner.size_hint()
-    }
-}
 
 /// A TOML table with span information.
 ///
@@ -419,11 +353,6 @@ impl<'de> Table<'de> {
         self.value.values_mut()
     }
 
-    /// Consumes the table and returns an iterator of keys.
-    pub fn into_keys(self) -> IntoKeys<'de> {
-        self.value.into_keys()
-    }
-
     /// Returns a slice of all entries.
     #[inline]
     pub fn entries(&self) -> &[TableEntry<'de>] {
@@ -488,12 +417,20 @@ impl<'de> Table<'de> {
     }
 }
 
-impl<'a, 'de> IntoIterator for &'a Table<'de> {
-    type Item = (&'a Key<'de>, &'a Item<'de>);
-    type IntoIter = Iter<'a, 'de>;
+impl<'a, 'de> IntoIterator for &'a mut Table<'de> {
+    type Item = &'a mut (Key<'de>, Item<'de>);
+    type IntoIter = std::slice::IterMut<'a, TableEntry<'de>>;
 
     fn into_iter(self) -> Self::IntoIter {
-        (&self.value).into_iter()
+        self.value.entries_mut().iter_mut()
+    }
+}
+impl<'a, 'de> IntoIterator for &'a Table<'de> {
+    type Item = &'a (Key<'de>, Item<'de>);
+    type IntoIter = std::slice::Iter<'a, TableEntry<'de>>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.value.entries().iter()
     }
 }
 
@@ -502,7 +439,10 @@ impl<'de> IntoIterator for Table<'de> {
     type IntoIter = IntoIter<'de>;
 
     fn into_iter(self) -> Self::IntoIter {
-        self.value.into_iter()
+        IntoIter {
+            table: self.value,
+            index: 0,
+        }
     }
 }
 

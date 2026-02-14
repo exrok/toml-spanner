@@ -80,7 +80,7 @@ pub mod impl_serde;
 /// This crate's equivalent to [`serde::Deserialize`](https://docs.rs/serde/latest/serde/de/trait.Deserialize.html).
 pub trait Deserialize<'de>: Sized {
     /// Deserializes `Self` from the given [`Item`], returning an error on failure.
-    fn deserialize(value: &mut Item<'de>) -> Result<Self, Error>;
+    fn deserialize(item: &mut Item<'de>) -> Result<Self, Error>;
 }
 
 /// This crate's equivalent to [`serde::DeserializeOwned`](https://docs.rs/serde/latest/serde/de/trait.DeserializeOwned.html).
