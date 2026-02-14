@@ -78,6 +78,26 @@ fn spanned_basics_and_comparison() {
     assert!(b > a);
     assert_eq!(a.cmp(&b), std::cmp::Ordering::Less);
     assert_eq!(a.cmp(&a), std::cmp::Ordering::Equal);
+
+    // Default trait
+    let def: Spanned<i32> = Spanned::default();
+    assert_eq!(def.value, 0);
+    assert!(def.span.is_empty());
+
+    // AsRef trait
+    let s = Spanned::with_span("hello", Span::new(0, 5));
+    let r: &str = s.as_ref();
+    assert_eq!(r, "hello");
+
+    // Clone trait
+    let s1 = Spanned::with_span(vec![1, 2, 3], Span::new(0, 5));
+    let s2 = s1.clone();
+    assert_eq!(s1.value, s2.value);
+    assert_eq!(s1.span, s2.span);
+
+    // Debug trait
+    let s = Spanned::with_span(42, Span::new(0, 2));
+    assert_eq!(format!("{:?}", s), "42");
 }
 
 #[test]

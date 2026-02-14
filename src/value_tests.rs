@@ -430,4 +430,45 @@ fn key_basics() {
     };
     assert!(a < b);
     assert_eq!(a.cmp(&a), std::cmp::Ordering::Equal);
+
+    // Borrow trait
+    let k = Key {
+        name: Str::from("test"),
+        span: sp(0, 4),
+    };
+    let borrowed: &str = std::borrow::Borrow::borrow(&k);
+    assert_eq!(borrowed, "test");
+
+    // Debug trait
+    assert_eq!(format!("{:?}", k), "test");
+
+    // Display trait
+    assert_eq!(format!("{}", k), "test");
+}
+
+#[test]
+fn item_debug_fmt() {
+    // Test Debug formatting for all Item types
+    let v = Item::string(Str::from("hello"), sp(0, 5));
+    assert_eq!(format!("{:?}", v), "\"hello\"");
+
+    let v = Item::integer(42, sp(0, 2));
+    assert_eq!(format!("{:?}", v), "42");
+
+    let v = Item::float(3.14, sp(0, 4));
+    assert_eq!(format!("{:?}", v), "3.14");
+
+    let v = Item::boolean(true, sp(0, 4));
+    assert_eq!(format!("{:?}", v), "true");
+
+    let arena = Arena::new();
+    let mut arr = Array::new();
+    arr.push(Item::integer(1, sp(0, 1)), &arena);
+    let v = Item::array(arr, sp(0, 3));
+    assert!(format!("{:?}", v).contains("1"));
+
+    let v = Item::table(InnerTable::new(), sp(0, 2));
+    let debug = format!("{:?}", v);
+    // Table Debug may wrap in ManuallyDrop due to union layout
+    assert!(debug.contains("{}"));
 }

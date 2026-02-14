@@ -146,4 +146,34 @@ fn iterators() {
     let a = Array::new();
     let mut iter = a.into_iter();
     assert!(iter.next().is_none());
+
+    // Test iter() method directly
+    let mut a = Array::new();
+    a.push(ival(10), &arena);
+    a.push(ival(20), &arena);
+    let vals: Vec<i64> = a.iter().map(|v| v.as_integer().unwrap()).collect();
+    assert_eq!(vals, vec![10, 20]);
+}
+
+#[test]
+fn empty_array_edge_cases() {
+    let mut a = Array::new();
+
+    // Empty array slices
+    assert_eq!(a.as_slice().len(), 0);
+    assert_eq!(a.as_mut_slice().len(), 0);
+
+    // Empty array iter
+    assert_eq!(a.iter().count(), 0);
+
+    // Debug formatting
+    let debug = format!("{:?}", a);
+    assert_eq!(debug, "[]");
+
+    let arena = Arena::new();
+    let mut a = Array::new();
+    a.push(ival(1), &arena);
+    a.push(ival(2), &arena);
+    let debug = format!("{:?}", a);
+    assert!(debug.contains('1') && debug.contains('2'));
 }

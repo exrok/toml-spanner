@@ -382,3 +382,25 @@ fn table_span_helpers() {
     table.set_header_flag();
     assert_eq!(table.span(), Span::new(10, 20));
 }
+
+#[test]
+fn default_and_debug() {
+    let arena = Arena::new();
+
+    // Table::default - public type
+    let table: Table<'_> = Table::default();
+    assert_eq!(table.len(), 0);
+    assert!(table.span().is_empty());
+
+    // Table::Debug - public type
+    let mut table = Table::new(Span::new(0, 10));
+    table.insert(key("y"), ival(99), &arena);
+    let debug = format!("{:?}", table);
+    assert!(debug.contains("y") || debug.contains("99"));
+
+    // Table::entries - public API
+    let table = make_table(&arena);
+    let entries = table.entries();
+    assert_eq!(entries.len(), 3);
+    assert_eq!(&*entries[0].0.name, "a");
+}

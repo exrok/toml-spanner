@@ -24,12 +24,6 @@ pub(crate) struct InnerTable<'de> {
     ptr: NonNull<TableEntry<'de>>,
 }
 
-impl<'de> Default for InnerTable<'de> {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 impl<'de> InnerTable<'de> {
     /// Creates an empty table.
     #[inline]

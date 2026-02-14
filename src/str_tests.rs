@@ -59,4 +59,22 @@ fn equality_and_ordering() {
     assert!(x < y);
     assert!(y > x);
     assert_eq!(x.cmp(&x), std::cmp::Ordering::Equal);
+
+    // AsRef trait
+    let s = Str::from("test");
+    let r: &str = s.as_ref();
+    assert_eq!(r, "test");
+
+    // Borrow trait
+    let s = Str::from("borrowed");
+    let borrowed: &str = std::borrow::Borrow::borrow(&s);
+    assert_eq!(borrowed, "borrowed");
+
+    // Display trait
+    let s = Str::from("display");
+    assert_eq!(format!("{}", s), "display");
+
+    // Debug trait
+    let s = Str::from("debug");
+    assert_eq!(format!("{:?}", s), "\"debug\"");
 }
