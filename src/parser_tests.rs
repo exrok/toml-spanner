@@ -64,84 +64,82 @@ fn basic_scalar_values() {
 fn string_escapes() {
     let ctx = TestCtx::new();
 
-    let v = ctx.parse_ok(r#"a = "line1\nline2""#);
-    assert_eq!(v.get("a").unwrap().as_str(), Some("line1\nline2"));
+    let cases = [
+        (r#"a = "line1\nline2""#, "line1\nline2"),
+        (r#"a = "col1\tcol2""#, "col1\tcol2"),
+        (r#"a = "path\\to""#, "path\\to"),
+        (r#"a = "say \"hi\"""#, "say \"hi\""),
+        (r#"a = "\u0041""#, "A"),
+        (r#"a = "\U00000041""#, "A"),
+    ];
 
-    let v = ctx.parse_ok(r#"a = "col1\tcol2""#);
-    assert_eq!(v.get("a").unwrap().as_str(), Some("col1\tcol2"));
-
-    let v = ctx.parse_ok(r#"a = "path\\to""#);
-    assert_eq!(v.get("a").unwrap().as_str(), Some("path\\to"));
-
-    let v = ctx.parse_ok(r#"a = "say \"hi\"""#);
-    assert_eq!(v.get("a").unwrap().as_str(), Some("say \"hi\""));
-
-    // unicode short \uXXXX
-    let v = ctx.parse_ok(r#"a = "\u0041""#);
-    assert_eq!(v.get("a").unwrap().as_str(), Some("A"));
-
-    // unicode long \UXXXXXXXX
-    let v = ctx.parse_ok(r#"a = "\U00000041""#);
-    assert_eq!(v.get("a").unwrap().as_str(), Some("A"));
+    for (input, expected) in cases {
+        let v = ctx.parse_ok(input);
+        assert_eq!(v.get("a").unwrap().as_str(), Some(expected), "input: {input}");
+    }
 }
 
 #[test]
 fn string_types() {
     let ctx = TestCtx::new();
 
-    // multiline basic
-    let v = ctx.parse_ok("a = \"\"\"\nhello\nworld\"\"\"");
-    assert_eq!(v.get("a").unwrap().as_str(), Some("hello\nworld"));
+    let cases = [
+        ("a = \"\"\"\nhello\nworld\"\"\"", "hello\nworld"),
+        ("a = '''\nhello\nworld'''", "hello\nworld"),
+        (r#"a = 'no\escape'"#, "no\\escape"),
+        (r#"a = """#, ""),
+    ];
 
-    // multiline literal
-    let v = ctx.parse_ok("a = '''\nhello\nworld'''");
-    assert_eq!(v.get("a").unwrap().as_str(), Some("hello\nworld"));
-
-    // literal — no escape processing
-    let v = ctx.parse_ok(r#"a = 'no\escape'"#);
-    assert_eq!(v.get("a").unwrap().as_str(), Some("no\\escape"));
-
-    // empty string
-    let v = ctx.parse_ok(r#"a = """#);
-    assert_eq!(v.get("a").unwrap().as_str(), Some(""));
+    for (input, expected) in cases {
+        let v = ctx.parse_ok(input);
+        assert_eq!(v.get("a").unwrap().as_str(), Some(expected), "input: {input}");
+    }
 }
 
 #[test]
 fn number_formats() {
     let ctx = TestCtx::new();
 
-    // hex, octal, binary
-    let v = ctx.parse_ok("a = 0xDEAD");
-    assert_eq!(v.get("a").unwrap().as_integer(), Some(0xDEAD));
-    let v = ctx.parse_ok("a = 0o777");
-    assert_eq!(v.get("a").unwrap().as_integer(), Some(0o777));
-    let v = ctx.parse_ok("a = 0b1010");
-    assert_eq!(v.get("a").unwrap().as_integer(), Some(0b1010));
+    let int_cases = [
+        ("a = 0xDEAD", 0xDEAD),
+        ("a = 0o777", 0o777),
+        ("a = 0b1010", 0b1010),
+        ("a = 1_000_000", 1_000_000),
+    ];
 
-    // special floats
-    let v = ctx.parse_ok("a = inf");
-    assert_eq!(v.get("a").unwrap().as_float(), Some(f64::INFINITY));
-    let v = ctx.parse_ok("a = -inf");
-    assert_eq!(v.get("a").unwrap().as_float(), Some(f64::NEG_INFINITY));
-    let v = ctx.parse_ok("a = nan");
-    assert!(v.get("a").unwrap().as_float().unwrap().is_nan());
-    let v = ctx.parse_ok("a = -nan");
-    assert!(v.get("a").unwrap().as_float().unwrap().is_nan());
+    for (input, expected) in int_cases {
+        let v = ctx.parse_ok(input);
+        assert_eq!(v.get("a").unwrap().as_integer(), Some(expected), "input: {input}");
+    }
 
-    // exponent notation
-    let v = ctx.parse_ok("a = 1e10");
-    let f = v.get("a").unwrap().as_float().unwrap();
-    assert!((f - 1e10).abs() < 1.0);
-    let v = ctx.parse_ok("a = 1.5E-3");
-    let f = v.get("a").unwrap().as_float().unwrap();
-    assert!((f - 1.5e-3).abs() < 1e-10);
+    let float_cases = [
+        ("a = inf", f64::INFINITY, false),
+        ("a = -inf", f64::NEG_INFINITY, false),
+        ("a = nan", f64::NAN, true),
+        ("a = -nan", f64::NAN, true),
+    ];
 
-    // underscores
-    let v = ctx.parse_ok("a = 1_000_000");
-    assert_eq!(v.get("a").unwrap().as_integer(), Some(1_000_000));
-    let v = ctx.parse_ok("a = 1_000.5");
-    let f = v.get("a").unwrap().as_float().unwrap();
-    assert!((f - 1000.5).abs() < f64::EPSILON);
+    for (input, expected, is_nan) in float_cases {
+        let v = ctx.parse_ok(input);
+        let f = v.get("a").unwrap().as_float().unwrap();
+        if is_nan {
+            assert!(f.is_nan(), "input: {input}");
+        } else {
+            assert_eq!(f, expected, "input: {input}");
+        }
+    }
+
+    let float_approx_cases = [
+        ("a = 1e10", 1e10, 1.0),
+        ("a = 1.5E-3", 1.5e-3, 1e-10),
+        ("a = 1_000.5", 1000.5, f64::EPSILON),
+    ];
+
+    for (input, expected, epsilon) in float_approx_cases {
+        let v = ctx.parse_ok(input);
+        let f = v.get("a").unwrap().as_float().unwrap();
+        assert!((f - expected).abs() < epsilon, "input: {input}");
+    }
 }
 
 #[test]
@@ -634,291 +632,181 @@ fn utf8_bom_is_skipped() {
 fn crlf_handling() {
     let ctx = TestCtx::new();
 
-    // CRLF line endings in key-value pairs
     let v = ctx.parse_ok("a = 1\r\nb = 2\r\n");
-    assert_eq!(v.get("a").unwrap().as_integer(), Some(1));
-    assert_eq!(v.get("b").unwrap().as_integer(), Some(2));
+    assert_eq!(v.get("a").unwrap().as_integer(), Some(1), "input: a = 1\\r\\nb = 2\\r\\n");
+    assert_eq!(v.get("b").unwrap().as_integer(), Some(2), "input: a = 1\\r\\nb = 2\\r\\n");
 
-    // CRLF in multiline string (at start, stripped per spec)
-    let v = ctx.parse_ok("a = \"\"\"\r\nhello\r\nworld\"\"\"");
-    assert_eq!(v.get("a").unwrap().as_str(), Some("hello\r\nworld"));
+    let valid_str_cases = [
+        ("a = \"\"\"\r\nhello\r\nworld\"\"\"", "hello\r\nworld"),
+        ("a = \"\"\"\\\r\n   trimmed\"\"\"", "trimmed"),
+        ("a = \"\"\"\\\n\r\n   trimmed\"\"\"", "trimmed"),
+        ("a = \"\"\"\r\ncontent\"\"\"", "content"),
+        ("a = \"\"\"\r\nline1\r\nline2\"\"\"", "line1\r\nline2"),
+    ];
 
-    // CRLF after table header
+    for (input, expected) in valid_str_cases {
+        let v = ctx.parse_ok(input);
+        assert_eq!(v.get("a").unwrap().as_str(), Some(expected), "input: {input}");
+    }
+
     let v = ctx.parse_ok("[table]\r\nkey = 1\r\n");
     let t = v.get("table").unwrap().as_table().unwrap();
-    assert_eq!(t.get("key").unwrap().as_integer(), Some(1));
+    assert_eq!(t.get("key").unwrap().as_integer(), Some(1), "input: [table]\\r\\nkey = 1\\r\\n");
 
-    // bare CR in basic string is an error
     let e = ctx.parse_err("a = \"hello\rworld\"");
-    assert!(matches!(e.kind, ErrorKind::InvalidCharInString('\r')));
+    assert!(matches!(e.kind, ErrorKind::InvalidCharInString('\r')), "input: a = \"hello\\rworld\"");
 
-    // backslash-CRLF continuation in multiline
-    let v = ctx.parse_ok("a = \"\"\"\\\r\n   trimmed\"\"\"");
-    assert_eq!(v.get("a").unwrap().as_str(), Some("trimmed"));
-
-    // backslash-newline then CRLF blank lines in multiline
-    let v = ctx.parse_ok("a = \"\"\"\\\n\r\n   trimmed\"\"\"");
-    assert_eq!(v.get("a").unwrap().as_str(), Some("trimmed"));
-
-    // CRLF at beginning of multiline basic string
-    let v = ctx.parse_ok("a = \"\"\"\r\ncontent\"\"\"");
-    assert_eq!(v.get("a").unwrap().as_str(), Some("content"));
-
-    // CRLF inside multiline string body
-    let v = ctx.parse_ok("a = \"\"\"\r\nline1\r\nline2\"\"\"");
-    assert_eq!(v.get("a").unwrap().as_str(), Some("line1\r\nline2"));
-
-    // CRLF in basic string (not multiline) is an error
     let e = ctx.parse_err("a = \"hello\r\nworld\"");
-    assert!(matches!(e.kind, ErrorKind::InvalidCharInString('\n')));
+    assert!(matches!(e.kind, ErrorKind::InvalidCharInString('\n')), "input: a = \"hello\\r\\nworld\"");
 }
 
 #[test]
 fn escape_sequences() {
     let ctx = TestCtx::new();
 
-    // backspace and formfeed
-    let v = ctx.parse_ok(r#"a = "\b\f""#);
-    assert_eq!(v.get("a").unwrap().as_str(), Some("\x08\x0C"));
+    let valid_cases = [
+        (r#"a = "\b\f""#, "\x08\x0C"),
+        (r#"a = "\e""#, "\x1B"),
+        (r#"a = "\x41""#, "A"),
+        (r#"a = "\r""#, "\r"),
+    ];
 
-    // ESC character (TOML 1.1)
-    let v = ctx.parse_ok(r#"a = "\e""#);
-    assert_eq!(v.get("a").unwrap().as_str(), Some("\x1B"));
+    for (input, expected) in valid_cases {
+        let v = ctx.parse_ok(input);
+        assert_eq!(v.get("a").unwrap().as_str(), Some(expected), "input: {input}");
+    }
 
-    // \x hex escape
-    let v = ctx.parse_ok(r#"a = "\x41""#);
-    assert_eq!(v.get("a").unwrap().as_str(), Some("A"));
-
-    // carriage return
-    let v = ctx.parse_ok(r#"a = "\r""#);
-    assert_eq!(v.get("a").unwrap().as_str(), Some("\r"));
-
-    // invalid hex digit in \u escape
     let e = ctx.parse_err(r#"a = "\uGGGG""#);
-    assert!(matches!(e.kind, ErrorKind::InvalidHexEscape('G')));
+    assert!(matches!(e.kind, ErrorKind::InvalidHexEscape('G')), "input: a = \"\\uGGGG\"");
 
-    // invalid escape value (out of Unicode range)
     let e = ctx.parse_err(r#"a = "\UFFFFFFFF""#);
-    assert!(matches!(e.kind, ErrorKind::InvalidEscapeValue(_)));
+    assert!(matches!(e.kind, ErrorKind::InvalidEscapeValue(_)), "input: a = \"\\UFFFFFFFF\"");
 
-    // unterminated hex escape (string ends before all hex digits)
     let e = ctx.parse_err("a = \"\\u00");
-    assert!(matches!(e.kind, ErrorKind::UnterminatedString));
+    assert!(matches!(e.kind, ErrorKind::UnterminatedString), "input: a = \"\\u00");
 
-    // invalid hex digit in \x escape
     let e = ctx.parse_err(r#"a = "\xGG""#);
-    assert!(matches!(e.kind, ErrorKind::InvalidHexEscape('G')));
+    assert!(matches!(e.kind, ErrorKind::InvalidHexEscape('G')), "input: a = \"\\xGG\"");
 }
 
 #[test]
 fn multiline_string_edge_cases() {
     let ctx = TestCtx::new();
 
-    // backslash-newline trims leading whitespace
-    let v = ctx.parse_ok("a = \"\"\"\\\n   trimmed\"\"\"");
-    assert_eq!(v.get("a").unwrap().as_str(), Some("trimmed"));
+    let valid_cases = [
+        ("a = \"\"\"\\\n   trimmed\"\"\"", "trimmed"),
+        ("a = \"\"\"\\  \n   trimmed\"\"\"", "trimmed"),
+        ("a = \"\"\"\\\t\n   trimmed\"\"\"", "trimmed"),
+        ("a = \"\"\"\\\r\n   trimmed\"\"\"", "trimmed"),
+        ("a = \"\"\"\\\n\n\n   trimmed\"\"\"", "trimmed"),
+        ("a = \"\"\"content\"\"\"\"\"", "content\"\""),
+        ("a = \"\"\"content\"\"\"\"", "content\""),
+        ("a = \"\"\"he said \"hi\" ok\"\"\"", "he said \"hi\" ok"),
+        ("a = \"\"\"two \"\" here\"\"\"", "two \"\" here"),
+    ];
 
-    // backslash-space-then-newline trims
-    let v = ctx.parse_ok("a = \"\"\"\\  \n   trimmed\"\"\"");
-    assert_eq!(v.get("a").unwrap().as_str(), Some("trimmed"));
+    for (input, expected) in valid_cases {
+        let v = ctx.parse_ok(input);
+        assert_eq!(v.get("a").unwrap().as_str(), Some(expected), "input: {input}");
+    }
 
-    // backslash-tab-then-newline trims
-    let v = ctx.parse_ok("a = \"\"\"\\\t\n   trimmed\"\"\"");
-    assert_eq!(v.get("a").unwrap().as_str(), Some("trimmed"));
-
-    // backslash-CRLF trims
-    let v = ctx.parse_ok("a = \"\"\"\\\r\n   trimmed\"\"\"");
-    assert_eq!(v.get("a").unwrap().as_str(), Some("trimmed"));
-
-    // backslash-newline across multiple blank lines trims
-    let v = ctx.parse_ok("a = \"\"\"\\\n\n\n   trimmed\"\"\"");
-    assert_eq!(v.get("a").unwrap().as_str(), Some("trimmed"));
-
-    // up to 2 extra quotes allowed before closing """
-    let v = ctx.parse_ok("a = \"\"\"content\"\"\"\"\"");
-    assert_eq!(v.get("a").unwrap().as_str(), Some("content\"\""));
-
-    // one extra quote before closing """
-    let v = ctx.parse_ok("a = \"\"\"content\"\"\"\"");
-    assert_eq!(v.get("a").unwrap().as_str(), Some("content\""));
-
-    // single quote inside multiline
-    let v = ctx.parse_ok("a = \"\"\"he said \"hi\" ok\"\"\"");
-    assert_eq!(v.get("a").unwrap().as_str(), Some("he said \"hi\" ok"));
-
-    // two quotes inside multiline
-    let v = ctx.parse_ok("a = \"\"\"two \"\" here\"\"\"");
-    assert_eq!(v.get("a").unwrap().as_str(), Some("two \"\" here"));
-
-    // backslash-space without newline is an error
     let e = ctx.parse_err("a = \"\"\"\\  x\"\"\"");
-    assert!(matches!(e.kind, ErrorKind::InvalidEscape(' ')));
+    assert!(matches!(e.kind, ErrorKind::InvalidEscape(' ')), "input: a = \"\"\"\\  x\"\"\"");
 }
 
 #[test]
 fn number_valid_edge_cases() {
     let ctx = TestCtx::new();
 
-    // hex with underscores
-    let v = ctx.parse_ok("a = 0xDEAD_BEEF");
-    assert_eq!(v.get("a").unwrap().as_integer(), Some(0xDEAD_BEEF));
+    let int_cases = [
+        ("a = 0xDEAD_BEEF", 0xDEAD_BEEF),
+        ("a = 0o755", 0o755),
+        ("a = 0b1111_0000", 0b1111_0000),
+        ("a = +42", 42),
+    ];
 
-    // octal values
-    let v = ctx.parse_ok("a = 0o755");
-    assert_eq!(v.get("a").unwrap().as_integer(), Some(0o755));
+    for (input, expected) in int_cases {
+        let v = ctx.parse_ok(input);
+        assert_eq!(v.get("a").unwrap().as_integer(), Some(expected), "input: {input}");
+    }
 
-    // binary with underscores
-    let v = ctx.parse_ok("a = 0b1111_0000");
-    assert_eq!(v.get("a").unwrap().as_integer(), Some(0b1111_0000));
-
-    // leading plus integer
-    let v = ctx.parse_ok("a = +42");
-    assert_eq!(v.get("a").unwrap().as_integer(), Some(42));
-
-    // leading plus float
     let v = ctx.parse_ok("a = +3.14");
     let f = v.get("a").unwrap().as_float().unwrap();
-    assert!((f - 3.14).abs() < f64::EPSILON);
+    assert!((f - 3.14).abs() < f64::EPSILON, "input: a = +3.14");
 
-    // leading plus inf
     let v = ctx.parse_ok("a = +inf");
-    assert_eq!(v.get("a").unwrap().as_float(), Some(f64::INFINITY));
+    assert_eq!(v.get("a").unwrap().as_float(), Some(f64::INFINITY), "input: a = +inf");
 
-    // leading plus nan
     let v = ctx.parse_ok("a = +nan");
-    assert!(v.get("a").unwrap().as_float().unwrap().is_nan());
+    assert!(v.get("a").unwrap().as_float().unwrap().is_nan(), "input: a = +nan");
 }
 
 #[test]
 fn number_format_errors() {
     let ctx = TestCtx::new();
 
-    // plus on base prefix
-    let e = ctx.parse_err("a = +0xFF");
-    assert!(matches!(e.kind, ErrorKind::InvalidNumber));
+    let error_cases = [
+        "a = +0xFF",
+        "a = +",
+        "a = 0o89",
+        "a = 0b102",
+        "a = 0x",
+        "a = 0o",
+        "a = 0b",
+        "a = 0x_FF",
+        "a = 0xFF_",
+        "a = 0o77_",
+        "a = 0b11_",
+        "a = 0xF__F",
+        "a = 0o7__7",
+        "a = 0b1__0",
+        "a = 01",
+        "a = 123_",
+        "a = 1__2",
+    ];
 
-    // plus alone
-    let e = ctx.parse_err("a = +");
-    assert!(matches!(e.kind, ErrorKind::InvalidNumber));
-
-    // invalid octal digit
-    let e = ctx.parse_err("a = 0o89");
-    assert!(matches!(e.kind, ErrorKind::InvalidNumber));
-
-    // invalid binary digit
-    let e = ctx.parse_err("a = 0b102");
-    assert!(matches!(e.kind, ErrorKind::InvalidNumber));
-
-    // empty hex
-    let e = ctx.parse_err("a = 0x");
-    assert!(matches!(e.kind, ErrorKind::InvalidNumber));
-
-    // empty octal
-    let e = ctx.parse_err("a = 0o");
-    assert!(matches!(e.kind, ErrorKind::InvalidNumber));
-
-    // empty binary
-    let e = ctx.parse_err("a = 0b");
-    assert!(matches!(e.kind, ErrorKind::InvalidNumber));
-
-    // underscore at start
-    let e = ctx.parse_err("a = 0x_FF");
-    assert!(matches!(e.kind, ErrorKind::InvalidNumber));
-
-    // trailing underscore hex
-    let e = ctx.parse_err("a = 0xFF_");
-    assert!(matches!(e.kind, ErrorKind::InvalidNumber));
-
-    // trailing underscore octal
-    let e = ctx.parse_err("a = 0o77_");
-    assert!(matches!(e.kind, ErrorKind::InvalidNumber));
-
-    // trailing underscore binary
-    let e = ctx.parse_err("a = 0b11_");
-    assert!(matches!(e.kind, ErrorKind::InvalidNumber));
-
-    // double underscore hex
-    let e = ctx.parse_err("a = 0xF__F");
-    assert!(matches!(e.kind, ErrorKind::InvalidNumber));
-
-    // double underscore octal
-    let e = ctx.parse_err("a = 0o7__7");
-    assert!(matches!(e.kind, ErrorKind::InvalidNumber));
-
-    // double underscore binary
-    let e = ctx.parse_err("a = 0b1__0");
-    assert!(matches!(e.kind, ErrorKind::InvalidNumber));
-
-    // decimal leading zero
-    let e = ctx.parse_err("a = 01");
-    assert!(matches!(e.kind, ErrorKind::InvalidNumber));
-
-    // decimal trailing underscore
-    let e = ctx.parse_err("a = 123_");
-    assert!(matches!(e.kind, ErrorKind::InvalidNumber));
-
-    // decimal double underscore
-    let e = ctx.parse_err("a = 1__2");
-    assert!(matches!(e.kind, ErrorKind::InvalidNumber));
+    for input in error_cases {
+        let e = ctx.parse_err(input);
+        assert!(matches!(e.kind, ErrorKind::InvalidNumber), "input: {input}");
+    }
 }
 
 #[test]
 fn float_valid_edge_cases() {
     let ctx = TestCtx::new();
 
-    // exponent only (no decimal)
-    let v = ctx.parse_ok("a = 5e2");
-    let f = v.get("a").unwrap().as_float().unwrap();
-    assert!((f - 500.0).abs() < 0.01);
+    let cases = [
+        ("a = 5e2", 500.0, 0.01),
+        ("a = -1.5e-3", -1.5e-3, 1e-10),
+        ("a = 1_000.5_00", 1000.5, f64::EPSILON),
+        ("a = 1e+5", 1e5, 0.01),
+        ("a = 1.5E+3", 1.5e3, 0.01),
+    ];
 
-    // negative exponent
-    let v = ctx.parse_ok("a = -1.5e-3");
-    let f = v.get("a").unwrap().as_float().unwrap();
-    assert!((f - (-1.5e-3)).abs() < 1e-10);
-
-    // underscore in decimal part
-    let v = ctx.parse_ok("a = 1_000.5_00");
-    let f = v.get("a").unwrap().as_float().unwrap();
-    assert!((f - 1000.5).abs() < f64::EPSILON);
-
-    // exponent with explicit plus
-    let v = ctx.parse_ok("a = 1e+5");
-    let f = v.get("a").unwrap().as_float().unwrap();
-    assert!((f - 1e5).abs() < 0.01);
-
-    // decimal with exponent and explicit plus
-    let v = ctx.parse_ok("a = 1.5E+3");
-    let f = v.get("a").unwrap().as_float().unwrap();
-    assert!((f - 1.5e3).abs() < 0.01);
+    for (input, expected, epsilon) in cases {
+        let v = ctx.parse_ok(input);
+        let f = v.get("a").unwrap().as_float().unwrap();
+        assert!((f - expected).abs() < epsilon, "input: {input}");
+    }
 }
 
 #[test]
 fn float_format_errors() {
     let ctx = TestCtx::new();
 
-    // leading zero
-    let e = ctx.parse_err("a = 00.5");
-    assert!(matches!(e.kind, ErrorKind::InvalidNumber));
+    let error_cases = [
+        "a = 00.5",
+        "a = 1.",
+        "a = 1.5_",
+        "a = -00.5",
+        "a = 1._5",
+        "a = 1e\nb = 2",
+    ];
 
-    // dot with nothing after
-    let e = ctx.parse_err("a = 1.");
-    assert!(matches!(e.kind, ErrorKind::InvalidNumber));
-
-    // bad underscore in decimal part
-    let e = ctx.parse_err("a = 1.5_");
-    assert!(matches!(e.kind, ErrorKind::InvalidNumber));
-
-    // negative leading zero
-    let e = ctx.parse_err("a = -00.5");
-    assert!(matches!(e.kind, ErrorKind::InvalidNumber));
-
-    // decimal starts with underscore
-    let e = ctx.parse_err("a = 1._5");
-    assert!(matches!(e.kind, ErrorKind::InvalidNumber));
-
-    // exponent with no digits after
-    let e = ctx.parse_err("a = 1e\nb = 2");
-    assert!(matches!(e.kind, ErrorKind::InvalidNumber));
+    for input in error_cases {
+        let e = ctx.parse_err(input);
+        assert!(matches!(e.kind, ErrorKind::InvalidNumber), "input: {input}");
+    }
 }
 
 #[test]
@@ -983,7 +871,6 @@ fn structural_errors() {
 fn inline_table_edge_cases() {
     let ctx = TestCtx::new();
 
-    // dotted key inside inline table
     let v = ctx.parse_ok("a = {b.c = 1}");
     let b = v
         .get("a")
@@ -994,37 +881,35 @@ fn inline_table_edge_cases() {
         .unwrap()
         .as_table()
         .unwrap();
-    assert_eq!(b.get("c").unwrap().as_integer(), Some(1));
+    assert_eq!(b.get("c").unwrap().as_integer(), Some(1), "input: a = {{b.c = 1}}");
 
-    // trailing comma (TOML 1.1)
-    let v = ctx.parse_ok("a = {x = 1, y = 2,}");
-    let t = v.get("a").unwrap().as_table().unwrap();
-    assert_eq!(t.len(), 2);
+    let table_len_cases = [
+        ("a = {x = 1, y = 2,}", 2),
+        ("a = {\n  x = 1,\n  y = 2\n}", 2),
+        ("a = {\n  x = 1, # comment\n  y = 2\n}", 2),
+    ];
 
-    // newlines inside inline table (TOML 1.1)
-    let v = ctx.parse_ok("a = {\n  x = 1,\n  y = 2\n}");
-    let t = v.get("a").unwrap().as_table().unwrap();
-    assert_eq!(t.len(), 2);
-
-    // comments inside inline table
-    let v = ctx.parse_ok("a = {\n  x = 1, # comment\n  y = 2\n}");
-    let t = v.get("a").unwrap().as_table().unwrap();
-    assert_eq!(t.len(), 2);
+    for (input, expected_len) in table_len_cases {
+        let v = ctx.parse_ok(input);
+        let t = v.get("a").unwrap().as_table().unwrap();
+        assert_eq!(t.len(), expected_len, "input: {input}");
+    }
 }
 
 #[test]
 fn array_edge_cases() {
     let ctx = TestCtx::new();
 
-    // array with comments
-    let v = ctx.parse_ok("a = [\n  1, # first\n  2, # second\n  3\n]");
-    let arr = v.get("a").unwrap().as_array().unwrap();
-    assert_eq!(arr.len(), 3);
+    let cases = [
+        ("a = [\n  1, # first\n  2, # second\n  3\n]", 3),
+        ("a = [1, 2, 3,]", 3),
+    ];
 
-    // trailing comma
-    let v = ctx.parse_ok("a = [1, 2, 3,]");
-    let arr = v.get("a").unwrap().as_array().unwrap();
-    assert_eq!(arr.len(), 3);
+    for (input, expected_len) in cases {
+        let v = ctx.parse_ok(input);
+        let arr = v.get("a").unwrap().as_array().unwrap();
+        assert_eq!(arr.len(), expected_len, "input: {input}");
+    }
 }
 
 #[test]
@@ -1095,34 +980,32 @@ fn aot_and_implicit_tables() {
 fn integer_boundary_values() {
     let ctx = TestCtx::new();
 
-    // minimum i64
-    let v = ctx.parse_ok("a = -9223372036854775808");
-    assert_eq!(v.get("a").unwrap().as_integer(), Some(i64::MIN));
+    let cases = [
+        ("a = -9223372036854775808", i64::MIN),
+        ("a = 9223372036854775807", i64::MAX),
+    ];
 
-    // maximum i64
-    let v = ctx.parse_ok("a = 9223372036854775807");
-    assert_eq!(v.get("a").unwrap().as_integer(), Some(i64::MAX));
+    for (input, expected) in cases {
+        let v = ctx.parse_ok(input);
+        assert_eq!(v.get("a").unwrap().as_integer(), Some(expected), "input: {input}");
+    }
 }
 
 #[test]
 fn integer_overflow_errors() {
     let ctx = TestCtx::new();
 
-    // hex overflow
-    let e = ctx.parse_err("a = 0xFFFFFFFFFFFFFFFF");
-    assert!(matches!(e.kind, ErrorKind::InvalidNumber));
+    let error_cases = [
+        "a = 0xFFFFFFFFFFFFFFFF",
+        "a = 0o7777777777777777777777",
+        "a = 0b1111111111111111111111111111111111111111111111111111111111111111",
+        "a = 99999999999999999999",
+    ];
 
-    // octal overflow
-    let e = ctx.parse_err("a = 0o7777777777777777777777");
-    assert!(matches!(e.kind, ErrorKind::InvalidNumber));
-
-    // binary overflow
-    let e = ctx.parse_err("a = 0b1111111111111111111111111111111111111111111111111111111111111111");
-    assert!(matches!(e.kind, ErrorKind::InvalidNumber));
-
-    // decimal overflow
-    let e = ctx.parse_err("a = 99999999999999999999");
-    assert!(matches!(e.kind, ErrorKind::InvalidNumber));
+    for input in error_cases {
+        let e = ctx.parse_err(input);
+        assert!(matches!(e.kind, ErrorKind::InvalidNumber), "input: {input}");
+    }
 }
 
 #[test]

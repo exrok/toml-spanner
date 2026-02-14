@@ -8,7 +8,6 @@ use crate::Span;
 use std::fmt::{self, Debug, Display};
 
 /// Error that can occur when deserializing TOML.
-#[derive(Debug, Clone)]
 pub struct Error {
     /// The error kind
     pub kind: ErrorKind,
@@ -20,6 +19,15 @@ pub struct Error {
 
 impl std::error::Error for Error {}
 
+impl Debug for Error {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Error")
+            .field("kind", &self.kind)
+            .field("span", &self.span)
+            .finish()
+    }
+}
+
 impl From<(ErrorKind, Span)> for Error {
     fn from((kind, span): (ErrorKind, Span)) -> Self {
         Self { kind, span }
@@ -27,7 +35,6 @@ impl From<(ErrorKind, Span)> for Error {
 }
 
 /// Errors that can occur when deserializing a type.
-#[derive(Clone)]
 pub enum ErrorKind {
     /// EOF was reached when looking for a value.
     UnexpectedEof,
