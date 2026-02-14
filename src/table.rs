@@ -8,7 +8,7 @@ use crate::value::{
     FLAG_HEADER, FLAG_MASK, FLAG_SHIFT, FLAG_TABLE, Item, Key, TAG_MASK, TAG_SHIFT, TAG_TABLE,
 };
 use crate::{Deserialize, Error, ErrorKind, Span};
-use std::alloc::Layout;
+use std::mem::size_of;
 use std::ptr::NonNull;
 
 use crate::arena::Arena;
@@ -207,22 +207,14 @@ impl<'de> InnerTable<'de> {
     }
 
     fn grow_to(&mut self, new_cap: u32, arena: &Arena) {
-        let new_layout =
-            Layout::array::<TableEntry<'_>>(new_cap as usize).expect("layout overflow");
-        let new_ptr = arena.alloc(new_layout).cast::<TableEntry<'de>>();
+        let new_size = new_cap as usize * size_of::<TableEntry<'_>>();
         if self.cap > 0 {
-            // Safety: old buffer has self.len initialized entries; new buffer
-            // has room for new_cap >= self.len entries.
-            unsafe {
-                std::ptr::copy_nonoverlapping(
-                    self.ptr.as_ptr(),
-                    new_ptr.as_ptr(),
-                    self.len as usize,
-                );
-            }
-            // Old buffer is abandoned; the arena reclaims it on drop.
+            let old_size = self.cap as usize * size_of::<TableEntry<'_>>();
+            // Safety: ptr was returned by a prior arena alloc of old_size bytes.
+            self.ptr = unsafe { arena.realloc(self.ptr.cast(), old_size, new_size).cast() };
+        } else {
+            self.ptr = arena.alloc(new_size).cast();
         }
-        self.ptr = new_ptr;
         self.cap = new_cap;
     }
 }

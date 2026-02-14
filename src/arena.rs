@@ -7,9 +7,10 @@ use std::ptr::{self, NonNull};
 const SLAB_ALIGN: usize = std::mem::align_of::<SlabHeader>();
 const HEADER_SIZE: usize = std::mem::size_of::<SlabHeader>();
 const INITIAL_SLAB_SIZE: usize = 1024;
+const ALLOC_ALIGN: usize = 8;
 
 const _: () = assert!(HEADER_SIZE == 16);
-const _: () = assert!(SLAB_ALIGN == 8);
+const _: () = assert!(SLAB_ALIGN == ALLOC_ALIGN);
 
 #[repr(C)]
 struct SlabHeader {
@@ -51,45 +52,89 @@ impl Arena {
         }
     }
 
-    /// Allocate `layout.size()` bytes with the given alignment.
+    /// Allocate `size` bytes aligned to 8.
     ///
     /// Returns a non-null pointer to the allocated region. Aborts on OOM.
     #[inline]
-    pub(crate) fn alloc(&self, layout: Layout) -> NonNull<u8> {
-        if layout.size() == 0 {
-            // Safety: layout.align() is always a non-zero power of two.
-            return unsafe { NonNull::new_unchecked(layout.align() as *mut u8) };
-        }
+    pub(crate) fn alloc(&self, size: usize) -> NonNull<u8> {
+        let ptr = self.ptr.get();
+        let addr = ptr.as_ptr() as usize;
+        let aligned_addr = (addr + ALLOC_ALIGN - 1) & !(ALLOC_ALIGN - 1);
+        let padding = aligned_addr - addr;
+        let needed = padding + size;
 
-        let ptr = self.ptr.get().as_ptr() as usize;
-        let aligned = (ptr + layout.align() - 1) & !(layout.align() - 1);
-        let new_ptr = aligned + layout.size();
-
-        if new_ptr <= self.end.get().as_ptr() as usize {
-            // Safety: new_ptr is within the current slab's bounds.
+        if addr + needed <= self.end.get().as_ptr() as usize {
+            // Safety: padding+size bytes fit within the current slab.
+            // Using add() from ptr preserves provenance.
             unsafe {
-                self.ptr.set(NonNull::new_unchecked(new_ptr as *mut u8));
-                NonNull::new_unchecked(aligned as *mut u8)
+                self.ptr.set(NonNull::new_unchecked(ptr.as_ptr().add(needed)));
+                NonNull::new_unchecked(ptr.as_ptr().add(padding))
             }
         } else {
-            self.alloc_slow(layout)
+            self.alloc_slow(size)
         }
+    }
+
+    /// Grow an existing allocation in place when possible, otherwise allocate
+    /// a new region and copy the old data.
+    ///
+    /// Returns the (possibly unchanged) pointer to the allocation.
+    ///
+    /// # Safety
+    ///
+    /// `ptr` must have been returned by a prior `alloc` on this arena whose
+    /// size was `old_size`. `new_size` must be `>= old_size`.
+    pub(crate) unsafe fn realloc(
+        &self,
+        ptr: NonNull<u8>,
+        old_size: usize,
+        new_size: usize,
+    ) -> NonNull<u8> {
+        debug_assert!(new_size >= old_size);
+
+        // Use integer arithmetic for bounds checks to avoid creating
+        // out-of-bounds pointers and to preserve strict provenance.
+        let old_end = ptr.as_ptr() as usize + old_size;
+        let head = self.ptr.get().as_ptr() as usize;
+
+        if old_end == head {
+            let new_end = ptr.as_ptr() as usize + new_size;
+            if new_end <= self.end.get().as_ptr() as usize {
+                // Safety: new_end is within the current slab. Advance the bump
+                // pointer by the growth delta, preserving provenance via add().
+                let extra = new_size - old_size;
+                unsafe {
+                    self.ptr
+                        .set(NonNull::new_unchecked(self.ptr.get().as_ptr().add(extra)));
+                }
+                return ptr;
+            }
+        }
+
+        let new_ptr = self.alloc(new_size);
+        // Safety: old and new regions are non-overlapping arena allocations,
+        // and old_size <= new_size <= new allocation size.
+        unsafe { ptr::copy_nonoverlapping(ptr.as_ptr(), new_ptr.as_ptr(), old_size) };
+        new_ptr
     }
 
     #[cold]
     #[inline(never)]
-    fn alloc_slow(&self, layout: Layout) -> NonNull<u8> {
-        self.grow(layout);
+    fn alloc_slow(&self, size: usize) -> NonNull<u8> {
+        self.grow(size);
 
-        let ptr = self.ptr.get().as_ptr() as usize;
-        let aligned = (ptr + layout.align() - 1) & !(layout.align() - 1);
-        let new_ptr = aligned + layout.size();
-        debug_assert!(new_ptr <= self.end.get().as_ptr() as usize);
+        let ptr = self.ptr.get();
+        let addr = ptr.as_ptr() as usize;
+        let aligned_addr = (addr + ALLOC_ALIGN - 1) & !(ALLOC_ALIGN - 1);
+        let padding = aligned_addr - addr;
+        let needed = padding + size;
+        debug_assert!(addr + needed <= self.end.get().as_ptr() as usize);
 
         // Safety: grow() guarantees the new slab is large enough.
+        // Using add() from ptr preserves provenance.
         unsafe {
-            self.ptr.set(NonNull::new_unchecked(new_ptr as *mut u8));
-            NonNull::new_unchecked(aligned as *mut u8)
+            self.ptr.set(NonNull::new_unchecked(ptr.as_ptr().add(needed)));
+            NonNull::new_unchecked(ptr.as_ptr().add(padding))
         }
     }
 
@@ -110,13 +155,10 @@ impl Arena {
         }
     }
 
-    fn grow(&self, layout: Layout) {
+    fn grow(&self, size: usize) {
         let current_size = unsafe { self.slab.get().as_ref().size };
 
-        let min_slab = HEADER_SIZE
-            .checked_add(layout.align() - 1)
-            .and_then(|s| s.checked_add(layout.size()))
-            .expect("layout overflow");
+        let min_slab = HEADER_SIZE.checked_add(size).expect("layout overflow");
 
         let new_size = current_size
             .saturating_mul(2)
@@ -268,8 +310,7 @@ impl<'a> Scratch<'a> {
         let required = self.len.checked_add(additional).expect("scratch overflow");
         let new_cap = self.cap.saturating_mul(2).max(required);
 
-        let layout = Layout::from_size_align(new_cap, 1).expect("scratch layout overflow");
-        self.arena.grow(layout);
+        self.arena.grow(new_cap);
 
         // Copy existing scratch data to the start of the new slab.
         let new_start = self.arena.ptr.get();

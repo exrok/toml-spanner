@@ -2,7 +2,7 @@
 
 use crate::arena::Arena;
 use crate::value::Item;
-use std::alloc::Layout;
+use std::mem::size_of;
 use std::ptr::NonNull;
 
 const MIN_CAP: u32 = 4;
@@ -154,21 +154,14 @@ impl<'de> Array<'de> {
     }
 
     fn grow_to(&mut self, new_cap: u32, arena: &Arena) {
-        let new_layout = Layout::array::<Item<'_>>(new_cap as usize).expect("layout overflow");
-        let new_ptr = arena.alloc(new_layout).cast::<Item<'de>>();
+        let new_size = new_cap as usize * size_of::<Item<'_>>();
         if self.cap > 0 {
-            // Safety: old buffer has self.len initialized Values; new buffer
-            // has room for new_cap >= self.len elements.
-            unsafe {
-                std::ptr::copy_nonoverlapping(
-                    self.ptr.as_ptr(),
-                    new_ptr.as_ptr(),
-                    self.len as usize,
-                );
-            }
-            // Old buffer is abandoned; the arena reclaims it on drop.
+            let old_size = self.cap as usize * size_of::<Item<'_>>();
+            // Safety: ptr was returned by a prior arena alloc of old_size bytes.
+            self.ptr = unsafe { arena.realloc(self.ptr.cast(), old_size, new_size).cast() };
+        } else {
+            self.ptr = arena.alloc(new_size).cast();
         }
-        self.ptr = new_ptr;
         self.cap = new_cap;
     }
 }
