@@ -1,4 +1,9 @@
 #![allow(clippy::question_mark)]
+
+#[cfg(test)]
+#[path = "./error_tests.rs"]
+mod tests;
+
 use crate::Span;
 use std::fmt::{self, Debug, Display};
 

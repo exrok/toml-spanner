@@ -1,5 +1,9 @@
 //! Provides span helpers
 
+#[cfg(test)]
+#[path = "./span_tests.rs"]
+mod tests;
+
 /// A start and end location within a toml document
 #[derive(Copy, Clone, PartialEq, Eq, Default, Debug)]
 pub struct Span {

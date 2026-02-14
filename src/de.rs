@@ -1,3 +1,7 @@
+#[cfg(test)]
+#[path = "./de_tests.rs"]
+mod tests;
+
 use crate::{
     Deserialize, Error, ErrorKind,
     str::Str,

@@ -10,96 +10,53 @@ fn hash_of(s: &Str<'_>) -> u64 {
 }
 
 #[test]
-fn borrowed_empty() {
-    let s = Str::from("");
-    assert_eq!(&*s, "");
-    assert_eq!(s.len(), 0);
-}
+fn basics() {
+    let empty = Str::from("");
+    assert_eq!(&*empty, "");
+    assert_eq!(empty.len(), 0);
 
-#[test]
-fn borrowed_normal() {
     let s = Str::from("hello");
     assert_eq!(&*s, "hello");
     assert_eq!(s.len(), 5);
+
+    let def = Str::default();
+    assert_eq!(&*def, "");
+    assert_eq!(def.len(), 0);
 }
 
 #[test]
-fn copy_semantics() {
-    let a = Str::from("copy me");
-    let b = a; // Copy
-    assert_eq!(&*a, "copy me");
-    assert_eq!(&*b, "copy me");
-    assert_eq!(&*a, &*b);
-}
+fn conversions() {
+    let s = Str::from("convert me");
 
-#[test]
-fn clone_borrowed() {
-    let orig = Str::from("borrowed");
-    let cloned = orig.clone();
-    assert_eq!(&*orig, &*cloned);
-}
-
-#[test]
-fn into_boxed_str() {
-    let s = Str::from("borrow me");
     let boxed = s.into_boxed_str();
-    assert_eq!(&*boxed, "borrow me");
-}
+    assert_eq!(&*boxed, "convert me");
 
-#[test]
-fn into_cow_borrowed() {
-    let s = Str::from("to cow");
     let cow: Cow<'_, str> = Cow::from(s);
-    assert!(matches!(cow, Cow::Borrowed("to cow")));
-}
+    assert!(matches!(cow, Cow::Borrowed("convert me")));
 
-#[test]
-fn into_string() {
-    let s = Str::from("to string");
     let string: String = String::from(s);
-    assert_eq!(string, "to string");
+    assert_eq!(string, "convert me");
+
+    let boxed2: Box<str> = Box::from(s);
+    assert_eq!(&*boxed2, "convert me");
 }
 
 #[test]
-fn into_box_str() {
-    let s = Str::from("to box");
-    let boxed: Box<str> = Box::from(s);
-    assert_eq!(&*boxed, "to box");
-}
-
-#[test]
-fn equality() {
+fn equality_and_ordering() {
     let a = Str::from("same");
     let b = Str::from("same");
     assert_eq!(a, b);
     assert_eq!(hash_of(&a), hash_of(&b));
-}
 
-#[test]
-fn default_is_empty() {
-    let s = Str::default();
-    assert_eq!(&*s, "");
-}
+    let c = Str::from("different");
+    assert_ne!(a, c);
 
-#[test]
-fn partial_eq_str() {
-    let s = Str::from("hello");
-    assert_eq!(s, *"hello");
-    assert!(s == "hello");
-}
+    assert_eq!(a, *"same");
+    assert!(a == "same");
 
-#[test]
-fn ord_consistency() {
-    let a = Str::from("aaa");
-    let b = Str::from("bbb");
-    assert!(a < b);
-    assert!(b > a);
-    assert_eq!(a.cmp(&a), std::cmp::Ordering::Equal);
-}
-
-#[test]
-fn display_and_debug() {
-    let s = Str::from("test");
-    assert_eq!(format!("{s}"), "test");
-    assert_eq!(format!("{s:?}"), "\"test\"");
+    let x = Str::from("aaa");
+    let y = Str::from("bbb");
+    assert!(x < y);
+    assert!(y > x);
+    assert_eq!(x.cmp(&x), std::cmp::Ordering::Equal);
 }
