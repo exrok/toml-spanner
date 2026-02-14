@@ -1508,7 +1508,7 @@ impl<'de> Parser<'de> {
             }
             let existing = table.get_mut_at(idx);
             let st = unsafe { existing.as_spanned_table_mut_unchecked() };
-            st.set_header_tag();
+            st.set_header_flag();
             st.set_span_start(header_start);
             st.set_span_end(header_end);
             Ok(Ctx {
@@ -1824,7 +1824,7 @@ impl<'de> Parser<'de> {
         if let Some(end_flag) = &mut ctx.array_end_span {
             let old = **end_flag;
             let current = old >> value::FLAG_SHIFT;
-            **end_flag = (current.max(line_end) << value::FLAG_SHIFT) | (old & value::FLAG_BIT);
+            **end_flag = (current.max(line_end) << value::FLAG_SHIFT) | (old & value::FLAG_MASK);
         }
 
         Ok(())
@@ -1838,8 +1838,8 @@ impl<'de> Parser<'de> {
 /// `Str<'de>` can borrow from it without per-string heap allocation.
 pub fn parse<'de>(s: &'de str, arena: &'de Arena) -> Result<Table<'de>, Error> {
     // Tag bits use the low 3 bits of start_and_tag, limiting span.start to
-    // 29 bits (512 MiB). The FLAG_BIT uses the low bit of end_and_flag,
-    // limiting span.end to 31 bits (2 GiB).
+    // 29 bits (512 MiB). The flag state uses the low 3 bits of end_and_flag,
+    // limiting span.end to 29 bits (512 MiB).
     const MAX_SIZE: usize = (1u32 << 29) as usize;
 
     if s.len() > MAX_SIZE {

@@ -1,7 +1,7 @@
 #![no_main]
 
 use libfuzzer_sys::fuzz_target;
-use toml_spanner::ValueRef;
+use toml_spanner::Value;
 
 fuzz_target!(|data: &[u8]| {
     let Ok(text) = std::str::from_utf8(data) else {
@@ -77,12 +77,12 @@ fn tables_match(spanner: &toml_spanner::Table<'_>, toml_val: &toml::Table) -> bo
 /// `toml::Value`. Since both parsers succeeded, no datetimes can be present
 /// (toml-spanner would have rejected the input). Any mismatch is a real bug.
 fn values_match(spanner: &toml_spanner::Item<'_>, toml_val: &toml::Value) -> bool {
-    match (spanner.as_ref(), toml_val) {
-        (ValueRef::String(s), toml::Value::String(t)) => &**s == t,
-        (ValueRef::Integer(a), toml::Value::Integer(b)) => a == *b,
-        (ValueRef::Float(a), toml::Value::Float(b)) => (a.is_nan() && b.is_nan()) || a == *b,
-        (ValueRef::Boolean(a), toml::Value::Boolean(b)) => a == *b,
-        (ValueRef::Array(sa), toml::Value::Array(ta)) => {
+    match (spanner.value(), toml_val) {
+        (Value::String(s), toml::Value::String(t)) => s.as_str() == t,
+        (Value::Integer(a), toml::Value::Integer(b)) => a == b,
+        (Value::Float(a), toml::Value::Float(b)) => (a.is_nan() && b.is_nan()) || a == b,
+        (Value::Boolean(a), toml::Value::Boolean(b)) => a == b,
+        (Value::Array(sa), toml::Value::Array(ta)) => {
             sa.len() == ta.len()
                 && sa
                     .as_slice()
@@ -90,7 +90,7 @@ fn values_match(spanner: &toml_spanner::Item<'_>, toml_val: &toml::Value) -> boo
                     .zip(ta.iter())
                     .all(|(s, t)| values_match(s, t))
         }
-        (ValueRef::Table(st), toml::Value::Table(tt)) => {
+        (Value::Table(st), toml::Value::Table(tt)) => {
             st.len() == tt.len()
                 && st
                     .into_iter()

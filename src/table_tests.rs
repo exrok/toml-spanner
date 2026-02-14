@@ -1,15 +1,18 @@
 use super::*;
+use crate::Span;
 use crate::arena::Arena;
 use crate::str::Str;
 use crate::value::Item;
-use crate::Span;
 
 fn sp() -> Span {
     Span::new(0, 0)
 }
 
 fn key(name: &str) -> Key<'_> {
-    Key { name: Str::from(name), span: sp() }
+    Key {
+        name: Str::from(name),
+        span: sp(),
+    }
 }
 
 fn ival(i: i64) -> Item<'static> {
@@ -106,7 +109,7 @@ fn get_mut_modifies() {
     let mut t = InnerTable::new();
     t.insert(key("a"), ival(10), &arena);
     let v = t.get_mut("a").unwrap();
-    if let crate::value::ValueMut::Integer(i) = v.as_mut() {
+    if let crate::value::ValueMut::Integer(i) = v.value_mut() {
         *i = 99;
     }
     assert_eq!(t.get("a").unwrap().as_integer(), Some(99));
@@ -143,7 +146,7 @@ fn get_mut_at_valid() {
     t.insert(key("a"), ival(10), &arena);
     t.insert(key("b"), ival(20), &arena);
     let v = t.get_mut_at(1);
-    if let crate::value::ValueMut::Integer(i) = v.as_mut() {
+    if let crate::value::ValueMut::Integer(i) = v.value_mut() {
         *i = 99;
     }
     assert_eq!(t.get("b").unwrap().as_integer(), Some(99));
@@ -154,7 +157,10 @@ fn first_key_span_start_works() {
     let arena = Arena::new();
     let mut t = InnerTable::new();
     t.insert(
-        Key { name: Str::from("a"), span: Span::new(10, 11) },
+        Key {
+            name: Str::from("a"),
+            span: Span::new(10, 11),
+        },
         ival(1),
         &arena,
     );
@@ -253,7 +259,7 @@ fn values_mut_modifies() {
     t.insert(key("a"), ival(1), &arena);
     t.insert(key("b"), ival(2), &arena);
     for v in t.values_mut() {
-        if let crate::value::ValueMut::Integer(i) = v.as_mut() {
+        if let crate::value::ValueMut::Integer(i) = v.value_mut() {
             *i += 100;
         }
     }
@@ -284,11 +290,14 @@ fn into_iter_full() {
         .into_iter()
         .map(|(k, v)| (String::from(&*k.name), v.as_integer().unwrap()))
         .collect();
-    assert_eq!(entries, vec![
-        ("a".to_string(), 1),
-        ("b".to_string(), 2),
-        ("c".to_string(), 3),
-    ]);
+    assert_eq!(
+        entries,
+        vec![
+            ("a".to_string(), 1),
+            ("b".to_string(), 2),
+            ("c".to_string(), 3),
+        ]
+    );
 }
 
 #[test]

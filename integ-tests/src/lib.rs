@@ -48,19 +48,14 @@ macro_rules! valid_de {
                 .expect(concat!("failed to load ", stringify!($name), ".toml"));
             let arena = toml_spanner::Arena::new();
             let table = toml_spanner::parse(&toml_str, &arena).expect("failed to parse toml");
-            let mut valid_toml =
-                table.into_item();
+            let mut valid_toml = table.into_item();
 
             match <$kind>::deserialize(&mut valid_toml) {
                 Ok(de) => {
                     insta::assert_debug_snapshot!(de);
                 }
                 Err(err) => {
-                    $crate::unexpected!(
-                        $name,
-                        Some(err.to_diagnostic(())),
-                        &toml_str
-                    );
+                    $crate::unexpected!($name, Some(err.to_diagnostic(())), &toml_str);
                 }
             }
         }
@@ -70,19 +65,14 @@ macro_rules! valid_de {
         fn $name() {
             let arena = toml_spanner::Arena::new();
             let table = toml_spanner::parse($toml, &arena).expect("failed to parse toml");
-            let mut valid_toml =
-                table.into_item();
+            let mut valid_toml = table.into_item();
 
             match <$kind>::deserialize(&mut valid_toml) {
                 Ok(de) => {
                     insta::assert_debug_snapshot!(de);
                 }
                 Err(err) => {
-                    $crate::unexpected!(
-                        $name,
-                        Some(err.to_diagnostic(())),
-                        $toml
-                    );
+                    $crate::unexpected!($name, Some(err.to_diagnostic(())), $toml);
                 }
             }
         }
@@ -107,11 +97,7 @@ macro_rules! invalid_de {
                     panic!("expected errors but deserialized '{de:#?}' successfully");
                 }
                 Err(err) => {
-                    $crate::error_snapshot!(
-                        $name,
-                        Some(err.to_diagnostic(())),
-                        &toml_str
-                    );
+                    $crate::error_snapshot!($name, Some(err.to_diagnostic(())), &toml_str);
                 }
             }
         }
@@ -121,19 +107,14 @@ macro_rules! invalid_de {
         fn $name() {
             let arena = toml_spanner::Arena::new();
             let table = toml_spanner::parse($toml, &arena).expect("failed to parse toml");
-            let mut valid_toml =
-                table.into_item();
+            let mut valid_toml = table.into_item();
 
             match <$kind>::deserialize(&mut valid_toml) {
                 Ok(de) => {
                     panic!("expected errors but deserialized '{de:#?}' successfully");
                 }
                 Err(err) => {
-                    $crate::error_snapshot!(
-                        $name,
-                        Some(err.to_diagnostic(())),
-                        $toml
-                    );
+                    $crate::error_snapshot!($name, Some(err.to_diagnostic(())), $toml);
                 }
             }
         }
@@ -176,21 +157,21 @@ use codespan_reporting::diagnostic::Diagnostic;
 
 pub fn collect_spans(key: &str, val: &toml_spanner::Item<'_>, diags: &mut Vec<Diagnostic<()>>) {
     use codespan_reporting::diagnostic::Label;
-    use toml_spanner::ValueRef;
+    use toml_spanner::Value;
 
-    let code = match val.as_ref() {
-        ValueRef::String(_s) => "string",
-        ValueRef::Integer(_s) => "integer",
-        ValueRef::Float(_s) => "float",
-        ValueRef::Boolean(_s) => "bool",
-        ValueRef::Array(arr) => {
+    let code = match val.value() {
+        Value::String(_s) => "string",
+        Value::Integer(_s) => "integer",
+        Value::Float(_s) => "float",
+        Value::Boolean(_s) => "bool",
+        Value::Array(arr) => {
             for (i, v) in arr.iter().enumerate() {
                 collect_spans(&format!("{key}_{i}"), v, diags);
             }
 
             "array"
         }
-        ValueRef::Table(tab) => {
+        Value::Table(tab) => {
             for (k, v) in tab {
                 collect_spans(&format!("{key}_{}", k.name), v, diags);
             }

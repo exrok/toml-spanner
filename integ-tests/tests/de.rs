@@ -11,7 +11,7 @@ struct Boop {
 
 impl<'de> Deserialize<'de> for Boop {
     fn deserialize(value: &mut Item<'de>) -> Result<Self, Error> {
-        let toml_spanner::ValueMut::Table(table) = value.as_mut() else {
+        let toml_spanner::ValueMut::Table(table) = value.value_mut() else {
             return Err(value.expected("a table").into());
         };
 
@@ -53,7 +53,7 @@ impl<'de> Deserialize<'de> for Package {
             let (name, version) = from_str(&s);
             Ok(Self { name, version })
         } else if value.as_table().is_some() {
-            let toml_spanner::ValueMut::Table(table) = value.as_mut() else {
+            let toml_spanner::ValueMut::Table(table) = value.value_mut() else {
                 unreachable!()
             };
 
@@ -81,7 +81,7 @@ struct Array {
 
 impl<'de> Deserialize<'de> for Array {
     fn deserialize(value: &mut Item<'de>) -> Result<Self, Error> {
-        let toml_spanner::ValueMut::Table(table) = value.as_mut() else {
+        let toml_spanner::ValueMut::Table(table) = value.value_mut() else {
             return Err(value.expected("a table").into());
         };
         let packages = table.required("packages")?;
@@ -132,7 +132,7 @@ struct Reason {
 
 impl<'de> Deserialize<'de> for Reason {
     fn deserialize(value: &mut Item<'de>) -> Result<Self, Error> {
-        let toml_spanner::ValueMut::Table(table) = value.as_mut() else {
+        let toml_spanner::ValueMut::Table(table) = value.value_mut() else {
             return Err(value.expected("a table").into());
         };
         let reason = table.required("reason")?;
@@ -148,7 +148,7 @@ struct Flattened {
 
 impl<'de> Deserialize<'de> for Flattened {
     fn deserialize(value: &mut Item<'de>) -> Result<Self, Error> {
-        let toml_spanner::ValueMut::Table(table) = value.as_mut() else {
+        let toml_spanner::ValueMut::Table(table) = value.value_mut() else {
             return Err(value.expected("a table").into());
         };
         let flattened = table.required("flattened")?;
@@ -165,7 +165,7 @@ struct Ohno {
 
 impl<'de> Deserialize<'de> for Ohno {
     fn deserialize(value: &mut Item<'de>) -> Result<Self, Error> {
-        let toml_spanner::ValueMut::Table(table) = value.as_mut() else {
+        let toml_spanner::ValueMut::Table(table) = value.value_mut() else {
             return Err(value.expected("a table").into());
         };
         let year = table.required("year")?;

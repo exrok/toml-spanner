@@ -5,7 +5,7 @@
 mod tests;
 
 use crate::value::{
-    FLAG_BIT, FLAG_SHIFT, Item, Key, TAG_MASK, TAG_SHIFT, TAG_TABLE, TAG_TABLE_HEADER,
+    FLAG_HEADER, FLAG_MASK, FLAG_SHIFT, FLAG_TABLE, Item, Key, TAG_MASK, TAG_SHIFT, TAG_TABLE,
 };
 use crate::{Deserialize, Error, ErrorKind, Span};
 use std::alloc::Layout;
@@ -334,11 +334,11 @@ impl<'de> Iterator for IntoKeys<'de> {
 /// uses swap-remove and may reorder the remaining entries.
 #[repr(C)]
 pub struct Table<'de> {
+    pub(crate) value: InnerTable<'de>,
     /// Bits 2-0: tag, bits 31-3: span.start
     start_and_tag: u32,
     /// Bit 0: flag bit (parser-internal), bits 31-1: span.end
     end_and_flag: u32,
-    pub(crate) value: InnerTable<'de>,
 }
 
 impl<'de> Table<'de> {
@@ -346,7 +346,7 @@ impl<'de> Table<'de> {
     pub fn new(span: Span) -> Table<'de> {
         Table {
             start_and_tag: span.start << TAG_SHIFT | TAG_TABLE,
-            end_and_flag: span.end << FLAG_SHIFT,
+            end_and_flag: (span.end << FLAG_SHIFT) | FLAG_TABLE,
             value: InnerTable::new(),
         }
     }
@@ -530,18 +530,18 @@ impl<'de> Table<'de> {
 
     #[inline]
     pub(crate) fn set_span_end(&mut self, v: u32) {
-        self.end_and_flag = (v << FLAG_SHIFT) | (self.end_and_flag & FLAG_BIT);
+        self.end_and_flag = (v << FLAG_SHIFT) | (self.end_and_flag & FLAG_MASK);
     }
 
     #[inline]
     pub(crate) fn extend_span_end(&mut self, new_end: u32) {
         let old = self.end_and_flag;
         let current = old >> FLAG_SHIFT;
-        self.end_and_flag = (current.max(new_end) << FLAG_SHIFT) | (old & FLAG_BIT);
+        self.end_and_flag = (current.max(new_end) << FLAG_SHIFT) | (old & FLAG_MASK);
     }
 
     #[inline]
-    pub(crate) fn set_header_tag(&mut self) {
-        self.start_and_tag = (self.start_and_tag & !TAG_MASK) | TAG_TABLE_HEADER;
+    pub(crate) fn set_header_flag(&mut self) {
+        self.end_and_flag = (self.end_and_flag & !FLAG_MASK) | FLAG_HEADER;
     }
 }

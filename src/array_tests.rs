@@ -1,7 +1,7 @@
 use super::*;
+use crate::Span;
 use crate::arena::Arena;
 use crate::str::Str;
-use crate::Span;
 
 fn sp() -> Span {
     Span::new(0, 0)
@@ -119,7 +119,7 @@ fn get_mut_modifies() {
     a.push(ival(10), &arena);
     a.push(ival(20), &arena);
     let v = a.get_mut(0).unwrap();
-    if let crate::value::ValueMut::Integer(i) = v.as_mut() {
+    if let crate::value::ValueMut::Integer(i) = v.value_mut() {
         *i = 99;
     }
     assert_eq!(a.get(0).unwrap().as_integer(), Some(99));
@@ -176,7 +176,7 @@ fn last_mut_modify() {
     a.push(ival(1), &arena);
     a.push(ival(2), &arena);
     let last = a.last_mut().unwrap();
-    if let crate::value::ValueMut::Integer(i) = last.as_mut() {
+    if let crate::value::ValueMut::Integer(i) = last.value_mut() {
         *i = 99;
     }
     assert_eq!(a.get(1).unwrap().as_integer(), Some(99));
@@ -209,7 +209,7 @@ fn as_mut_slice_modify() {
     a.push(ival(1), &arena);
     a.push(ival(2), &arena);
     let s = a.as_mut_slice();
-    if let crate::value::ValueMut::Integer(i) = s[0].as_mut() {
+    if let crate::value::ValueMut::Integer(i) = s[0].value_mut() {
         *i = 100;
     }
     assert_eq!(a.get(0).unwrap().as_integer(), Some(100));

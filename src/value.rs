@@ -21,11 +21,20 @@ pub(crate) const TAG_FLOAT: u32 = 2;
 pub(crate) const TAG_BOOLEAN: u32 = 3;
 pub(crate) const TAG_ARRAY: u32 = 4;
 pub(crate) const TAG_TABLE: u32 = 5;
-pub(crate) const TAG_TABLE_HEADER: u32 = 6;
-pub(crate) const TAG_TABLE_DOTTED: u32 = 7;
 
-pub(crate) const FLAG_BIT: u32 = 1;
-pub(crate) const FLAG_SHIFT: u32 = 1;
+/// 3-bit state field in `end_and_flag` encoding container kind and sub-state.
+/// Bit 2 set → table, bits 1:0 == 01 → array. Allows dispatch without
+/// reading `start_and_tag`.
+pub(crate) const FLAG_MASK: u32 = 0x7;
+pub(crate) const FLAG_SHIFT: u32 = 3;
+
+pub(crate) const FLAG_NONE: u32 = 0;
+pub(crate) const FLAG_ARRAY: u32 = 2;
+pub(crate) const FLAG_AOT: u32 = 3;
+pub(crate) const FLAG_TABLE: u32 = 4;
+pub(crate) const FLAG_DOTTED: u32 = 5;
+pub(crate) const FLAG_HEADER: u32 = 6;
+pub(crate) const FLAG_FROZEN: u32 = 7;
 
 #[repr(C)]
 union Payload<'de> {
@@ -40,11 +49,11 @@ union Payload<'de> {
 /// A parsed TOML value with span information.
 #[repr(C)]
 pub struct Item<'de> {
+    payload: Payload<'de>,
     /// Bits 2-0: tag, bits 31-3: span.start
     start_and_tag: u32,
     /// Bit 0: flag bit (parser-internal), bits 31-1: span.end
     end_and_flag: u32,
-    payload: Payload<'de>,
 }
 
 const _: () = assert!(std::mem::size_of::<Item<'_>>() == 24);
@@ -52,38 +61,63 @@ const _: () = assert!(std::mem::align_of::<Item<'_>>() == 8);
 
 impl<'de> Item<'de> {
     #[inline]
-    fn raw(tag: u32, start: u32, end: u32, payload: Payload<'de>) -> Self {
+    fn raw(tag: u32, flag: u32, start: u32, end: u32, payload: Payload<'de>) -> Self {
         Self {
             start_and_tag: (start << TAG_SHIFT) | tag,
-            end_and_flag: end << FLAG_SHIFT,
+            end_and_flag: (end << FLAG_SHIFT) | flag,
             payload,
         }
     }
 
     #[inline]
     pub(crate) fn string(s: Str<'de>, span: Span) -> Self {
-        Self::raw(TAG_STRING, span.start, span.end, Payload { string: s })
+        Self::raw(
+            TAG_STRING,
+            FLAG_NONE,
+            span.start,
+            span.end,
+            Payload { string: s },
+        )
     }
 
     #[inline]
     pub(crate) fn integer(i: i64, span: Span) -> Self {
-        Self::raw(TAG_INTEGER, span.start, span.end, Payload { integer: i })
+        Self::raw(
+            TAG_INTEGER,
+            FLAG_NONE,
+            span.start,
+            span.end,
+            Payload { integer: i },
+        )
     }
 
     #[inline]
     pub(crate) fn float(f: f64, span: Span) -> Self {
-        Self::raw(TAG_FLOAT, span.start, span.end, Payload { float: f })
+        Self::raw(
+            TAG_FLOAT,
+            FLAG_NONE,
+            span.start,
+            span.end,
+            Payload { float: f },
+        )
     }
 
     #[inline]
     pub(crate) fn boolean(b: bool, span: Span) -> Self {
-        Self::raw(TAG_BOOLEAN, span.start, span.end, Payload { boolean: b })
+        Self::raw(
+            TAG_BOOLEAN,
+            FLAG_NONE,
+            span.start,
+            span.end,
+            Payload { boolean: b },
+        )
     }
 
     #[inline]
     pub(crate) fn array(a: Array<'de>, span: Span) -> Self {
         Self::raw(
             TAG_ARRAY,
+            FLAG_ARRAY,
             span.start,
             span.end,
             Payload {
@@ -96,6 +130,7 @@ impl<'de> Item<'de> {
     pub(crate) fn table(t: InnerTable<'de>, span: Span) -> Self {
         Self::raw(
             TAG_TABLE,
+            FLAG_TABLE,
             span.start,
             span.end,
             Payload {
@@ -104,27 +139,40 @@ impl<'de> Item<'de> {
         )
     }
 
-    /// Creates an array-of-tables value (flag bit set).
+    /// Creates an array-of-tables value.
     #[inline]
     pub(crate) fn array_aot(a: Array<'de>, span: Span) -> Self {
-        let mut v = Self::array(a, span);
-        v.end_and_flag |= FLAG_BIT;
-        v
+        Self::raw(
+            TAG_ARRAY,
+            FLAG_AOT,
+            span.start,
+            span.end,
+            Payload {
+                array: ManuallyDrop::new(a),
+            },
+        )
     }
 
-    /// Creates a frozen (inline) table value (flag bit set).
+    /// Creates a frozen (inline) table value.
     #[inline]
     pub(crate) fn table_frozen(t: InnerTable<'de>, span: Span) -> Self {
-        let mut v = Self::table(t, span);
-        v.end_and_flag |= FLAG_BIT;
-        v
+        Self::raw(
+            TAG_TABLE,
+            FLAG_FROZEN,
+            span.start,
+            span.end,
+            Payload {
+                table: ManuallyDrop::new(t),
+            },
+        )
     }
 
-    /// Creates a table with HEADER tag (explicitly opened by `[header]`).
+    /// Creates a table with HEADER state (explicitly opened by `[header]`).
     #[inline]
     pub(crate) fn table_header(t: InnerTable<'de>, span: Span) -> Self {
         Self::raw(
-            TAG_TABLE_HEADER,
+            TAG_TABLE,
+            FLAG_HEADER,
             span.start,
             span.end,
             Payload {
@@ -133,11 +181,12 @@ impl<'de> Item<'de> {
         )
     }
 
-    /// Creates a table with DOTTED tag (created by dotted-key navigation).
+    /// Creates a table with DOTTED state (created by dotted-key navigation).
     #[inline]
     pub(crate) fn table_dotted(t: InnerTable<'de>, span: Span) -> Self {
         Self::raw(
-            TAG_TABLE_DOTTED,
+            TAG_TABLE,
+            FLAG_DOTTED,
             span.start,
             span.end,
             Payload {
@@ -146,11 +195,31 @@ impl<'de> Item<'de> {
         )
     }
 }
+#[derive(Clone, Copy)]
+#[repr(u8)]
+#[allow(unused)]
+enum Kind {
+    String = 0,
+    Integer = 1,
+    Float = 2,
+    Boolean = 3,
+    Array = 4,
+    Table = 5,
+}
 
 impl<'de> Item<'de> {
     #[inline]
+    fn kind(&self) -> Kind {
+        unsafe { std::mem::transmute::<u8, Kind>(self.start_and_tag as u8 & 0x7) }
+    }
+    #[inline]
     pub(crate) fn tag(&self) -> u32 {
         self.start_and_tag & TAG_MASK
+    }
+
+    #[inline]
+    pub(crate) fn flag(&self) -> u32 {
+        self.end_and_flag & FLAG_MASK
     }
 
     /// Returns the source span (tag and flag bits masked out).
@@ -177,32 +246,32 @@ impl<'de> Item<'de> {
 
     #[inline]
     pub(crate) fn is_table(&self) -> bool {
-        self.tag() >= TAG_TABLE
+        self.flag() >= FLAG_TABLE
     }
 
     #[inline]
     pub(crate) fn is_array(&self) -> bool {
-        self.tag() == TAG_ARRAY
+        self.flag() & 6 == 2
     }
 
     #[inline]
     pub(crate) fn is_frozen(&self) -> bool {
-        self.end_and_flag & FLAG_BIT != 0
+        self.flag() == FLAG_FROZEN
     }
 
     #[inline]
     pub(crate) fn is_aot(&self) -> bool {
-        self.tag() == TAG_ARRAY && self.end_and_flag & FLAG_BIT != 0
+        self.flag() == FLAG_AOT
     }
 
     #[inline]
     pub(crate) fn has_header_bit(&self) -> bool {
-        self.tag() == TAG_TABLE_HEADER
+        self.flag() == FLAG_HEADER
     }
 
     #[inline]
     pub(crate) fn has_dotted_bit(&self) -> bool {
-        self.tag() == TAG_TABLE_DOTTED
+        self.flag() == FLAG_DOTTED
     }
 
     /// Splits this array [`Item`] into disjoint borrows: `&mut u32` for the
@@ -223,11 +292,11 @@ impl<'de> Item<'de> {
 }
 
 /// Borrowed view into an [`Item`] for pattern matching.
-pub enum ValueRef<'a, 'de> {
+pub enum Value<'a, 'de> {
     String(&'a Str<'de>),
-    Integer(i64),
-    Float(f64),
-    Boolean(bool),
+    Integer(&'a i64),
+    Float(&'a f64),
+    Boolean(&'a bool),
     Array(&'a Array<'de>),
     Table(&'a Table<'de>),
 }
@@ -244,31 +313,31 @@ pub enum ValueMut<'a, 'de> {
 
 impl<'de> Item<'de> {
     /// Returns a borrowed view for pattern matching.
-    #[inline]
-    pub fn as_ref(&self) -> ValueRef<'_, 'de> {
+    #[inline(never)]
+    pub fn value(&self) -> Value<'_, 'de> {
         unsafe {
-            match self.tag() {
-                TAG_STRING => ValueRef::String(&self.payload.string),
-                TAG_INTEGER => ValueRef::Integer(self.payload.integer),
-                TAG_FLOAT => ValueRef::Float(self.payload.float),
-                TAG_BOOLEAN => ValueRef::Boolean(self.payload.boolean),
-                TAG_ARRAY => ValueRef::Array(&self.payload.array),
-                _ => ValueRef::Table(self.as_spanned_table_unchecked()),
+            match self.kind() {
+                Kind::String => Value::String(&self.payload.string),
+                Kind::Integer => Value::Integer(&self.payload.integer),
+                Kind::Float => Value::Float(&self.payload.float),
+                Kind::Boolean => Value::Boolean(&self.payload.boolean),
+                Kind::Array => Value::Array(&self.payload.array),
+                Kind::Table => Value::Table(self.as_spanned_table_unchecked()),
             }
         }
     }
 
     /// Returns a mutable view for pattern matching.
-    #[inline]
-    pub fn as_mut(&mut self) -> ValueMut<'_, 'de> {
+    #[inline(never)]
+    pub fn value_mut(&mut self) -> ValueMut<'_, 'de> {
         unsafe {
-            match self.tag() {
-                TAG_STRING => ValueMut::String(&mut self.payload.string),
-                TAG_INTEGER => ValueMut::Integer(&mut self.payload.integer),
-                TAG_FLOAT => ValueMut::Float(&mut self.payload.float),
-                TAG_BOOLEAN => ValueMut::Boolean(&mut self.payload.boolean),
-                TAG_ARRAY => ValueMut::Array(&mut self.payload.array),
-                _ => ValueMut::Table(self.as_spanned_table_mut_unchecked()),
+            match self.kind() {
+                Kind::String => ValueMut::String(&mut self.payload.string),
+                Kind::Integer => ValueMut::Integer(&mut self.payload.integer),
+                Kind::Float => ValueMut::Float(&mut self.payload.float),
+                Kind::Boolean => ValueMut::Boolean(&mut self.payload.boolean),
+                Kind::Array => ValueMut::Array(&mut self.payload.array),
+                Kind::Table => ValueMut::Table(self.as_spanned_table_mut_unchecked()),
             }
         }
     }
@@ -443,8 +512,8 @@ impl<'de> Item<'de> {
     #[inline]
     pub fn take_string(&mut self, msg: Option<&'static str>) -> Result<Str<'de>, Error> {
         let span = self.span();
-        match self.as_ref() {
-            ValueRef::String(s) => Ok(*s),
+        match self.value() {
+            Value::String(s) => Ok(*s),
             _ => Err(Error {
                 kind: ErrorKind::Wanted {
                     expected: msg.unwrap_or("a string"),
@@ -477,12 +546,12 @@ impl serde::Serialize for Item<'_> {
     where
         S: serde::Serializer,
     {
-        match self.as_ref() {
-            ValueRef::String(s) => ser.serialize_str(s),
-            ValueRef::Integer(i) => ser.serialize_i64(i),
-            ValueRef::Float(f) => ser.serialize_f64(f),
-            ValueRef::Boolean(b) => ser.serialize_bool(b),
-            ValueRef::Array(arr) => {
+        match self.value() {
+            Value::String(s) => ser.serialize_str(s),
+            Value::Integer(i) => ser.serialize_i64(*i),
+            Value::Float(f) => ser.serialize_f64(*f),
+            Value::Boolean(b) => ser.serialize_bool(*b),
+            Value::Array(arr) => {
                 use serde::ser::SerializeSeq;
                 let mut seq = ser.serialize_seq(Some(arr.len()))?;
                 for ele in arr {
@@ -490,7 +559,7 @@ impl serde::Serialize for Item<'_> {
                 }
                 seq.end()
             }
-            ValueRef::Table(tab) => {
+            Value::Table(tab) => {
                 use serde::ser::SerializeMap;
                 let mut map = ser.serialize_map(Some(tab.len()))?;
                 for (k, v) in tab {

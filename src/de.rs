@@ -115,7 +115,7 @@ where
     T: Deserialize<'de>,
 {
     fn deserialize(value: &mut value::Item<'de>) -> Result<Self, Error> {
-        let value::ValueMut::Array(arr) = value.as_mut() else {
+        let value::ValueMut::Array(arr) = value.value_mut() else {
             return Err(value.expected("an array"));
         };
         let arr = std::mem::take(arr);

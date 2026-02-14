@@ -72,7 +72,7 @@ pub use parser::parse;
 pub use span::{Span, Spanned};
 pub use str::Str;
 pub use table::Table;
-pub use value::{Item, Key, ValueMut, ValueRef};
+pub use value::{Item, Key, Value, ValueMut};
 
 #[cfg(feature = "serde")]
 pub mod impl_serde;
