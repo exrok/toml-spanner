@@ -80,6 +80,48 @@ fn main() {
 }
 ```
 
+## Benchmarks
+
+Measured on AMD Ryzen 9 5950X, 64GB RAM, Linux 6.18, rustc 1.93.0.
+Relative parse time across real-world TOML files (lower is better):
+
+<!--  -->
+
+```
+                  time(μs)  cycles(K)   instr(K)  branch(K)
+zed
+  toml-spanner        29.8        142        501        101
+  toml               250.1       1196       3074        607
+  toml-span          381.9       1821       5057       1050
+extask
+  toml-spanner        11.5         55        177         33
+  toml                81.1        387       1017        196
+  toml-span          108.4        517       1350        268
+devsm
+  toml-spanner         4.0         19         73         15
+  toml                34.9        167        439         85
+  toml-span           59.3        283        732        146
+
+```
+
+### Compile Time
+
+Additional release build time over an empty baseline (lower is better):
+
+<!--  -->
+
+```
+                 median(ms)    added(ms)
+null                    101
+toml-spanner            673         +572
+toml-span              1393        +1292
+toml                   3088        +2987
+toml+serde             5214        +5113
+```
+
+Checkout the `./benchmark` for more details, but numbers should simulate the additional
+time added users would experience during source based installs such as via `cargo install`.
+
 ## Divergence from `toml-span`
 
 While `toml-spanner` started as a fork of `toml-span`, it has since undergone
@@ -110,14 +152,27 @@ Miri.
 
 ### Testing
 
-Code coverage
+The `unsafe` in this crate demands thorough testing. The full suite includes
+[Miri](https://github.com/rust-lang/miri) for detecting undefined behavior,
+fuzzing against the reference `toml` crate, and snapshot-based integration
+tests — currently at **97.6%** branch coverage.
 
-```
-cargo install cargo-llvm-cov
+```bash
+cargo test --workspace                          # all tests
+cargo test -p integ-tests                       # integration tests only
+cargo +nightly miri nextest run                 # undefined behavior checks
+cargo +nightly fuzz run parse_compare_toml      # fuzz against the toml crate
+cargo +nightly fuzz run parse_value             # fuzz the parser directly
 ```
 
-```
-cargo +nightly llvm-cov  --branch --show-missing-lines -- -q
+Integration tests use [insta](https://insta.rs/) for snapshot assertions.
+Run `cargo insta test -p integ-tests` and `cargo insta review` to review
+changes.
+
+Code coverage:
+
+```bash
+cargo +nightly llvm-cov --branch --show-missing-lines -- -q
 ```
 
 ## Differences from `toml`

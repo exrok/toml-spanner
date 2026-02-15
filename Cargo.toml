@@ -1,10 +1,10 @@
 [package]
 name = "toml-spanner"
 version = "0.1.0"
-description = "Toml parser and deserializer that preserves span information"
+description = "High Performance Toml parser and deserializer that preserves span information with fast compile times."
 authors = [
-    "Embark <opensource@embark-studios.com>",
     "Thomas Dagenais <exrok@i64.dev>",
+    "Embark <opensource@embark-studios.com>",
 ]
 edition = "2024"
 license = "MIT OR Apache-2.0"
@@ -17,8 +17,8 @@ categories = ["parser-implementations", "config"]
 
 [workspace]
 resolver = "3"
-members = ["benchmark", "integ-tests"]
-exclude = ["fuzz"]
+members = ["integ-tests"]
+exclude = ["fuzz", "benchmark"]
 
 [features]
 serde = ["dep:serde"]

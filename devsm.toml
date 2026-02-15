@@ -1,0 +1,3 @@
+[action.benchmark]
+pwd = "./benchmark"
+cmd = ["cargo", "+nightly", "run", "--release"]
