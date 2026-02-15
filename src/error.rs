@@ -10,8 +10,6 @@ use std::fmt::{self, Debug, Display};
 /// An error from parsing or deserializing TOML.
 ///
 /// Contains both the error kind and the source location where it occurred.
-/// Enable the `reporting` feature for rich diagnostic output via
-/// [`to_diagnostic`](Self::to_diagnostic).
 pub struct Error {
     /// What went wrong.
     pub kind: ErrorKind,
@@ -314,7 +312,6 @@ impl Display for Error {
 }
 
 #[cfg(feature = "reporting")]
-#[cfg_attr(docsrs, doc(cfg(feature = "reporting")))]
 impl Error {
     /// Converts this error into a [`codespan_reporting`](https://docs.rs/codespan-reporting) diagnostic.
     pub fn to_diagnostic<FileId: Copy + PartialEq>(

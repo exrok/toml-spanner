@@ -12,7 +12,7 @@ use std::{fmt, str};
 /// A borrowed string that references either the TOML source or the parser
 /// [`Arena`](crate::Arena).
 ///
-/// `Str` is [`Copy`] and never owns its data. It dereferences to [`str`] and
+/// `Str` is [`Copy`] and never owns its data. It dereferences to `str` and
 /// can be converted into [`String`], [`Box<str>`], or [`Cow<str>`](std::borrow::Cow).
 #[derive(Copy, Clone)]
 pub struct Str<'de> {

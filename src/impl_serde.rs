@@ -1,5 +1,3 @@
-#![cfg_attr(docsrs, doc(cfg(feature = "serde")))]
-
 //! Serde serialization support for [`Spanned<T>`](crate::Spanned) and
 //! [`Item`](crate::Item).
 //!
