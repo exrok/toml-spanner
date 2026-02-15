@@ -108,6 +108,18 @@ extensive changes:
 and size goals. This is mitigated by fuzzing and running the test suite under
 Miri.
 
+### Testing
+
+Code coverage
+
+```
+cargo install cargo-llvm-cov
+```
+
+```
+cargo +nightly llvm-cov  --branch --show-missing-lines -- -q
+```
+
 ## Differences from `toml`
 
 First off I just want to be up front and clear about the differences/limitations of this crate versus `toml`

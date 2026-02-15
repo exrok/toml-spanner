@@ -472,3 +472,117 @@ fn item_debug_fmt() {
     // Table Debug may wrap in ManuallyDrop due to union layout
     assert!(debug.contains("{}"));
 }
+
+#[test]
+fn item_index_operators() {
+    let arena = Arena::new();
+
+    // Index table Item by &str
+    let mut tab = InnerTable::new();
+    tab.insert(
+        Key { name: Str::from("name"), span: sp(0, 4) },
+        Item::string(Str::from("alice"), sp(5, 10)),
+        &arena,
+    );
+    tab.insert(
+        Key { name: Str::from("age"), span: sp(11, 14) },
+        Item::integer(30, sp(15, 17)),
+        &arena,
+    );
+    let item = Item::table(tab, sp(0, 17));
+    assert_eq!(item["name"].as_str(), Some("alice"));
+    assert_eq!(item["age"].as_integer(), Some(30));
+    assert!(item["missing"].item().is_none());
+
+    // Index array Item by usize
+    let mut arr = Array::new();
+    arr.push(Item::integer(10, sp(0, 2)), &arena);
+    arr.push(Item::string(Str::from("two"), sp(3, 6)), &arena);
+    arr.push(Item::boolean(true, sp(7, 11)), &arena);
+    let item = Item::array(arr, sp(0, 11));
+    assert_eq!(item[0].as_integer(), Some(10));
+    assert_eq!(item[1].as_str(), Some("two"));
+    assert_eq!(item[2].as_bool(), Some(true));
+    assert!(item[3].item().is_none());
+    assert!(item[100].item().is_none());
+
+    // &str index on non-table types returns NONE
+    let int_item = Item::integer(42, sp(0, 2));
+    assert!(int_item["anything"].item().is_none());
+    assert!(Item::string(Str::from("s"), sp(0, 1))["k"].item().is_none());
+    assert!(Item::boolean(true, sp(0, 4))["k"].item().is_none());
+    assert!(Item::array(Array::new(), sp(0, 2))["k"].item().is_none());
+
+    // usize index on non-array types returns NONE
+    assert!(int_item[0].item().is_none());
+    assert!(Item::string(Str::from("s"), sp(0, 1))[0].item().is_none());
+    assert!(Item::table(InnerTable::new(), sp(0, 2))[0].item().is_none());
+}
+
+#[test]
+fn maybe_item_chained_and_none_propagation() {
+    let arena = Arena::new();
+
+    // Build nested: { users: [{ name: "alice", scores: [100, 200] }] }
+    let mut scores = Array::new();
+    scores.push(Item::integer(100, sp(0, 3)), &arena);
+    scores.push(Item::integer(200, sp(4, 7)), &arena);
+
+    let mut user_tab = InnerTable::new();
+    user_tab.insert(
+        Key { name: Str::from("name"), span: sp(0, 4) },
+        Item::string(Str::from("alice"), sp(5, 10)),
+        &arena,
+    );
+    user_tab.insert(
+        Key { name: Str::from("scores"), span: sp(11, 17) },
+        Item::array(scores, sp(18, 25)),
+        &arena,
+    );
+
+    let mut users = Array::new();
+    users.push(Item::table(user_tab, sp(0, 25)), &arena);
+
+    let mut root = InnerTable::new();
+    root.insert(
+        Key { name: Str::from("users"), span: sp(0, 5) },
+        Item::array(users, sp(6, 30)),
+        &arena,
+    );
+    let root_item = Item::table(root, sp(0, 30));
+
+    // Deep chained access
+    assert_eq!(root_item["users"][0]["name"].as_str(), Some("alice"));
+    assert_eq!(root_item["users"][0]["scores"][0].as_integer(), Some(100));
+    assert_eq!(root_item["users"][0]["scores"][1].as_integer(), Some(200));
+
+    // Missing at various depths returns NONE
+    assert!(root_item["users"][0]["scores"][2].item().is_none());
+    assert!(root_item["users"][0]["missing"].item().is_none());
+    assert!(root_item["users"][1].item().is_none());
+    assert!(root_item["nope"][0]["name"].item().is_none());
+
+    // span()/value() on valid vs NONE MaybeItem
+    let maybe = &root_item["users"][0]["name"];
+    assert!(maybe.span().is_some());
+    assert!(matches!(maybe.value(), Some(Value::String(_))));
+    let none = &root_item["missing"];
+    assert!(none.span().is_none());
+    assert!(none.value().is_none());
+
+    // NONE propagates through arbitrary chains
+    let item = Item::integer(42, sp(0, 2));
+    assert!(item["a"]["b"]["c"].item().is_none());
+    assert!(item["a"][0]["b"][1].item().is_none());
+    assert!(item[0][1][2].item().is_none());
+    assert!(item[0]["key"][1]["nested"].item().is_none());
+
+    // All accessors on NONE return None
+    let none = &item["missing"];
+    assert!(none.as_str().is_none());
+    assert!(none.as_integer().is_none());
+    assert!(none.as_float().is_none());
+    assert!(none.as_bool().is_none());
+    assert!(none.as_array().is_none());
+    assert!(none.as_table().is_none());
+}

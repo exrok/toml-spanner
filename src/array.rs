@@ -1,5 +1,10 @@
 #![allow(unsafe_code)]
 
+#[cfg(test)]
+#[path = "./array_tests.rs"]
+mod tests;
+
+use crate::MaybeItem;
 use crate::arena::Arena;
 use crate::value::Item;
 use std::mem::size_of;
@@ -229,6 +234,14 @@ impl<'de> IntoIterator for Array<'de> {
     }
 }
 
-#[cfg(test)]
-#[path = "./array_tests.rs"]
-mod tests;
+impl<'de> std::ops::Index<usize> for Array<'de> {
+    type Output = MaybeItem<'de>;
+
+    #[inline]
+    fn index(&self, index: usize) -> &Self::Output {
+        if let Some(item) = self.get(index) {
+            return MaybeItem::from_ref(item);
+        }
+        &crate::value::NONE
+    }
+}

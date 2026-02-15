@@ -404,3 +404,38 @@ fn default_and_debug() {
     assert_eq!(entries.len(), 3);
     assert_eq!(&*entries[0].0.name, "a");
 }
+
+#[test]
+fn index_operator() {
+    let arena = Arena::new();
+    let table = make_table(&arena);
+
+    // Valid keys return MaybeItem with the value
+    assert_eq!(table["a"].as_integer(), Some(1));
+    assert_eq!(table["b"].as_integer(), Some(2));
+    assert_eq!(table["c"].as_integer(), Some(3));
+
+    // Missing keys return NONE (no panic)
+    assert!(table["missing"].item().is_none());
+    assert!(table[""].item().is_none());
+
+    // NONE propagates through chained indexing
+    assert!(table["missing"]["nested"].item().is_none());
+    assert!(table["missing"][0].item().is_none());
+
+    // Nested table indexing
+    let mut inner = InnerTable::new();
+    inner.insert(key("x"), ival(42), &arena);
+    let mut outer = Table::new(Span::new(0, 50));
+    outer.insert(
+        key("nested"),
+        Item::table(inner, Span::new(0, 20)),
+        &arena,
+    );
+    assert_eq!(outer["nested"]["x"].as_integer(), Some(42));
+    assert!(outer["nested"]["y"].item().is_none());
+
+    // Empty table always returns NONE
+    let empty = Table::new(Span::new(0, 0));
+    assert!(empty["anything"].item().is_none());
+}

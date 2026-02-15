@@ -75,7 +75,11 @@ fn string_escapes() {
 
     for (input, expected) in cases {
         let v = ctx.parse_ok(input);
-        assert_eq!(v.get("a").unwrap().as_str(), Some(expected), "input: {input}");
+        assert_eq!(
+            v.get("a").unwrap().as_str(),
+            Some(expected),
+            "input: {input}"
+        );
     }
 }
 
@@ -92,7 +96,11 @@ fn string_types() {
 
     for (input, expected) in cases {
         let v = ctx.parse_ok(input);
-        assert_eq!(v.get("a").unwrap().as_str(), Some(expected), "input: {input}");
+        assert_eq!(
+            v.get("a").unwrap().as_str(),
+            Some(expected),
+            "input: {input}"
+        );
     }
 }
 
@@ -109,7 +117,11 @@ fn number_formats() {
 
     for (input, expected) in int_cases {
         let v = ctx.parse_ok(input);
-        assert_eq!(v.get("a").unwrap().as_integer(), Some(expected), "input: {input}");
+        assert_eq!(
+            v.get("a").unwrap().as_integer(),
+            Some(expected),
+            "input: {input}"
+        );
     }
 
     let float_cases = [
@@ -633,8 +645,16 @@ fn crlf_handling() {
     let ctx = TestCtx::new();
 
     let v = ctx.parse_ok("a = 1\r\nb = 2\r\n");
-    assert_eq!(v.get("a").unwrap().as_integer(), Some(1), "input: a = 1\\r\\nb = 2\\r\\n");
-    assert_eq!(v.get("b").unwrap().as_integer(), Some(2), "input: a = 1\\r\\nb = 2\\r\\n");
+    assert_eq!(
+        v.get("a").unwrap().as_integer(),
+        Some(1),
+        "input: a = 1\\r\\nb = 2\\r\\n"
+    );
+    assert_eq!(
+        v.get("b").unwrap().as_integer(),
+        Some(2),
+        "input: a = 1\\r\\nb = 2\\r\\n"
+    );
 
     let valid_str_cases = [
         ("a = \"\"\"\r\nhello\r\nworld\"\"\"", "hello\r\nworld"),
@@ -646,18 +666,32 @@ fn crlf_handling() {
 
     for (input, expected) in valid_str_cases {
         let v = ctx.parse_ok(input);
-        assert_eq!(v.get("a").unwrap().as_str(), Some(expected), "input: {input}");
+        assert_eq!(
+            v.get("a").unwrap().as_str(),
+            Some(expected),
+            "input: {input}"
+        );
     }
 
     let v = ctx.parse_ok("[table]\r\nkey = 1\r\n");
     let t = v.get("table").unwrap().as_table().unwrap();
-    assert_eq!(t.get("key").unwrap().as_integer(), Some(1), "input: [table]\\r\\nkey = 1\\r\\n");
+    assert_eq!(
+        t.get("key").unwrap().as_integer(),
+        Some(1),
+        "input: [table]\\r\\nkey = 1\\r\\n"
+    );
 
     let e = ctx.parse_err("a = \"hello\rworld\"");
-    assert!(matches!(e.kind, ErrorKind::InvalidCharInString('\r')), "input: a = \"hello\\rworld\"");
+    assert!(
+        matches!(e.kind, ErrorKind::InvalidCharInString('\r')),
+        "input: a = \"hello\\rworld\""
+    );
 
     let e = ctx.parse_err("a = \"hello\r\nworld\"");
-    assert!(matches!(e.kind, ErrorKind::InvalidCharInString('\n')), "input: a = \"hello\\r\\nworld\"");
+    assert!(
+        matches!(e.kind, ErrorKind::InvalidCharInString('\n')),
+        "input: a = \"hello\\r\\nworld\""
+    );
 }
 
 #[test]
@@ -673,20 +707,36 @@ fn escape_sequences() {
 
     for (input, expected) in valid_cases {
         let v = ctx.parse_ok(input);
-        assert_eq!(v.get("a").unwrap().as_str(), Some(expected), "input: {input}");
+        assert_eq!(
+            v.get("a").unwrap().as_str(),
+            Some(expected),
+            "input: {input}"
+        );
     }
 
     let e = ctx.parse_err(r#"a = "\uGGGG""#);
-    assert!(matches!(e.kind, ErrorKind::InvalidHexEscape('G')), "input: a = \"\\uGGGG\"");
+    assert!(
+        matches!(e.kind, ErrorKind::InvalidHexEscape('G')),
+        "input: a = \"\\uGGGG\""
+    );
 
     let e = ctx.parse_err(r#"a = "\UFFFFFFFF""#);
-    assert!(matches!(e.kind, ErrorKind::InvalidEscapeValue(_)), "input: a = \"\\UFFFFFFFF\"");
+    assert!(
+        matches!(e.kind, ErrorKind::InvalidEscapeValue(_)),
+        "input: a = \"\\UFFFFFFFF\""
+    );
 
     let e = ctx.parse_err("a = \"\\u00");
-    assert!(matches!(e.kind, ErrorKind::UnterminatedString), "input: a = \"\\u00");
+    assert!(
+        matches!(e.kind, ErrorKind::UnterminatedString),
+        "input: a = \"\\u00"
+    );
 
     let e = ctx.parse_err(r#"a = "\xGG""#);
-    assert!(matches!(e.kind, ErrorKind::InvalidHexEscape('G')), "input: a = \"\\xGG\"");
+    assert!(
+        matches!(e.kind, ErrorKind::InvalidHexEscape('G')),
+        "input: a = \"\\xGG\""
+    );
 }
 
 #[test]
@@ -707,11 +757,18 @@ fn multiline_string_edge_cases() {
 
     for (input, expected) in valid_cases {
         let v = ctx.parse_ok(input);
-        assert_eq!(v.get("a").unwrap().as_str(), Some(expected), "input: {input}");
+        assert_eq!(
+            v.get("a").unwrap().as_str(),
+            Some(expected),
+            "input: {input}"
+        );
     }
 
     let e = ctx.parse_err("a = \"\"\"\\  x\"\"\"");
-    assert!(matches!(e.kind, ErrorKind::InvalidEscape(' ')), "input: a = \"\"\"\\  x\"\"\"");
+    assert!(
+        matches!(e.kind, ErrorKind::InvalidEscape(' ')),
+        "input: a = \"\"\"\\  x\"\"\""
+    );
 }
 
 #[test]
@@ -727,7 +784,11 @@ fn number_valid_edge_cases() {
 
     for (input, expected) in int_cases {
         let v = ctx.parse_ok(input);
-        assert_eq!(v.get("a").unwrap().as_integer(), Some(expected), "input: {input}");
+        assert_eq!(
+            v.get("a").unwrap().as_integer(),
+            Some(expected),
+            "input: {input}"
+        );
     }
 
     let v = ctx.parse_ok("a = +3.14");
@@ -735,10 +796,17 @@ fn number_valid_edge_cases() {
     assert!((f - 3.14).abs() < f64::EPSILON, "input: a = +3.14");
 
     let v = ctx.parse_ok("a = +inf");
-    assert_eq!(v.get("a").unwrap().as_float(), Some(f64::INFINITY), "input: a = +inf");
+    assert_eq!(
+        v.get("a").unwrap().as_float(),
+        Some(f64::INFINITY),
+        "input: a = +inf"
+    );
 
     let v = ctx.parse_ok("a = +nan");
-    assert!(v.get("a").unwrap().as_float().unwrap().is_nan(), "input: a = +nan");
+    assert!(
+        v.get("a").unwrap().as_float().unwrap().is_nan(),
+        "input: a = +nan"
+    );
 }
 
 #[test]
@@ -881,7 +949,11 @@ fn inline_table_edge_cases() {
         .unwrap()
         .as_table()
         .unwrap();
-    assert_eq!(b.get("c").unwrap().as_integer(), Some(1), "input: a = {{b.c = 1}}");
+    assert_eq!(
+        b.get("c").unwrap().as_integer(),
+        Some(1),
+        "input: a = {{b.c = 1}}"
+    );
 
     let table_len_cases = [
         ("a = {x = 1, y = 2,}", 2),
@@ -987,7 +1059,11 @@ fn integer_boundary_values() {
 
     for (input, expected) in cases {
         let v = ctx.parse_ok(input);
-        assert_eq!(v.get("a").unwrap().as_integer(), Some(expected), "input: {input}");
+        assert_eq!(
+            v.get("a").unwrap().as_integer(),
+            Some(expected),
+            "input: {input}"
+        );
     }
 }
 
@@ -1159,7 +1235,11 @@ fn crlf_in_intermediate_contexts() {
     ];
     for (input, expected) in ml_cases {
         let v = ctx.parse_ok(input);
-        assert_eq!(v.get("a").unwrap().as_str(), Some(expected), "input: {input}");
+        assert_eq!(
+            v.get("a").unwrap().as_str(),
+            Some(expected),
+            "input: {input}"
+        );
     }
 }
 
@@ -1179,22 +1259,37 @@ fn scan_token_desc_branches() {
         let e = ctx.parse_err(input);
         assert!(
             matches!(e.kind, ErrorKind::Wanted { found, .. } if found == expected_found),
-            "input: {input}, got: {:?}", e.kind
+            "input: {input}, got: {:?}",
+            e.kind
         );
     }
 
     // Identifier branch: missing comma, cursor at next identifier
     let e = ctx.parse_err("a = {x = 1 y = 2}");
     assert!(
-        matches!(e.kind, ErrorKind::Wanted { found: "an identifier", .. }),
-        "input: a = {{x = 1 y = 2}}, got: {:?}", e.kind
+        matches!(
+            e.kind,
+            ErrorKind::Wanted {
+                found: "an identifier",
+                ..
+            }
+        ),
+        "input: a = {{x = 1 y = 2}}, got: {:?}",
+        e.kind
     );
 
     // Generic character branch: non-special byte
     let e = ctx.parse_err("a = {x = 1 @}");
     assert!(
-        matches!(e.kind, ErrorKind::Wanted { found: "a character", .. }),
-        "input: a = {{x = 1 @}}, got: {:?}", e.kind
+        matches!(
+            e.kind,
+            ErrorKind::Wanted {
+                found: "a character",
+                ..
+            }
+        ),
+        "input: a = {{x = 1 @}}, got: {:?}",
+        e.kind
     );
 }
 
@@ -1202,15 +1297,13 @@ fn scan_token_desc_branches() {
 fn string_eof_edge_cases() {
     let ctx = TestCtx::new();
 
-    let eof_cases = [
-        "a = \"",
-        "a = \"\\",
-        "a = \"\"\"",
-        "a = \"\"\"\\",
-    ];
+    let eof_cases = ["a = \"", "a = \"\\", "a = \"\"\"", "a = \"\"\"\\"];
     for input in eof_cases {
         let e = ctx.parse_err(input);
-        assert!(matches!(e.kind, ErrorKind::UnterminatedString), "input: {input}");
+        assert!(
+            matches!(e.kind, ErrorKind::UnterminatedString),
+            "input: {input}"
+        );
     }
 }
 
@@ -1219,12 +1312,7 @@ fn number_identifier_not_inf_nan() {
     let ctx = TestCtx::new();
 
     // Keylike with - prefix followed by i/n but not -inf/-nan.
-    let cases = [
-        "a = -infix",
-        "a = -nah",
-        "a = -infinity",
-        "a = -nano",
-    ];
+    let cases = ["a = -infix", "a = -nah", "a = -infinity", "a = -nano"];
     for input in cases {
         let e = ctx.parse_err(input);
         assert!(matches!(e.kind, ErrorKind::InvalidNumber), "input: {input}");
@@ -1237,11 +1325,17 @@ fn integer_overflow_specific_paths() {
 
     // Decimal: i64::MAX + 1 overflows positive max
     let e = ctx.parse_err("a = 9223372036854775808");
-    assert!(matches!(e.kind, ErrorKind::InvalidNumber), "input: i64::MAX + 1");
+    assert!(
+        matches!(e.kind, ErrorKind::InvalidNumber),
+        "input: i64::MAX + 1"
+    );
 
     // Decimal: negative overflow past i64::MIN
     let e = ctx.parse_err("a = -9223372036854775809");
-    assert!(matches!(e.kind, ErrorKind::InvalidNumber), "input: -(i64::MIN) - 1");
+    assert!(
+        matches!(e.kind, ErrorKind::InvalidNumber),
+        "input: -(i64::MIN) - 1"
+    );
 
     // Hex: invalid hex digit
     let hex_invalid = ["a = 0xGG", "a = 0xZZ"];
@@ -1252,7 +1346,10 @@ fn integer_overflow_specific_paths() {
 
     // Hex: overflow via acc >> 60 != 0 (17 hex digits)
     let e = ctx.parse_err("a = 0xFFFFFFFFFFFFFFFFF");
-    assert!(matches!(e.kind, ErrorKind::InvalidNumber), "input: 0x 17 F's");
+    assert!(
+        matches!(e.kind, ErrorKind::InvalidNumber),
+        "input: 0x 17 F's"
+    );
 
     let e = ctx.parse_err("a = 0x10000000000000000");
     assert!(matches!(e.kind, ErrorKind::InvalidNumber), "input: 0x 2^64");
@@ -1262,10 +1359,12 @@ fn integer_overflow_specific_paths() {
     assert!(matches!(e.kind, ErrorKind::InvalidNumber), "input: 0o 2^63");
 
     // Binary: overflow via acc >> 63 != 0 (65 binary digits)
-    let e = ctx.parse_err(
-        "a = 0b11111111111111111111111111111111111111111111111111111111111111111"
+    let e =
+        ctx.parse_err("a = 0b11111111111111111111111111111111111111111111111111111111111111111");
+    assert!(
+        matches!(e.kind, ErrorKind::InvalidNumber),
+        "input: 0b 65 ones"
     );
-    assert!(matches!(e.kind, ErrorKind::InvalidNumber), "input: 0b 65 ones");
 }
 
 #[test]
@@ -1273,33 +1372,21 @@ fn float_validation_edge_cases() {
     let ctx = TestCtx::new();
 
     // push_strip_underscores fails on integer part (trailing underscore before dot)
-    let integer_part_cases = [
-        "a = 1_.5",
-        "a = 1__.5",
-    ];
+    let integer_part_cases = ["a = 1_.5", "a = 1__.5"];
     for input in integer_part_cases {
         let e = ctx.parse_err(input);
         assert!(matches!(e.kind, ErrorKind::InvalidNumber), "input: {input}");
     }
 
     // push_strip_underscores fails on exponent part (leading/trailing underscore)
-    let exponent_cases = [
-        "a = 1e+_5",
-        "a = 1E+_5",
-        "a = 1e+5_",
-    ];
+    let exponent_cases = ["a = 1e+_5", "a = 1E+_5", "a = 1e+5_"];
     for input in exponent_cases {
         let e = ctx.parse_err(input);
         assert!(matches!(e.kind, ErrorKind::InvalidNumber), "input: {input}");
     }
 
     // Result overflows to infinity, rejected as non-finite
-    let non_finite_cases = [
-        "a = 1e999",
-        "a = 1e9999",
-        "a = 1.0e999",
-        "a = -1e999",
-    ];
+    let non_finite_cases = ["a = 1e999", "a = 1e9999", "a = 1.0e999", "a = -1e999"];
     for input in non_finite_cases {
         let e = ctx.parse_err(input);
         assert!(matches!(e.kind, ErrorKind::InvalidNumber), "input: {input}");
@@ -1312,43 +1399,77 @@ fn inline_table_error_paths() {
 
     // eat_inline_table_whitespace error at start (bare CR after comment)
     let e = ctx.parse_err("a = {#bad\r}");
-    assert!(matches!(e.kind, ErrorKind::Wanted { .. }),
-        "input: bare CR after comment in inline table start");
+    assert!(
+        matches!(e.kind, ErrorKind::Wanted { .. }),
+        "input: bare CR after comment in inline table start"
+    );
 
     // read_table_key error in loop (non-key character)
     let e = ctx.parse_err("a = {!}");
-    assert!(matches!(e.kind, ErrorKind::Wanted { expected: "a table key", .. }),
-        "input: a = {{!}}");
+    assert!(
+        matches!(
+            e.kind,
+            ErrorKind::Wanted {
+                expected: "a table key",
+                ..
+            }
+        ),
+        "input: a = {{!}}"
+    );
 
     // eat_inline_table_whitespace error after key (bare CR)
     let e = ctx.parse_err("a = {x #bad\r= 1}");
-    assert!(matches!(e.kind, ErrorKind::Wanted { .. }),
-        "input: bare CR after key in inline table");
+    assert!(
+        matches!(e.kind, ErrorKind::Wanted { .. }),
+        "input: bare CR after key in inline table"
+    );
 
     // navigate_dotted_key error (dotted key on non-table value)
     let e = ctx.parse_err("a = {x = 1, x.y = 2}");
-    assert!(matches!(e.kind, ErrorKind::DottedKeyInvalidType { .. }),
-        "input: dotted key on integer in inline table");
+    assert!(
+        matches!(e.kind, ErrorKind::DottedKeyInvalidType { .. }),
+        "input: dotted key on integer in inline table"
+    );
 
     // read_table_key error after dot in dotted key
     let e = ctx.parse_err("a = {x.! = 1}");
-    assert!(matches!(e.kind, ErrorKind::Wanted { expected: "a table key", .. }),
-        "input: invalid key after dot in inline table");
+    assert!(
+        matches!(
+            e.kind,
+            ErrorKind::Wanted {
+                expected: "a table key",
+                ..
+            }
+        ),
+        "input: invalid key after dot in inline table"
+    );
 
     // expect_byte(b'=') error (missing equals)
     let e = ctx.parse_err("a = {x}");
-    assert!(matches!(e.kind, ErrorKind::Wanted { expected: "an equals", .. }),
-        "input: a = {{x}}");
+    assert!(
+        matches!(
+            e.kind,
+            ErrorKind::Wanted {
+                expected: "an equals",
+                ..
+            }
+        ),
+        "input: a = {{x}}"
+    );
 
     // eat_inline_table_whitespace error after value (bare CR)
     let e = ctx.parse_err("a = {x = 1 #bad\r}");
-    assert!(matches!(e.kind, ErrorKind::Wanted { .. }),
-        "input: bare CR after value in inline table");
+    assert!(
+        matches!(e.kind, ErrorKind::Wanted { .. }),
+        "input: bare CR after value in inline table"
+    );
 
     // eat_inline_table_whitespace error after comma (bare CR)
     let e = ctx.parse_err("a = {x = 1, #bad\r}");
-    assert!(matches!(e.kind, ErrorKind::Wanted { .. }),
-        "input: bare CR after comma in inline table");
+    assert!(
+        matches!(e.kind, ErrorKind::Wanted { .. }),
+        "input: bare CR after comma in inline table"
+    );
 }
 
 #[test]
@@ -1357,18 +1478,24 @@ fn array_error_paths() {
 
     // eat_intermediate error at start of array (bare CR after comment)
     let e = ctx.parse_err("a = [#bad\r]");
-    assert!(matches!(e.kind, ErrorKind::Wanted { .. }),
-        "input: bare CR after comment at array start");
+    assert!(
+        matches!(e.kind, ErrorKind::Wanted { .. }),
+        "input: bare CR after comment at array start"
+    );
 
     // eat_intermediate error after value (bare CR after comment)
     let e = ctx.parse_err("a = [1 #bad\r]");
-    assert!(matches!(e.kind, ErrorKind::Wanted { .. }),
-        "input: bare CR after comment after array value");
+    assert!(
+        matches!(e.kind, ErrorKind::Wanted { .. }),
+        "input: bare CR after comment after array value"
+    );
 
     // eat_intermediate error after comma
     let e = ctx.parse_err("a = [1, #bad\r]");
-    assert!(matches!(e.kind, ErrorKind::Wanted { .. }),
-        "input: bare CR after comment after comma in array");
+    assert!(
+        matches!(e.kind, ErrorKind::Wanted { .. }),
+        "input: bare CR after comment after comma in array"
+    );
 }
 
 #[test]
@@ -1377,21 +1504,29 @@ fn parse_document_error_paths() {
 
     // eat_comment error at top level (bare CR after comment)
     let e = ctx.parse_err("#bad\r");
-    assert!(matches!(e.kind, ErrorKind::Wanted { .. }),
-        "input: bare CR after top-level comment");
+    assert!(
+        matches!(e.kind, ErrorKind::Wanted { .. }),
+        "input: bare CR after top-level comment"
+    );
 
     let e = ctx.parse_err("a = 1\n#bad\r");
-    assert!(matches!(e.kind, ErrorKind::Wanted { .. }),
-        "input: bare CR after comment following key-value");
+    assert!(
+        matches!(e.kind, ErrorKind::Wanted { .. }),
+        "input: bare CR after comment following key-value"
+    );
 
     // Bare CR at top level (not in comment or string)
     let e = ctx.parse_err("\r");
-    assert!(matches!(e.kind, ErrorKind::Unexpected('\r')),
-        "input: bare CR at document top level");
+    assert!(
+        matches!(e.kind, ErrorKind::Unexpected('\r')),
+        "input: bare CR at document top level"
+    );
 
     let e = ctx.parse_err("a = 1\n\r");
-    assert!(matches!(e.kind, ErrorKind::Unexpected('\r')),
-        "input: bare CR after newline at document top level");
+    assert!(
+        matches!(e.kind, ErrorKind::Unexpected('\r')),
+        "input: bare CR after newline at document top level"
+    );
 }
 
 #[test]
@@ -1400,29 +1535,58 @@ fn table_header_error_paths() {
 
     // read_table_key error after dot in header (trailing dot)
     let e = ctx.parse_err("[a.]\nk = 1");
-    assert!(matches!(e.kind, ErrorKind::Wanted { expected: "a table key", .. }),
-        "input: [a.]");
+    assert!(
+        matches!(
+            e.kind,
+            ErrorKind::Wanted {
+                expected: "a table key",
+                ..
+            }
+        ),
+        "input: [a.]"
+    );
 
     // Missing second ] for array-of-tables
     let e = ctx.parse_err("[[a]\nk = 1");
-    assert!(matches!(e.kind, ErrorKind::Wanted { expected: "a right bracket", .. }),
-        "input: [[a] missing second bracket");
+    assert!(
+        matches!(
+            e.kind,
+            ErrorKind::Wanted {
+                expected: "a right bracket",
+                ..
+            }
+        ),
+        "input: [[a] missing second bracket"
+    );
 
     // Comment on same line as header (success path)
     let v = ctx.parse_ok("[a] # comment\nk = 1");
     let a = v.get("a").unwrap().as_table().unwrap();
-    assert_eq!(a.get("k").unwrap().as_integer(), Some(1),
-        "input: [a] # comment");
+    assert_eq!(
+        a.get("k").unwrap().as_integer(),
+        Some(1),
+        "input: [a] # comment"
+    );
 
     // Junk after header (no newline, not EOF)
     let e = ctx.parse_err("[a]x");
-    assert!(matches!(e.kind, ErrorKind::Wanted { expected: "newline", .. }),
-        "input: [a]x");
+    assert!(
+        matches!(
+            e.kind,
+            ErrorKind::Wanted {
+                expected: "newline",
+                ..
+            }
+        ),
+        "input: [a]x"
+    );
 
     // eat_comment error after header (bare CR)
     let e = ctx.parse_err("[a]#bad\r");
-    assert!(matches!(e.kind, ErrorKind::Wanted { .. }),
-        "input: [a]#bad\\r");
+    assert!(
+        matches!(e.kind, ErrorKind::Wanted { .. }),
+        "input: [a]#bad\\r"
+    );
 }
 
 #[test]
@@ -1431,17 +1595,35 @@ fn key_value_error_paths() {
 
     // read_table_key error in dotted key loop
     let e = ctx.parse_err("x.! = 1");
-    assert!(matches!(e.kind, ErrorKind::Wanted { expected: "a table key", .. }),
-        "input: x.! = 1");
+    assert!(
+        matches!(
+            e.kind,
+            ErrorKind::Wanted {
+                expected: "a table key",
+                ..
+            }
+        ),
+        "input: x.! = 1"
+    );
 
     let e = ctx.parse_err("[t]\nx.= = 1");
-    assert!(matches!(e.kind, ErrorKind::Wanted { expected: "a table key", .. }),
-        "input: x.= = 1");
+    assert!(
+        matches!(
+            e.kind,
+            ErrorKind::Wanted {
+                expected: "a table key",
+                ..
+            }
+        ),
+        "input: x.= = 1"
+    );
 
     // eat_comment error after key-value (bare CR)
     let e = ctx.parse_err("a = 1 #bad\r");
-    assert!(matches!(e.kind, ErrorKind::Wanted { .. }),
-        "input: a = 1 #bad\\r");
+    assert!(
+        matches!(e.kind, ErrorKind::Wanted { .. }),
+        "input: a = 1 #bad\\r"
+    );
 }
 
 #[test]
@@ -1460,7 +1642,11 @@ fn hex_numbers_with_zero_digits() {
     ];
     for (input, expected) in cases {
         let v = ctx.parse_ok(input);
-        assert_eq!(v.get("a").unwrap().as_integer(), Some(expected), "input: {input}");
+        assert_eq!(
+            v.get("a").unwrap().as_integer(),
+            Some(expected),
+            "input: {input}"
+        );
     }
 }
 
@@ -1482,19 +1668,21 @@ fn integer_base_max_boundary() {
 
     // Octal: i64::MAX + 1 should overflow
     let e = ctx.parse_err("a = 0o1000000000000000000000");
-    assert!(matches!(e.kind, ErrorKind::InvalidNumber), "octal i64::MAX+1");
+    assert!(
+        matches!(e.kind, ErrorKind::InvalidNumber),
+        "octal i64::MAX+1"
+    );
 
     // Binary: i64::MAX = 0b followed by 0 then 62 ones
-    let v = ctx.parse_ok(
-        "a = 0b0111111111111111111111111111111111111111111111111111111111111111",
-    );
+    let v = ctx.parse_ok("a = 0b0111111111111111111111111111111111111111111111111111111111111111");
     assert_eq!(v.get("a").unwrap().as_integer(), Some(i64::MAX));
 
     // Binary: i64::MAX + 1 should overflow
-    let e = ctx.parse_err(
-        "a = 0b1000000000000000000000000000000000000000000000000000000000000000",
+    let e = ctx.parse_err("a = 0b1000000000000000000000000000000000000000000000000000000000000000");
+    assert!(
+        matches!(e.kind, ErrorKind::InvalidNumber),
+        "binary i64::MAX+1"
     );
-    assert!(matches!(e.kind, ErrorKind::InvalidNumber), "binary i64::MAX+1");
 }
 
 #[test]
@@ -1598,14 +1786,18 @@ fn lowercase_hex_escapes() {
 
     // Lowercase hex digits in \u and \U escapes
     let cases = [
-        (r#"a = "\u0061""#, "a"),     // lowercase a-f digits
-        (r#"a = "\u00ff""#, "\u{ff}"), // all lowercase hex
+        (r#"a = "\u0061""#, "a"),             // lowercase a-f digits
+        (r#"a = "\u00ff""#, "\u{ff}"),        // all lowercase hex
         (r#"a = "\U0001f600""#, "\u{1f600}"), // emoji via lowercase hex
-        (r#"a = "\x61""#, "a"),        // \x with lowercase
+        (r#"a = "\x61""#, "a"),               // \x with lowercase
     ];
     for (input, expected) in cases {
         let v = ctx.parse_ok(input);
-        assert_eq!(v.get("a").unwrap().as_str(), Some(expected), "input: {input}");
+        assert_eq!(
+            v.get("a").unwrap().as_str(),
+            Some(expected),
+            "input: {input}"
+        );
     }
 }
 
@@ -1636,7 +1828,10 @@ fn indexed_table_nonexistent_key() {
     // Table with 6+ entries uses hash index for lookups.
     // Verify that a nonexistent key returns None.
     let v = ctx.parse_ok("a = 1\nb = 2\nc = 3\nd = 4\ne = 5\nf = 6");
-    assert!(v.get("nonexistent").is_none(), "nonexistent key in 6-entry table");
+    assert!(
+        v.get("nonexistent").is_none(),
+        "nonexistent key in 6-entry table"
+    );
 
     // Also verify all 6 keys are correctly found (not just first/last).
     assert_eq!(v.get("a").unwrap().as_integer(), Some(1));
@@ -1648,7 +1843,10 @@ fn indexed_table_nonexistent_key() {
 
     // 7+ entries: incremental indexing after initial bulk
     let v = ctx.parse_ok("a = 1\nb = 2\nc = 3\nd = 4\ne = 5\nf = 6\ng = 7");
-    assert!(v.get("nonexistent").is_none(), "nonexistent key in 7-entry table");
+    assert!(
+        v.get("nonexistent").is_none(),
+        "nonexistent key in 7-entry table"
+    );
     assert_eq!(v.get("a").unwrap().as_integer(), Some(1));
     assert_eq!(v.get("g").unwrap().as_integer(), Some(7));
 }
@@ -1671,7 +1869,11 @@ fn long_string_exercises_swar_path() {
     ];
     for (input, expected) in cases {
         let v = ctx.parse_ok(input);
-        assert_eq!(v.get("a").unwrap().as_str(), Some(expected), "input: {input}");
+        assert_eq!(
+            v.get("a").unwrap().as_str(),
+            Some(expected),
+            "input: {input}"
+        );
     }
 
     // Literal string > 8 bytes (skip_string_plain with delim=')
@@ -1691,7 +1893,11 @@ fn integer_plus_sign_in_decimal() {
     ];
     for (input, expected) in cases {
         let v = ctx.parse_ok(input);
-        assert_eq!(v.get("a").unwrap().as_integer(), Some(expected), "input: {input}");
+        assert_eq!(
+            v.get("a").unwrap().as_integer(),
+            Some(expected),
+            "input: {input}"
+        );
     }
 }
 
@@ -1700,14 +1906,14 @@ fn octal_digit_validation() {
     let ctx = TestCtx::new();
 
     // Valid octal
-    let cases: [(&str, i64); 3] = [
-        ("a = 0o0", 0),
-        ("a = 0o7", 7),
-        ("a = 0o10", 8),
-    ];
+    let cases: [(&str, i64); 3] = [("a = 0o0", 0), ("a = 0o7", 7), ("a = 0o10", 8)];
     for (input, expected) in cases {
         let v = ctx.parse_ok(input);
-        assert_eq!(v.get("a").unwrap().as_integer(), Some(expected), "input: {input}");
+        assert_eq!(
+            v.get("a").unwrap().as_integer(),
+            Some(expected),
+            "input: {input}"
+        );
     }
 
     // Invalid octal digits (8, 9)

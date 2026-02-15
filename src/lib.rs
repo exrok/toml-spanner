@@ -44,6 +44,10 @@
 //! let arena = Arena::new();
 //! let mut table = toml_spanner::parse(content, &arena)?;
 //!
+//! // Null coalescing index operators
+//! assert_eq!(table["things"][0]["color"].as_str(), None);
+//! assert_eq!(table["things"][1]["color"].as_str(), Some("green"));
+//!
 //! let things: Vec<Things> = table.required("things")?;
 //! let dev_mode: bool = table.optional("dev-mode")?.unwrap_or(false);
 //! // Error if unused fields exist.
@@ -72,7 +76,7 @@ pub use parser::parse;
 pub use span::{Span, Spanned};
 pub use str::Str;
 pub use table::Table;
-pub use value::{Item, Key, Value, ValueMut};
+pub use value::{Item, Key, MaybeItem, Value, ValueMut};
 
 #[cfg(feature = "serde")]
 pub mod impl_serde;

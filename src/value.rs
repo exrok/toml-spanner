@@ -1,7 +1,8 @@
 #![allow(unsafe_code)]
 
-//! Contains the [`Item`] tagged union: a 24-byte TOML value with inline span.
-
+#[cfg(test)]
+#[path = "./value_tests.rs"]
+mod tests;
 use crate::str::Str;
 use crate::{Error, ErrorKind, Span, Table};
 use std::fmt;
@@ -21,6 +22,9 @@ pub(crate) const TAG_FLOAT: u32 = 2;
 pub(crate) const TAG_BOOLEAN: u32 = 3;
 pub(crate) const TAG_ARRAY: u32 = 4;
 pub(crate) const TAG_TABLE: u32 = 5;
+
+// Only set in maybe item
+pub(crate) const TAG_NONE: u32 = 6;
 
 /// 3-bit state field in `end_and_flag` encoding container kind and sub-state.
 /// Bit 2 set → table, bits 1:0 == 01 → array. Allows dispatch without
@@ -651,6 +655,167 @@ impl PartialEq for Key<'_> {
 
 impl Eq for Key<'_> {}
 
-#[cfg(test)]
-#[path = "./value_tests.rs"]
-mod tests;
+impl<'de> std::ops::Index<&str> for Item<'de> {
+    type Output = MaybeItem<'de>;
+
+    #[inline]
+    fn index(&self, index: &str) -> &Self::Output {
+        if let Some(table) = self.as_table() {
+            if let Some(item) = table.get(index) {
+                return MaybeItem::from_ref(item);
+            }
+        }
+        &NONE
+    }
+}
+
+impl<'de> std::ops::Index<usize> for Item<'de> {
+    type Output = MaybeItem<'de>;
+
+    #[inline]
+    fn index(&self, index: usize) -> &Self::Output {
+        if let Some(arr) = self.as_array() {
+            if let Some(item) = arr.get(index) {
+                return MaybeItem::from_ref(item);
+            }
+        }
+        &NONE
+    }
+}
+
+impl<'de> std::ops::Index<&str> for MaybeItem<'de> {
+    type Output = MaybeItem<'de>;
+
+    #[inline]
+    fn index(&self, index: &str) -> &Self::Output {
+        if let Some(table) = self.as_table() {
+            if let Some(item) = table.get(index) {
+                return MaybeItem::from_ref(item);
+            }
+        }
+        &NONE
+    }
+}
+
+impl<'de> std::ops::Index<usize> for MaybeItem<'de> {
+    type Output = MaybeItem<'de>;
+
+    #[inline]
+    fn index(&self, index: usize) -> &Self::Output {
+        if let Some(arr) = self.as_array() {
+            if let Some(item) = arr.get(index) {
+                return MaybeItem::from_ref(item);
+            }
+        }
+        &NONE
+    }
+}
+
+#[repr(C)]
+pub struct MaybeItem<'de> {
+    payload: Payload<'de>,
+    /// Bits 2-0: tag, bits 31-3: span.start
+    start_and_tag: u32,
+    /// Bit 0: flag bit (parser-internal), bits 31-1: span.end
+    end_and_flag: u32,
+}
+
+unsafe impl Sync for MaybeItem<'_> {}
+
+pub(crate) static NONE: MaybeItem<'static> = MaybeItem {
+    payload: Payload { integer: 0 },
+    start_and_tag: TAG_NONE,
+    end_and_flag: FLAG_NONE,
+};
+
+impl<'de> MaybeItem<'de> {
+    pub fn from_ref<'a>(item: &'a Item<'de>) -> &'a Self {
+        unsafe { &*(item as *const Item<'de> as *const MaybeItem<'de>) }
+    }
+    #[inline]
+    pub(crate) fn tag(&self) -> u32 {
+        self.start_and_tag & TAG_MASK
+    }
+    pub fn item(&self) -> Option<&Item<'de>> {
+        if self.tag() != TAG_NONE {
+            Some(unsafe { &*(self as *const MaybeItem<'de> as *const Item<'de>) })
+        } else {
+            None
+        }
+    }
+    /// Returns a borrowed string if this is a string value.
+    #[inline]
+    pub fn as_str(&self) -> Option<&str> {
+        if self.tag() == TAG_STRING {
+            Some(unsafe { &self.payload.string })
+        } else {
+            None
+        }
+    }
+
+    /// Returns an `i64` if this is an integer value.
+    #[inline]
+    pub fn as_integer(&self) -> Option<i64> {
+        if self.tag() == TAG_INTEGER {
+            Some(unsafe { self.payload.integer })
+        } else {
+            None
+        }
+    }
+
+    /// Returns an `f64` if this is a float value.
+    #[inline]
+    pub fn as_float(&self) -> Option<f64> {
+        if self.tag() == TAG_FLOAT {
+            Some(unsafe { self.payload.float })
+        } else {
+            None
+        }
+    }
+
+    /// Returns a `bool` if this is a boolean value.
+    #[inline]
+    pub fn as_bool(&self) -> Option<bool> {
+        if self.tag() == TAG_BOOLEAN {
+            Some(unsafe { self.payload.boolean })
+        } else {
+            None
+        }
+    }
+
+    /// Returns a borrowed array if this is an array value.
+    #[inline]
+    pub fn as_array(&self) -> Option<&Array<'de>> {
+        if self.tag() == TAG_ARRAY {
+            Some(unsafe { &self.payload.array })
+        } else {
+            None
+        }
+    }
+
+    /// Returns a borrowed table if this is a table value.
+    #[inline]
+    pub fn as_table(&self) -> Option<&Table<'de>> {
+        if self.tag() == TAG_TABLE {
+            Some(unsafe { &*(self as *const _ as *const Table<'de>) })
+        } else {
+            None
+        }
+    }
+
+    pub fn span(&self) -> Option<Span> {
+        if let Some(item) = self.item() {
+            Some(item.span())
+        } else {
+            None
+        }
+    }
+
+    pub fn value(&self) -> Option<Value<'_, 'de>> {
+        if let Some(item) = self.item() {
+            Some(item.value())
+        } else {
+            None
+        }
+    }
+}

@@ -177,3 +177,30 @@ fn empty_array_edge_cases() {
     let debug = format!("{:?}", a);
     assert!(debug.contains('1') && debug.contains('2'));
 }
+
+#[test]
+fn index_operator() {
+    let arena = Arena::new();
+    let mut a = Array::new();
+    a.push(ival(10), &arena);
+    a.push(ival(20), &arena);
+    a.push(ival(30), &arena);
+
+    // Valid indices return MaybeItem with the value
+    assert_eq!(a[0].as_integer(), Some(10));
+    assert_eq!(a[1].as_integer(), Some(20));
+    assert_eq!(a[2].as_integer(), Some(30));
+
+    // Out-of-bounds returns NONE (no panic)
+    assert!(a[3].item().is_none());
+    assert!(a[100].item().is_none());
+    assert!(a[usize::MAX].item().is_none());
+
+    // Empty array always returns NONE
+    let empty = Array::new();
+    assert!(empty[0].item().is_none());
+
+    // NONE propagates through chained indexing
+    assert!(a[0][0].item().is_none());
+    assert!(a[99]["key"].item().is_none());
+}

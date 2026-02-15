@@ -5,7 +5,8 @@
 mod tests;
 
 use crate::value::{
-    FLAG_HEADER, FLAG_MASK, FLAG_SHIFT, FLAG_TABLE, Item, Key, TAG_MASK, TAG_SHIFT, TAG_TABLE,
+    FLAG_HEADER, FLAG_MASK, FLAG_SHIFT, FLAG_TABLE, Item, Key, MaybeItem, NONE, TAG_MASK,
+    TAG_SHIFT, TAG_TABLE,
 };
 use crate::{Deserialize, Error, ErrorKind, Span};
 use std::mem::size_of;
@@ -469,5 +470,17 @@ impl<'de> Table<'de> {
     #[inline]
     pub(crate) fn set_header_flag(&mut self) {
         self.end_and_flag = (self.end_and_flag & !FLAG_MASK) | FLAG_HEADER;
+    }
+}
+
+impl<'de> std::ops::Index<&str> for Table<'de> {
+    type Output = MaybeItem<'de>;
+
+    #[inline]
+    fn index(&self, index: &str) -> &Self::Output {
+        if let Some(item) = self.get(index) {
+            return MaybeItem::from_ref(item);
+        }
+        &NONE
     }
 }
