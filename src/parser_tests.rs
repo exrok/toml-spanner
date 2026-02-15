@@ -18,7 +18,13 @@ impl TestCtx {
     }
 
     fn parse_err(&self, input: &str) -> crate::Error {
-        crate::parse(input, &self.arena).unwrap_err()
+        match crate::parse(input, &self.arena) {
+            Ok(value) => panic!(
+                "For input `{input}` expected error but parsed successfully: {:?}",
+                value
+            ),
+            Err(err) => err,
+        }
     }
 }
 
@@ -867,6 +873,8 @@ fn float_format_errors() {
         "a = 1.",
         "a = 1.5_",
         "a = -00.5",
+        "a = 50E+-1",
+        "a = 50E-+1",
         "a = 1._5",
         "a = 1e\nb = 2",
     ];

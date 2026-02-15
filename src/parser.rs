@@ -1131,7 +1131,7 @@ impl<'de> Parser<'de> {
         if matches!(last.as_bytes().last(), Some(b'e' | b'E')) {
             self.eat_byte(b'+');
             match self.peek_byte() {
-                Some(b) if is_keylike_byte(b) => {
+                Some(b) if is_keylike_byte(b) && b != b'-' => {
                     let next = self.read_keylike();
                     if !scratch.push_strip_underscores(next.as_bytes()) {
                         return Err(self.set_error(s_start, Some(s_end), ErrorKind::InvalidNumber));
