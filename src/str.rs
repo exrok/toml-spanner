@@ -27,14 +27,6 @@ const _: () = assert!(std::mem::size_of::<Str<'_>>() == 16);
 unsafe impl Send for Str<'_> {}
 unsafe impl Sync for Str<'_> {}
 
-impl Str<'_> {
-    /// Returns the raw pointer and byte length without creating an intermediate `&str`.
-    #[inline]
-    pub(crate) fn as_raw_parts(&self) -> (NonNull<u8>, usize) {
-        (self.ptr, self.len)
-    }
-}
-
 impl Deref for Str<'_> {
     type Target = str;
 

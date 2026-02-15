@@ -61,15 +61,28 @@ static HEX: [i8; 256] = build_hex_table();
 /// or the arena; both are stable for the lifetime of the parse.
 /// `first_key_span` is the `span.start()` of the **first** key ever inserted
 /// into the table and serves as a cheap, collision-free table discriminator.
-struct KeyIndex {
+struct KeyIndex<'de> {
     key_ptr: NonNull<u8>,
     len: u32,
     first_key_span: u32,
+    marker: std::marker::PhantomData<&'de str>,
 }
 
-impl KeyIndex {
+impl<'de> KeyIndex<'de> {
     #[inline]
-    unsafe fn as_str(&self) -> &str {
+    fn new(key: &'de str, first_key_span: u32) -> Self {
+        KeyIndex {
+            key_ptr: unsafe { NonNull::new_unchecked(key.as_ptr() as *mut u8) },
+            len: key.len() as u32,
+            first_key_span,
+            marker: std::marker::PhantomData,
+        }
+    }
+}
+
+impl<'de> KeyIndex<'de> {
+    #[inline]
+    fn as_str(&self) -> &'de str {
         unsafe {
             std::str::from_utf8_unchecked(std::slice::from_raw_parts(
                 self.key_ptr.as_ptr(),
@@ -79,22 +92,22 @@ impl KeyIndex {
     }
 }
 
-impl Hash for KeyIndex {
+impl<'de> Hash for KeyIndex<'de> {
     #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
-        unsafe { self.as_str() }.hash(state);
+        self.as_str().hash(state);
         self.first_key_span.hash(state);
     }
 }
 
-impl PartialEq for KeyIndex {
+impl<'de> PartialEq for KeyIndex<'de> {
     #[inline]
     fn eq(&self, other: &Self) -> bool {
-        self.first_key_span == other.first_key_span && unsafe { self.as_str() == other.as_str() }
+        self.first_key_span == other.first_key_span && self.as_str() == other.as_str()
     }
 }
 
-impl Eq for KeyIndex {}
+impl<'de> Eq for KeyIndex<'de> {}
 
 struct Parser<'de> {
     /// Raw bytes of the input. Always valid UTF-8 (derived from `&str`).
@@ -108,7 +121,7 @@ struct Parser<'de> {
 
     // Global key-index for O(1) lookups in large tables.
     // Maps (table-discriminator, key-name) → entry index in the table.
-    table_index: foldhash::HashMap<KeyIndex, usize>,
+    table_index: foldhash::HashMap<KeyIndex<'de>, usize>,
 }
 
 #[allow(unsafe_code)]
@@ -1461,25 +1474,15 @@ impl<'de> Parser<'de> {
     ) -> &'t mut value::Item<'de> {
         let len = table.len();
         if len >= INDEXED_TABLE_THRESHOLD {
-            let first_key_span = unsafe { table.first_key_span_start_unchecked() };
+            let table_id = unsafe { table.first_key_span_start_unchecked() };
             if len == INDEXED_TABLE_THRESHOLD {
                 for (i, (key, _)) in table.entries().iter().enumerate() {
-                    let (ptr, slen) = key.name.as_raw_parts();
-                    let ki = KeyIndex {
-                        key_ptr: ptr,
-                        len: slen as u32,
-                        first_key_span,
-                    };
-                    self.table_index.insert(ki, i);
+                    self.table_index
+                        .insert(KeyIndex::new(key.as_str(), table_id), i);
                 }
             }
-            let (ptr, slen) = key.name.as_raw_parts();
-            let ki = KeyIndex {
-                key_ptr: ptr,
-                len: slen as u32,
-                first_key_span,
-            };
-            self.table_index.insert(ki, len);
+            self.table_index
+                .insert(KeyIndex::new(key.as_str(), table_id), len);
         }
         &mut table.insert(key, item, self.arena).1
     }
@@ -1625,14 +1628,9 @@ impl<'de> Parser<'de> {
         // runs into all sorts of NLL limitations.
         if table.len() > INDEXED_TABLE_THRESHOLD {
             let first_key_span = unsafe { table.first_key_span_start_unchecked() };
-            let probe = KeyIndex {
-                // Safety: Name is reference and therefore non-null. This check is only
-                // used for probe so the lifetime doesn't matter.
-                key_ptr: unsafe { NonNull::new_unchecked(name.as_ptr() as *mut u8) },
-                len: name.len() as u32,
-                first_key_span,
-            };
-            self.table_index.get(&probe).copied()
+            self.table_index
+                .get(&KeyIndex::new(name, first_key_span))
+                .copied()
         } else {
             table.find_index(name)
         }
