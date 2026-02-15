@@ -8,7 +8,7 @@ has received significant performance improvements and reductions in compile time
 [![Docs.rs](https://img.shields.io/docsrs/toml-spanner?style=flat-square)](https://docs.rs/jsony/latest/toml-spanner/)
 [![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
 
-Like the orginal `toml-span` temporal values such as timestamps or local times are not supported.
+Like the original `toml-span` temporal values such as timestamps or local times are not supported.
 
 ## Example
 
@@ -85,30 +85,31 @@ fn main() {
 Measured on AMD Ryzen 9 5950X, 64GB RAM, Linux 6.18, rustc 1.93.0.
 Relative parse time across real-world TOML files (lower is better):
 
-<!--  -->
+![bench](https://github.com/user-attachments/assets/1e5386c2-2920-4c3b-a0f1-185821ea6f0a)
+
 
 ```
                   time(μs)  cycles(K)   instr(K)  branch(K)
-zed
+zed/Cargo.toml
   toml-spanner        29.8        142        501        101
   toml               250.1       1196       3074        607
   toml-span          381.9       1821       5057       1050
-extask
+extask.toml
   toml-spanner        11.5         55        177         33
   toml                81.1        387       1017        196
   toml-span          108.4        517       1350        268
-devsm
+devsm.toml
   toml-spanner         4.0         19         73         15
   toml                34.9        167        439         85
   toml-span           59.3        283        732        146
-
 ```
 
 ### Compile Time
 
-Additional release build time over an empty baseline (lower is better):
+Extra `cargo build --release` time for binaries using respective crates (lower is better):
 
-<!--  -->
+![compile_bench](https://github.com/user-attachments/assets/a047d529-2d43-4549-9e54-44675607302e)
+
 
 ```
                  median(ms)    added(ms)
@@ -119,12 +120,13 @@ toml                   3088        +2987
 toml+serde             5214        +5113
 ```
 
-Checkout the `./benchmark` for more details, but numbers should simulate the additional
+Checkout `./benchmark` for more details, but numbers should simulate the additional
 time added users would experience during source based installs such as via `cargo install`.
 
 ## Divergence from `toml-span`
 
-While `toml-spanner` started as a fork of `toml-span`, it has since undergone
+While `toml-spanner` star
+ted as a fork of `toml-span`, it has since undergone
 extensive changes:
 
 - 10x faster than `toml-span`, and 5-8x faster than `toml` across
