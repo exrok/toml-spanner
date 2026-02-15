@@ -1,5 +1,5 @@
 #![allow(unsafe_code)]
-
+#![allow(clippy::manual_map)]
 #[cfg(test)]
 #[path = "./value_tests.rs"]
 mod tests;
@@ -53,7 +53,7 @@ union Payload<'de> {
 /// A parsed TOML value with span information.
 ///
 /// Use the `as_*` methods ([`as_str`](Self::as_str),
-/// [`as_integer`](Self::as_integer), [`as_table`](Self::as_table), etc.) to
+/// [`as_i64`](Self::as_i64), [`as_table`](Self::as_table), etc.) to
 /// extract the value, or call [`value`](Self::value) /
 /// [`value_mut`](Self::value_mut) to pattern match via the [`Value`] /
 /// [`ValueMut`] enums.
@@ -67,8 +67,8 @@ union Payload<'de> {
 /// ```
 /// let arena = toml_spanner::Arena::new();
 /// let table = toml_spanner::parse("x = 42", &arena)?;
-/// assert_eq!(table["x"].as_integer(), Some(42));
-/// assert_eq!(table["missing"].as_integer(), None);
+/// assert_eq!(table["x"].as_i64(), Some(42));
+/// assert_eq!(table["missing"].as_i64(), None);
 /// # Ok::<(), toml_spanner::Error>(())
 /// ```
 #[repr(C)]
@@ -408,7 +408,7 @@ impl<'de> Item<'de> {
 
     /// Returns an `i64` if this is an integer value.
     #[inline]
-    pub fn as_integer(&self) -> Option<i64> {
+    pub fn as_i64(&self) -> Option<i64> {
         if self.tag() == TAG_INTEGER {
             Some(unsafe { self.payload.integer })
         } else {
@@ -416,13 +416,16 @@ impl<'de> Item<'de> {
         }
     }
 
-    /// Returns an `f64` if this is a float value.
+    /// Returns an `f64` if this is a float or integer value.
+    ///
+    /// Integer values are converted to `f64` via `as` cast (lossy for large
+    /// values outside the 2^53 exact-integer range).
     #[inline]
-    pub fn as_float(&self) -> Option<f64> {
-        if self.tag() == TAG_FLOAT {
-            Some(unsafe { self.payload.float })
-        } else {
-            None
+    pub fn as_f64(&self) -> Option<f64> {
+        match self.value() {
+            Value::Float(f) => Some(*f),
+            Value::Integer(i) => Some(*i as f64),
+            _ => None,
         }
     }
 
@@ -713,10 +716,10 @@ impl<'de> std::ops::Index<&str> for Item<'de> {
 
     #[inline]
     fn index(&self, index: &str) -> &Self::Output {
-        if let Some(table) = self.as_table() {
-            if let Some(item) = table.get(index) {
-                return MaybeItem::from_ref(item);
-            }
+        if let Some(table) = self.as_table()
+            && let Some(item) = table.get(index)
+        {
+            return MaybeItem::from_ref(item);
         }
         &NONE
     }
@@ -727,10 +730,10 @@ impl<'de> std::ops::Index<usize> for Item<'de> {
 
     #[inline]
     fn index(&self, index: usize) -> &Self::Output {
-        if let Some(arr) = self.as_array() {
-            if let Some(item) = arr.get(index) {
-                return MaybeItem::from_ref(item);
-            }
+        if let Some(arr) = self.as_array()
+            && let Some(item) = arr.get(index)
+        {
+            return MaybeItem::from_ref(item);
         }
         &NONE
     }
@@ -741,10 +744,10 @@ impl<'de> std::ops::Index<&str> for MaybeItem<'de> {
 
     #[inline]
     fn index(&self, index: &str) -> &Self::Output {
-        if let Some(table) = self.as_table() {
-            if let Some(item) = table.get(index) {
-                return MaybeItem::from_ref(item);
-            }
+        if let Some(table) = self.as_table()
+            && let Some(item) = table.get(index)
+        {
+            return MaybeItem::from_ref(item);
         }
         &NONE
     }
@@ -755,10 +758,10 @@ impl<'de> std::ops::Index<usize> for MaybeItem<'de> {
 
     #[inline]
     fn index(&self, index: usize) -> &Self::Output {
-        if let Some(arr) = self.as_array() {
-            if let Some(item) = arr.get(index) {
-                return MaybeItem::from_ref(item);
-            }
+        if let Some(arr) = self.as_array()
+            && let Some(item) = arr.get(index)
+        {
+            return MaybeItem::from_ref(item);
         }
         &NONE
     }
@@ -788,7 +791,7 @@ impl<'de> std::ops::Index<usize> for MaybeItem<'de> {
 ///
 /// // Successful nested lookup.
 /// assert_eq!(table["server"]["host"].as_str(), Some("localhost"));
-/// assert_eq!(table["server"]["port"].as_integer(), Some(8080));
+/// assert_eq!(table["server"]["port"].as_i64(), Some(8080));
 ///
 /// // Missing keys propagate through chained indexing without panicking.
 /// assert_eq!(table["server"]["missing"].as_str(), None);
@@ -817,7 +820,7 @@ pub(crate) static NONE: MaybeItem<'static> = MaybeItem {
 impl<'de> MaybeItem<'de> {
     /// Views an [`Item`] reference as a `MaybeItem`.
     pub fn from_ref<'a>(item: &'a Item<'de>) -> &'a Self {
-        unsafe { &*(item as *const Item<'de> as *const MaybeItem<'de>) }
+        unsafe { &*(item as *const Item<'de>).cast::<MaybeItem<'de>>() }
     }
     #[inline]
     pub(crate) fn tag(&self) -> u32 {
@@ -826,7 +829,7 @@ impl<'de> MaybeItem<'de> {
     /// Returns the underlying [`Item`], or [`None`] if this is a missing value.
     pub fn item(&self) -> Option<&Item<'de>> {
         if self.tag() != TAG_NONE {
-            Some(unsafe { &*(self as *const MaybeItem<'de> as *const Item<'de>) })
+            Some(unsafe { &*(self as *const MaybeItem<'de>).cast::<Item<'de>>() })
         } else {
             None
         }
@@ -843,7 +846,7 @@ impl<'de> MaybeItem<'de> {
 
     /// Returns an `i64` if this is an integer value.
     #[inline]
-    pub fn as_integer(&self) -> Option<i64> {
+    pub fn as_i64(&self) -> Option<i64> {
         if self.tag() == TAG_INTEGER {
             Some(unsafe { self.payload.integer })
         } else {
@@ -851,14 +854,13 @@ impl<'de> MaybeItem<'de> {
         }
     }
 
-    /// Returns an `f64` if this is a float value.
+    /// Returns an `f64` if this is a float or integer value.
+    ///
+    /// Integer values are converted to `f64` via `as` cast (lossy for large
+    /// values outside the 2^53 exact-integer range).
     #[inline]
-    pub fn as_float(&self) -> Option<f64> {
-        if self.tag() == TAG_FLOAT {
-            Some(unsafe { self.payload.float })
-        } else {
-            None
-        }
+    pub fn as_f64(&self) -> Option<f64> {
+        self.item()?.as_f64()
     }
 
     /// Returns a `bool` if this is a boolean value.
@@ -885,7 +887,7 @@ impl<'de> MaybeItem<'de> {
     #[inline]
     pub fn as_table(&self) -> Option<&Table<'de>> {
         if self.tag() == TAG_TABLE {
-            Some(unsafe { &*(self as *const _ as *const Table<'de>) })
+            Some(unsafe { &*(self as *const Self).cast::<Table<'de>>() })
         } else {
             None
         }

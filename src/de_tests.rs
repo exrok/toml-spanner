@@ -1,14 +1,12 @@
+use crate::Deserialize;
 use crate::arena::Arena;
 use crate::span::Spanned;
 use crate::str::Str;
-use crate::Deserialize;
 
 fn parse_val<'a, T: Deserialize<'a>>(input: &'a str, arena: &'a Arena) -> Result<T, crate::Error> {
     let mut table = crate::parse(input, arena).unwrap();
     table.required::<T>("v")
 }
-
-
 
 #[test]
 fn deser_strings() {
@@ -27,8 +25,6 @@ fn deser_strings() {
     assert_eq!(&*val, "cow");
 }
 
-
-
 #[test]
 fn deser_booleans() {
     let arena = Arena::new();
@@ -45,8 +41,6 @@ fn deser_booleans() {
     let err = parse_val::<bool>(r#"v = "not a bool""#, &arena).unwrap_err();
     assert!(matches!(err.kind, crate::ErrorKind::Wanted { .. }));
 }
-
-
 
 #[test]
 fn deser_integers() {
@@ -102,8 +96,6 @@ fn deser_integers() {
     assert!(matches!(err.kind, crate::ErrorKind::Wanted { .. }));
 }
 
-
-
 #[test]
 fn deser_floats() {
     let arena = Arena::new();
@@ -123,8 +115,6 @@ fn deser_floats() {
     let err = parse_val::<f32>(r#"v = "not a float""#, &arena).unwrap_err();
     assert!(matches!(err.kind, crate::ErrorKind::Wanted { .. }));
 }
-
-
 
 #[test]
 fn deser_vecs() {
@@ -146,8 +136,6 @@ fn deser_vecs() {
     let err = parse_val::<Vec<i64>>(r#"v = "not an array""#, &arena).unwrap_err();
     assert!(matches!(err.kind, crate::ErrorKind::Wanted { .. }));
 }
-
-
 
 #[test]
 fn deser_spanned() {

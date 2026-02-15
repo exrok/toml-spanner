@@ -177,7 +177,7 @@ impl From<Str<'_>> for Box<str> {
 impl From<Str<'_>> for String {
     #[inline]
     fn from(s: Str<'_>) -> Self {
-        (&*s).to_owned()
+        (*s).to_owned()
     }
 }
 

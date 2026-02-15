@@ -42,7 +42,7 @@ fn deser_integer(
     name: &'static str,
 ) -> Result<i64, Error> {
     let span = value.span();
-    match value.as_integer() {
+    match value.as_i64() {
         Some(i) if i >= min && i <= max => Ok(i),
         Some(_) => Err(Error {
             kind: ErrorKind::OutOfRange(name),
@@ -98,7 +98,7 @@ impl<'de> Deserialize<'de> for usize {
 
 impl<'de> Deserialize<'de> for f32 {
     fn deserialize(value: &mut Item<'de>) -> Result<Self, Error> {
-        match value.as_float() {
+        match value.as_f64() {
             Some(f) => Ok(f as f32),
             None => Err(value.expected("a float")),
         }
@@ -107,7 +107,7 @@ impl<'de> Deserialize<'de> for f32 {
 
 impl<'de> Deserialize<'de> for f64 {
     fn deserialize(value: &mut Item<'de>) -> Result<Self, Error> {
-        match value.as_float() {
+        match value.as_f64() {
             Some(f) => Ok(f),
             None => Err(value.expected("a float")),
         }

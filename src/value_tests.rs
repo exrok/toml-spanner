@@ -6,8 +6,6 @@ fn sp(s: u32, e: u32) -> Span {
     Span::new(s, e)
 }
 
-
-
 #[test]
 fn constructors() {
     let arena = Arena::new();
@@ -22,17 +20,17 @@ fn constructors() {
     // Integer (positive and negative)
     let v = Item::integer(42, sp(0, 2));
     assert_eq!(v.tag(), TAG_INTEGER);
-    assert_eq!(v.as_integer(), Some(42));
+    assert_eq!(v.as_i64(), Some(42));
     assert_eq!(v.span(), sp(0, 2));
     assert_eq!(v.type_str(), "integer");
 
     let v = Item::integer(-9999, sp(0, 5));
-    assert_eq!(v.as_integer(), Some(-9999));
+    assert_eq!(v.as_i64(), Some(-9999));
 
     // Float
     let v = Item::float(3.14, sp(0, 4));
     assert_eq!(v.tag(), TAG_FLOAT);
-    assert_eq!(v.as_float(), Some(3.14));
+    assert_eq!(v.as_f64(), Some(3.14));
     assert_eq!(v.span(), sp(0, 4));
     assert_eq!(v.type_str(), "float");
 
@@ -97,8 +95,6 @@ fn constructors() {
     assert!(!v.has_key("y"));
 }
 
-
-
 #[test]
 fn table_variant_flags() {
     // Header
@@ -127,8 +123,6 @@ fn table_variant_flags() {
     assert!(v.as_table().is_some());
     assert_eq!(v.span(), sp(5, 15));
 }
-
-
 
 #[test]
 fn span_bit_packing() {
@@ -162,8 +156,6 @@ fn span_bit_packing() {
     assert_eq!(v.span().end, max_end);
 }
 
-
-
 #[test]
 fn value_and_type_checks() {
     // value() returns the correct variant for each type
@@ -191,27 +183,59 @@ fn value_and_type_checks() {
     // Negative type checks: as_* returns None for wrong types
     let v = Item::integer(42, sp(0, 2));
     assert!(v.as_str().is_none());
-    assert!(v.as_float().is_none());
     assert!(v.as_bool().is_none());
     assert!(v.as_array().is_none());
     assert!(v.as_table().is_none());
 
     let v = Item::string(Str::from("s"), sp(0, 1));
-    assert!(v.as_integer().is_none());
-    assert!(v.as_float().is_none());
+    assert!(v.as_i64().is_none());
+    assert!(v.as_f64().is_none());
     assert!(v.as_bool().is_none());
     assert!(v.as_array().is_none());
     assert!(v.as_table().is_none());
 
     let v = Item::boolean(true, sp(0, 4));
     assert!(v.as_str().is_none());
-    assert!(v.as_integer().is_none());
-    assert!(v.as_float().is_none());
+    assert!(v.as_i64().is_none());
+    assert!(v.as_f64().is_none());
     assert!(v.as_array().is_none());
     assert!(v.as_table().is_none());
 }
 
+#[test]
+fn as_f64_converts_integers() {
+    // Float value returned directly
+    let v = Item::float(3.14, sp(0, 4));
+    assert_eq!(v.as_f64(), Some(3.14));
 
+    // Integer value converted to f64
+    let v = Item::integer(42, sp(0, 2));
+    assert_eq!(v.as_f64(), Some(42.0));
+
+    let v = Item::integer(-100, sp(0, 4));
+    assert_eq!(v.as_f64(), Some(-100.0));
+
+    let v = Item::integer(0, sp(0, 1));
+    assert_eq!(v.as_f64(), Some(0.0));
+
+    // Non-numeric types still return None
+    assert!(Item::string(Str::from("s"), sp(0, 1)).as_f64().is_none());
+    assert!(Item::boolean(true, sp(0, 4)).as_f64().is_none());
+    assert!(Item::array(Array::new(), sp(0, 2)).as_f64().is_none());
+    assert!(Item::table(InnerTable::new(), sp(0, 2)).as_f64().is_none());
+
+    // MaybeItem also converts integers
+    let item = Item::integer(99, sp(0, 2));
+    let maybe = MaybeItem::from_ref(&item);
+    assert_eq!(maybe.as_f64(), Some(99.0));
+
+    let item = Item::float(2.5, sp(0, 3));
+    let maybe = MaybeItem::from_ref(&item);
+    assert_eq!(maybe.as_f64(), Some(2.5));
+
+    // MaybeItem NONE returns None
+    assert!(NONE.as_f64().is_none());
+}
 
 #[test]
 fn value_mut_all_types() {
@@ -230,14 +254,14 @@ fn value_mut_all_types() {
     if let ValueMut::Integer(i) = v.value_mut() {
         *i = 99;
     }
-    assert_eq!(v.as_integer(), Some(99));
+    assert_eq!(v.as_i64(), Some(99));
 
     // Float
     let mut v = Item::float(1.0, sp(0, 3));
     if let ValueMut::Float(f) = v.value_mut() {
         *f = 2.5;
     }
-    assert_eq!(v.as_float(), Some(2.5));
+    assert_eq!(v.as_f64(), Some(2.5));
 
     // Boolean
     let mut v = Item::boolean(false, sp(0, 5));
@@ -268,14 +292,18 @@ fn value_mut_all_types() {
     assert_eq!(v.as_table().unwrap().len(), 1);
 }
 
-
-
 #[test]
 fn type_error_helpers() {
     // expected() produces correct error
     let v = Item::integer(42, sp(0, 2));
     let err = v.expected("a string");
-    assert!(matches!(err.kind, crate::ErrorKind::Wanted { expected: "a string", found: "integer" }));
+    assert!(matches!(
+        err.kind,
+        crate::ErrorKind::Wanted {
+            expected: "a string",
+            found: "integer"
+        }
+    ));
     assert_eq!(err.span, sp(0, 2));
 
     // take_string success
@@ -296,8 +324,6 @@ fn type_error_helpers() {
         panic!("expected Wanted error");
     }
 }
-
-
 
 #[test]
 fn expect_and_mut_accessors() {
@@ -362,8 +388,6 @@ fn expect_and_mut_accessors() {
     assert!(v.as_table_mut().is_none());
 }
 
-
-
 #[test]
 fn parse_method() {
     // Success
@@ -382,8 +406,6 @@ fn parse_method() {
     assert!(matches!(err.kind, crate::ErrorKind::Wanted { .. }));
 }
 
-
-
 #[test]
 fn spanned_table_set_span_preserves_flag() {
     let mut v = Item::table_header(InnerTable::new(), sp(10, 20));
@@ -397,8 +419,6 @@ fn spanned_table_set_span_preserves_flag() {
     assert_eq!(v.flag(), FLAG_HEADER);
     assert_eq!(v.span().end, 200);
 }
-
-
 
 #[test]
 fn key_basics() {
@@ -480,18 +500,24 @@ fn item_index_operators() {
     // Index table Item by &str
     let mut tab = InnerTable::new();
     tab.insert(
-        Key { name: Str::from("name"), span: sp(0, 4) },
+        Key {
+            name: Str::from("name"),
+            span: sp(0, 4),
+        },
         Item::string(Str::from("alice"), sp(5, 10)),
         &arena,
     );
     tab.insert(
-        Key { name: Str::from("age"), span: sp(11, 14) },
+        Key {
+            name: Str::from("age"),
+            span: sp(11, 14),
+        },
         Item::integer(30, sp(15, 17)),
         &arena,
     );
     let item = Item::table(tab, sp(0, 17));
     assert_eq!(item["name"].as_str(), Some("alice"));
-    assert_eq!(item["age"].as_integer(), Some(30));
+    assert_eq!(item["age"].as_i64(), Some(30));
     assert!(item["missing"].item().is_none());
 
     // Index array Item by usize
@@ -500,7 +526,7 @@ fn item_index_operators() {
     arr.push(Item::string(Str::from("two"), sp(3, 6)), &arena);
     arr.push(Item::boolean(true, sp(7, 11)), &arena);
     let item = Item::array(arr, sp(0, 11));
-    assert_eq!(item[0].as_integer(), Some(10));
+    assert_eq!(item[0].as_i64(), Some(10));
     assert_eq!(item[1].as_str(), Some("two"));
     assert_eq!(item[2].as_bool(), Some(true));
     assert!(item[3].item().is_none());
@@ -530,12 +556,18 @@ fn maybe_item_chained_and_none_propagation() {
 
     let mut user_tab = InnerTable::new();
     user_tab.insert(
-        Key { name: Str::from("name"), span: sp(0, 4) },
+        Key {
+            name: Str::from("name"),
+            span: sp(0, 4),
+        },
         Item::string(Str::from("alice"), sp(5, 10)),
         &arena,
     );
     user_tab.insert(
-        Key { name: Str::from("scores"), span: sp(11, 17) },
+        Key {
+            name: Str::from("scores"),
+            span: sp(11, 17),
+        },
         Item::array(scores, sp(18, 25)),
         &arena,
     );
@@ -545,7 +577,10 @@ fn maybe_item_chained_and_none_propagation() {
 
     let mut root = InnerTable::new();
     root.insert(
-        Key { name: Str::from("users"), span: sp(0, 5) },
+        Key {
+            name: Str::from("users"),
+            span: sp(0, 5),
+        },
         Item::array(users, sp(6, 30)),
         &arena,
     );
@@ -553,8 +588,8 @@ fn maybe_item_chained_and_none_propagation() {
 
     // Deep chained access
     assert_eq!(root_item["users"][0]["name"].as_str(), Some("alice"));
-    assert_eq!(root_item["users"][0]["scores"][0].as_integer(), Some(100));
-    assert_eq!(root_item["users"][0]["scores"][1].as_integer(), Some(200));
+    assert_eq!(root_item["users"][0]["scores"][0].as_i64(), Some(100));
+    assert_eq!(root_item["users"][0]["scores"][1].as_i64(), Some(200));
 
     // Missing at various depths returns NONE
     assert!(root_item["users"][0]["scores"][2].item().is_none());
@@ -580,8 +615,8 @@ fn maybe_item_chained_and_none_propagation() {
     // All accessors on NONE return None
     let none = &item["missing"];
     assert!(none.as_str().is_none());
-    assert!(none.as_integer().is_none());
-    assert!(none.as_float().is_none());
+    assert!(none.as_i64().is_none());
+    assert!(none.as_f64().is_none());
     assert!(none.as_bool().is_none());
     assert!(none.as_array().is_none());
     assert!(none.as_table().is_none());

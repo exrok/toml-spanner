@@ -51,6 +51,12 @@ pub struct Arena {
 
 const _: () = assert!(std::mem::size_of::<Arena>() == 24);
 
+impl Default for Arena {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Arena {
     /// Creates a new, empty arena.
     pub fn new() -> Self {
@@ -80,7 +86,8 @@ impl Arena {
             // Safety: padding+size bytes fit within the current slab.
             // Using add() from ptr preserves provenance.
             unsafe {
-                self.ptr.set(NonNull::new_unchecked(ptr.as_ptr().add(needed)));
+                self.ptr
+                    .set(NonNull::new_unchecked(ptr.as_ptr().add(needed)));
                 NonNull::new_unchecked(ptr.as_ptr().add(padding))
             }
         } else {
@@ -146,7 +153,8 @@ impl Arena {
         // Safety: grow() guarantees the new slab is large enough.
         // Using add() from ptr preserves provenance.
         unsafe {
-            self.ptr.set(NonNull::new_unchecked(ptr.as_ptr().add(needed)));
+            self.ptr
+                .set(NonNull::new_unchecked(ptr.as_ptr().add(needed)));
             NonNull::new_unchecked(ptr.as_ptr().add(padding))
         }
     }

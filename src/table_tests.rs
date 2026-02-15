@@ -31,20 +31,20 @@ fn inner_insert_and_realloc() {
     // First insert triggers initial allocation
     t.insert(key("k0"), ival(0), &arena);
     assert_eq!(t.len(), 1);
-    assert_eq!(t.get("k0").unwrap().as_integer(), Some(0));
+    assert_eq!(t.get("k0").unwrap().as_i64(), Some(0));
 
     // Second insert fills initial capacity (2)
     t.insert(key("k1"), ival(1), &arena);
     assert_eq!(t.len(), 2);
-    assert_eq!(t.get("k0").unwrap().as_integer(), Some(0));
-    assert_eq!(t.get("k1").unwrap().as_integer(), Some(1));
+    assert_eq!(t.get("k0").unwrap().as_i64(), Some(0));
+    assert_eq!(t.get("k1").unwrap().as_i64(), Some(1));
 
     // Third insert triggers realloc from 2 to 4
     t.insert(key("k2"), ival(2), &arena);
     assert_eq!(t.len(), 3);
-    assert_eq!(t.get("k0").unwrap().as_integer(), Some(0));
-    assert_eq!(t.get("k1").unwrap().as_integer(), Some(1));
-    assert_eq!(t.get("k2").unwrap().as_integer(), Some(2));
+    assert_eq!(t.get("k0").unwrap().as_i64(), Some(0));
+    assert_eq!(t.get("k1").unwrap().as_i64(), Some(1));
+    assert_eq!(t.get("k2").unwrap().as_i64(), Some(2));
 
     // Fourth and fifth inserts trigger realloc from 4 to 8
     t.insert(key("k3"), ival(3), &arena);
@@ -53,7 +53,7 @@ fn inner_insert_and_realloc() {
     assert!(!t.is_empty());
     for i in 0..5 {
         let name = format!("k{i}");
-        assert_eq!(t.get(&name).unwrap().as_integer(), Some(i));
+        assert_eq!(t.get(&name).unwrap().as_i64(), Some(i));
     }
 }
 
@@ -65,20 +65,20 @@ fn inner_get_and_mutate() {
     t.insert(key("b"), ival(20), &arena);
 
     // get: found and not-found
-    assert_eq!(t.get("a").unwrap().as_integer(), Some(10));
+    assert_eq!(t.get("a").unwrap().as_i64(), Some(10));
     assert!(t.get("missing").is_none());
 
     // get_key_value: returns both key and value
     let (k, v) = t.get_key_value("a").unwrap();
     assert_eq!(&*k.name, "a");
-    assert_eq!(v.as_integer(), Some(10));
+    assert_eq!(v.as_i64(), Some(10));
 
     // get_mut: modify in place
     let v = t.get_mut("a").unwrap();
     if let crate::value::ValueMut::Integer(i) = v.value_mut() {
         *i = 99;
     }
-    assert_eq!(t.get("a").unwrap().as_integer(), Some(99));
+    assert_eq!(t.get("a").unwrap().as_i64(), Some(99));
 
     // get_mut: not-found
     assert!(t.get_mut("missing").is_none());
@@ -106,17 +106,17 @@ fn inner_index_access() {
     // get_key_value_at
     let (k, v) = t.get_key_value_at(0);
     assert_eq!(&*k.name, "first");
-    assert_eq!(v.as_integer(), Some(1));
+    assert_eq!(v.as_i64(), Some(1));
     let (k, v) = t.get_key_value_at(1);
     assert_eq!(&*k.name, "second");
-    assert_eq!(v.as_integer(), Some(2));
+    assert_eq!(v.as_i64(), Some(2));
 
     // get_mut_at: modify value at index 1
     let v = t.get_mut_at(1);
     if let crate::value::ValueMut::Integer(i) = v.value_mut() {
         *i = 99;
     }
-    assert_eq!(t.get("second").unwrap().as_integer(), Some(99));
+    assert_eq!(t.get("second").unwrap().as_i64(), Some(99));
 
     // first_key_span_start returns span.start of the first key
     assert_eq!(t.first_key_span_start(), 10);
@@ -130,7 +130,7 @@ fn inner_remove() {
     let mut t = InnerTable::new();
     t.insert(key("a"), ival(1), &arena);
     let v = t.remove("a").unwrap();
-    assert_eq!(v.as_integer(), Some(1));
+    assert_eq!(v.as_i64(), Some(1));
     assert!(t.is_empty());
 
     // Remove not-found
@@ -145,7 +145,7 @@ fn inner_remove() {
     t.insert(key("b"), ival(2), &arena);
     t.insert(key("c"), ival(3), &arena);
     let v = t.remove("a").unwrap();
-    assert_eq!(v.as_integer(), Some(1));
+    assert_eq!(v.as_i64(), Some(1));
     assert_eq!(t.len(), 2);
     let entries = t.entries();
     assert_eq!(&*entries[0].0.name, "c"); // last swapped into first
@@ -157,7 +157,7 @@ fn inner_remove() {
     t.insert(key("b"), ival(2), &arena);
     t.insert(key("c"), ival(3), &arena);
     let v = t.remove("b").unwrap();
-    assert_eq!(v.as_integer(), Some(2));
+    assert_eq!(v.as_i64(), Some(2));
     assert_eq!(t.len(), 2);
     let entries = t.entries();
     assert_eq!(&*entries[0].0.name, "a");
@@ -169,7 +169,7 @@ fn inner_remove() {
     t.insert(key("b"), ival(2), &arena);
     t.insert(key("c"), ival(3), &arena);
     let v = t.remove("c").unwrap();
-    assert_eq!(v.as_integer(), Some(3));
+    assert_eq!(v.as_i64(), Some(3));
     assert_eq!(t.len(), 2);
 
     // remove_entry returns both key and value
@@ -177,7 +177,7 @@ fn inner_remove() {
     t.insert(key("mykey"), ival(42), &arena);
     let (k, v) = t.remove_entry("mykey").unwrap();
     assert_eq!(&*k.name, "mykey");
-    assert_eq!(v.as_integer(), Some(42));
+    assert_eq!(v.as_i64(), Some(42));
     assert!(t.is_empty());
 }
 
@@ -195,9 +195,9 @@ fn inner_iterators() {
             *i += 100;
         }
     }
-    assert_eq!(t.get("a").unwrap().as_integer(), Some(101));
-    assert_eq!(t.get("b").unwrap().as_integer(), Some(102));
-    assert_eq!(t.get("c").unwrap().as_integer(), Some(103));
+    assert_eq!(t.get("a").unwrap().as_i64(), Some(101));
+    assert_eq!(t.get("b").unwrap().as_i64(), Some(102));
+    assert_eq!(t.get("c").unwrap().as_i64(), Some(103));
 
     // IntoIter: collect and verify
     let iter = IntoIter { table: t, index: 0 };
@@ -205,7 +205,7 @@ fn inner_iterators() {
     assert_eq!(iter.len(), 3);
     let vals: Vec<_> = iter.collect();
     assert_eq!(vals.len(), 3);
-    assert_eq!(vals[0].1.as_integer(), Some(101));
+    assert_eq!(vals[0].1.as_i64(), Some(101));
 
     // IntoIter: size_hint updates after next()
     let mut t2 = InnerTable::new();
@@ -241,13 +241,13 @@ fn table_access_and_mutation() {
     assert_eq!(table.span(), Span::new(0, 100));
 
     // get
-    assert_eq!(table.get("a").unwrap().as_integer(), Some(1));
+    assert_eq!(table.get("a").unwrap().as_i64(), Some(1));
     assert!(table.get("missing").is_none());
 
     // get_key_value
     let (k, v) = table.get_key_value("b").unwrap();
     assert_eq!(&*k.name, "b");
-    assert_eq!(v.as_integer(), Some(2));
+    assert_eq!(v.as_i64(), Some(2));
     assert!(table.get_key_value("missing").is_none());
 
     // get_mut: modify in place
@@ -255,7 +255,7 @@ fn table_access_and_mutation() {
     if let crate::value::ValueMut::Integer(i) = v.value_mut() {
         *i = 99;
     }
-    assert_eq!(table.get("a").unwrap().as_integer(), Some(99));
+    assert_eq!(table.get("a").unwrap().as_i64(), Some(99));
     assert!(table.get_mut("missing").is_none());
 
     // values_mut: mutate all values
@@ -264,19 +264,19 @@ fn table_access_and_mutation() {
             *i += 10;
         }
     }
-    assert_eq!(table.get("a").unwrap().as_integer(), Some(109));
-    assert_eq!(table.get("b").unwrap().as_integer(), Some(12));
+    assert_eq!(table.get("a").unwrap().as_i64(), Some(109));
+    assert_eq!(table.get("b").unwrap().as_i64(), Some(12));
 
     // remove
     let v = table.remove("b").unwrap();
-    assert_eq!(v.as_integer(), Some(12));
+    assert_eq!(v.as_i64(), Some(12));
     assert_eq!(table.len(), 2);
     assert!(table.remove("missing").is_none());
 
     // remove_entry
     let (k, v) = table.remove_entry("a").unwrap();
     assert_eq!(&*k.name, "a");
-    assert_eq!(v.as_integer(), Some(109));
+    assert_eq!(v.as_i64(), Some(109));
     assert!(table.remove_entry("missing").is_none());
 
     // into_item
@@ -299,7 +299,10 @@ fn table_deserialization_helpers() {
 
     // required: missing key returns MissingField error
     let err = table.required::<i64>("missing").unwrap_err();
-    assert!(matches!(err.kind, crate::ErrorKind::MissingField("missing")));
+    assert!(matches!(
+        err.kind,
+        crate::ErrorKind::MissingField("missing")
+    ));
 
     // optional: present key returns Some
     let mut table = make_table(&arena);
@@ -336,7 +339,7 @@ fn table_iterators() {
     let table = make_table(&arena);
     let mut count = 0;
     for (k, v) in &table {
-        assert!(v.as_integer().is_some());
+        assert!(v.as_i64().is_some());
         assert!(!k.name.is_empty());
         count += 1;
     }
@@ -349,7 +352,7 @@ fn table_iterators() {
             *i += 100;
         }
     }
-    assert_eq!(table.get("a").unwrap().as_integer(), Some(101));
+    assert_eq!(table.get("a").unwrap().as_i64(), Some(101));
 
     // Owned iteration via into_iter
     let table = make_table(&arena);
@@ -411,9 +414,9 @@ fn index_operator() {
     let table = make_table(&arena);
 
     // Valid keys return MaybeItem with the value
-    assert_eq!(table["a"].as_integer(), Some(1));
-    assert_eq!(table["b"].as_integer(), Some(2));
-    assert_eq!(table["c"].as_integer(), Some(3));
+    assert_eq!(table["a"].as_i64(), Some(1));
+    assert_eq!(table["b"].as_i64(), Some(2));
+    assert_eq!(table["c"].as_i64(), Some(3));
 
     // Missing keys return NONE (no panic)
     assert!(table["missing"].item().is_none());
@@ -427,12 +430,8 @@ fn index_operator() {
     let mut inner = InnerTable::new();
     inner.insert(key("x"), ival(42), &arena);
     let mut outer = Table::new(Span::new(0, 50));
-    outer.insert(
-        key("nested"),
-        Item::table(inner, Span::new(0, 20)),
-        &arena,
-    );
-    assert_eq!(outer["nested"]["x"].as_integer(), Some(42));
+    outer.insert(key("nested"), Item::table(inner, Span::new(0, 20)), &arena);
+    assert_eq!(outer["nested"]["x"].as_i64(), Some(42));
     assert!(outer["nested"]["y"].item().is_none());
 
     // Empty table always returns NONE

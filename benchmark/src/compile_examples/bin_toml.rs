@@ -54,7 +54,10 @@ fn get_string(table: &toml::Table, key: &str) -> String {
 }
 
 fn get_string_opt(table: &toml::Table, key: &str) -> Option<String> {
-    table.get(key).and_then(|v| v.as_str()).map(|s| s.to_owned())
+    table
+        .get(key)
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_owned())
 }
 
 fn get_bool(table: &toml::Table, key: &str) -> bool {

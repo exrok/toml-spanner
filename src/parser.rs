@@ -754,7 +754,7 @@ impl<'de> Parser<'de> {
 
     fn next_char_for_error(&self) -> char {
         // Safety: The input was valid UTF-8 via a &str
-        let text = unsafe { std::str::from_utf8_unchecked(&self.bytes) };
+        let text = unsafe { std::str::from_utf8_unchecked(self.bytes) };
         if let Some(value) = text.get(self.cursor..) {
             value.chars().next().unwrap_or(char::REPLACEMENT_CHARACTER)
         } else {
@@ -985,7 +985,7 @@ impl<'de> Parser<'de> {
         }
         self.error_span = span;
         self.error_kind = Some(ErrorKind::InvalidNumber);
-        return Err(ParseError);
+        Err(ParseError)
     }
 
     fn integer_octal(&mut self, bytes: &'de [u8], span: Span) -> Result<Item<'de>, ParseError> {
@@ -1448,7 +1448,7 @@ impl<'de> Parser<'de> {
                 }
                 unsafe { Ok(last.as_spanned_table_mut_unchecked()) }
             } else {
-                return Err(self.set_duplicate_key_error(first_key_span, key.span, &key.name));
+                Err(self.set_duplicate_key_error(first_key_span, key.span, &key.name))
             }
         } else {
             let span = key.span;
@@ -1567,7 +1567,7 @@ impl<'de> Parser<'de> {
                     ErrorKind::RedefineAsArray,
                 ))
             } else {
-                return Err(self.set_duplicate_key_error(first_key_span, key.span, &key.name));
+                Err(self.set_duplicate_key_error(first_key_span, key.span, &key.name))
             }
         } else {
             let entry_span = Span::new(header_start, header_end);

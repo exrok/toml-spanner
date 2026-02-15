@@ -1,7 +1,5 @@
 use super::*;
 
-
-
 #[test]
 fn alloc_basics() {
     let arena = Arena::new();
@@ -51,8 +49,6 @@ fn alloc_growth() {
     assert_eq!(ptr.as_ptr() as usize % 8, 0);
 }
 
-
-
 #[test]
 fn realloc_in_place() {
     let arena = Arena::new();
@@ -73,7 +69,10 @@ fn realloc_in_place() {
     for new_size in [96, 192] {
         let old_size = new_size / 2;
         ptr = unsafe { arena.realloc(ptr, old_size, new_size) };
-        assert_eq!(ptr, original, "size={new_size}: expected in-place extension");
+        assert_eq!(
+            ptr, original,
+            "size={new_size}: expected in-place extension"
+        );
     }
 
     // Original data still intact after multiple in-place grows.
@@ -106,16 +105,13 @@ fn realloc_cross_slab() {
     unsafe { std::ptr::write_bytes(ptr.as_ptr(), 0xCC, 64) };
 
     // Realloc to a size that cannot fit in the remaining slab space.
-    let new_ptr =
-        unsafe { arena.realloc(ptr, INITIAL_SLAB_SIZE - HEADER_SIZE, INITIAL_SLAB_SIZE) };
+    let new_ptr = unsafe { arena.realloc(ptr, INITIAL_SLAB_SIZE - HEADER_SIZE, INITIAL_SLAB_SIZE) };
     assert_ne!(new_ptr, ptr, "expected new slab allocation");
 
     // First 64 bytes of data preserved.
     let bytes = unsafe { std::slice::from_raw_parts(new_ptr.as_ptr(), 64) };
     assert!(bytes.iter().all(|&b| b == 0xCC));
 }
-
-
 
 #[test]
 fn scratch_basics() {
@@ -188,8 +184,6 @@ fn scratch_drop_without_commit() {
     assert_eq!(committed, b"kept");
 }
 
-
-
 #[test]
 fn scratch_growth() {
     let arena = Arena::new();
@@ -235,8 +229,6 @@ fn scratch_growth() {
     let committed_end = committed.as_ptr() as usize + committed.len();
     assert!(next.as_ptr() as usize >= committed_end);
 }
-
-
 
 #[test]
 fn alloc_then_scratch_then_alloc() {
