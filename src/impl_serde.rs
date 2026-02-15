@@ -1,8 +1,11 @@
 #![cfg_attr(docsrs, doc(cfg(feature = "serde")))]
 
-//! Provides [`serde::Serialize`] support for [`Spanned`]
+//! Serde serialization support for [`Spanned<T>`](crate::Spanned) and
+//! [`Item`](crate::Item).
 //!
-//! The [`serde::Serialize`] impl for [`Value`](crate::Value) lives in `value.rs`.
+//! Enabled by the `serde` feature flag. This provides [`serde::Serialize`]
+//! implementations only — deserialization uses the [`Deserialize`](crate::Deserialize)
+//! trait instead.
 
 use crate::Spanned;
 

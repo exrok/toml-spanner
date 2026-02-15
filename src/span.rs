@@ -1,24 +1,29 @@
-//! Provides span helpers
+//! Byte-offset span types for source location tracking.
 
 #[cfg(test)]
 #[path = "./span_tests.rs"]
 mod tests;
 
-/// A start and end location within a toml document
+/// A byte-offset range within a TOML document.
+///
+/// Convertible to and from [`Range<u32>`](std::ops::Range) and
+/// [`Range<usize>`](std::ops::Range).
 #[derive(Copy, Clone, PartialEq, Eq, Default, Debug)]
 pub struct Span {
+    /// Start byte offset (inclusive).
     pub start: u32,
+    /// End byte offset (exclusive).
     pub end: u32,
 }
 
 impl Span {
-    /// Creates a new [`Span`]
+    /// Creates a new [`Span`] from start and end byte offsets.
     #[inline]
     pub fn new(start: u32, end: u32) -> Self {
         Self { start, end }
     }
 
-    /// Checks if the start and end are the same, and thus the span is empty
+    /// Returns `true` if both start and end are zero.
     #[inline]
     pub fn is_empty(&self) -> bool {
         self.start == 0 && self.end == 0
@@ -55,16 +60,32 @@ impl From<Span> for std::ops::Range<usize> {
     }
 }
 
-/// An arbitrary `T` with additional span information
+/// Wraps a value `T` with its source [`Span`].
+///
+/// Use this as a field type in your [`Deserialize`](crate::Deserialize) structs
+/// when you need to preserve span information alongside the deserialized value.
+///
+/// # Examples
+///
+/// ```
+/// use toml_spanner::{Arena, Spanned};
+///
+/// let arena = Arena::new();
+/// let mut table = toml_spanner::parse("name = \"hello\"", &arena)?;
+/// let name: Spanned<String> = table.required("name")?;
+/// assert_eq!(name.value, "hello");
+/// assert!(name.span.start < name.span.end);
+/// # Ok::<(), toml_spanner::Error>(())
+/// ```
 pub struct Spanned<T> {
-    /// The value
+    /// The deserialized value.
     pub value: T,
-    /// The span information for the value
+    /// The byte-offset span in the source document.
     pub span: Span,
 }
 
 impl<T> Spanned<T> {
-    /// Creates a [`Spanned`] with just the value and an empty [`Span`]
+    /// Creates a [`Spanned`] with the given value and a zero span.
     #[inline]
     pub const fn new(value: T) -> Self {
         Self {
@@ -73,19 +94,19 @@ impl<T> Spanned<T> {
         }
     }
 
-    /// Creates a [`Spanned`] from both a value and a [`Span`]
+    /// Creates a [`Spanned`] from a value and a [`Span`].
     #[inline]
     pub const fn with_span(value: T, span: Span) -> Self {
         Self { value, span }
     }
 
-    /// Converts [`Self`] into its inner value
+    /// Consumes the wrapper, returning the inner value.
     #[inline]
     pub fn take(self) -> T {
         self.value
     }
 
-    /// Helper to convert the value inside the Spanned
+    /// Maps the inner value via [`From`], preserving the span.
     #[inline]
     pub fn map<V>(self) -> Spanned<V>
     where

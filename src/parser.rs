@@ -1833,9 +1833,9 @@ impl<'de> Parser<'de> {
 
 /// Parses a TOML string into a [`Table`].
 ///
-/// The caller must supply an [`Arena`] that shares the `'de` lifetime with
-/// the input. All escaped strings are committed into the arena so that
-/// `Str<'de>` can borrow from it without per-string heap allocation.
+/// The returned table borrows from both the input string and the [`Arena`],
+/// so both must outlive the table. The arena is used to store escape sequences;
+/// plain strings borrow directly from the input.
 pub fn parse<'de>(s: &'de str, arena: &'de Arena) -> Result<Table<'de>, Error> {
     // Tag bits use the low 3 bits of start_and_tag, limiting span.start to
     // 29 bits (512 MiB). The flag state uses the low 3 bits of end_and_flag,

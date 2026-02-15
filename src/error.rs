@@ -7,13 +7,18 @@ mod tests;
 use crate::Span;
 use std::fmt::{self, Debug, Display};
 
-/// Error that can occur when deserializing TOML.
+/// An error from parsing or deserializing TOML.
+///
+/// Contains both the error kind and the source location where it occurred.
+/// Enable the `reporting` feature for rich diagnostic output via
+/// [`to_diagnostic`](Self::to_diagnostic).
 pub struct Error {
-    /// The error kind
+    /// What went wrong.
     pub kind: ErrorKind,
-    /// The span where the error occurs.
+    /// The primary source span for the error.
     ///
-    /// Note some [`ErrorKind`] contain additional span information
+    /// Some [`ErrorKind`] variants carry additional spans (e.g. the location
+    /// of a first definition for duplicate-key errors).
     pub span: Span,
 }
 
@@ -34,7 +39,7 @@ impl From<(ErrorKind, Span)> for Error {
     }
 }
 
-/// Errors that can occur when deserializing a type.
+/// The specific kind of parse or deserialization error.
 pub enum ErrorKind {
     /// EOF was reached when looking for a value.
     UnexpectedEof,
@@ -311,7 +316,7 @@ impl Display for Error {
 #[cfg(feature = "reporting")]
 #[cfg_attr(docsrs, doc(cfg(feature = "reporting")))]
 impl Error {
-    /// Converts this [`Error`] into a [`codespan_reporting::diagnostic::Diagnostic`]
+    /// Converts this error into a [`codespan_reporting`](https://docs.rs/codespan-reporting) diagnostic.
     pub fn to_diagnostic<FileId: Copy + PartialEq>(
         &self,
         fid: FileId,

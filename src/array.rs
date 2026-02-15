@@ -12,8 +12,15 @@ use std::ptr::NonNull;
 
 const MIN_CAP: u32 = 4;
 
-/// A growable array of TOML [`Item`]s backed by a flat allocation with 32-bit
-/// length and capacity.
+/// A growable array of TOML [`Item`]s.
+///
+/// Arrays support indexing with `usize` via the `[]` operator, which returns
+/// a [`MaybeItem`] — out-of-bounds access returns a `None` variant instead of
+/// panicking. Use [`get`](Self::get) / [`get_mut`](Self::get_mut) for
+/// `Option`-based access, or iterate with a `for` loop.
+///
+/// Mutation methods ([`push`](Self::push), [`with_capacity`](Self::with_capacity))
+/// require an [`Arena`] because array storage is arena-allocated.
 pub struct Array<'de> {
     len: u32,
     cap: u32,
@@ -195,7 +202,7 @@ impl<'a, 'de> IntoIterator for &'a mut Array<'de> {
     }
 }
 
-/// Consuming iterator over an [`Array`].
+/// Consuming iterator over an [`Array`], yielding [`Item`]s.
 pub struct IntoIter<'de> {
     arr: Array<'de>,
     index: u32,

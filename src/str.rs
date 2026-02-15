@@ -1,6 +1,6 @@
 #![allow(unsafe_code)]
 
-//! A 16-byte string type that borrows from either the TOML source or an arena.
+//! A borrowed string type used throughout the parser.
 
 use std::borrow::{Borrow, Cow};
 use std::hash::{Hash, Hasher};
@@ -9,11 +9,11 @@ use std::ops::Deref;
 use std::ptr::NonNull;
 use std::{fmt, str};
 
-/// A 16-byte string that borrows from the TOML source or from the parser arena.
+/// A borrowed string that references either the TOML source or the parser
+/// [`Arena`](crate::Arena).
 ///
-/// This is a simple `(ptr, len)` pair. The data is always borrowed — never
-/// owned — so `Str` is `Copy` and has no `Drop`. Both the input string and
-/// the arena must outlive the `Str` (enforced via the `'de` lifetime).
+/// `Str` is [`Copy`] and never owns its data. It dereferences to [`str`] and
+/// can be converted into [`String`], [`Box<str>`], or [`Cow<str>`](std::borrow::Cow).
 #[derive(Copy, Clone)]
 pub struct Str<'de> {
     ptr: NonNull<u8>,

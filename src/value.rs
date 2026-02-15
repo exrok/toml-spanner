@@ -51,12 +51,30 @@ union Payload<'de> {
 }
 
 /// A parsed TOML value with span information.
+///
+/// Use the `as_*` methods ([`as_str`](Self::as_str),
+/// [`as_integer`](Self::as_integer), [`as_table`](Self::as_table), etc.) to
+/// extract the value, or call [`value`](Self::value) /
+/// [`value_mut`](Self::value_mut) to pattern match via the [`Value`] /
+/// [`ValueMut`] enums.
+///
+/// Items support indexing with `&str` (table lookup) and `usize` (array
+/// access). These operators return [`MaybeItem`] and never panic — missing
+/// keys or out-of-bounds indices produce a `None` variant instead.
+///
+/// # Examples
+///
+/// ```
+/// let arena = toml_spanner::Arena::new();
+/// let table = toml_spanner::parse("x = 42", &arena)?;
+/// assert_eq!(table["x"].as_integer(), Some(42));
+/// assert_eq!(table["missing"].as_integer(), None);
+/// # Ok::<(), toml_spanner::Error>(())
+/// ```
 #[repr(C)]
 pub struct Item<'de> {
     payload: Payload<'de>,
-    /// Bits 2-0: tag, bits 31-3: span.start
     start_and_tag: u32,
-    /// Bit 0: flag bit (parser-internal), bits 31-1: span.end
     end_and_flag: u32,
 }
 
@@ -226,7 +244,7 @@ impl<'de> Item<'de> {
         self.end_and_flag & FLAG_MASK
     }
 
-    /// Returns the source span (tag and flag bits masked out).
+    /// Returns the byte-offset span of this value in the source document.
     #[inline]
     pub fn span(&self) -> Span {
         Span::new(
@@ -235,7 +253,7 @@ impl<'de> Item<'de> {
         )
     }
 
-    /// Gets the type of the value as a string.
+    /// Returns the TOML type name (e.g. `"string"`, `"integer"`, `"table"`).
     #[inline]
     pub fn type_str(&self) -> &'static str {
         match self.tag() {
@@ -278,11 +296,11 @@ impl<'de> Item<'de> {
         self.flag() == FLAG_DOTTED
     }
 
-    /// Splits this array [`Item`] into disjoint borrows: `&mut u32` for the
-    /// `end_and_flag` span field (bytes \[4..8\)) and `&mut Array` for the
-    /// payload (bytes \[8..24\)).
+    /// Splits this array item into disjoint borrows of the span field and array payload.
     ///
-    /// SAFETY: The caller must ensure `self.is_array()` is true.
+    /// # Safety
+    ///
+    /// The caller must ensure `self.is_array()` is true.
     #[inline]
     pub(crate) unsafe fn split_array_end_flag(&mut self) -> (&mut u32, &mut Array<'de>) {
         debug_assert!(self.is_array());
@@ -296,22 +314,52 @@ impl<'de> Item<'de> {
 }
 
 /// Borrowed view into an [`Item`] for pattern matching.
+///
+/// Obtained via [`Item::value`].
+///
+/// # Examples
+///
+/// ```
+/// use toml_spanner::{Arena, Value};
+///
+/// let arena = Arena::new();
+/// let table = toml_spanner::parse("n = 10", &arena)?;
+/// match table["n"].item().unwrap().value() {
+///     Value::Integer(i) => assert_eq!(*i, 10),
+///     _ => panic!("expected integer"),
+/// }
+/// # Ok::<(), toml_spanner::Error>(())
+/// ```
 pub enum Value<'a, 'de> {
+    /// A string value.
     String(&'a Str<'de>),
+    /// An integer value.
     Integer(&'a i64),
+    /// A floating-point value.
     Float(&'a f64),
+    /// A boolean value.
     Boolean(&'a bool),
+    /// An array value.
     Array(&'a Array<'de>),
+    /// A table value.
     Table(&'a Table<'de>),
 }
 
 /// Mutable view into an [`Item`] for pattern matching.
+///
+/// Obtained via [`Item::value_mut`].
 pub enum ValueMut<'a, 'de> {
+    /// A string value.
     String(&'a mut Str<'de>),
+    /// An integer value.
     Integer(&'a mut i64),
+    /// A floating-point value.
     Float(&'a mut f64),
+    /// A boolean value.
     Boolean(&'a mut bool),
+    /// An array value.
     Array(&'a mut Array<'de>),
+    /// A table value.
     Table(&'a mut Table<'de>),
 }
 
@@ -407,6 +455,7 @@ impl<'de> Item<'de> {
             None
         }
     }
+    /// Returns a mutable array reference, or an error if this is not an array.
     pub fn expect_array(&mut self) -> Result<&mut Array<'de>, Error> {
         if self.is_array() {
             Ok(unsafe { &mut self.payload.array })
@@ -414,6 +463,9 @@ impl<'de> Item<'de> {
             Err(self.expected("a array"))
         }
     }
+    /// Returns a mutable table reference, or an error if this is not a table.
+    ///
+    /// This is the typical entry point for implementing [`Deserialize`](crate::Deserialize).
     pub fn expect_table(&mut self) -> Result<&mut Table<'de>, Error> {
         if self.is_table() {
             Ok(unsafe { self.as_spanned_table_mut_unchecked() })
@@ -479,9 +531,7 @@ impl<'de> Item<'de> {
 }
 
 impl<'de> Item<'de> {
-    /// Constructs an [`ErrorKind::Wanted`] error from this value.
-    ///
-    /// Uses `self.type_str()` as the `found` field and `self.span()` as the span.
+    /// Creates an "expected X, found Y" error using this value's type and span.
     #[inline]
     pub fn expected(&self, expected: &'static str) -> Error {
         Error {
@@ -600,12 +650,15 @@ impl serde::Serialize for Table<'_> {
     }
 }
 
-/// A TOML table key with span information.
+/// A TOML table key with its source span.
+///
+/// Keys appear as the first element in `(`[`Key`]`, `[`Item`]`)` entry pairs
+/// when iterating over a [`Table`].
 #[derive(Copy, Clone)]
 pub struct Key<'de> {
-    /// The key name, borrowed from the TOML source or the parser arena.
+    /// The key name.
     pub name: Str<'de>,
-    /// The span for the key in the original document.
+    /// The byte-offset span of the key in the source document.
     pub span: Span,
 }
 impl<'de> Key<'de> {
@@ -711,12 +764,45 @@ impl<'de> std::ops::Index<usize> for MaybeItem<'de> {
     }
 }
 
+/// A nullable reference to a parsed TOML value.
+///
+/// `MaybeItem` is returned by the index operators (`[]`) on [`Item`],
+/// [`Table`], [`Array`], and `MaybeItem` itself. It acts like an
+/// [`Option<&Item>`] that can be further indexed without panicking — chained
+/// lookups on missing keys simply propagate the `None` state.
+///
+/// Use the `as_*` accessors to extract a value, or call [`item`](Self::item)
+/// to get back an `Option<&Item>`.
+///
+/// # Examples
+///
+/// ```
+/// use toml_spanner::Arena;
+///
+/// let arena = Arena::new();
+/// let table = toml_spanner::parse(r#"
+/// [server]
+/// host = "localhost"
+/// port = 8080
+/// "#, &arena)?;
+///
+/// // Successful nested lookup.
+/// assert_eq!(table["server"]["host"].as_str(), Some("localhost"));
+/// assert_eq!(table["server"]["port"].as_integer(), Some(8080));
+///
+/// // Missing keys propagate through chained indexing without panicking.
+/// assert_eq!(table["server"]["missing"].as_str(), None);
+/// assert_eq!(table["nonexistent"]["deep"]["path"].as_str(), None);
+///
+/// // Convert back to an Option<&Item> when needed.
+/// assert!(table["server"]["host"].item().is_some());
+/// assert!(table["nope"].item().is_none());
+/// # Ok::<(), toml_spanner::Error>(())
+/// ```
 #[repr(C)]
 pub struct MaybeItem<'de> {
     payload: Payload<'de>,
-    /// Bits 2-0: tag, bits 31-3: span.start
     start_and_tag: u32,
-    /// Bit 0: flag bit (parser-internal), bits 31-1: span.end
     end_and_flag: u32,
 }
 
@@ -729,6 +815,7 @@ pub(crate) static NONE: MaybeItem<'static> = MaybeItem {
 };
 
 impl<'de> MaybeItem<'de> {
+    /// Views an [`Item`] reference as a `MaybeItem`.
     pub fn from_ref<'a>(item: &'a Item<'de>) -> &'a Self {
         unsafe { &*(item as *const Item<'de> as *const MaybeItem<'de>) }
     }
@@ -736,6 +823,7 @@ impl<'de> MaybeItem<'de> {
     pub(crate) fn tag(&self) -> u32 {
         self.start_and_tag & TAG_MASK
     }
+    /// Returns the underlying [`Item`], or [`None`] if this is a missing value.
     pub fn item(&self) -> Option<&Item<'de>> {
         if self.tag() != TAG_NONE {
             Some(unsafe { &*(self as *const MaybeItem<'de> as *const Item<'de>) })
@@ -803,6 +891,7 @@ impl<'de> MaybeItem<'de> {
         }
     }
 
+    /// Returns the source span, or [`None`] if this is a missing value.
     pub fn span(&self) -> Option<Span> {
         if let Some(item) = self.item() {
             Some(item.span())
@@ -811,6 +900,7 @@ impl<'de> MaybeItem<'de> {
         }
     }
 
+    /// Returns a borrowed [`Value`] for pattern matching, or [`None`] if missing.
     pub fn value(&self) -> Option<Value<'_, 'de>> {
         if let Some(item) = self.item() {
             Some(item.value())

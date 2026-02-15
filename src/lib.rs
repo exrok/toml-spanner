@@ -1,9 +1,15 @@
-//! A high-performance TOML parser that preserves byte-offset span information
-//! for every parsed value.
+//! A high-performance TOML parser that preserves span information for every
+//! parsed value.
 //!
-//! All values are represented as compact 24-byte [`Item`]s with bit-packed
-//! spans. Strings are zero-copy where possible, borrowing directly from the
-//! input; escape sequences are committed into a caller-supplied [`Arena`].
+//! Strings are zero-copy where possible, borrowing directly from the input;
+//! escape sequences are allocated into a caller-supplied [`Arena`].
+//!
+//! # Quick start
+//!
+//! Call [`parse`] with a TOML string and an [`Arena`] to get a [`Table`]. Then
+//! extract values with [`Table::required`] and [`Table::optional`], or index
+//! into nested structures with bracket operators that return [`MaybeItem`]
+//! (never panic on missing keys).
 //!
 //! # Examples
 //!
@@ -44,13 +50,15 @@
 //! let arena = Arena::new();
 //! let mut table = toml_spanner::parse(content, &arena)?;
 //!
-//! // Null coalescing index operators
+//! // Null-coalescing index operators — missing keys return a None-like
+//! // MaybeItem instead of panicking.
 //! assert_eq!(table["things"][0]["color"].as_str(), None);
 //! assert_eq!(table["things"][1]["color"].as_str(), Some("green"));
 //!
+//! // Deserialize typed values out of the table.
 //! let things: Vec<Things> = table.required("things")?;
 //! let dev_mode: bool = table.optional("dev-mode")?.unwrap_or(false);
-//! // Error if unused fields exist.
+//! // Error if unconsumed fields remain.
 //! table.expect_empty()?;
 //!
 //! assert_eq!(things.len(), 2);
@@ -81,14 +89,45 @@ pub use value::{Item, Key, MaybeItem, Value, ValueMut};
 #[cfg(feature = "serde")]
 pub mod impl_serde;
 
-/// This crate's equivalent to [`serde::Deserialize`](https://docs.rs/serde/latest/serde/de/trait.Deserialize.html).
+/// Converts a parsed TOML [`Item`] into a typed Rust value.
+///
+/// Implement this trait on your own types to extract them from a parsed TOML
+/// document via [`Table::required`] and [`Table::optional`].
+///
+/// Built-in implementations are provided for common types: [`bool`], integer
+/// types ([`i8`] through [`i64`], [`u8`] through [`u64`], [`usize`]),
+/// floating-point types ([`f32`], [`f64`]), [`String`],
+/// [`Cow<'de, str>`](std::borrow::Cow), [`Str`], [`Vec<T>`], and
+/// [`Spanned<T>`].
+///
+/// # Examples
+///
+/// ```
+/// use toml_spanner::{Deserialize, Error, Item};
+///
+/// struct Endpoint {
+///     host: String,
+///     port: u16,
+/// }
+///
+/// impl<'de> Deserialize<'de> for Endpoint {
+///     fn deserialize(item: &mut Item<'de>) -> Result<Self, Error> {
+///         let table = item.expect_table()?;
+///         Ok(Endpoint {
+///             host: table.required("host")?,
+///             port: table.required("port")?,
+///         })
+///     }
+/// }
+/// ```
 pub trait Deserialize<'de>: Sized {
     /// Deserializes `Self` from the given [`Item`], returning an error on failure.
     fn deserialize(item: &mut Item<'de>) -> Result<Self, Error>;
 }
 
-/// This crate's equivalent to [`serde::DeserializeOwned`](https://docs.rs/serde/latest/serde/de/trait.DeserializeOwned.html).
+/// Object-safe version of [`Deserialize`] for types that do not borrow from
+/// the input.
 ///
-/// Useful for trait bounds that require deserialization from any lifetime.
+/// Automatically implemented for every `T: for<'de> Deserialize<'de>`.
 pub trait DeserializeOwned: for<'de> Deserialize<'de> {}
 impl<T> DeserializeOwned for T where T: for<'de> Deserialize<'de> {}

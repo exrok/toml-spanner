@@ -27,10 +27,22 @@ static EMPTY_SLAB: SlabHeader = SlabHeader {
     size: 0,
 };
 
-/// A bump allocator that allocates from increasingly large slabs.
+/// A bump allocator used by the parser to store escaped strings.
 ///
-/// All allocations are bulk-freed when the arena is dropped. Individual
-/// deallocation is not supported.
+/// Create an `Arena` before calling [`parse`](crate::parse) and pass it by
+/// reference. The arena must live at least as long as the parsed [`Table`](crate::Table)
+/// because [`Str`](crate::Str) values may borrow from it.
+///
+/// All memory is freed when the arena is dropped.
+///
+/// # Examples
+///
+/// ```
+/// let arena = toml_spanner::Arena::new();
+/// let table = toml_spanner::parse("key = \"value\"", &arena)?;
+/// // `table` borrows from both the input string and `arena`.
+/// # Ok::<(), toml_spanner::Error>(())
+/// ```
 pub struct Arena {
     ptr: Cell<NonNull<u8>>,
     end: Cell<NonNull<u8>>,
@@ -40,6 +52,7 @@ pub struct Arena {
 const _: () = assert!(std::mem::size_of::<Arena>() == 24);
 
 impl Arena {
+    /// Creates a new, empty arena.
     pub fn new() -> Self {
         // Safety: EMPTY_SLAB is a static with a stable address.
         let sentinel =

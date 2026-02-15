@@ -217,7 +217,7 @@ impl std::fmt::Debug for InnerTable<'_> {
     }
 }
 
-/// Consuming iterator over a [`Table`].
+/// Consuming iterator over a [`Table`], yielding `(`[`Key`]`, `[`Item`]`)` pairs.
 pub struct IntoIter<'de> {
     table: InnerTable<'de>,
     index: u32,
@@ -246,13 +246,35 @@ impl ExactSizeIterator for IntoIter<'_> {}
 
 /// A TOML table with span information.
 ///
-/// Wraps a flat list of `(`[`Key`]`, `[`Item`]`)` pairs and tracks the byte
-/// span of the table in the source document.
+/// A `Table` is the top-level value returned by [`parse`](crate::parse) and is
+/// also the value inside any `[section]` or inline `{ ... }` table in TOML.
+/// It stores `(`[`Key`]`, `[`Item`]`)` pairs in insertion order.
 ///
-/// Entries are stored in insertion order after parsing. Removing entries
-/// (directly via [`remove`](Self::remove) or indirectly via deserialization
-/// helpers like [`required`](Self::required) and [`optional`](Self::optional))
-/// uses swap-remove and may reorder the remaining entries.
+/// # Accessing values
+///
+/// - **Index operators** — `table["key"]` returns a [`MaybeItem`] that never
+///   panics on missing keys, and supports chained indexing.
+/// - **`get` / `get_mut`** — return `Option<&Item>` / `Option<&mut Item>`.
+/// - **`required` / `optional`** — deserialize and *remove* a field in one
+///   step, used when implementing [`Deserialize`](crate::Deserialize).
+///   After extracting all expected fields, call [`expect_empty`](Self::expect_empty)
+///   to reject unknown keys.
+///
+/// # Constructing tables
+///
+/// Tables are normally obtained from [`parse`](crate::parse). To build one
+/// programmatically, create a table with [`Table::new`] and insert entries
+/// with [`Table::insert`]. An [`Arena`](crate::Arena) is required for
+/// insertion because entries are arena-allocated.
+///
+/// # Iteration
+///
+/// `Table` implements [`IntoIterator`] (both by reference and by value),
+/// yielding `(`[`Key`]`, `[`Item`]`)` pairs.
+///
+/// Removal via [`remove`](Self::remove), [`required`](Self::required), and
+/// [`optional`](Self::optional) uses swap-remove and may reorder remaining
+/// entries.
 #[repr(C)]
 pub struct Table<'de> {
     pub(crate) value: InnerTable<'de>,
@@ -271,7 +293,7 @@ impl<'de> Table<'de> {
             value: InnerTable::new(),
         }
     }
-    /// Returns the source span of this table.
+    /// Returns the byte-offset span of this table in the source document.
     pub fn span(&self) -> Span {
         Span {
             start: self.start_and_tag >> TAG_SHIFT,
@@ -360,7 +382,7 @@ impl<'de> Table<'de> {
         Item::table(self.value, span)
     }
 
-    /// Deserializes a required field from the table.
+    /// Removes and deserializes a field, returning an error if the key is missing.
     pub fn required<T: Deserialize<'de>>(&mut self, name: &'static str) -> Result<T, Error> {
         let Some(mut val) = self.value.remove(name) else {
             return Err(Error {
@@ -372,7 +394,7 @@ impl<'de> Table<'de> {
         T::deserialize(&mut val)
     }
 
-    /// Deserializes an optional field from the table.
+    /// Removes and deserializes a field, returning [`None`] if the key is missing.
     pub fn optional<T: Deserialize<'de>>(&mut self, name: &str) -> Result<Option<T>, Error> {
         let Some(mut val) = self.value.remove(name) else {
             return Ok(None);
@@ -384,9 +406,10 @@ impl<'de> Table<'de> {
         }
     }
 
-    /// Checks that all keys have been consumed.
+    /// Returns an error if the table still has unconsumed entries.
     ///
-    /// Returns [`ErrorKind::UnexpectedKeys`] if the table still has entries.
+    /// Call this after extracting all expected fields with [`required`](Self::required)
+    /// and [`optional`](Self::optional) to reject unknown keys.
     pub fn expect_empty(&self) -> Result<(), Error> {
         if self.value.is_empty() {
             return Ok(());
