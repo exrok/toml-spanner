@@ -90,39 +90,6 @@ fn inner_get_and_mutate() {
 }
 
 #[test]
-fn inner_index_access() {
-    let arena = Arena::new();
-    let mut t = InnerTable::new();
-    t.insert(
-        Key {
-            name: Str::from("first"),
-            span: Span::new(10, 15),
-        },
-        ival(1),
-        &arena,
-    );
-    t.insert(key("second"), ival(2), &arena);
-
-    // get_key_value_at
-    let (k, v) = t.get_key_value_at(0);
-    assert_eq!(&*k.name, "first");
-    assert_eq!(v.as_i64(), Some(1));
-    let (k, v) = t.get_key_value_at(1);
-    assert_eq!(&*k.name, "second");
-    assert_eq!(v.as_i64(), Some(2));
-
-    // get_mut_at: modify value at index 1
-    let v = t.get_mut_at(1);
-    if let crate::value::ValueMut::Integer(i) = v.value_mut() {
-        *i = 99;
-    }
-    assert_eq!(t.get("second").unwrap().as_i64(), Some(99));
-
-    // first_key_span_start returns span.start of the first key
-    assert_eq!(t.first_key_span_start(), 10);
-}
-
-#[test]
 fn inner_remove() {
     let arena = Arena::new();
 

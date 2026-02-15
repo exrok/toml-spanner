@@ -37,7 +37,7 @@ struct Ctx<'b, 'de> {
 }
 
 /// Tables with at least this many entries use the hash index for lookups.
-const INDEXED_TABLE_THRESHOLD: usize = 6;
+const INDEXED_TABLE_THRESHOLD: usize = 7;
 
 const fn build_hex_table() -> [i8; 256] {
     let mut table = [-1i8; 256];
@@ -1390,8 +1390,7 @@ impl<'de> Parser<'de> {
         key: Key<'de>,
     ) -> Result<&'t mut InnerTable<'de>, ParseError> {
         if let Some(idx) = self.indexed_find(table, &key.name) {
-            // Safety: Indexed find guarantee index exists.
-            let (existing_key, value) = unsafe { table.get_mut_unchecked(idx) };
+            let (existing_key, value) = &mut table.entries_mut()[idx];
             let ok = value.is_table() && !value.is_frozen() && !value.has_header_bit();
 
             if !ok {
@@ -1426,21 +1425,19 @@ impl<'de> Parser<'de> {
         let table = &mut st.value;
 
         if let Some(idx) = self.indexed_find(table, &key.name) {
-            let (existing_key, existing_val) = table.get_key_value_at(idx);
+            let (existing_key, existing) = &mut table.entries_mut()[idx];
             let first_key_span = existing_key.span;
-            let is_table = existing_val.is_table();
-            let is_array = existing_val.is_array();
-            let is_frozen = existing_val.is_frozen();
-            let is_aot = existing_val.is_aot();
+            let is_table = existing.is_table();
+            let is_array = existing.is_array();
+            let is_frozen = existing.is_frozen();
+            let is_aot = existing.is_aot();
 
             if is_table {
                 if is_frozen {
                     return Err(self.set_duplicate_key_error(first_key_span, key.span, &key.name));
                 }
-                let existing = table.get_mut_at(idx);
                 unsafe { Ok(existing.as_spanned_table_mut_unchecked()) }
             } else if is_array && is_aot {
-                let existing = table.get_mut_at(idx);
                 let arr = existing.as_array_mut().unwrap();
                 let last = arr.last_mut().unwrap();
                 if !last.is_table() {
@@ -1460,12 +1457,31 @@ impl<'de> Parser<'de> {
         &mut self,
         table: &'t mut InnerTable<'de>,
         key: Key<'de>,
-        value: Item<'de>,
+        item: Item<'de>,
     ) -> &'t mut value::Item<'de> {
-        table.insert(key, value, self.arena);
-        self.index_after_insert(table);
-        let last_idx = table.len() - 1;
-        table.get_mut_at(last_idx)
+        let len = table.len();
+        if len >= INDEXED_TABLE_THRESHOLD {
+            let first_key_span = unsafe { table.first_key_span_start_unchecked() };
+            if len == INDEXED_TABLE_THRESHOLD {
+                for (i, (key, _)) in table.entries().iter().enumerate() {
+                    let (ptr, slen) = key.name.as_raw_parts();
+                    let ki = KeyIndex {
+                        key_ptr: ptr,
+                        len: slen as u32,
+                        first_key_span,
+                    };
+                    self.table_index.insert(ki, i);
+                }
+            }
+            let (ptr, slen) = key.name.as_raw_parts();
+            let ki = KeyIndex {
+                key_ptr: ptr,
+                len: slen as u32,
+                first_key_span,
+            };
+            self.table_index.insert(ki, len);
+        }
+        &mut table.insert(key, item, self.arena).1
     }
 
     /// Handle the final segment of a standard table header `[a.b.c]`.
@@ -1482,13 +1498,13 @@ impl<'de> Parser<'de> {
         let table = &mut st.value;
 
         if let Some(idx) = self.indexed_find(table, &key.name) {
-            let (existing_key, existing_val) = table.get_key_value_at(idx);
+            let (existing_key, value) = &mut table.entries_mut()[idx];
             let first_key_span = existing_key.span;
-            let is_table = existing_val.is_table();
-            let is_frozen = existing_val.is_frozen();
-            let has_header = existing_val.has_header_bit();
-            let has_dotted = existing_val.has_dotted_bit();
-            let val_span = existing_val.span();
+            let is_table = value.is_table();
+            let is_frozen = value.is_frozen();
+            let has_header = value.has_header_bit();
+            let has_dotted = value.has_dotted_bit();
+            let val_span = value.span();
 
             if !is_table || is_frozen {
                 return Err(self.set_duplicate_key_error(first_key_span, key.span, &key.name));
@@ -1506,13 +1522,12 @@ impl<'de> Parser<'de> {
             if has_dotted {
                 return Err(self.set_duplicate_key_error(first_key_span, key.span, &key.name));
             }
-            let existing = table.get_mut_at(idx);
-            let st = unsafe { existing.as_spanned_table_mut_unchecked() };
-            st.set_header_flag();
-            st.set_span_start(header_start);
-            st.set_span_end(header_end);
+            let table = unsafe { value.as_spanned_table_mut_unchecked() };
+            table.set_header_flag();
+            table.set_span_start(header_start);
+            table.set_span_end(header_end);
             Ok(Ctx {
-                table: st,
+                table,
                 array_end_span: None,
             })
         } else {
@@ -1542,14 +1557,13 @@ impl<'de> Parser<'de> {
         let table = &mut st.value;
 
         if let Some(idx) = self.indexed_find(table, &key.name) {
-            let (existing_key, existing_val) = table.get_key_value_at(idx);
+            let (existing_key, value) = &mut table.entries_mut()[idx];
             let first_key_span = existing_key.span;
-            let is_aot = existing_val.is_aot();
-            let is_table = existing_val.is_table();
+            let is_aot = value.is_aot();
+            let is_table = value.is_table();
 
             if is_aot {
-                let existing = table.get_mut_at(idx);
-                let (end_flag, arr) = unsafe { existing.split_array_end_flag() };
+                let (end_flag, arr) = unsafe { value.split_array_end_flag() };
                 let entry_span = Span::new(header_start, header_end);
                 arr.push(
                     Item::table_header(InnerTable::new(), entry_span),
@@ -1592,15 +1606,14 @@ impl<'de> Parser<'de> {
         &mut self,
         table: &mut InnerTable<'de>,
         key: Key<'de>,
-        val: Item<'de>,
+        item: Item<'de>,
     ) -> Result<(), ParseError> {
         if let Some(idx) = self.indexed_find(table, &key.name) {
-            let (existing_key, _) = table.get_key_value_at(idx);
+            let (existing_key, _) = &table.entries_mut()[idx];
             return Err(self.set_duplicate_key_error(existing_key.span, key.span, &key.name));
         }
 
-        table.insert(key, val, self.arena);
-        self.index_after_insert(table);
+        self.insert_into_table(table, key, item);
         Ok(())
     }
 
@@ -1610,8 +1623,8 @@ impl<'de> Parser<'de> {
     fn indexed_find(&self, table: &InnerTable<'de>, name: &str) -> Option<usize> {
         // NOTE: I would return a refernce to actual entry here, however this
         // runs into all sorts of NLL limitations.
-        if table.len() >= INDEXED_TABLE_THRESHOLD {
-            let first_key_span = table.first_key_span_start();
+        if table.len() > INDEXED_TABLE_THRESHOLD {
+            let first_key_span = unsafe { table.first_key_span_start_unchecked() };
             let probe = KeyIndex {
                 // Safety: Name is reference and therefore non-null. This check is only
                 // used for probe so the lifetime doesn't matter.
@@ -1623,48 +1636,6 @@ impl<'de> Parser<'de> {
         } else {
             table.find_index(name)
         }
-    }
-
-    /// After inserting an entry into a table, update the hash index if the
-    /// table has reached or exceeded the indexing threshold.
-    fn index_after_insert(&mut self, table: &InnerTable<'de>) {
-        let len = table.len();
-        if len >= INDEXED_TABLE_THRESHOLD {
-            if len == INDEXED_TABLE_THRESHOLD {
-                self.bulk_index_table(table);
-                return;
-            }
-            self.index_last_entry(table);
-        }
-    }
-
-    /// Populate the hash index with all entries of a table that just reached
-    /// the threshold.
-    fn bulk_index_table(&mut self, table: &InnerTable<'de>) {
-        let first_key_span = table.first_key_span_start();
-        for (i, (key, _)) in table.entries().iter().enumerate() {
-            let (ptr, slen) = key.name.as_raw_parts();
-            let ki = KeyIndex {
-                key_ptr: ptr,
-                len: slen as u32,
-                first_key_span,
-            };
-            self.table_index.insert(ki, i);
-        }
-    }
-
-    /// Index only the last (just-inserted) entry of an already-indexed table.
-    fn index_last_entry(&mut self, table: &InnerTable<'de>) {
-        let idx = table.len() - 1;
-        let first_key_span = table.first_key_span_start();
-        let (key, _) = table.get_key_value_at(idx);
-        let (ptr, slen) = key.name.as_raw_parts();
-        let ki = KeyIndex {
-            key_ptr: ptr,
-            len: slen as u32,
-            first_key_span,
-        };
-        self.table_index.insert(ki, idx);
     }
 
     fn parse_document(&mut self, root_st: &mut Table<'de>) -> Result<(), ParseError> {

@@ -37,15 +37,22 @@ impl<'de> InnerTable<'de> {
     }
 
     /// Inserts a key-value pair. Does **not** check for duplicates.
-    pub fn insert(&mut self, key: Key<'de>, value: Item<'de>, arena: &Arena) {
+    pub fn insert(
+        &mut self,
+        key: Key<'de>,
+        value: Item<'de>,
+        arena: &Arena,
+    ) -> &mut TableEntry<'de> {
         let len = self.len;
         if self.len == self.cap {
             self.grow(arena);
         }
         unsafe {
-            self.ptr.as_ptr().add(len as usize).write((key, value));
+            let ptr = self.ptr.as_ptr().add(len as usize);
+            ptr.write((key, value));
+            self.len = len + 1;
+            &mut (*ptr)
         }
-        self.len = len + 1;
     }
 
     /// Returns the number of entries.
@@ -121,32 +128,9 @@ impl<'de> InnerTable<'de> {
     ///
     /// Debug-asserts that the table is non-empty.
     #[inline]
-    pub(crate) fn first_key_span_start(&self) -> u32 {
+    pub(crate) unsafe fn first_key_span_start_unchecked(&self) -> u32 {
         debug_assert!(self.len > 0);
         unsafe { (*self.ptr.as_ptr()).0.span.start }
-    }
-
-    /// Returns key-value references at a given index (unchecked in release).
-    #[inline]
-    pub(crate) unsafe fn get_mut_unchecked(&mut self, index: usize) -> &mut (Key<'de>, Item<'de>) {
-        debug_assert!(index < self.len as usize);
-        unsafe { &mut *self.ptr.as_ptr().add(index) }
-    }
-    /// Returns key-value references at a given index (unchecked in release).
-    #[inline]
-    pub(crate) fn get_key_value_at(&self, index: usize) -> (&Key<'de>, &Item<'de>) {
-        debug_assert!(index < self.len as usize);
-        unsafe {
-            let entry = &*self.ptr.as_ptr().add(index);
-            (&entry.0, &entry.1)
-        }
-    }
-
-    /// Returns a mutable value reference at a given index (unchecked in release).
-    #[inline]
-    pub(crate) fn get_mut_at(&mut self, index: usize) -> &mut Item<'de> {
-        debug_assert!(index < self.len as usize);
-        unsafe { &mut (*self.ptr.as_ptr().add(index)).1 }
     }
 
     /// Returns a slice of all entries.
