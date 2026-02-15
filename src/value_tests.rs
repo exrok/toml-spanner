@@ -489,8 +489,7 @@ fn item_debug_fmt() {
 
     let v = Item::table(InnerTable::new(), sp(0, 2));
     let debug = format!("{:?}", v);
-    // Table Debug may wrap in ManuallyDrop due to union layout
-    assert!(debug.contains("{}"));
+    assert_eq!(debug, "{}");
 }
 
 #[test]

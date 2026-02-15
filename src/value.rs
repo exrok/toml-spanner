@@ -584,15 +584,13 @@ impl<'de> Item<'de> {
 
 impl fmt::Debug for Item<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        unsafe {
-            match self.tag() {
-                TAG_STRING => self.payload.string.fmt(f),
-                TAG_INTEGER => self.payload.integer.fmt(f),
-                TAG_FLOAT => self.payload.float.fmt(f),
-                TAG_BOOLEAN => self.payload.boolean.fmt(f),
-                TAG_ARRAY => self.payload.array.fmt(f),
-                _ => self.payload.table.fmt(f),
-            }
+        match self.value() {
+            Value::String(s) => s.fmt(f),
+            Value::Integer(i) => i.fmt(f),
+            Value::Float(v) => v.fmt(f),
+            Value::Boolean(b) => b.fmt(f),
+            Value::Array(a) => a.fmt(f),
+            Value::Table(t) => t.fmt(f),
         }
     }
 }
