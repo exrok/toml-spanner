@@ -2,12 +2,8 @@
 source: integ-tests/tests/parser.rs
 expression: error
 ---
-error[wanted]: 
+error[invalid-number]: 
   ┌─ newline_after_equal:1:5
-  │  
-1 │   key=
-  │ ╭────^
-2 │ │ 3
-  │ ╰^ expected a value
-
-
+  │
+1 │ key=
+  │     ^ unable to parse number

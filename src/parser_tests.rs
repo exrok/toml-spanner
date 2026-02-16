@@ -168,6 +168,21 @@ fn arrays() {
 }
 
 #[test]
+fn split_keys_error() {
+    let ctx = TestCtx::new();
+
+    ctx.parse_err("a.\nb = 1");
+    ctx.parse_err("a\n.b = 1");
+    ctx.parse_err("a\n.\nb = 1");
+    ctx.parse_err("[a\n.\nb]\nc = 1");
+    ctx.parse_err("[a\n.b]\nc = 1");
+    ctx.parse_err("[a.\nb]\nc = 1");
+    ctx.parse_err("a={a\n.b=1}");
+    ctx.parse_err("a={a.\nb=1}");
+    ctx.parse_err("a={a\n.\nb=1}");
+}
+
+#[test]
 fn inline_tables() {
     let ctx = TestCtx::new();
 
@@ -705,7 +720,16 @@ fn float_format_errors() {
     let error_cases = [
         "a = 00.5",
         "a = 1.",
+        "a = .1",
         "a = 1.5_",
+        "a = --1.0",
+        "a = --1",
+        "a = -+1",
+        "a = +-1",
+        "a = +-1.0",
+        "a = +-1E",
+        "a = --1E",
+        "a = ++1E",
         "a = -00.5",
         "a = 50E+-1",
         "a = 50E-+1",
@@ -754,7 +778,7 @@ fn structural_errors() {
 
     // unquoted string value
     let e = ctx.parse_err("a = not_a_keyword");
-    assert!(matches!(e.kind, ErrorKind::UnquotedString));
+    assert!(matches!(e.kind, ErrorKind::InvalidNumber));
 
     // missing value at EOF
     let e = ctx.parse_err("a = ");
@@ -905,11 +929,11 @@ fn more_parse_errors() {
 
     // expected value found ]
     let e = ctx.parse_err("a = ]");
-    assert!(matches!(e.kind, ErrorKind::Wanted { .. }));
+    assert!(matches!(e.kind, ErrorKind::InvalidNumber));
 
     // expected value found }
     let e = ctx.parse_err("a = }");
-    assert!(matches!(e.kind, ErrorKind::Wanted { .. }));
+    assert!(matches!(e.kind, ErrorKind::InvalidNumber));
 
     // dash-leading invalid number
     let e = ctx.parse_err("a = -_bad");

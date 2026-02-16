@@ -2,10 +2,8 @@
 source: integ-tests/tests/parser.rs
 expression: error
 ---
-error[unquoted-string]: 
-  ┌─ false_trailing:1:7
+error[wanted]: 
+  ┌─ false_trailing:1:12
   │
 1 │ foo = false2
-  │       ^^^^^^ string is not quoted
-
-
+  │            ^ expected newline

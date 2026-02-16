@@ -2,10 +2,8 @@
 source: integ-tests/tests/parser.rs
 expression: error
 ---
-error[unquoted-string]: 
+error[invalid-number]: 
   ┌─ double_leading:1:7
   │
 1 │ foo = __0
-  │       ^^^ string is not quoted
-
-
+  │       ^^^ unable to parse number

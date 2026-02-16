@@ -9,11 +9,24 @@ cargo-fuzz = true
 
 [dependencies]
 libfuzzer-sys = "0.4"
-toml = { version = "0.9.11", features = ["preserve_order"] }
+toml = { version = "1", features = ["preserve_order"] }
 
 
 [dependencies.toml-spanner]
 path = ".."
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+
+[profile.release.package."toml"]
+debug-assertions = false
+[profile.release.package."toml_parser"]
+debug-assertions = false
+[profile.release.package."serde_spanned"]
+debug-assertions = false
+[profile.release.package."toml_datetime"]
+debug-assertions = false
 
 [[bin]]
 name = "parse_value"

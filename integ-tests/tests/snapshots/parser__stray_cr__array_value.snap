@@ -2,8 +2,8 @@
 source: integ-tests/tests/parser.rs
 expression: error
 ---
-error[wanted]: 
+error[invalid-number]: 
   ┌─ array_value:1:7
   │
 1 │ a = [  ]
-  │        expected a value
+  │        unable to parse number

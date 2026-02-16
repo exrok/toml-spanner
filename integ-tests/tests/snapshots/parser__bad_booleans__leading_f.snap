@@ -2,10 +2,8 @@
 source: integ-tests/tests/parser.rs
 expression: error
 ---
-error[unquoted-string]: 
+error[wanted]: 
   ┌─ leading_f:1:7
   │
 1 │ foo = f2
-  │       ^^ string is not quoted
-
-
+  │       ^ expected the literal `false`

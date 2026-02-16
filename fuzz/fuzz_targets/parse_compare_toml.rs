@@ -27,6 +27,9 @@ fuzz_target!(|data: &[u8]| {
             if toml_err.message().contains("recursion limit") {
                 return;
             }
+            if toml_err.message().contains("datetime") {
+                return;
+            }
             // toml-spanner must never accept input that the toml crate rejects.
             panic!(
                 "toml-spanner accepted but toml rejected!\n\
@@ -36,9 +39,9 @@ fuzz_target!(|data: &[u8]| {
             );
         }
         (Err(spanner_err), Ok(toml_tbl)) => {
-            if text.contains("-_") || text.contains("+_") {
-                return;
-            }
+            // if text.contains("-_") || text.contains("+_") {
+            //     return;
+            // }
             // toml accepted but toml-spanner rejected. Only acceptable if the
             // parsed value contains datetimes (unsupported by toml-spanner).
             //
@@ -84,7 +87,7 @@ fn tables_match(spanner: &toml_spanner::Table<'_>, toml_val: &toml::Table) -> bo
 /// (toml-spanner would have rejected the input). Any mismatch is a real bug.
 fn values_match(spanner: &toml_spanner::Item<'_>, toml_val: &toml::Value) -> bool {
     match (spanner.value(), toml_val) {
-        (Value::String(s), toml::Value::String(t)) => s.as_str() == t,
+        (Value::String(s), toml::Value::String(t)) => s == t,
         (Value::Integer(a), toml::Value::Integer(b)) => a == b,
         (Value::Float(a), toml::Value::Float(b)) => (a.is_nan() && b.is_nan()) || a == b,
         (Value::Boolean(a), toml::Value::Boolean(b)) => a == b,

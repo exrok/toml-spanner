@@ -757,17 +757,25 @@ impl<'de> Parser<'de> {
             char::REPLACEMENT_CHARACTER
         }
     }
-    fn number(&mut self, start: u32, end: u32, s: &'de str) -> Result<Item<'de>, ParseError> {
+    fn number(
+        &mut self,
+        start: u32,
+        end: u32,
+        s: &'de str,
+        sign: u8,
+    ) -> Result<Item<'de>, ParseError> {
         let bytes = s.as_bytes();
 
         // Base-prefixed integers (0x, 0o, 0b).
         // TOML forbids signs on these, so only match when first byte is '0'.
-        if let [b'0', format, rest @ ..] = s.as_bytes() {
-            match format {
-                b'x' => return self.integer_hex(rest, Span::new(start, end)),
-                b'o' => return self.integer_octal(rest, Span::new(start, end)),
-                b'b' => return self.integer_binary(rest, Span::new(start, end)),
-                _ => {}
+        if sign == 2 {
+            if let [b'0', format, rest @ ..] = s.as_bytes() {
+                match format {
+                    b'x' => return self.integer_hex(rest, Span::new(start, end)),
+                    b'o' => return self.integer_octal(rest, Span::new(start, end)),
+                    b'b' => return self.integer_binary(rest, Span::new(start, end)),
+                    _ => {}
+                }
             }
         }
 
@@ -776,7 +784,7 @@ impl<'de> Parser<'de> {
             return match self.peek_byte() {
                 Some(b) if is_keylike_byte(b) => {
                     let after = self.read_keylike();
-                    match self.float(start, end, s, Some(after)) {
+                    match self.float(start, end, s, Some(after), sign) {
                         Ok(f) => Ok(Item::float(f, Span::new(start, self.cursor as u32))),
                         Err(e) => Err(e),
                     }
@@ -785,30 +793,12 @@ impl<'de> Parser<'de> {
             };
         }
 
-        // Special float literals (inf, nan and signed variants).
-        // Guard behind first-significant-byte check to skip string
-        // comparisons for the common digit-only case.
-        let off = usize::from(bytes.first() == Some(&b'-'));
-        if let Some(&b'i' | &b'n') = bytes.get(off) {
-            return match s {
-                "inf" => Ok(Item::float(f64::INFINITY, Span::new(start, end))),
-                "-inf" => Ok(Item::float(f64::NEG_INFINITY, Span::new(start, end))),
-                "nan" => Ok(Item::float(f64::NAN.copysign(1.0), Span::new(start, end))),
-                "-nan" => Ok(Item::float(f64::NAN.copysign(-1.0), Span::new(start, end))),
-                _ => Err(self.set_error(
-                    start as usize,
-                    Some(end as usize),
-                    ErrorKind::InvalidNumber,
-                )),
-            };
-        }
-
-        if let Ok(v) = self.integer_decimal(bytes, Span::new(start, end)) {
+        if let Ok(v) = self.integer_decimal(bytes, Span::new(start, end), sign) {
             return Ok(v);
         }
 
         if bytes.iter().any(|&b| b == b'e' || b == b'E') {
-            return match self.float(start, end, s, None) {
+            return match self.float(start, end, s, None, sign) {
                 Ok(f) => Ok(Item::float(f, Span::new(start, self.cursor as u32))),
                 Err(e) => Err(e),
             };
@@ -817,46 +807,19 @@ impl<'de> Parser<'de> {
         Err(ParseError)
     }
 
-    fn number_leading_plus(&mut self, plus_start: u32) -> Result<Item<'de>, ParseError> {
-        match self.peek_byte() {
-            Some(b'0'..=b'9' | b'i' | b'n') => {
-                let s = self.read_keylike();
-                let end = self.cursor as u32;
-                // TOML forbids signs on base-prefixed integers.
-                if let [b'0', b'x' | b'o' | b'b', ..] = s.as_bytes() {
-                    return Err(self.set_error(
-                        plus_start as usize,
-                        Some(end as usize),
-                        ErrorKind::InvalidNumber,
-                    ));
-                }
-                self.number(plus_start, end, s)
-            }
-            _ => Err(self.set_error(
-                plus_start as usize,
-                Some(self.cursor),
-                ErrorKind::InvalidNumber,
-            )),
-        }
-    }
-
-    fn integer_decimal(&mut self, bytes: &'de [u8], span: Span) -> Result<Item<'de>, ParseError> {
+    fn integer_decimal(
+        &mut self,
+        bytes: &'de [u8],
+        span: Span,
+        sign: u8,
+    ) -> Result<Item<'de>, ParseError> {
         let mut acc: u64 = 0;
         let mut prev_underscore = false;
         let mut has_digit = false;
         let mut leading_zero = false;
+        let negative = sign == 0;
         'error: {
-            let (negative, digits) = match bytes.first() {
-                Some(&b'+') => (false, &bytes[1..]),
-                Some(&b'-') => (true, &bytes[1..]),
-                _ => (false, bytes),
-            };
-
-            if digits.is_empty() {
-                break 'error;
-            }
-
-            for &b in digits {
+            for &b in bytes {
                 if b == b'_' {
                     if !has_digit || prev_underscore {
                         break 'error;
@@ -1040,23 +1003,22 @@ impl<'de> Parser<'de> {
         end: u32,
         s: &'de str,
         after_decimal: Option<&'de str>,
+        sign: u8,
     ) -> Result<f64, ParseError> {
         let s_start = start as usize;
         let s_end = end as usize;
 
         // TOML forbids leading zeros in the integer part (e.g. 00.5, -01.0).
-        let unsigned = if s.as_bytes().first() == Some(&b'-') {
-            &s[1..]
-        } else {
-            s
-        };
-        if let [b'0', b'0'..=b'9' | b'_', ..] = unsigned.as_bytes() {
+        if let [b'0', b'0'..=b'9' | b'_', ..] = s.as_bytes() {
             return Err(self.set_error(s_start, Some(s_end), ErrorKind::InvalidNumber));
         }
 
         // Safety: no other Scratch or arena.alloc() is active during float parsing.
         let mut scratch = unsafe { self.arena.scratch() };
 
+        if sign == 0 {
+            scratch.push(b'-');
+        }
         if !scratch.push_strip_underscores(s.as_bytes()) {
             return Err(self.set_error(s_start, Some(s_end), ErrorKind::InvalidNumber));
         }
@@ -1112,13 +1074,13 @@ impl<'de> Parser<'de> {
         let Some(byte) = self.peek_byte() else {
             return Err(self.set_error(self.bytes.len(), None, ErrorKind::UnexpectedEof));
         };
-        match byte {
+        let sign = match byte {
             b'"' | b'\'' => {
                 self.cursor += 1;
-                match self.read_string(self.cursor - 1, byte) {
+                return match self.read_string(self.cursor - 1, byte) {
                     Ok((key, _)) => Ok(Item::string(key.name, key.span)),
                     Err(e) => Err(e),
-                }
+                };
             }
             b'{' => {
                 let start = self.cursor as u32;
@@ -1127,10 +1089,10 @@ impl<'de> Parser<'de> {
                 if let Err(err) = self.inline_table_contents(&mut table, depth_remaining - 1) {
                     return Err(err);
                 }
-                Ok(Item::table_frozen(
+                return Ok(Item::table_frozen(
                     table,
                     Span::new(start, self.cursor as u32),
-                ))
+                ));
             }
             b'[' => {
                 let start = self.cursor as u32;
@@ -1139,55 +1101,91 @@ impl<'de> Parser<'de> {
                 if let Err(err) = self.array_contents(&mut arr, depth_remaining - 1) {
                     return Err(err);
                 };
-                Ok(Item::array(arr, Span::new(start, self.cursor as u32)))
+                return Ok(Item::array(arr, Span::new(start, self.cursor as u32)));
+            }
+            b't' => {
+                return if self.bytes[self.cursor..].starts_with(b"true") {
+                    self.cursor += 4;
+                    Ok(Item::boolean(
+                        true,
+                        Span::new(at as u32, self.cursor as u32),
+                    ))
+                } else {
+                    Err(self.set_error(
+                        at,
+                        Some(self.cursor),
+                        ErrorKind::Wanted {
+                            expected: "the literal `true`",
+                            found: "something else",
+                        },
+                    ))
+                };
+            }
+            b'f' => {
+                self.cursor += 1;
+                return if self.bytes[self.cursor..].starts_with(b"alse") {
+                    self.cursor += 4;
+                    Ok(Item::boolean(
+                        false,
+                        Span::new(at as u32, self.cursor as u32),
+                    ))
+                } else {
+                    Err(self.set_error(
+                        at,
+                        Some(self.cursor),
+                        ErrorKind::Wanted {
+                            expected: "the literal `false`",
+                            found: "something else",
+                        },
+                    ))
+                };
+            }
+            b'-' => {
+                self.cursor += 1;
+                0
             }
             b'+' => {
-                let start = self.cursor as u32;
                 self.cursor += 1;
-                self.number_leading_plus(start)
+                1
             }
-            b if is_keylike_byte(b) => {
-                let start = self.cursor as u32;
-                let key = self.read_keylike();
-                let end = self.cursor as u32;
-                let span = Span::new(start, end);
+            _ => 2,
+        };
 
-                match key {
-                    "true" => Ok(Item::boolean(true, span)),
-                    "false" => Ok(Item::boolean(false, span)),
-                    "inf" | "nan" => self.number(start, end, key),
-                    _ => {
-                        let first_char = key.as_bytes()[0];
-                        match first_char {
-                            b'-' => match key.as_bytes().get(1) {
-                                Some(b'0'..=b'9' | b'i' | b'n') => self.number(start, end, key),
-                                _ => Err(self.set_error(
-                                    at,
-                                    Some(end as usize),
-                                    ErrorKind::InvalidNumber,
-                                )),
-                            },
-                            b'0'..=b'9' => self.number(start, end, key),
-                            _ => Err(self.set_error(
-                                at,
-                                Some(end as usize),
-                                ErrorKind::UnquotedString,
-                            )),
-                        }
-                    }
-                }
-            }
-            _ => {
-                let (found_desc, end) = self.scan_token_desc_and_end();
-                Err(self.set_error(
-                    at,
-                    Some(end),
-                    ErrorKind::Wanted {
-                        expected: "a value",
-                        found: found_desc,
+        let key = self.read_keylike();
+
+        let end = self.cursor as u32;
+        match key {
+            "inf" => {
+                return Ok(Item::float(
+                    if sign != 0 {
+                        f64::INFINITY
+                    } else {
+                        f64::NEG_INFINITY
                     },
-                ))
+                    Span::new(at as u32, end),
+                ));
             }
+            "nan" => {
+                return Ok(Item::float(
+                    if sign != 0 {
+                        f64::NAN.copysign(1.0)
+                    } else {
+                        f64::NAN.copysign(-1.0)
+                    },
+                    Span::new(at as u32, end),
+                ));
+            }
+            _ => (),
+        }
+
+        if let [b'0'..=b'9', ..] = key.as_bytes() {
+            self.number(at as u32, end, key, sign)
+        } else {
+            return Err(self.set_error(
+                at as usize,
+                Some(self.cursor as usize),
+                ErrorKind::InvalidNumber,
+            ));
         }
     }
 
@@ -1215,13 +1213,9 @@ impl<'de> Parser<'de> {
                 Ok(k) => k,
                 Err(e) => return Err(e),
             };
-            if let Err(e) = self.eat_inline_table_whitespace() {
-                return Err(e);
-            }
+            self.eat_whitespace();
             while self.eat_byte(b'.') {
-                if let Err(e) = self.eat_inline_table_whitespace() {
-                    return Err(e);
-                }
+                self.eat_whitespace();
                 table_ref = match self.navigate_dotted_key(table_ref, key) {
                     Ok(t) => t,
                     Err(e) => return Err(e),
@@ -1230,9 +1224,10 @@ impl<'de> Parser<'de> {
                     Ok(k) => k,
                     Err(e) => return Err(e),
                 };
-                if let Err(e) = self.eat_inline_table_whitespace() {
-                    return Err(e);
-                }
+                self.eat_whitespace();
+            }
+            if let Err(e) = self.eat_inline_table_whitespace() {
+                return Err(e);
             }
             if let Err(e) = self.expect_byte(b'=') {
                 return Err(e);
