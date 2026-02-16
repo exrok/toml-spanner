@@ -39,7 +39,7 @@ pub(crate) const FLAG_DOTTED: u32 = 5;
 pub(crate) const FLAG_HEADER: u32 = 6;
 pub(crate) const FLAG_FROZEN: u32 = 7;
 
-#[repr(C)]
+#[repr(C, align(8))]
 union Payload<'de> {
     string: &'de str,
     integer: i64,
@@ -668,6 +668,7 @@ impl<'de> Key<'de> {
     }
 }
 
+#[cfg(target_pointer_width = "64")]
 const _: () = assert!(std::mem::size_of::<Key<'_>>() == 24);
 
 impl std::borrow::Borrow<str> for Key<'_> {

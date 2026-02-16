@@ -87,7 +87,6 @@ Relative parse time across real-world TOML files (lower is better):
 
 ![bench](https://github.com/user-attachments/assets/1e5386c2-2920-4c3b-a0f1-185821ea6f0a)
 
-
 ```
                   time(μs)  cycles(K)   instr(K)  branch(K)
 zed/Cargo.toml
@@ -109,7 +108,6 @@ devsm.toml
 Extra `cargo build --release` time for binaries using respective crates (lower is better):
 
 ![compile_bench](https://github.com/user-attachments/assets/a047d529-2d43-4549-9e54-44675607302e)
-
 
 ```
                  median(ms)    added(ms)
@@ -165,6 +163,9 @@ cargo test -p integ-tests                       # integration tests only
 cargo +nightly miri nextest run                 # undefined behavior checks
 cargo +nightly fuzz run parse_compare_toml      # fuzz against the toml crate
 cargo +nightly fuzz run parse_value             # fuzz the parser directly
+
+# Test 32bit support under MIRI
+cargo +nightly miri nextes -p toml-spanner --target i686-unknown-linux-gnu
 ```
 
 Integration tests use [insta](https://insta.rs/) for snapshot assertions.

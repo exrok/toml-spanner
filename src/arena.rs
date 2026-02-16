@@ -4,13 +4,17 @@ use std::alloc::Layout;
 use std::cell::Cell;
 use std::ptr::{self, NonNull};
 
-const SLAB_ALIGN: usize = std::mem::align_of::<SlabHeader>();
 const HEADER_SIZE: usize = std::mem::size_of::<SlabHeader>();
 const INITIAL_SLAB_SIZE: usize = 1024;
 const ALLOC_ALIGN: usize = 8;
+const SLAB_ALIGN: usize = if std::mem::align_of::<SlabHeader>() >= ALLOC_ALIGN {
+    std::mem::align_of::<SlabHeader>()
+} else {
+    ALLOC_ALIGN
+};
 
-const _: () = assert!(HEADER_SIZE == 16);
-const _: () = assert!(SLAB_ALIGN == ALLOC_ALIGN);
+const _: () = assert!(SLAB_ALIGN >= ALLOC_ALIGN);
+const _: () = assert!(HEADER_SIZE.is_multiple_of(ALLOC_ALIGN));
 
 #[repr(C)]
 struct SlabHeader {
@@ -49,6 +53,7 @@ pub struct Arena {
     slab: Cell<NonNull<SlabHeader>>,
 }
 
+#[cfg(target_pointer_width = "64")]
 const _: () = assert!(std::mem::size_of::<Arena>() == 24);
 
 impl Default for Arena {

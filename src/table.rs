@@ -19,6 +19,7 @@ type TableEntry<'de> = (Key<'de>, Item<'de>);
 const MIN_CAP: u32 = 2;
 
 /// A TOML table: a flat list of key-value pairs with linear lookup.
+#[repr(C, align(8))]
 pub(crate) struct InnerTable<'de> {
     len: u32,
     cap: u32,
