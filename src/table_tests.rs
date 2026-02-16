@@ -1,7 +1,6 @@
 use super::*;
 use crate::Span;
 use crate::arena::Arena;
-use crate::str::Str;
 use crate::value::Item;
 
 fn sp() -> Span {
@@ -9,10 +8,7 @@ fn sp() -> Span {
 }
 
 fn key(name: &str) -> Key<'_> {
-    Key {
-        name: Str::from(name),
-        span: sp(),
-    }
+    Key { name, span: sp() }
 }
 
 fn ival(i: i64) -> Item<'static> {

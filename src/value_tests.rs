@@ -11,7 +11,7 @@ fn constructors() {
     let arena = Arena::new();
 
     // String
-    let v = Item::string(Str::from("hello"), sp(0, 5));
+    let v = Item::string("hello", sp(0, 5));
     assert_eq!(v.tag(), TAG_STRING);
     assert_eq!(v.as_str(), Some("hello"));
     assert_eq!(v.span(), sp(0, 5));
@@ -55,7 +55,7 @@ fn constructors() {
     let mut tab = InnerTable::new();
     tab.insert(
         Key {
-            name: Str::from("k"),
+            name: "k",
             span: sp(0, 1),
         },
         Item::integer(10, sp(2, 4)),
@@ -83,7 +83,7 @@ fn constructors() {
     let mut tab = InnerTable::new();
     tab.insert(
         Key {
-            name: Str::from("x"),
+            name: ("x"),
             span: sp(0, 1),
         },
         Item::integer(1, sp(0, 1)),
@@ -128,7 +128,7 @@ fn table_variant_flags() {
 fn span_bit_packing() {
     // Roundtrip across all tags
     let tags_and_constructors: Vec<(u32, Item<'_>)> = vec![
-        (TAG_STRING, Item::string(Str::from("x"), sp(100, 200))),
+        (TAG_STRING, Item::string("x", sp(100, 200))),
         (TAG_INTEGER, Item::integer(0, sp(100, 200))),
         (TAG_FLOAT, Item::float(0.0, sp(100, 200))),
         (TAG_BOOLEAN, Item::boolean(false, sp(100, 200))),
@@ -160,7 +160,7 @@ fn span_bit_packing() {
 fn value_and_type_checks() {
     // value() returns the correct variant for each type
     let vals: Vec<Item<'_>> = vec![
-        Item::string(Str::from("s"), sp(0, 1)),
+        Item::string("s", sp(0, 1)),
         Item::integer(1, sp(0, 1)),
         Item::float(1.0, sp(0, 1)),
         Item::boolean(true, sp(0, 1)),
@@ -187,7 +187,7 @@ fn value_and_type_checks() {
     assert!(v.as_array().is_none());
     assert!(v.as_table().is_none());
 
-    let v = Item::string(Str::from("s"), sp(0, 1));
+    let v = Item::string("s", sp(0, 1));
     assert!(v.as_i64().is_none());
     assert!(v.as_f64().is_none());
     assert!(v.as_bool().is_none());
@@ -219,7 +219,7 @@ fn as_f64_converts_integers() {
     assert_eq!(v.as_f64(), Some(0.0));
 
     // Non-numeric types still return None
-    assert!(Item::string(Str::from("s"), sp(0, 1)).as_f64().is_none());
+    assert!(Item::string("s", sp(0, 1)).as_f64().is_none());
     assert!(Item::boolean(true, sp(0, 4)).as_f64().is_none());
     assert!(Item::array(Array::new(), sp(0, 2)).as_f64().is_none());
     assert!(Item::table(InnerTable::new(), sp(0, 2)).as_f64().is_none());
@@ -242,7 +242,7 @@ fn value_mut_all_types() {
     let arena = Arena::new();
 
     // String
-    let mut v = Item::string(Str::from("hello"), sp(0, 5));
+    let mut v = Item::string("hello", sp(0, 5));
     if let ValueMut::String(s) = v.value_mut() {
         assert_eq!(&**s, "hello");
     } else {
@@ -282,7 +282,7 @@ fn value_mut_all_types() {
     if let ValueMut::Table(t) = v.value_mut() {
         t.insert(
             Key {
-                name: Str::from("x"),
+                name: ("x"),
                 span: sp(0, 1),
             },
             Item::integer(1, sp(0, 1)),
@@ -307,7 +307,7 @@ fn type_error_helpers() {
     assert_eq!(err.span, sp(0, 2));
 
     // take_string success
-    let mut v = Item::string(Str::from("hello"), sp(0, 5));
+    let mut v = Item::string("hello", sp(0, 5));
     let s = v.take_string(None).unwrap();
     assert_eq!(&*s, "hello");
 
@@ -345,7 +345,7 @@ fn expect_and_mut_accessors() {
     let mut tab = InnerTable::new();
     tab.insert(
         Key {
-            name: Str::from("k"),
+            name: ("k"),
             span: sp(0, 1),
         },
         Item::integer(1, sp(0, 1)),
@@ -375,7 +375,7 @@ fn expect_and_mut_accessors() {
     let t = v.as_table_mut().unwrap();
     t.insert(
         Key {
-            name: Str::from("k"),
+            name: ("k"),
             span: sp(0, 1),
         },
         Item::integer(1, sp(0, 1)),
@@ -391,12 +391,12 @@ fn expect_and_mut_accessors() {
 #[test]
 fn parse_method() {
     // Success
-    let mut v = Item::string(Str::from("42"), sp(0, 2));
+    let mut v = Item::string("42", sp(0, 2));
     let parsed: i32 = v.parse::<i32, _>().unwrap();
     assert_eq!(parsed, 42);
 
     // Parse failure (invalid content)
-    let mut v = Item::string(Str::from("not_a_number"), sp(0, 12));
+    let mut v = Item::string("not_a_number", sp(0, 12));
     let err = v.parse::<i32, _>().unwrap_err();
     assert!(matches!(err.kind, crate::ErrorKind::Custom(..)));
 
@@ -423,29 +423,29 @@ fn spanned_table_set_span_preserves_flag() {
 #[test]
 fn key_basics() {
     let k = Key {
-        name: Str::from("mykey"),
+        name: ("mykey"),
         span: sp(0, 5),
     };
     assert_eq!(k.as_str(), "mykey");
 
     // Equality ignores span
     let a = Key {
-        name: Str::from("same"),
+        name: ("same"),
         span: sp(0, 4),
     };
     let b = Key {
-        name: Str::from("same"),
+        name: ("same"),
         span: sp(10, 14),
     };
     assert_eq!(a, b);
 
     // Ordering
     let a = Key {
-        name: Str::from("aaa"),
+        name: ("aaa"),
         span: sp(0, 3),
     };
     let b = Key {
-        name: Str::from("bbb"),
+        name: ("bbb"),
         span: sp(0, 3),
     };
     assert!(a < b);
@@ -453,7 +453,7 @@ fn key_basics() {
 
     // Borrow trait
     let k = Key {
-        name: Str::from("test"),
+        name: ("test"),
         span: sp(0, 4),
     };
     let borrowed: &str = std::borrow::Borrow::borrow(&k);
@@ -469,7 +469,7 @@ fn key_basics() {
 #[test]
 fn item_debug_fmt() {
     // Test Debug formatting for all Item types
-    let v = Item::string(Str::from("hello"), sp(0, 5));
+    let v = Item::string("hello", sp(0, 5));
     assert_eq!(format!("{:?}", v), "\"hello\"");
 
     let v = Item::integer(42, sp(0, 2));
@@ -500,15 +500,15 @@ fn item_index_operators() {
     let mut tab = InnerTable::new();
     tab.insert(
         Key {
-            name: Str::from("name"),
+            name: ("name"),
             span: sp(0, 4),
         },
-        Item::string(Str::from("alice"), sp(5, 10)),
+        Item::string("alice", sp(5, 10)),
         &arena,
     );
     tab.insert(
         Key {
-            name: Str::from("age"),
+            name: ("age"),
             span: sp(11, 14),
         },
         Item::integer(30, sp(15, 17)),
@@ -522,7 +522,7 @@ fn item_index_operators() {
     // Index array Item by usize
     let mut arr = Array::new();
     arr.push(Item::integer(10, sp(0, 2)), &arena);
-    arr.push(Item::string(Str::from("two"), sp(3, 6)), &arena);
+    arr.push(Item::string("two", sp(3, 6)), &arena);
     arr.push(Item::boolean(true, sp(7, 11)), &arena);
     let item = Item::array(arr, sp(0, 11));
     assert_eq!(item[0].as_i64(), Some(10));
@@ -534,13 +534,13 @@ fn item_index_operators() {
     // &str index on non-table types returns NONE
     let int_item = Item::integer(42, sp(0, 2));
     assert!(int_item["anything"].item().is_none());
-    assert!(Item::string(Str::from("s"), sp(0, 1))["k"].item().is_none());
+    assert!(Item::string("s", sp(0, 1))["k"].item().is_none());
     assert!(Item::boolean(true, sp(0, 4))["k"].item().is_none());
     assert!(Item::array(Array::new(), sp(0, 2))["k"].item().is_none());
 
     // usize index on non-array types returns NONE
     assert!(int_item[0].item().is_none());
-    assert!(Item::string(Str::from("s"), sp(0, 1))[0].item().is_none());
+    assert!(Item::string("s", sp(0, 1))[0].item().is_none());
     assert!(Item::table(InnerTable::new(), sp(0, 2))[0].item().is_none());
 }
 
@@ -556,15 +556,15 @@ fn maybe_item_chained_and_none_propagation() {
     let mut user_tab = InnerTable::new();
     user_tab.insert(
         Key {
-            name: Str::from("name"),
+            name: ("name"),
             span: sp(0, 4),
         },
-        Item::string(Str::from("alice"), sp(5, 10)),
+        Item::string("alice", sp(5, 10)),
         &arena,
     );
     user_tab.insert(
         Key {
-            name: Str::from("scores"),
+            name: ("scores"),
             span: sp(11, 17),
         },
         Item::array(scores, sp(18, 25)),
@@ -577,7 +577,7 @@ fn maybe_item_chained_and_none_propagation() {
     let mut root = InnerTable::new();
     root.insert(
         Key {
-            name: Str::from("users"),
+            name: ("users"),
             span: sp(0, 5),
         },
         Item::array(users, sp(6, 30)),

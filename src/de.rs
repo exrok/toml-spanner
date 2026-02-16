@@ -4,7 +4,6 @@ mod tests;
 
 use crate::{
     Deserialize, Error, ErrorKind,
-    str::Str,
     value::{self, Item},
 };
 
@@ -14,7 +13,7 @@ impl<'de> Deserialize<'de> for String {
     }
 }
 
-impl<'de> Deserialize<'de> for Str<'de> {
+impl<'de> Deserialize<'de> for &'de str {
     fn deserialize(value: &mut Item<'de>) -> Result<Self, Error> {
         value.take_string(None)
     }

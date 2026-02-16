@@ -1,7 +1,6 @@
 use crate::Deserialize;
 use crate::arena::Arena;
 use crate::span::Spanned;
-use crate::str::Str;
 
 fn parse_val<'a, T: Deserialize<'a>>(input: &'a str, arena: &'a Arena) -> Result<T, crate::Error> {
     let mut table = crate::parse(input, arena).unwrap();
@@ -17,7 +16,7 @@ fn deser_strings() {
     assert_eq!(val, "hello");
 
     // Str (borrowed)
-    let val: Str<'_> = parse_val(r#"v = "borrowed""#, &arena).unwrap();
+    let val: &str = parse_val(r#"v = "borrowed""#, &arena).unwrap();
     assert_eq!(&*val, "borrowed");
 
     // Cow<str>

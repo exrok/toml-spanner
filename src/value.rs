@@ -3,7 +3,6 @@
 #[cfg(test)]
 #[path = "./value_tests.rs"]
 mod tests;
-use crate::str::Str;
 use crate::{Error, ErrorKind, Span, Table};
 use std::fmt;
 use std::mem::ManuallyDrop;
@@ -42,7 +41,7 @@ pub(crate) const FLAG_FROZEN: u32 = 7;
 
 #[repr(C)]
 union Payload<'de> {
-    string: Str<'de>,
+    string: &'de str,
     integer: i64,
     float: f64,
     boolean: bool,
@@ -92,7 +91,7 @@ impl<'de> Item<'de> {
     }
 
     #[inline]
-    pub(crate) fn string(s: Str<'de>, span: Span) -> Self {
+    pub(crate) fn string(s: &'de str, span: Span) -> Self {
         Self::raw(
             TAG_STRING,
             FLAG_NONE,
@@ -332,7 +331,7 @@ impl<'de> Item<'de> {
 /// ```
 pub enum Value<'a, 'de> {
     /// A string value.
-    String(&'a Str<'de>),
+    String(&'a &'de str),
     /// An integer value.
     Integer(&'a i64),
     /// A floating-point value.
@@ -350,7 +349,7 @@ pub enum Value<'a, 'de> {
 /// Obtained via [`Item::value_mut`].
 pub enum ValueMut<'a, 'de> {
     /// A string value.
-    String(&'a mut Str<'de>),
+    String(&'a mut &'de str),
     /// An integer value.
     Integer(&'a mut i64),
     /// A floating-point value.
@@ -400,7 +399,7 @@ impl<'de> Item<'de> {
     #[inline]
     pub fn as_str(&self) -> Option<&str> {
         if self.tag() == TAG_STRING {
-            Some(unsafe { &self.payload.string })
+            Some(unsafe { self.payload.string })
         } else {
             None
         }
@@ -567,7 +566,7 @@ impl<'de> Item<'de> {
 
     /// Takes the value as a string, returning an error if it is not a string.
     #[inline]
-    pub fn take_string(&mut self, msg: Option<&'static str>) -> Result<Str<'de>, Error> {
+    pub fn take_string(&mut self, msg: Option<&'static str>) -> Result<&'de str, Error> {
         let span = self.span();
         match self.value() {
             Value::String(s) => Ok(*s),
@@ -658,14 +657,14 @@ impl serde::Serialize for Table<'_> {
 #[derive(Copy, Clone)]
 pub struct Key<'de> {
     /// The key name.
-    pub name: Str<'de>,
+    pub name: &'de str,
     /// The byte-offset span of the key in the source document.
     pub span: Span,
 }
 impl<'de> Key<'de> {
     /// Returns the key name as a string slice.
     pub fn as_str(&self) -> &'de str {
-        self.name.as_str()
+        self.name
     }
 }
 
@@ -673,25 +672,25 @@ const _: () = assert!(std::mem::size_of::<Key<'_>>() == 24);
 
 impl std::borrow::Borrow<str> for Key<'_> {
     fn borrow(&self) -> &str {
-        &self.name
+        self.name
     }
 }
 
 impl fmt::Debug for Key<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&self.name)
+        f.write_str(self.name)
     }
 }
 
 impl fmt::Display for Key<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&self.name)
+        f.write_str(self.name)
     }
 }
 
 impl Ord for Key<'_> {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.name.cmp(&other.name)
+        self.name.cmp(other.name)
     }
 }
 
@@ -703,7 +702,7 @@ impl PartialOrd for Key<'_> {
 
 impl PartialEq for Key<'_> {
     fn eq(&self, other: &Self) -> bool {
-        self.name.eq(&other.name)
+        self.name.eq(other.name)
     }
 }
 
@@ -836,7 +835,7 @@ impl<'de> MaybeItem<'de> {
     #[inline]
     pub fn as_str(&self) -> Option<&str> {
         if self.tag() == TAG_STRING {
-            Some(unsafe { &self.payload.string })
+            Some(unsafe { self.payload.string })
         } else {
             None
         }

@@ -12,7 +12,6 @@ use crate::{
     Span,
     arena::Arena,
     error::{Error, ErrorKind},
-    str::Str,
     table::{InnerTable, Table},
     value::{self, Item, Key},
 };
@@ -427,12 +426,9 @@ impl<'de> Parser<'de> {
             }
             Some(b) if is_keylike_byte(b) => {
                 let start = self.cursor;
-                let k = self.read_keylike();
+                let name = self.read_keylike();
                 let span = Span::new(start as u32, self.cursor as u32);
-                Ok(Key {
-                    name: Str::from(k),
-                    span,
-                })
+                Ok(Key { name, span })
             }
             Some(_) => {
                 let start = self.cursor;
@@ -467,7 +463,7 @@ impl<'de> Parser<'de> {
             } else {
                 return Ok((
                     Key {
-                        name: Str::from(""),
+                        name: "",
                         span: Span::new(start as u32, (start + 1) as u32),
                     },
                     false,
@@ -635,10 +631,10 @@ impl<'de> Parser<'de> {
                         let committed = s.commit();
                         // Safety: scratch contents are valid UTF-8 (built from
                         // validated input and well-formed escape sequences).
-                        Str::from(unsafe { std::str::from_utf8_unchecked(committed) })
+                        unsafe { std::str::from_utf8_unchecked(committed) }
                     } else {
                         // Safety: content_start..end is validated UTF-8.
-                        unsafe { Str::from(self.str_slice(content_start, end)) }
+                        unsafe { self.str_slice(content_start, end) }
                     };
                     return Ok((Key { name, span }, multiline));
                 }
@@ -1402,7 +1398,7 @@ impl<'de> Parser<'de> {
         table: &'t mut InnerTable<'de>,
         key: Key<'de>,
     ) -> Result<&'t mut InnerTable<'de>, ParseError> {
-        if let Some(idx) = self.indexed_find(table, &key.name) {
+        if let Some(idx) = self.indexed_find(table, key.name) {
             let (existing_key, value) = &mut table.entries_mut()[idx];
             let ok = value.is_table() && !value.is_frozen() && !value.has_header_bit();
 
@@ -1437,7 +1433,7 @@ impl<'de> Parser<'de> {
     ) -> Result<&'b mut Table<'de>, ParseError> {
         let table = &mut st.value;
 
-        if let Some(idx) = self.indexed_find(table, &key.name) {
+        if let Some(idx) = self.indexed_find(table, key.name) {
             let (existing_key, existing) = &mut table.entries_mut()[idx];
             let first_key_span = existing_key.span;
             let is_table = existing.is_table();
@@ -1447,18 +1443,18 @@ impl<'de> Parser<'de> {
 
             if is_table {
                 if is_frozen {
-                    return Err(self.set_duplicate_key_error(first_key_span, key.span, &key.name));
+                    return Err(self.set_duplicate_key_error(first_key_span, key.span, key.name));
                 }
                 unsafe { Ok(existing.as_spanned_table_mut_unchecked()) }
             } else if is_array && is_aot {
                 let arr = existing.as_array_mut().unwrap();
                 let last = arr.last_mut().unwrap();
                 if !last.is_table() {
-                    return Err(self.set_duplicate_key_error(first_key_span, key.span, &key.name));
+                    return Err(self.set_duplicate_key_error(first_key_span, key.span, key.name));
                 }
                 unsafe { Ok(last.as_spanned_table_mut_unchecked()) }
             } else {
-                Err(self.set_duplicate_key_error(first_key_span, key.span, &key.name))
+                Err(self.set_duplicate_key_error(first_key_span, key.span, key.name))
             }
         } else {
             let span = key.span;
@@ -1500,7 +1496,7 @@ impl<'de> Parser<'de> {
     ) -> Result<Ctx<'b, 'de>, ParseError> {
         let table = &mut st.value;
 
-        if let Some(idx) = self.indexed_find(table, &key.name) {
+        if let Some(idx) = self.indexed_find(table, key.name) {
             let (existing_key, value) = &mut table.entries_mut()[idx];
             let first_key_span = existing_key.span;
             let is_table = value.is_table();
@@ -1510,20 +1506,20 @@ impl<'de> Parser<'de> {
             let val_span = value.span();
 
             if !is_table || is_frozen {
-                return Err(self.set_duplicate_key_error(first_key_span, key.span, &key.name));
+                return Err(self.set_duplicate_key_error(first_key_span, key.span, key.name));
             }
             if has_header {
                 return Err(self.set_error(
                     header_start as usize,
                     Some(header_end as usize),
                     ErrorKind::DuplicateTable {
-                        name: String::from(&*key.name),
+                        name: String::from(key.name),
                         first: val_span,
                     },
                 ));
             }
             if has_dotted {
-                return Err(self.set_duplicate_key_error(first_key_span, key.span, &key.name));
+                return Err(self.set_duplicate_key_error(first_key_span, key.span, key.name));
             }
             let table = unsafe { value.as_spanned_table_mut_unchecked() };
             table.set_header_flag();
@@ -1559,7 +1555,7 @@ impl<'de> Parser<'de> {
     ) -> Result<Ctx<'b, 'de>, ParseError> {
         let table = &mut st.value;
 
-        if let Some(idx) = self.indexed_find(table, &key.name) {
+        if let Some(idx) = self.indexed_find(table, key.name) {
             let (existing_key, value) = &mut table.entries_mut()[idx];
             let first_key_span = existing_key.span;
             let is_aot = value.is_aot();
@@ -1584,7 +1580,7 @@ impl<'de> Parser<'de> {
                     ErrorKind::RedefineAsArray,
                 ))
             } else {
-                Err(self.set_duplicate_key_error(first_key_span, key.span, &key.name))
+                Err(self.set_duplicate_key_error(first_key_span, key.span, key.name))
             }
         } else {
             let entry_span = Span::new(header_start, header_end);
@@ -1611,9 +1607,9 @@ impl<'de> Parser<'de> {
         key: Key<'de>,
         item: Item<'de>,
     ) -> Result<(), ParseError> {
-        if let Some(idx) = self.indexed_find(table, &key.name) {
+        if let Some(idx) = self.indexed_find(table, key.name) {
             let (existing_key, _) = &table.entries_mut()[idx];
-            return Err(self.set_duplicate_key_error(existing_key.span, key.span, &key.name));
+            return Err(self.set_duplicate_key_error(existing_key.span, key.span, key.name));
         }
 
         self.insert_into_table(table, key, item);

@@ -73,7 +73,6 @@ mod de;
 mod error;
 mod parser;
 mod span;
-mod str;
 mod table;
 mod value;
 
@@ -82,7 +81,6 @@ pub use array::Array;
 pub use error::{Error, ErrorKind};
 pub use parser::parse;
 pub use span::{Span, Spanned};
-pub use str::Str;
 pub use table::Table;
 pub use value::{Item, Key, MaybeItem, Value, ValueMut};
 
