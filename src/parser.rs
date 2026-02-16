@@ -15,9 +15,9 @@ use crate::{
     table::{InnerTable, Table},
     value::{self, Item, Key},
 };
+use std::char;
 use std::hash::{Hash, Hasher};
 use std::ptr::NonNull;
-use std::{char, collections::HashMap};
 
 const MAX_RECURSION_DEPTH: i16 = 256;
 // When a method returns Err(ParseError), the full error details have already
@@ -36,7 +36,7 @@ struct Ctx<'b, 'de> {
 }
 
 /// Tables with at least this many entries use the hash index for lookups.
-const INDEXED_TABLE_THRESHOLD: usize = 7;
+const INDEXED_TABLE_THRESHOLD: usize = 6;
 
 const fn build_hex_table() -> [i8; 256] {
     let mut table = [-1i8; 256];
@@ -139,7 +139,11 @@ impl<'de> Parser<'de> {
             arena,
             error_span: Span::new(0, 0),
             error_kind: None,
-            table_index: HashMap::default(),
+            // initialize to about ~ 8 KB
+            table_index: foldhash::HashMap::with_capacity_and_hasher(
+                256,
+                foldhash::fast::RandomState::default(),
+            ),
         }
     }
 
@@ -209,27 +213,12 @@ impl<'de> Parser<'de> {
     }
 
     #[inline]
-    fn advance(&mut self) {
-        self.cursor += 1;
-    }
-
-    #[inline]
     fn eat_byte(&mut self, b: u8) -> bool {
         if self.peek_byte() == Some(b) {
-            self.advance();
+            self.cursor += 1;
             true
         } else {
             false
-        }
-    }
-
-    fn eat_byte_spanned(&mut self, b: u8) -> Option<Span> {
-        if self.peek_byte() == Some(b) {
-            let start = self.cursor;
-            self.advance();
-            Some(Span::new(start as u32, self.cursor as u32))
-        } else {
-            None
         }
     }
 
@@ -250,27 +239,10 @@ impl<'de> Parser<'de> {
         }
     }
 
-    fn expect_byte_spanned(&mut self, b: u8) -> Result<Span, ParseError> {
-        if let Some(span) = self.eat_byte_spanned(b) {
-            Ok(span)
-        } else {
-            let start = self.cursor;
-            let (found_desc, end) = self.scan_token_desc_and_end();
-            Err(self.set_error(
-                start,
-                Some(end),
-                ErrorKind::Wanted {
-                    expected: byte_describe(b),
-                    found: found_desc,
-                },
-            ))
-        }
-    }
-
     fn eat_whitespace(&mut self) {
         while let Some(b) = self.peek_byte() {
             if b == b' ' || b == b'\t' {
-                self.advance();
+                self.cursor += 1;
             } else {
                 break;
             }
@@ -291,7 +263,7 @@ impl<'de> Parser<'de> {
         match self.peek_byte() {
             None => Ok(()),
             Some(b'\n') => {
-                self.advance();
+                self.cursor += 1;
                 Ok(())
             }
             Some(b'\r') if self.peek_byte_at(1) == Some(b'\n') => {
@@ -316,7 +288,7 @@ impl<'de> Parser<'de> {
     fn eat_newline(&mut self) -> bool {
         match self.peek_byte() {
             Some(b'\n') => {
-                self.advance();
+                self.cursor += 1;
                 true
             }
             Some(b'\r') if self.peek_byte_at(1) == Some(b'\n') => {
@@ -371,7 +343,7 @@ impl<'de> Parser<'de> {
             if !is_keylike_byte(b) {
                 break;
             }
-            self.advance();
+            self.cursor += 1;
         }
         // SAFETY: keylike bytes are ASCII, always valid UTF-8 boundaries
         unsafe { self.str_slice(start, self.cursor) }
@@ -381,7 +353,7 @@ impl<'de> Parser<'de> {
         match self.peek_byte() {
             Some(b'"') => {
                 let start = self.cursor;
-                self.advance();
+                self.cursor += 1;
                 let (key, multiline) = match self.read_string(start, b'"') {
                     Ok(v) => v,
                     Err(e) => return Err(e),
@@ -397,7 +369,7 @@ impl<'de> Parser<'de> {
             }
             Some(b'\'') => {
                 let start = self.cursor;
-                self.advance();
+                self.cursor += 1;
                 let (key, multiline) = match self.read_string(start, b'\'') {
                     Ok(v) => v,
                     Err(e) => return Err(e),
@@ -462,7 +434,7 @@ impl<'de> Parser<'de> {
         if multiline {
             match self.peek_byte() {
                 Some(b'\n') => {
-                    self.advance();
+                    self.cursor += 1;
                     content_start = self.cursor;
                 }
                 Some(b'\r') if self.peek_byte_at(1) == Some(b'\n') => {
@@ -701,7 +673,7 @@ impl<'de> Parser<'de> {
             b' ' | b'\t' | b'\n' | b'\r' if multi => {
                 // CRLF folding: \r\n counts as \n
                 let c = if b == b'\r' && self.peek_byte() == Some(b'\n') {
-                    self.advance();
+                    self.cursor += 1;
                     '\n'
                 } else {
                     b as char
@@ -710,10 +682,10 @@ impl<'de> Parser<'de> {
                     loop {
                         match self.peek_byte() {
                             Some(b' ' | b'\t') => {
-                                self.advance();
+                                self.cursor += 1;
                             }
                             Some(b'\n') => {
-                                self.advance();
+                                self.cursor += 1;
                                 break;
                             }
                             Some(b'\r') if self.peek_byte_at(1) == Some(b'\n') => {
@@ -727,7 +699,7 @@ impl<'de> Parser<'de> {
                 loop {
                     match self.peek_byte() {
                         Some(b' ' | b'\t' | b'\n') => {
-                            self.advance();
+                            self.cursor += 1;
                         }
                         Some(b'\r') if self.peek_byte_at(1) == Some(b'\n') => {
                             self.cursor += 2;
@@ -1148,7 +1120,7 @@ impl<'de> Parser<'de> {
         };
         match byte {
             b'"' => {
-                self.advance();
+                self.cursor += 1;
                 let (key, _multiline) = match self.read_string(self.cursor - 1, b'"') {
                     Ok(v) => v,
                     Err(e) => return Err(e),
@@ -1156,7 +1128,7 @@ impl<'de> Parser<'de> {
                 Ok(Item::string(key.name, key.span))
             }
             b'\'' => {
-                self.advance();
+                self.cursor += 1;
                 let (key, _multiline) = match self.read_string(self.cursor - 1, b'\'') {
                     Ok(v) => v,
                     Err(e) => return Err(e),
@@ -1165,27 +1137,30 @@ impl<'de> Parser<'de> {
             }
             b'{' => {
                 let start = self.cursor as u32;
-                self.advance();
+                self.cursor += 1;
                 let mut table = crate::table::InnerTable::new();
-                let end_span = match self.inline_table_contents(&mut table, depth_remaining - 1) {
+                match self.inline_table_contents(&mut table, depth_remaining - 1) {
                     Ok(v) => v,
                     Err(e) => return Err(e),
                 };
-                Ok(Item::table_frozen(table, Span::new(start, end_span.end)))
+                Ok(Item::table_frozen(
+                    table,
+                    Span::new(start, self.cursor as u32),
+                ))
             }
             b'[' => {
                 let start = self.cursor as u32;
-                self.advance();
+                self.cursor += 1;
                 let mut arr = value::Array::new();
-                let end_span = match self.array_contents(&mut arr, depth_remaining - 1) {
+                match self.array_contents(&mut arr, depth_remaining - 1) {
                     Ok(v) => v,
                     Err(e) => return Err(e),
                 };
-                Ok(Item::array(arr, Span::new(start, end_span.end)))
+                Ok(Item::array(arr, Span::new(start, self.cursor as u32)))
             }
             b'+' => {
                 let start = self.cursor as u32;
-                self.advance();
+                self.cursor += 1;
                 self.number_leading_plus(start)
             }
             b if is_keylike_byte(b) => {
@@ -1237,7 +1212,7 @@ impl<'de> Parser<'de> {
         &mut self,
         out: &mut crate::table::InnerTable<'de>,
         depth_remaining: i16,
-    ) -> Result<Span, ParseError> {
+    ) -> Result<(), ParseError> {
         if depth_remaining < 0 {
             return Err(self.set_error(
                 self.cursor,
@@ -1248,8 +1223,8 @@ impl<'de> Parser<'de> {
         if let Err(e) = self.eat_inline_table_whitespace() {
             return Err(e);
         }
-        if let Some(span) = self.eat_byte_spanned(b'}') {
-            return Ok(span);
+        if self.eat_byte(b'}') {
+            return Ok(());
         }
         loop {
             let mut table_ref: &mut crate::table::InnerTable<'de> = &mut *out;
@@ -1295,8 +1270,8 @@ impl<'de> Parser<'de> {
             if let Err(e) = self.eat_inline_table_whitespace() {
                 return Err(e);
             }
-            if let Some(span) = self.eat_byte_spanned(b'}') {
-                return Ok(span);
+            if self.eat_byte(b'}') {
+                return Ok(());
             }
             if let Err(e) = self.expect_byte(b',') {
                 return Err(e);
@@ -1304,8 +1279,8 @@ impl<'de> Parser<'de> {
             if let Err(e) = self.eat_inline_table_whitespace() {
                 return Err(e);
             }
-            if let Some(span) = self.eat_byte_spanned(b'}') {
-                return Ok(span);
+            if self.eat_byte(b'}') {
+                return Ok(());
             }
         }
     }
@@ -1314,7 +1289,7 @@ impl<'de> Parser<'de> {
         &mut self,
         out: &mut value::Array<'de>,
         depth_remaining: i16,
-    ) -> Result<Span, ParseError> {
+    ) -> Result<(), ParseError> {
         if depth_remaining < 0 {
             return Err(self.set_error(
                 self.cursor,
@@ -1326,14 +1301,13 @@ impl<'de> Parser<'de> {
             if let Err(e) = self.eat_intermediate() {
                 return Err(e);
             }
-            if let Some(span) = self.eat_byte_spanned(b']') {
-                return Ok(span);
+            if self.eat_byte(b']') {
+                return Ok(());
             }
-            let val = match self.value(depth_remaining) {
-                Ok(v) => v,
+            match self.value(depth_remaining) {
+                Ok(value) => out.push(value, self.arena),
                 Err(e) => return Err(e),
             };
-            out.push(val, self.arena);
             if let Err(e) = self.eat_intermediate() {
                 return Err(e);
             }
@@ -1344,7 +1318,7 @@ impl<'de> Parser<'de> {
         if let Err(e) = self.eat_intermediate() {
             return Err(e);
         }
-        self.expect_byte_spanned(b']')
+        self.expect_byte(b']')
     }
 
     fn eat_inline_table_whitespace(&mut self) -> Result<(), ParseError> {
@@ -1402,8 +1376,11 @@ impl<'de> Parser<'de> {
             unsafe { Ok(value.as_table_mut_unchecked()) }
         } else {
             let span = key.span;
-            let inserted =
-                self.insert_into_table(table, key, Item::table_dotted(InnerTable::new(), span));
+            let inserted = self.insert_value_known_to_be_unique(
+                table,
+                key,
+                Item::table_dotted(InnerTable::new(), span),
+            );
             unsafe { Ok(inserted.as_table_mut_unchecked()) }
         }
     }
@@ -1424,7 +1401,6 @@ impl<'de> Parser<'de> {
             let (existing_key, existing) = &mut table.entries_mut()[idx];
             let first_key_span = existing_key.span;
             let is_table = existing.is_table();
-            let is_array = existing.is_array();
             let is_frozen = existing.is_frozen();
             let is_aot = existing.is_aot();
 
@@ -1433,8 +1409,10 @@ impl<'de> Parser<'de> {
                     return Err(self.set_duplicate_key_error(first_key_span, key.span, key.name));
                 }
                 unsafe { Ok(existing.as_spanned_table_mut_unchecked()) }
-            } else if is_array && is_aot {
+            } else if is_aot {
+                // unwrap is safe since we just check it's an array of tables and thus a array.
                 let arr = existing.as_array_mut().unwrap();
+                // unwrap is safe as array's of tables always have atleast one value by construction
                 let last = arr.last_mut().unwrap();
                 if !last.is_table() {
                     return Err(self.set_duplicate_key_error(first_key_span, key.span, key.name));
@@ -1445,11 +1423,15 @@ impl<'de> Parser<'de> {
             }
         } else {
             let span = key.span;
-            let inserted = self.insert_into_table(table, key, Item::table(InnerTable::new(), span));
+            let inserted = self.insert_value_known_to_be_unique(
+                table,
+                key,
+                Item::table(InnerTable::new(), span),
+            );
             unsafe { Ok(inserted.as_spanned_table_mut_unchecked()) }
         }
     }
-    fn insert_into_table<'t>(
+    fn insert_value_known_to_be_unique<'t>(
         &mut self,
         table: &'t mut InnerTable<'de>,
         key: Key<'de>,
@@ -1517,7 +1499,7 @@ impl<'de> Parser<'de> {
                 array_end_span: None,
             })
         } else {
-            let inserted = self.insert_into_table(
+            let inserted = self.insert_value_known_to_be_unique(
                 table,
                 key,
                 Item::table_header(InnerTable::new(), Span::new(header_start, header_end)),
@@ -1577,7 +1559,7 @@ impl<'de> Parser<'de> {
                 value::Array::with_single(first_entry, self.arena),
                 array_span,
             );
-            let inserted = self.insert_into_table(table, key, array_val);
+            let inserted = self.insert_value_known_to_be_unique(table, key, array_val);
             let (end_flag, arr) = unsafe { inserted.split_array_end_flag() };
             let entry = arr.last_mut().unwrap();
             Ok(Ctx {
@@ -1594,13 +1576,48 @@ impl<'de> Parser<'de> {
         key: Key<'de>,
         item: Item<'de>,
     ) -> Result<(), ParseError> {
-        if let Some(idx) = self.indexed_find(table, key.name) {
-            let (existing_key, _) = &table.entries_mut()[idx];
-            return Err(self.set_duplicate_key_error(existing_key.span, key.span, key.name));
+        if table.len() < INDEXED_TABLE_THRESHOLD {
+            for (existing_key, _) in table.entries() {
+                if existing_key.as_str() == key.name {
+                    return Err(self.set_duplicate_key_error(
+                        existing_key.span,
+                        key.span,
+                        key.name,
+                    ));
+                }
+            }
+            table.insert(key, item, &self.arena);
+            return Ok(());
+        }
+        // Safety: We now table len > 0, from above check.
+        let table_id = unsafe { table.first_key_span_start_unchecked() };
+
+        // Note: if find a duplicate we bail out, terminating the parsing with an error.
+        // Even if we did end up re-inserting no issues would come of it.
+        if table.len() == INDEXED_TABLE_THRESHOLD {
+            for (i, (key, _)) in table.entries().iter().enumerate() {
+                // Wish I could use insert_unique here but that would require
+                // pulling in hashbrown :(
+                self.table_index
+                    .insert(KeyIndex::new(key.as_str(), table_id), i);
+            }
         }
 
-        self.insert_into_table(table, key, item);
-        Ok(())
+        match self
+            .table_index
+            .entry(KeyIndex::new(key.as_str(), table_id))
+        {
+            std::collections::hash_map::Entry::Occupied(occupied_entry) => {
+                let idx = *occupied_entry.get();
+                let (existing_key, _) = &table.entries()[idx];
+                return Err(self.set_duplicate_key_error(existing_key.span, key.span, key.name));
+            }
+            std::collections::hash_map::Entry::Vacant(vacant_entry) => {
+                vacant_entry.insert(table.len());
+                table.insert(key, item, &self.arena);
+                return Ok(());
+            }
+        }
     }
 
     /// Look up a key name in a table, returning its entry index.

@@ -129,21 +129,26 @@ impl Plotter {
     }
 }
 
-// fn main_for_profile() {
-//     let inputs = &[
-//         static_input::ZED_CARGO_TOML,
-//         static_input::EXTASK_TOML,
-//         static_input::DEVSM_TOML,
-//     ];
-//     let mut rng = oorandom::Rand32::new(0xdeadbeaf);
-//     for _ in 0..1000000 {
-//         let stat = inputs[rng.rand_range(0..inputs.len() as u32) as usize];
-//         let mut result = toml_spanner::parse(stat);
-//         std::hint::black_box(&mut result);
-//     }
-// }
+fn main_for_profile() {
+    let inputs = &[
+        static_input::ZED_CARGO_TOML,
+        static_input::EXTASK_TOML,
+        static_input::DEVSM_TOML,
+    ];
+    let mut rng = oorandom::Rand32::new(0xdeadbeaf);
+    for _ in 0..1000000 {
+        let stat = inputs[rng.rand_range(0..inputs.len() as u32) as usize];
+        let arena = toml_spanner::Arena::new();
+        let mut result = toml_spanner::parse(stat, &arena);
+        std::hint::black_box(&mut result);
+    }
+}
 
 fn main() {
+    if std::env::args().any(|a| a == "profile") {
+        main_for_profile();
+        return;
+    }
     if std::env::args().any(|a| a == "compile") {
         let release = std::env::args().any(|a| a == "--release");
         compile_bench::run_compile_bench(release);

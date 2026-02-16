@@ -5,7 +5,7 @@ use std::cell::Cell;
 use std::ptr::{self, NonNull};
 
 const HEADER_SIZE: usize = std::mem::size_of::<SlabHeader>();
-const INITIAL_SLAB_SIZE: usize = 1024;
+const INITIAL_SLAB_SIZE: usize = 4096;
 const ALLOC_ALIGN: usize = 8;
 const SLAB_ALIGN: usize = if std::mem::align_of::<SlabHeader>() >= ALLOC_ALIGN {
     std::mem::align_of::<SlabHeader>()

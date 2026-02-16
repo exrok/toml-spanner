@@ -41,7 +41,7 @@ impl<'de> InnerTable<'de> {
     pub fn insert(
         &mut self,
         key: Key<'de>,
-        value: Item<'de>,
+        item: Item<'de>,
         arena: &Arena,
     ) -> &mut TableEntry<'de> {
         let len = self.len;
@@ -50,7 +50,7 @@ impl<'de> InnerTable<'de> {
         }
         unsafe {
             let ptr = self.ptr.as_ptr().add(len as usize);
-            ptr.write((key, value));
+            ptr.write((key, item));
             self.len = len + 1;
             &mut (*ptr)
         }
