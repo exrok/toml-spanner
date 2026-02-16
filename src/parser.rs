@@ -627,107 +627,92 @@ impl<'de> Parser<'de> {
             return Err(self.set_error(string_start, None, ErrorKind::UnterminatedString));
         };
         self.cursor = i + 1;
-
-        match b {
-            b'"' => scratch.push(b'"'),
-            b'\\' => scratch.push(b'\\'),
-            b'b' => scratch.push(0x08),
-            b'f' => scratch.push(0x0C),
-            b'n' => scratch.push(b'\n'),
-            b'r' => scratch.push(b'\r'),
-            b't' => scratch.push(b'\t'),
-            b'e' => scratch.push(0x1B),
-            b'u' => {
-                let ch = self.read_hex(4, string_start, i);
-                match ch {
-                    Ok(ch) => {
-                        let mut buf = [0u8; 4];
-                        let len = ch.encode_utf8(&mut buf).len();
-                        scratch.extend(&buf[..len]);
-                    }
-                    Err(e) => return Err(e),
-                }
-            }
-            b'U' => {
-                let ch = self.read_hex(8, string_start, i);
-                match ch {
-                    Ok(ch) => {
-                        let mut buf = [0u8; 4];
-                        let len = ch.encode_utf8(&mut buf).len();
-                        scratch.extend(&buf[..len]);
-                    }
-                    Err(e) => return Err(e),
-                }
-            }
-            b'x' => {
-                let ch = self.read_hex(2, string_start, i);
-                match ch {
-                    Ok(ch) => {
-                        let mut buf = [0u8; 4];
-                        let len = ch.encode_utf8(&mut buf).len();
-                        scratch.extend(&buf[..len]);
-                    }
-                    Err(e) => return Err(e),
-                }
-            }
-            b' ' | b'\t' | b'\n' | b'\r' if multi => {
-                // CRLF folding: \r\n counts as \n
-                let c = if b == b'\r' && self.peek_byte() == Some(b'\n') {
-                    self.cursor += 1;
-                    '\n'
-                } else {
-                    b as char
-                };
-                if c != '\n' {
-                    loop {
-                        match self.peek_byte() {
-                            Some(b' ' | b'\t') => {
-                                self.cursor += 1;
-                            }
-                            Some(b'\n') => {
-                                self.cursor += 1;
-                                break;
-                            }
-                            Some(b'\r') if self.peek_byte_at(1) == Some(b'\n') => {
-                                self.cursor += 2;
-                                break;
-                            }
-                            _ => return Err(self.set_error(i, None, ErrorKind::InvalidEscape(c))),
-                        }
-                    }
-                }
-                loop {
-                    match self.peek_byte() {
-                        Some(b' ' | b'\t' | b'\n') => {
+        let chr: char = 'char: {
+            let byte: u8 = 'byte: {
+                match b {
+                    b'"' => break 'byte b'"',
+                    b'\\' => break 'byte b'\\',
+                    b'b' => break 'byte 0x08,
+                    b'f' => break 'byte 0x0C,
+                    b'n' => break 'byte b'\n',
+                    b'r' => break 'byte b'\r',
+                    b't' => break 'byte b'\t',
+                    b'e' => break 'byte 0x1B,
+                    b'u' => match self.read_hex(4, string_start, i) {
+                        Ok(ch) => break 'char ch,
+                        Err(e) => return Err(e),
+                    },
+                    b'U' => match self.read_hex(8, string_start, i) {
+                        Ok(ch) => break 'char ch,
+                        Err(e) => return Err(e),
+                    },
+                    b'x' => match self.read_hex(2, string_start, i) {
+                        Ok(ch) => break 'char ch,
+                        Err(e) => return Err(e),
+                    },
+                    b' ' | b'\t' | b'\n' | b'\r' if multi => {
+                        // CRLF folding: \r\n counts as \n
+                        let c = if b == b'\r' && self.peek_byte() == Some(b'\n') {
                             self.cursor += 1;
+                            '\n'
+                        } else {
+                            b as char
+                        };
+                        if c != '\n' {
+                            loop {
+                                match self.peek_byte() {
+                                    Some(b' ' | b'\t') => {
+                                        self.cursor += 1;
+                                    }
+                                    Some(b'\n') => {
+                                        self.cursor += 1;
+                                        break;
+                                    }
+                                    Some(b'\r') if self.peek_byte_at(1) == Some(b'\n') => {
+                                        self.cursor += 2;
+                                        break;
+                                    }
+                                    _ => {
+                                        return Err(self.set_error(
+                                            i,
+                                            None,
+                                            ErrorKind::InvalidEscape(c),
+                                        ));
+                                    }
+                                }
+                            }
                         }
-                        Some(b'\r') if self.peek_byte_at(1) == Some(b'\n') => {
-                            self.cursor += 2;
+                        loop {
+                            match self.peek_byte() {
+                                Some(b' ' | b'\t' | b'\n') => {
+                                    self.cursor += 1;
+                                }
+                                Some(b'\r') if self.peek_byte_at(1) == Some(b'\n') => {
+                                    self.cursor += 2;
+                                }
+                                _ => break,
+                            }
                         }
-                        _ => break,
+                    }
+                    _ => {
+                        self.cursor -= 1;
+                        return Err(self.set_error(
+                            self.cursor,
+                            None,
+                            ErrorKind::InvalidEscape(self.next_char_for_error()),
+                        ));
                     }
                 }
-            }
-            _ => {
-                self.cursor -= 1;
-                return Err(self.set_error(
-                    self.cursor,
-                    None,
-                    ErrorKind::InvalidEscape(self.next_char_for_error()),
-                ));
-            }
-        }
-        Ok(())
-    }
+                return Ok(());
+            };
 
-    fn next_char_for_error(&self) -> char {
-        // Safety: The input was valid UTF-8 via a &str
-        let text = unsafe { std::str::from_utf8_unchecked(self.bytes) };
-        if let Some(value) = text.get(self.cursor..) {
-            value.chars().next().unwrap_or(char::REPLACEMENT_CHARACTER)
-        } else {
-            char::REPLACEMENT_CHARACTER
-        }
+            scratch.push(byte);
+            return Ok(());
+        };
+        let mut buf = [0u8; 4];
+        let len = chr.encode_utf8(&mut buf).len();
+        scratch.extend(&buf[..len]);
+        return Ok(());
     }
 
     fn read_hex(
@@ -763,6 +748,15 @@ impl<'de> Parser<'de> {
         }
     }
 
+    fn next_char_for_error(&self) -> char {
+        // Safety: The input was valid UTF-8 via a &str
+        let text = unsafe { std::str::from_utf8_unchecked(self.bytes) };
+        if let Some(value) = text.get(self.cursor..) {
+            value.chars().next().unwrap_or(char::REPLACEMENT_CHARACTER)
+        } else {
+            char::REPLACEMENT_CHARACTER
+        }
+    }
     fn number(&mut self, start: u32, end: u32, s: &'de str) -> Result<Item<'de>, ParseError> {
         let bytes = s.as_bytes();
 
@@ -1119,30 +1113,20 @@ impl<'de> Parser<'de> {
             return Err(self.set_error(self.bytes.len(), None, ErrorKind::UnexpectedEof));
         };
         match byte {
-            b'"' => {
+            b'"' | b'\'' => {
                 self.cursor += 1;
-                let (key, _multiline) = match self.read_string(self.cursor - 1, b'"') {
-                    Ok(v) => v,
-                    Err(e) => return Err(e),
-                };
-                Ok(Item::string(key.name, key.span))
-            }
-            b'\'' => {
-                self.cursor += 1;
-                let (key, _multiline) = match self.read_string(self.cursor - 1, b'\'') {
-                    Ok(v) => v,
-                    Err(e) => return Err(e),
-                };
-                Ok(Item::string(key.name, key.span))
+                match self.read_string(self.cursor - 1, byte) {
+                    Ok((key, _)) => Ok(Item::string(key.name, key.span)),
+                    Err(e) => Err(e),
+                }
             }
             b'{' => {
                 let start = self.cursor as u32;
                 self.cursor += 1;
                 let mut table = crate::table::InnerTable::new();
-                match self.inline_table_contents(&mut table, depth_remaining - 1) {
-                    Ok(v) => v,
-                    Err(e) => return Err(e),
-                };
+                if let Err(err) = self.inline_table_contents(&mut table, depth_remaining - 1) {
+                    return Err(err);
+                }
                 Ok(Item::table_frozen(
                     table,
                     Span::new(start, self.cursor as u32),
@@ -1152,9 +1136,8 @@ impl<'de> Parser<'de> {
                 let start = self.cursor as u32;
                 self.cursor += 1;
                 let mut arr = value::Array::new();
-                match self.array_contents(&mut arr, depth_remaining - 1) {
-                    Ok(v) => v,
-                    Err(e) => return Err(e),
+                if let Err(err) = self.array_contents(&mut arr, depth_remaining - 1) {
+                    return Err(err);
                 };
                 Ok(Item::array(arr, Span::new(start, self.cursor as u32)))
             }
@@ -1174,17 +1157,17 @@ impl<'de> Parser<'de> {
                     "false" => Ok(Item::boolean(false, span)),
                     "inf" | "nan" => self.number(start, end, key),
                     _ => {
-                        let first_char = key.chars().next().expect("key should not be empty");
+                        let first_char = key.as_bytes()[0];
                         match first_char {
-                            '-' => match key.as_bytes().get(1) {
+                            b'-' => match key.as_bytes().get(1) {
                                 Some(b'0'..=b'9' | b'i' | b'n') => self.number(start, end, key),
                                 _ => Err(self.set_error(
-                                    start as usize,
+                                    at,
                                     Some(end as usize),
                                     ErrorKind::InvalidNumber,
                                 )),
                             },
-                            '0'..='9' => self.number(start, end, key),
+                            b'0'..=b'9' => self.number(start, end, key),
                             _ => Err(self.set_error(
                                 at,
                                 Some(end as usize),
