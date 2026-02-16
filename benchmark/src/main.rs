@@ -1,11 +1,32 @@
 use jsony_bench::{Bencher, Stat};
 use std::fmt::Write as _;
 use std::io::Write as _;
+use std::path::Path;
 use std::process::Stdio;
 
 mod compile_bench;
 mod compile_examples;
 mod static_input;
+
+pub fn try_lockfile_version(path: &Path, package: &str) -> Option<String> {
+    let content = std::fs::read_to_string(path)
+        .unwrap_or_else(|e| panic!("failed to read {}: {e}", path.display()));
+    let arena = toml_spanner::Arena::new();
+    let table = toml_spanner::parse(&content, &arena)
+        .unwrap_or_else(|e| panic!("failed to parse {}: {e}", path.display()));
+    let packages = table["package"].as_array()?;
+    for pkg in packages {
+        if pkg["name"].as_str() == Some(package) {
+            return Some(pkg["version"].as_str()?.into());
+        }
+    }
+    panic!("package {package} not found in {}", path.display());
+}
+
+pub fn lockfile_version(path: &Path, package: &str) -> String {
+    try_lockfile_version(path, package)
+        .unwrap_or_else(|| panic!("package {package} not found in {}", path.display()))
+}
 
 fn bench_end2end_config_toml_span<'a>(
     bench: &mut Bencher,
@@ -105,13 +126,16 @@ impl Plotter {
         Plotter { s1, s2, s3 }
     }
 
-    fn plot_raw(&self, label: &str, data: &str) -> String {
+    fn plot_raw(&self, label: &str, data: &str, xrange_max: f64) -> String {
         let mut render = String::new();
         render.push_str(self.s1);
         write!(render, "{label:?}").unwrap();
         render.push_str(self.s2);
         render.push_str(data);
-        render.push_str(self.s3);
+        let s3 = self
+            .s3
+            .replacen("plot ", &format!("set xrange [0:{:.1}]\nplot ", xrange_max), 1);
+        render.push_str(&s3);
 
         let mut gnuplot = std::process::Command::new("gnuplot")
             .stdin(Stdio::piped())
@@ -155,13 +179,26 @@ fn main() {
         return;
     }
 
+    let lock_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("Cargo.lock");
+    let versions: Vec<(&str, String)> = ["toml-spanner", "toml", "toml-span"]
+        .into_iter()
+        .map(|name| (name, lockfile_version(&lock_path, name)))
+        .collect();
+
+    println!("=== Versions ===");
+    for (name, version) in &versions {
+        println!("  {name} {version}");
+    }
+    println!();
+
     let mut bench = jsony_bench::Bencher::new();
     bench.calibrate();
 
     let configs: &[(&str, &str)] = &[
-        ("zed", static_input::ZED_CARGO_TOML),
-        ("extask", static_input::EXTASK_TOML),
-        ("devsm", static_input::DEVSM_TOML),
+        ("zed/Cargo.lock", static_input::ZED_CARGO_LOCK),
+        ("zed/Cargo.toml", static_input::ZED_CARGO_TOML),
+        ("extask.toml", static_input::EXTASK_TOML),
+        ("devsm.toml", static_input::DEVSM_TOML),
         ("random", static_input::RANDOM_TOML),
     ];
 
@@ -175,9 +212,15 @@ fn main() {
     let span_stats = bench_end2end_config_toml_span(&mut bench, configs);
 
     // --- Graph generation ---
-    let graph_benchmarks = [("zed", "18KB"), ("extask", "4KB"), ("devsm", "2KB")];
+    let graph_benchmarks = [
+        //        ("zed/Cargo.lock", "272KB"),
+        ("zed/Cargo.toml", "18KB"),
+        ("extask.toml", "4KB"),
+        ("devsm.toml", "2KB"),
+    ];
 
     let mut data = String::new();
+    let mut rel_values = Vec::new();
     for (bench_name, size) in &graph_benchmarks {
         let spanner_nanos = f64::from(
             spanner_stats
@@ -207,14 +250,32 @@ fn main() {
         let rel_toml = toml_nanos / spanner_nanos;
         let rel_span = span_nanos / spanner_nanos;
 
-        writeln!(data, "\"── {} ({}) ──\" 0 0", bench_name, size).unwrap();
+        // Header line:
+        writeln!(data, "\"{{/:Bold {} ({})}}\" 0 0", bench_name, size).unwrap();
+
+        rel_values.push(rel_toml);
+        rel_values.push(rel_span);
+
         writeln!(data, "\"toml-spanner\" {:.2} 1", 1.0).unwrap();
         writeln!(data, "\"toml\" {:.2} 2", rel_toml).unwrap();
         writeln!(data, "\"toml-span\" {:.2} 3", rel_span).unwrap();
     }
 
+    let graph_benchmarks = [
+        ("zed/Cargo.lock", "272KB"),
+        ("zed/Cargo.toml", "18KB"),
+        ("extask.toml", "4KB"),
+        ("devsm.toml", "2KB"),
+    ];
+
+    let max_rel = rel_values.iter().copied().fold(0.0_f64, f64::max);
+
     let plotter = Plotter::new();
-    let svg = plotter.plot_raw("Relative Parse Time (lower is better)", &data);
+    let svg = plotter.plot_raw(
+        "x times longer parse time than toml-spanner (lower is better)",
+        &data,
+        max_rel + 1.5,
+    );
 
     let assets_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../assets");
     std::fs::create_dir_all(&assets_dir).ok();
@@ -224,6 +285,11 @@ fn main() {
 
     // Print markdown table for README
     eprintln!("\n--- README Markdown ---\n");
+    let version_line: Vec<_> = versions
+        .iter()
+        .map(|(name, v)| format!("{name} {v}"))
+        .collect();
+    eprintln!("Versions: {}\n", version_line.join(", "));
     eprintln!("![benchmark](assets/bench.svg)\n");
     eprintln!("```");
     eprintln!(

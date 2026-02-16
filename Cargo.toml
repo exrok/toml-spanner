@@ -1,6 +1,6 @@
 [package]
 name = "toml-spanner"
-version = "0.2.0"
+version = "0.3.0"
 description = "High Performance Toml parser and deserializer that preserves span information with fast compile times."
 authors = [
     "Thomas Dagenais <exrok@i64.dev>",

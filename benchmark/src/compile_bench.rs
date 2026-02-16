@@ -9,6 +9,7 @@ struct Project {
     dir_name: &'static str,
     source: &'static str,
     cargo_toml: String,
+    version_package: Option<&'static str>,
 }
 
 struct Stats {
@@ -19,18 +20,16 @@ struct Stats {
 }
 
 impl Stats {
-    fn compute(durations: &[Duration]) -> Option<Self> {
-        if durations.is_empty() {
-            return None;
-        }
+    fn compute(durations: &[Duration]) -> Stats {
+        assert!(!durations.is_empty(), "no successful builds");
         let mut ms: Vec<u128> = durations.iter().map(|d| d.as_millis()).collect();
         ms.sort();
-        Some(Stats {
+        Stats {
             min: ms[0],
             median: ms[ms.len() / 2],
             mean: ms.iter().sum::<u128>() / ms.len() as u128,
             max: ms[ms.len() - 1],
-        })
+        }
     }
 }
 
@@ -61,24 +60,28 @@ fn make_projects() -> Vec<Project> {
             dir_name: "toml_compile_bench_null",
             source: include_str!("compile_examples/bin_null.rs"),
             cargo_toml: cargo_toml("null", ""),
+            version_package: None,
         },
         Project {
             display_name: "toml-spanner",
             dir_name: "toml_compile_bench_spanner",
             source: include_str!("compile_examples/bin_toml_spanner.rs"),
             cargo_toml: cargo_toml("toml-compile-bench-spanner", &spanner_dep),
+            version_package: Some("toml-spanner"),
         },
         Project {
             display_name: "toml-span",
             dir_name: "toml_compile_bench_toml_span",
             source: include_str!("compile_examples/bin_toml_span.rs"),
             cargo_toml: cargo_toml("toml-compile-bench-toml-span", "toml-span = \"0.7\""),
+            version_package: Some("toml-span"),
         },
         Project {
             display_name: "toml",
             dir_name: "toml_compile_bench_toml",
             source: include_str!("compile_examples/bin_toml.rs"),
             cargo_toml: cargo_toml("toml-compile-bench-toml", "toml = \"1\""),
+            version_package: Some("toml"),
         },
         Project {
             display_name: "toml+serde",
@@ -88,6 +91,7 @@ fn make_projects() -> Vec<Project> {
                 "toml-compile-bench-toml-serde",
                 "serde = { version = \"1\", features = [\"derive\"] }\ntoml = \"1\"",
             ),
+            version_package: Some("toml"),
         },
     ]
 }
@@ -102,12 +106,18 @@ fn main() {
 
 const ITERATIONS: usize = 5;
 
+struct Result {
+    name: &'static str,
+    version: String,
+    stats: Stats,
+}
+
 pub fn run_compile_bench(release: bool) {
     let projects = make_projects();
     let mode = if release { "release" } else { "debug" };
     println!("=== Compile-time benchmark ({mode} builds, {ITERATIONS} iterations) ===\n");
 
-    let mut results: Vec<(&str, Option<Stats>)> = Vec::new();
+    let mut results: Vec<Result> = Vec::new();
 
     for project in &projects {
         let base = PathBuf::from(format!("/tmp/{}", project.dir_name));
@@ -133,12 +143,22 @@ pub fn run_compile_bench(release: bool) {
             .expect("failed to run cargo");
 
         if !warmup.status.success() {
-            eprintln!("FAILED");
-            eprintln!("{}", String::from_utf8_lossy(&warmup.stderr));
-            results.push((project.display_name, None));
-            continue;
+            panic!(
+                "warmup build failed for {}:\n{}",
+                project.display_name,
+                String::from_utf8_lossy(&warmup.stderr)
+            );
         }
         println!("ok");
+
+        let version = match project.version_package {
+            Some(pkg) => {
+                let v = super::lockfile_version(&base.join("Cargo.lock"), pkg);
+                println!("  version: {v}");
+                v
+            }
+            None => String::new(),
+        };
 
         let mut durations = Vec::with_capacity(ITERATIONS);
         for i in 0..ITERATIONS {
@@ -149,10 +169,11 @@ pub fn run_compile_bench(release: bool) {
                 .output()
                 .expect("failed to run cargo clean");
 
-            if !clean.status.success() {
-                eprintln!("  clean failed: {}", String::from_utf8_lossy(&clean.stderr));
-                continue;
-            }
+            assert!(
+                clean.status.success(),
+                "clean failed: {}",
+                String::from_utf8_lossy(&clean.stderr)
+            );
 
             let start = Instant::now();
             let build = Command::new("cargo")
@@ -167,20 +188,22 @@ pub fn run_compile_bench(release: bool) {
                 .expect("failed to run cargo build");
             let elapsed = start.elapsed();
 
-            if !build.status.success() {
-                eprintln!(
-                    "  build {} failed: {}",
-                    i + 1,
-                    String::from_utf8_lossy(&build.stderr)
-                );
-                continue;
-            }
+            assert!(
+                build.status.success(),
+                "build {} failed: {}",
+                i + 1,
+                String::from_utf8_lossy(&build.stderr)
+            );
 
             durations.push(elapsed);
             println!("  [{}/{}] {:.0?}", i + 1, ITERATIONS, elapsed);
         }
 
-        results.push((project.display_name, Stats::compute(&durations)));
+        results.push(Result {
+            name: project.display_name,
+            version,
+            stats: Stats::compute(&durations),
+        });
         println!();
     }
 
@@ -192,14 +215,10 @@ pub fn run_compile_bench(release: bool) {
     );
     println!("{}", "-".repeat(60));
 
-    for &(name, ref stats) in &results {
-        let Some(stats) = stats else {
-            println!("{:<16} FAILED", name);
-            continue;
-        };
+    for r in &results {
         println!(
             "{:<16} {:>8} {:>8} {:>8} {:>8}",
-            name, stats.min, stats.median, stats.mean, stats.max
+            r.name, r.stats.min, r.stats.median, r.stats.mean, r.stats.max
         );
     }
 
@@ -207,20 +226,31 @@ pub fn run_compile_bench(release: bool) {
         return;
     }
 
-    // The first project is always the null baseline
-    let [("null", Some(null_stats)), rest @ ..] = &results[..] else {
-        panic!("Expected first null result with stats")
-    };
+    let null_median = results
+        .iter()
+        .find(|r| r.name == "null")
+        .expect("no null baseline result")
+        .stats
+        .median;
 
     // Generate gnuplot data — iterate results in order, skip null
     let mut data = String::new();
-    for (i, (name, stats)) in rest.iter().enumerate() {
-        let Some(stats) = stats else {
-            continue;
+    for (i, r) in results.iter().filter(|r| r.name != "null").enumerate() {
+        let delta = r.stats.median.saturating_sub(null_median);
+        let label = if r.version.is_empty() {
+            r.name.to_string()
+        } else {
+            format!("{{/:Bold {}}}{{/=11 -VER-{}}}", r.name, r.version)
         };
-        let delta = stats.median.saturating_sub(null_stats.median);
-        writeln!(data, "\"{name}\" {delta} {i}").unwrap();
+        writeln!(data, "\"{label}\" {delta} {i}").unwrap();
     }
+
+    let max_delta = results
+        .iter()
+        .filter(|r| r.name != "null")
+        .map(|r| r.stats.median.saturating_sub(null_median))
+        .max()
+        .unwrap_or(0);
 
     // Run gnuplot
     let gnuplot_template = include_str!("../plot_compile.gnuplot");
@@ -236,7 +266,8 @@ pub fn run_compile_bench(release: bool) {
     write!(script, "\"Additional compile time over baseline (ms)\"").unwrap();
     script.push_str(s2);
     script.push_str(&data);
-    script.push_str(s3);
+    let s3 = s3.replacen("plot ", &format!("set xrange [0:{}]\nplot ", max_delta + 500), 1);
+    script.push_str(&s3);
 
     let mut gnuplot = Command::new("gnuplot")
         .stdin(std::process::Stdio::piped())
@@ -251,6 +282,7 @@ pub fn run_compile_bench(release: bool) {
         .unwrap();
     let output = gnuplot.wait_with_output().unwrap();
     let svg = String::from_utf8(output.stdout).unwrap();
+    let svg = svg.replace(">-VER-", " dx=\"1ch\">");
 
     let assets_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../assets");
     std::fs::create_dir_all(&assets_dir).ok();
@@ -260,19 +292,21 @@ pub fn run_compile_bench(release: bool) {
 
     // Print markdown table for README
     eprintln!("\n--- README Markdown ---\n");
+    let version_line: Vec<_> = results
+        .iter()
+        .filter(|r| !r.version.is_empty())
+        .map(|r| format!("{} {}", r.name, r.version))
+        .collect();
+    eprintln!("Versions: {}\n", version_line.join(", "));
     eprintln!("![compile benchmark](assets/compile_bench.svg)\n");
     eprintln!("```");
-    eprintln!("{:<16} {:>10} {:>12}", "", "median(ms)", "Δ null(ms)");
-    for &(name, ref stats) in &results {
-        let Some(stats) = stats else {
-            eprintln!("{:<16} FAILED", name);
-            continue;
-        };
-        if name == "null" {
-            eprintln!("{:<16} {:>10}", name, stats.median);
+    eprintln!("{:<16} {:>10} {:>12}", "", "median(ms)", "added(ms)");
+    for r in &results {
+        if r.name == "null" {
+            eprintln!("{:<16} {:>10}", r.name, r.stats.median);
         } else {
-            let delta = stats.median.saturating_sub(null_stats.median);
-            eprintln!("{:<16} {:>10} {:>+12}", name, stats.median, delta);
+            let delta = r.stats.median.saturating_sub(null_median);
+            eprintln!("{:<16} {:>10} {:>+12}", r.name, r.stats.median, delta);
         }
     }
     eprintln!("```");
