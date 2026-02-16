@@ -85,37 +85,39 @@ fn main() {
 Measured on AMD Ryzen 9 5950X, 64GB RAM, Linux 6.18, rustc 1.93.0.
 Relative parse time across real-world TOML files (lower is better):
 
-![bench](https://github.com/user-attachments/assets/1e5386c2-2920-4c3b-a0f1-185821ea6f0a)
+![bench](https://github.com/user-attachments/assets/a762a25f-379f-4d9b-8901-5d2d25ec06c5)
+
+Crate Versions: `toml-spanner = 0.3.0`, `toml = 1.0.2+spec-1.1.0`, `toml-span = 0.7.0`
 
 ```
                   time(μs)  cycles(K)   instr(K)  branch(K)
 zed/Cargo.toml
-  toml-spanner        29.8        142        501        101
-  toml               250.1       1196       3074        607
-  toml-span          381.9       1821       5057       1050
+  toml-spanner        25.1        119        441         92
+  toml               257.2       1220       3084        607
+  toml-span          381.6       1816       5048       1046
 extask.toml
-  toml-spanner        11.5         55        177         33
-  toml                81.1        387       1017        196
-  toml-span          108.4        517       1350        268
+  toml-spanner         8.9         42        148         29
+  toml                78.7        376       1002        192
+  toml-span          105.0        500       1335        263
 devsm.toml
-  toml-spanner         4.0         19         73         15
-  toml                34.9        167        439         85
-  toml-span           59.3        283        732        146
+  toml-spanner         3.6         17         68         15
+  toml                32.3        155        422         80
+  toml-span           55.0        262        713        141
 ```
 
 ### Compile Time
 
-Extra `cargo build --release` time for binaries using respective crates (lower is better):
+Extra `cargo build --release` time for binaries using the respective crates (lower is better):
 
-![compile_bench](https://github.com/user-attachments/assets/a047d529-2d43-4549-9e54-44675607302e)
+![compile_bench](https://github.com/user-attachments/assets/acff6d37-5df5-4e79-a219-c9cc60c52c22)
 
 ```
                  median(ms)    added(ms)
-null                    101
-toml-spanner            673         +572
-toml-span              1393        +1292
-toml                   3088        +2987
-toml+serde             5214        +5113
+null                     99
+toml-spanner            655         +556
+toml-span              1375        +1276
+toml                   3027        +2928
+toml+serde             5037        +4938
 ```
 
 Checkout `./benchmark` for more details, but numbers should simulate the additional
@@ -131,7 +133,6 @@ extensive changes:
   real-world workloads.
 - Preserved index order: tables retain their insertion order by default,
   unlike `toml_span` and the default mode of `toml`.
-
 - Compact `Value` type (on 64bit platforms):
 
   | Crate                 | Value/Item | TableEntry |
@@ -155,7 +156,7 @@ Miri.
 The `unsafe` in this crate demands thorough testing. The full suite includes
 [Miri](https://github.com/rust-lang/miri) for detecting undefined behavior,
 fuzzing against the reference `toml` crate, and snapshot-based integration
-tests — currently at **97.6%** branch coverage.
+tests.
 
 ```bash
 cargo test --workspace                          # all tests
