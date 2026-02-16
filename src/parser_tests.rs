@@ -38,32 +38,32 @@ fn basic_scalar_values() {
 
     // string
     let v = ctx.parse_ok("a = \"hello\"");
-    assert_eq!(v.get("a").unwrap().as_str(), Some("hello"));
+    assert_eq!(v["a"].as_str(), Some("hello"));
 
     // integer
     let v = ctx.parse_ok("a = 42");
-    assert_eq!(v.get("a").unwrap().as_i64(), Some(42));
+    assert_eq!(v["a"].as_i64(), Some(42));
 
     // negative integer
     let v = ctx.parse_ok("a = -100");
-    assert_eq!(v.get("a").unwrap().as_i64(), Some(-100));
+    assert_eq!(v["a"].as_i64(), Some(-100));
 
     // float
     let v = ctx.parse_ok("a = 3.14");
-    let f = v.get("a").unwrap().as_f64().unwrap();
+    let f = v["a"].as_f64().unwrap();
     assert!((f - 3.14).abs() < f64::EPSILON);
 
     // booleans
     let v = ctx.parse_ok("a = true");
-    assert_eq!(v.get("a").unwrap().as_bool(), Some(true));
+    assert_eq!(v["a"].as_bool(), Some(true));
     let v = ctx.parse_ok("a = false");
-    assert_eq!(v.get("a").unwrap().as_bool(), Some(false));
+    assert_eq!(v["a"].as_bool(), Some(false));
 
     // multiple keys
     let v = ctx.parse_ok("a = 1\nb = 2\nc = 3");
     assert_eq!(v.len(), 3);
-    assert_eq!(v.get("a").unwrap().as_i64(), Some(1));
-    assert_eq!(v.get("c").unwrap().as_i64(), Some(3));
+    assert_eq!(v["a"].as_i64(), Some(1));
+    assert_eq!(v["c"].as_i64(), Some(3));
 }
 
 #[test]
@@ -81,11 +81,7 @@ fn string_escapes() {
 
     for (input, expected) in cases {
         let v = ctx.parse_ok(input);
-        assert_eq!(
-            v.get("a").unwrap().as_str(),
-            Some(expected),
-            "input: {input}"
-        );
+        assert_eq!(v["a"].as_str(), Some(expected), "input: {input}");
     }
 }
 
@@ -102,11 +98,7 @@ fn string_types() {
 
     for (input, expected) in cases {
         let v = ctx.parse_ok(input);
-        assert_eq!(
-            v.get("a").unwrap().as_str(),
-            Some(expected),
-            "input: {input}"
-        );
+        assert_eq!(v["a"].as_str(), Some(expected), "input: {input}");
     }
 }
 
@@ -123,11 +115,7 @@ fn number_formats() {
 
     for (input, expected) in int_cases {
         let v = ctx.parse_ok(input);
-        assert_eq!(
-            v.get("a").unwrap().as_i64(),
-            Some(expected),
-            "input: {input}"
-        );
+        assert_eq!(v["a"].as_i64(), Some(expected), "input: {input}");
     }
 
     let float_cases = [
@@ -139,7 +127,7 @@ fn number_formats() {
 
     for (input, expected, is_nan) in float_cases {
         let v = ctx.parse_ok(input);
-        let f = v.get("a").unwrap().as_f64().unwrap();
+        let f = v["a"].as_f64().unwrap();
         if is_nan {
             assert!(f.is_nan(), "input: {input}");
         } else {
@@ -155,7 +143,7 @@ fn number_formats() {
 
     for (input, expected, epsilon) in float_approx_cases {
         let v = ctx.parse_ok(input);
-        let f = v.get("a").unwrap().as_f64().unwrap();
+        let f = v["a"].as_f64().unwrap();
         assert!((f - expected).abs() < epsilon, "input: {input}");
     }
 }
@@ -165,20 +153,18 @@ fn arrays() {
     let ctx = TestCtx::new();
 
     let v = ctx.parse_ok("a = [1, 2, 3]");
-    let arr = v.get("a").unwrap().as_array().unwrap();
-    assert_eq!(arr.len(), 3);
-    assert_eq!(arr.get(0).unwrap().as_i64(), Some(1));
-    assert_eq!(arr.get(2).unwrap().as_i64(), Some(3));
+    assert_eq!(v["a"].as_array().unwrap().len(), 3);
+    assert_eq!(v["a"][0].as_i64(), Some(1));
+    assert_eq!(v["a"][2].as_i64(), Some(3));
 
     // empty
     let v = ctx.parse_ok("a = []");
-    assert!(v.get("a").unwrap().as_array().unwrap().is_empty());
+    assert!(v["a"].as_array().unwrap().is_empty());
 
     // nested
     let v = ctx.parse_ok("a = [[1, 2], [3, 4]]");
-    let arr = v.get("a").unwrap().as_array().unwrap();
-    assert_eq!(arr.len(), 2);
-    assert_eq!(arr.get(0).unwrap().as_array().unwrap().len(), 2);
+    assert_eq!(v["a"].as_array().unwrap().len(), 2);
+    assert_eq!(v["a"][0].as_array().unwrap().len(), 2);
 }
 
 #[test]
@@ -186,42 +172,22 @@ fn inline_tables() {
     let ctx = TestCtx::new();
 
     let v = ctx.parse_ok("a = {x = 1, y = 2}");
-    let t = v.get("a").unwrap().as_table().unwrap();
-    assert_eq!(t.len(), 2);
-    assert_eq!(t.get("x").unwrap().as_i64(), Some(1));
-    assert_eq!(t.get("y").unwrap().as_i64(), Some(2));
+    assert_eq!(v["a"].as_table().unwrap().len(), 2);
+    assert_eq!(v["a"]["x"].as_i64(), Some(1));
+    assert_eq!(v["a"]["y"].as_i64(), Some(2));
 
     // empty
     let v = ctx.parse_ok("a = {}");
-    assert!(v.get("a").unwrap().as_table().unwrap().is_empty());
+    assert!(v["a"].as_table().unwrap().is_empty());
 
     // nested
     let v = ctx.parse_ok("a = {b = {c = 1}}");
-    let b = v
-        .get("a")
-        .unwrap()
-        .as_table()
-        .unwrap()
-        .get("b")
-        .unwrap()
-        .as_table()
-        .unwrap();
-    assert_eq!(b.get("c").unwrap().as_i64(), Some(1));
+    assert_eq!(v["a"]["b"]["c"].as_i64(), Some(1));
 
     // array of inline tables
     let v = ctx.parse_ok("a = [{x = 1}, {x = 2}]");
-    let arr = v.get("a").unwrap().as_array().unwrap();
-    assert_eq!(arr.len(), 2);
-    assert_eq!(
-        arr.get(0)
-            .unwrap()
-            .as_table()
-            .unwrap()
-            .get("x")
-            .unwrap()
-            .as_i64(),
-        Some(1)
-    );
+    assert_eq!(v["a"].as_array().unwrap().len(), 2);
+    assert_eq!(v["a"][0]["x"].as_i64(), Some(1));
 }
 
 #[test]
@@ -230,131 +196,41 @@ fn table_headers_and_structure() {
 
     // simple header
     let v = ctx.parse_ok("[table]\nkey = 1");
-    let t = v.get("table").unwrap().as_table().unwrap();
-    assert_eq!(t.get("key").unwrap().as_i64(), Some(1));
+    assert_eq!(v["table"]["key"].as_i64(), Some(1));
 
     // multiple headers
     let v = ctx.parse_ok("[a]\nx = 1\n[b]\ny = 2");
-    assert_eq!(
-        v.get("a")
-            .unwrap()
-            .as_table()
-            .unwrap()
-            .get("x")
-            .unwrap()
-            .as_i64(),
-        Some(1)
-    );
-    assert_eq!(
-        v.get("b")
-            .unwrap()
-            .as_table()
-            .unwrap()
-            .get("y")
-            .unwrap()
-            .as_i64(),
-        Some(2)
-    );
+    assert_eq!(v["a"]["x"].as_i64(), Some(1));
+    assert_eq!(v["b"]["y"].as_i64(), Some(2));
 
     // dotted header
     let v = ctx.parse_ok("[a.b.c]\nkey = 1");
-    let c = v
-        .get("a")
-        .unwrap()
-        .as_table()
-        .unwrap()
-        .get("b")
-        .unwrap()
-        .as_table()
-        .unwrap()
-        .get("c")
-        .unwrap()
-        .as_table()
-        .unwrap();
-    assert_eq!(c.get("key").unwrap().as_i64(), Some(1));
+    assert_eq!(v["a"]["b"]["c"]["key"].as_i64(), Some(1));
 
     // dotted key-value
     let v = ctx.parse_ok("a.b.c = 1");
-    let b = v
-        .get("a")
-        .unwrap()
-        .as_table()
-        .unwrap()
-        .get("b")
-        .unwrap()
-        .as_table()
-        .unwrap();
-    assert_eq!(b.get("c").unwrap().as_i64(), Some(1));
+    assert_eq!(v["a"]["b"]["c"].as_i64(), Some(1));
 
     // dotted key multiple
     let v = ctx.parse_ok("a.x = 1\na.y = 2");
-    let a = v.get("a").unwrap().as_table().unwrap();
-    assert_eq!(a.get("x").unwrap().as_i64(), Some(1));
-    assert_eq!(a.get("y").unwrap().as_i64(), Some(2));
+    assert_eq!(v["a"]["x"].as_i64(), Some(1));
+    assert_eq!(v["a"]["y"].as_i64(), Some(2));
 
     // array of tables
     let v = ctx.parse_ok("[[items]]\nname = \"a\"\n[[items]]\nname = \"b\"");
-    let arr = v.get("items").unwrap().as_array().unwrap();
-    assert_eq!(arr.len(), 2);
-    assert_eq!(
-        arr.get(0)
-            .unwrap()
-            .as_table()
-            .unwrap()
-            .get("name")
-            .unwrap()
-            .as_str(),
-        Some("a")
-    );
-    assert_eq!(
-        arr.get(1)
-            .unwrap()
-            .as_table()
-            .unwrap()
-            .get("name")
-            .unwrap()
-            .as_str(),
-        Some("b")
-    );
+    assert_eq!(v["items"].as_array().unwrap().len(), 2);
+    assert_eq!(v["items"][0]["name"].as_str(), Some("a"));
+    assert_eq!(v["items"][1]["name"].as_str(), Some("b"));
 
     // array of tables with subtable
     let v = ctx.parse_ok("[[fruit]]\nname = \"apple\"\n[fruit.physical]\ncolor = \"red\"");
-    let fruit = v
-        .get("fruit")
-        .unwrap()
-        .as_array()
-        .unwrap()
-        .get(0)
-        .unwrap()
-        .as_table()
-        .unwrap();
-    assert_eq!(fruit.get("name").unwrap().as_str(), Some("apple"));
-    assert_eq!(
-        fruit
-            .get("physical")
-            .unwrap()
-            .as_table()
-            .unwrap()
-            .get("color")
-            .unwrap()
-            .as_str(),
-        Some("red")
-    );
+    assert_eq!(v["fruit"][0]["name"].as_str(), Some("apple"));
+    assert_eq!(v["fruit"][0]["physical"]["color"].as_str(), Some("red"));
 
     // implicit table via header
     let v = ctx.parse_ok("[a.b]\nx = 1\n[a]\ny = 2");
-    let a = v.get("a").unwrap().as_table().unwrap();
-    assert_eq!(a.get("y").unwrap().as_i64(), Some(2));
-    assert_eq!(
-        a.get("b")
-            .unwrap()
-            .as_table()
-            .unwrap()
-            .get("x")
-            .unwrap()
-            .as_i64(),
-        Some(1)
-    );
+    assert_eq!(v["a"]["y"].as_i64(), Some(2));
+    assert_eq!(v["a"]["b"]["x"].as_i64(), Some(1));
 }
 
 #[test]
@@ -364,18 +240,18 @@ fn table_indexing_thresholds() {
     // 5 keys — linear scan
     let v = ctx.parse_ok("a = 1\nb = 2\nc = 3\nd = 4\ne = 5");
     assert_eq!(v.len(), 5);
-    assert_eq!(v.get("e").unwrap().as_i64(), Some(5));
+    assert_eq!(v["e"].as_i64(), Some(5));
 
     // 6 keys — bulk index
     let v = ctx.parse_ok("a = 1\nb = 2\nc = 3\nd = 4\ne = 5\nf = 6");
     assert_eq!(v.len(), 6);
-    assert_eq!(v.get("a").unwrap().as_i64(), Some(1));
-    assert_eq!(v.get("f").unwrap().as_i64(), Some(6));
+    assert_eq!(v["a"].as_i64(), Some(1));
+    assert_eq!(v["f"].as_i64(), Some(6));
 
     // 7 keys — incremental index
     let v = ctx.parse_ok("a = 1\nb = 2\nc = 3\nd = 4\ne = 5\nf = 6\ng = 7");
     assert_eq!(v.len(), 7);
-    assert_eq!(v.get("g").unwrap().as_i64(), Some(7));
+    assert_eq!(v["g"].as_i64(), Some(7));
 
     // 20 keys
     let mut lines = Vec::new();
@@ -385,8 +261,8 @@ fn table_indexing_thresholds() {
     let input = lines.join("\n");
     let v = ctx.parse_ok(&input);
     assert_eq!(v.len(), 20);
-    assert_eq!(v.get("key0").unwrap().as_i64(), Some(0));
-    assert_eq!(v.get("key19").unwrap().as_i64(), Some(19));
+    assert_eq!(v["key0"].as_i64(), Some(0));
+    assert_eq!(v["key19"].as_i64(), Some(19));
 
     // subtable crossing threshold
     let mut lines = vec!["[sub]".to_string()];
@@ -395,9 +271,8 @@ fn table_indexing_thresholds() {
     }
     let input = lines.join("\n");
     let v = ctx.parse_ok(&input);
-    let sub = v.get("sub").unwrap().as_table().unwrap();
-    assert_eq!(sub.len(), 6);
-    assert_eq!(sub.get("k5").unwrap().as_i64(), Some(5));
+    assert_eq!(v["sub"].as_table().unwrap().len(), 6);
+    assert_eq!(v["sub"]["k5"].as_i64(), Some(5));
 }
 
 #[test]
@@ -441,15 +316,15 @@ fn quoted_keys_and_spans() {
 
     // basic quoted key
     let v = ctx.parse_ok(r#""quoted key" = 1"#);
-    assert_eq!(v.get("quoted key").unwrap().as_i64(), Some(1));
+    assert_eq!(v["quoted key"].as_i64(), Some(1));
 
     // quoted key with escape
     let v = ctx.parse_ok(r#""key\nwith\nnewlines" = 1"#);
-    assert_eq!(v.get("key\nwith\nnewlines").unwrap().as_i64(), Some(1));
+    assert_eq!(v["key\nwith\nnewlines"].as_i64(), Some(1));
 
     // literal quoted key
     let v = ctx.parse_ok("'literal key' = 1");
-    assert_eq!(v.get("literal key").unwrap().as_i64(), Some(1));
+    assert_eq!(v["literal key"].as_i64(), Some(1));
 
     // span for integer value
     let input = "key = 42";
@@ -469,10 +344,10 @@ fn comments_and_whitespace() {
     let ctx = TestCtx::new();
 
     let v = ctx.parse_ok("# comment\na = 1 # inline comment\n# another");
-    assert_eq!(v.get("a").unwrap().as_i64(), Some(1));
+    assert_eq!(v["a"].as_i64(), Some(1));
 
     let v = ctx.parse_ok("\n\n\na = 1\n\n\n");
-    assert_eq!(v.get("a").unwrap().as_i64(), Some(1));
+    assert_eq!(v["a"].as_i64(), Some(1));
 }
 
 #[test]
@@ -612,20 +487,12 @@ name = "Nail"
 sku = 284758393
 "#;
     let v = ctx.parse_ok(input);
-    assert_eq!(v.get("title").unwrap().as_str(), Some("TOML Example"));
-    assert_eq!(v.get("count").unwrap().as_i64(), Some(100));
-
-    let db = v.get("database").unwrap().as_table().unwrap();
-    assert_eq!(db.get("ports").unwrap().as_array().unwrap().len(), 3);
-
-    let servers = v.get("servers").unwrap().as_table().unwrap();
-    let alpha = servers.get("alpha").unwrap().as_table().unwrap();
-    assert_eq!(alpha.get("ip").unwrap().as_str(), Some("10.0.0.1"));
-
-    let products = v.get("products").unwrap().as_array().unwrap();
-    assert_eq!(products.len(), 2);
-    let p0 = products.get(0).unwrap().as_table().unwrap();
-    assert_eq!(p0.get("name").unwrap().as_str(), Some("Hammer"));
+    assert_eq!(v["title"].as_str(), Some("TOML Example"));
+    assert_eq!(v["count"].as_i64(), Some(100));
+    assert_eq!(v["database"]["ports"].as_array().unwrap().len(), 3);
+    assert_eq!(v["servers"]["alpha"]["ip"].as_str(), Some("10.0.0.1"));
+    assert_eq!(v["products"].as_array().unwrap().len(), 2);
+    assert_eq!(v["products"][0]["name"].as_str(), Some("Hammer"));
 }
 
 #[test]
@@ -638,12 +505,11 @@ fn utf8_bom_is_skipped() {
 
     // BOM followed by key-value
     let v = ctx.parse_ok("\u{FEFF}a = 1");
-    assert_eq!(v.get("a").unwrap().as_i64(), Some(1));
+    assert_eq!(v["a"].as_i64(), Some(1));
 
     // BOM followed by table header
     let v = ctx.parse_ok("\u{FEFF}[section]\nkey = \"val\"");
-    let section = v.get("section").unwrap().as_table().unwrap();
-    assert_eq!(section.get("key").unwrap().as_str(), Some("val"));
+    assert_eq!(v["section"]["key"].as_str(), Some("val"));
 }
 
 #[test]
@@ -651,16 +517,8 @@ fn crlf_handling() {
     let ctx = TestCtx::new();
 
     let v = ctx.parse_ok("a = 1\r\nb = 2\r\n");
-    assert_eq!(
-        v.get("a").unwrap().as_i64(),
-        Some(1),
-        "input: a = 1\\r\\nb = 2\\r\\n"
-    );
-    assert_eq!(
-        v.get("b").unwrap().as_i64(),
-        Some(2),
-        "input: a = 1\\r\\nb = 2\\r\\n"
-    );
+    assert_eq!(v["a"].as_i64(), Some(1), "input: a = 1\\r\\nb = 2\\r\\n");
+    assert_eq!(v["b"].as_i64(), Some(2), "input: a = 1\\r\\nb = 2\\r\\n");
 
     let valid_str_cases = [
         ("a = \"\"\"\r\nhello\r\nworld\"\"\"", "hello\r\nworld"),
@@ -672,17 +530,12 @@ fn crlf_handling() {
 
     for (input, expected) in valid_str_cases {
         let v = ctx.parse_ok(input);
-        assert_eq!(
-            v.get("a").unwrap().as_str(),
-            Some(expected),
-            "input: {input}"
-        );
+        assert_eq!(v["a"].as_str(), Some(expected), "input: {input}");
     }
 
     let v = ctx.parse_ok("[table]\r\nkey = 1\r\n");
-    let t = v.get("table").unwrap().as_table().unwrap();
     assert_eq!(
-        t.get("key").unwrap().as_i64(),
+        v["table"]["key"].as_i64(),
         Some(1),
         "input: [table]\\r\\nkey = 1\\r\\n"
     );
@@ -713,11 +566,7 @@ fn escape_sequences() {
 
     for (input, expected) in valid_cases {
         let v = ctx.parse_ok(input);
-        assert_eq!(
-            v.get("a").unwrap().as_str(),
-            Some(expected),
-            "input: {input}"
-        );
+        assert_eq!(v["a"].as_str(), Some(expected), "input: {input}");
     }
 
     let e = ctx.parse_err(r#"a = "\uGGGG""#);
@@ -763,11 +612,7 @@ fn multiline_string_edge_cases() {
 
     for (input, expected) in valid_cases {
         let v = ctx.parse_ok(input);
-        assert_eq!(
-            v.get("a").unwrap().as_str(),
-            Some(expected),
-            "input: {input}"
-        );
+        assert_eq!(v["a"].as_str(), Some(expected), "input: {input}");
     }
 
     let e = ctx.parse_err("a = \"\"\"\\  x\"\"\"");
@@ -790,29 +635,18 @@ fn number_valid_edge_cases() {
 
     for (input, expected) in int_cases {
         let v = ctx.parse_ok(input);
-        assert_eq!(
-            v.get("a").unwrap().as_i64(),
-            Some(expected),
-            "input: {input}"
-        );
+        assert_eq!(v["a"].as_i64(), Some(expected), "input: {input}");
     }
 
     let v = ctx.parse_ok("a = +3.14");
-    let f = v.get("a").unwrap().as_f64().unwrap();
+    let f = v["a"].as_f64().unwrap();
     assert!((f - 3.14).abs() < f64::EPSILON, "input: a = +3.14");
 
     let v = ctx.parse_ok("a = +inf");
-    assert_eq!(
-        v.get("a").unwrap().as_f64(),
-        Some(f64::INFINITY),
-        "input: a = +inf"
-    );
+    assert_eq!(v["a"].as_f64(), Some(f64::INFINITY), "input: a = +inf");
 
     let v = ctx.parse_ok("a = +nan");
-    assert!(
-        v.get("a").unwrap().as_f64().unwrap().is_nan(),
-        "input: a = +nan"
-    );
+    assert!(v["a"].as_f64().unwrap().is_nan(), "input: a = +nan");
 }
 
 #[test]
@@ -859,7 +693,7 @@ fn float_valid_edge_cases() {
 
     for (input, expected, epsilon) in cases {
         let v = ctx.parse_ok(input);
-        let f = v.get("a").unwrap().as_f64().unwrap();
+        let f = v["a"].as_f64().unwrap();
         assert!((f - expected).abs() < epsilon, "input: {input}");
     }
 }
@@ -948,20 +782,7 @@ fn inline_table_edge_cases() {
     let ctx = TestCtx::new();
 
     let v = ctx.parse_ok("a = {b.c = 1}");
-    let b = v
-        .get("a")
-        .unwrap()
-        .as_table()
-        .unwrap()
-        .get("b")
-        .unwrap()
-        .as_table()
-        .unwrap();
-    assert_eq!(
-        b.get("c").unwrap().as_i64(),
-        Some(1),
-        "input: a = {{b.c = 1}}"
-    );
+    assert_eq!(v["a"]["b"]["c"].as_i64(), Some(1), "input: a = {{b.c = 1}}");
 
     let table_len_cases = [
         ("a = {x = 1, y = 2,}", 2),
@@ -971,8 +792,11 @@ fn inline_table_edge_cases() {
 
     for (input, expected_len) in table_len_cases {
         let v = ctx.parse_ok(input);
-        let t = v.get("a").unwrap().as_table().unwrap();
-        assert_eq!(t.len(), expected_len, "input: {input}");
+        assert_eq!(
+            v["a"].as_table().unwrap().len(),
+            expected_len,
+            "input: {input}"
+        );
     }
 }
 
@@ -987,8 +811,11 @@ fn array_edge_cases() {
 
     for (input, expected_len) in cases {
         let v = ctx.parse_ok(input);
-        let arr = v.get("a").unwrap().as_array().unwrap();
-        assert_eq!(arr.len(), expected_len, "input: {input}");
+        assert_eq!(
+            v["a"].as_array().unwrap().len(),
+            expected_len,
+            "input: {input}"
+        );
     }
 }
 
@@ -998,33 +825,17 @@ fn dotted_key_features() {
 
     // deep dotted key
     let v = ctx.parse_ok("a.b.c.d = 1");
-    let d = v
-        .get("a")
-        .unwrap()
-        .as_table()
-        .unwrap()
-        .get("b")
-        .unwrap()
-        .as_table()
-        .unwrap()
-        .get("c")
-        .unwrap()
-        .as_table()
-        .unwrap();
-    assert_eq!(d.get("d").unwrap().as_i64(), Some(1));
+    assert_eq!(v["a"]["b"]["c"]["d"].as_i64(), Some(1));
 
     // extend existing table via dotted key
     let v = ctx.parse_ok("a.b = 1\na.c = 2");
-    let a = v.get("a").unwrap().as_table().unwrap();
-    assert_eq!(a.get("b").unwrap().as_i64(), Some(1));
-    assert_eq!(a.get("c").unwrap().as_i64(), Some(2));
+    assert_eq!(v["a"]["b"].as_i64(), Some(1));
+    assert_eq!(v["a"]["c"].as_i64(), Some(2));
 
     // table header then dotted key
     let v = ctx.parse_ok("[a]\nb.c = 1\nb.d = 2");
-    let a = v.get("a").unwrap().as_table().unwrap();
-    let b = a.get("b").unwrap().as_table().unwrap();
-    assert_eq!(b.get("c").unwrap().as_i64(), Some(1));
-    assert_eq!(b.get("d").unwrap().as_i64(), Some(2));
+    assert_eq!(v["a"]["b"]["c"].as_i64(), Some(1));
+    assert_eq!(v["a"]["b"]["d"].as_i64(), Some(2));
 }
 
 #[test]
@@ -1033,27 +844,19 @@ fn aot_and_implicit_tables() {
 
     // array of tables with subtable
     let v = ctx.parse_ok("[[a]]\nb = 1\n[a.c]\nd = 2\n[[a]]\nb = 3");
-    let arr = v.get("a").unwrap().as_array().unwrap();
-    assert_eq!(arr.len(), 2);
-    let first = arr.get(0).unwrap().as_table().unwrap();
-    assert_eq!(first.get("b").unwrap().as_i64(), Some(1));
-    let c = first.get("c").unwrap().as_table().unwrap();
-    assert_eq!(c.get("d").unwrap().as_i64(), Some(2));
+    assert_eq!(v["a"].as_array().unwrap().len(), 2);
+    assert_eq!(v["a"][0]["b"].as_i64(), Some(1));
+    assert_eq!(v["a"][0]["c"]["d"].as_i64(), Some(2));
 
     // navigate header intermediate on array of tables
     let v = ctx.parse_ok("[[a]]\nb = 1\n[a.c]\nd = 2");
-    let arr = v.get("a").unwrap().as_array().unwrap();
-    let first = arr.get(0).unwrap().as_table().unwrap();
-    assert_eq!(first.get("b").unwrap().as_i64(), Some(1));
-    let c = first.get("c").unwrap().as_table().unwrap();
-    assert_eq!(c.get("d").unwrap().as_i64(), Some(2));
+    assert_eq!(v["a"][0]["b"].as_i64(), Some(1));
+    assert_eq!(v["a"][0]["c"]["d"].as_i64(), Some(2));
 
     // implicit table then explicit define
     let v = ctx.parse_ok("[a.b]\nc = 1\n[a]\nd = 2");
-    let a = v.get("a").unwrap().as_table().unwrap();
-    assert_eq!(a.get("d").unwrap().as_i64(), Some(2));
-    let b = a.get("b").unwrap().as_table().unwrap();
-    assert_eq!(b.get("c").unwrap().as_i64(), Some(1));
+    assert_eq!(v["a"]["d"].as_i64(), Some(2));
+    assert_eq!(v["a"]["b"]["c"].as_i64(), Some(1));
 }
 
 #[test]
@@ -1067,11 +870,7 @@ fn integer_boundary_values() {
 
     for (input, expected) in cases {
         let v = ctx.parse_ok(input);
-        assert_eq!(
-            v.get("a").unwrap().as_i64(),
-            Some(expected),
-            "input: {input}"
-        );
+        assert_eq!(v["a"].as_i64(), Some(expected), "input: {input}");
     }
 }
 
@@ -1226,14 +1025,16 @@ fn crlf_in_intermediate_contexts() {
     ];
     for (input, expected_len) in array_cases {
         let v = ctx.parse_ok(input);
-        let arr = v.get("a").unwrap().as_array().unwrap();
-        assert_eq!(arr.len(), expected_len, "input: {input}");
+        assert_eq!(
+            v["a"].as_array().unwrap().len(),
+            expected_len,
+            "input: {input}"
+        );
     }
 
     // CRLF in inline table whitespace (eat_newline in eat_inline_table_whitespace)
     let v = ctx.parse_ok("a = {\r\nx = 1\r\n}");
-    let t = v.get("a").unwrap().as_table().unwrap();
-    assert_eq!(t.get("x").unwrap().as_i64(), Some(1));
+    assert_eq!(v["a"]["x"].as_i64(), Some(1));
 
     // Multiline string: backslash followed by space then CRLF
     let ml_cases = [
@@ -1243,11 +1044,7 @@ fn crlf_in_intermediate_contexts() {
     ];
     for (input, expected) in ml_cases {
         let v = ctx.parse_ok(input);
-        assert_eq!(
-            v.get("a").unwrap().as_str(),
-            Some(expected),
-            "input: {input}"
-        );
+        assert_eq!(v["a"].as_str(), Some(expected), "input: {input}");
     }
 }
 
@@ -1569,12 +1366,7 @@ fn table_header_error_paths() {
 
     // Comment on same line as header (success path)
     let v = ctx.parse_ok("[a] # comment\nk = 1");
-    let a = v.get("a").unwrap().as_table().unwrap();
-    assert_eq!(
-        a.get("k").unwrap().as_i64(),
-        Some(1),
-        "input: [a] # comment"
-    );
+    assert_eq!(v["a"]["k"].as_i64(), Some(1), "input: [a] # comment");
 
     // Junk after header (no newline, not EOF)
     let e = ctx.parse_err("[a]x");
@@ -1650,11 +1442,7 @@ fn hex_numbers_with_zero_digits() {
     ];
     for (input, expected) in cases {
         let v = ctx.parse_ok(input);
-        assert_eq!(
-            v.get("a").unwrap().as_i64(),
-            Some(expected),
-            "input: {input}"
-        );
+        assert_eq!(v["a"].as_i64(), Some(expected), "input: {input}");
     }
 }
 
@@ -1664,7 +1452,7 @@ fn integer_base_max_boundary() {
 
     // Hex: i64::MAX = 0x7FFFFFFFFFFFFFFF
     let v = ctx.parse_ok("a = 0x7FFFFFFFFFFFFFFF");
-    assert_eq!(v.get("a").unwrap().as_i64(), Some(i64::MAX));
+    assert_eq!(v["a"].as_i64(), Some(i64::MAX));
 
     // Hex: i64::MAX + 1 should overflow
     let e = ctx.parse_err("a = 0x8000000000000000");
@@ -1672,7 +1460,7 @@ fn integer_base_max_boundary() {
 
     // Octal: i64::MAX = 0o777777777777777777777
     let v = ctx.parse_ok("a = 0o777777777777777777777");
-    assert_eq!(v.get("a").unwrap().as_i64(), Some(i64::MAX));
+    assert_eq!(v["a"].as_i64(), Some(i64::MAX));
 
     // Octal: i64::MAX + 1 should overflow
     let e = ctx.parse_err("a = 0o1000000000000000000000");
@@ -1683,7 +1471,7 @@ fn integer_base_max_boundary() {
 
     // Binary: i64::MAX = 0b followed by 0 then 62 ones
     let v = ctx.parse_ok("a = 0b0111111111111111111111111111111111111111111111111111111111111111");
-    assert_eq!(v.get("a").unwrap().as_i64(), Some(i64::MAX));
+    assert_eq!(v["a"].as_i64(), Some(i64::MAX));
 
     // Binary: i64::MAX + 1 should overflow
     let e = ctx.parse_err("a = 0b1000000000000000000000000000000000000000000000000000000000000000");
@@ -1814,17 +1602,17 @@ fn nan_sign_preservation() {
     let ctx = TestCtx::new();
 
     let v = ctx.parse_ok("a = nan");
-    let f = v.get("a").unwrap().as_f64().unwrap();
+    let f = v["a"].as_f64().unwrap();
     assert!(f.is_nan());
     assert!(f.is_sign_positive(), "nan should be positive");
 
     let v = ctx.parse_ok("a = -nan");
-    let f = v.get("a").unwrap().as_f64().unwrap();
+    let f = v["a"].as_f64().unwrap();
     assert!(f.is_nan());
     assert!(f.is_sign_negative(), "-nan should be negative");
 
     let v = ctx.parse_ok("a = +nan");
-    let f = v.get("a").unwrap().as_f64().unwrap();
+    let f = v["a"].as_f64().unwrap();
     assert!(f.is_nan());
     assert!(f.is_sign_positive(), "+nan should be positive");
 }
@@ -1842,12 +1630,12 @@ fn indexed_table_nonexistent_key() {
     );
 
     // Also verify all 6 keys are correctly found (not just first/last).
-    assert_eq!(v.get("a").unwrap().as_i64(), Some(1));
-    assert_eq!(v.get("b").unwrap().as_i64(), Some(2));
-    assert_eq!(v.get("c").unwrap().as_i64(), Some(3));
-    assert_eq!(v.get("d").unwrap().as_i64(), Some(4));
-    assert_eq!(v.get("e").unwrap().as_i64(), Some(5));
-    assert_eq!(v.get("f").unwrap().as_i64(), Some(6));
+    assert_eq!(v["a"].as_i64(), Some(1));
+    assert_eq!(v["b"].as_i64(), Some(2));
+    assert_eq!(v["c"].as_i64(), Some(3));
+    assert_eq!(v["d"].as_i64(), Some(4));
+    assert_eq!(v["e"].as_i64(), Some(5));
+    assert_eq!(v["f"].as_i64(), Some(6));
 
     // 7+ entries: incremental indexing after initial bulk
     let v = ctx.parse_ok("a = 1\nb = 2\nc = 3\nd = 4\ne = 5\nf = 6\ng = 7");
@@ -1855,8 +1643,8 @@ fn indexed_table_nonexistent_key() {
         v.get("nonexistent").is_none(),
         "nonexistent key in 7-entry table"
     );
-    assert_eq!(v.get("a").unwrap().as_i64(), Some(1));
-    assert_eq!(v.get("g").unwrap().as_i64(), Some(7));
+    assert_eq!(v["a"].as_i64(), Some(1));
+    assert_eq!(v["g"].as_i64(), Some(7));
 }
 
 #[test]
@@ -1877,16 +1665,12 @@ fn long_string_exercises_swar_path() {
     ];
     for (input, expected) in cases {
         let v = ctx.parse_ok(input);
-        assert_eq!(
-            v.get("a").unwrap().as_str(),
-            Some(expected),
-            "input: {input}"
-        );
+        assert_eq!(v["a"].as_str(), Some(expected), "input: {input}");
     }
 
     // Literal string > 8 bytes (skip_string_plain with delim=')
     let v = ctx.parse_ok("a = 'abcdefghijklmnop'");
-    assert_eq!(v.get("a").unwrap().as_str(), Some("abcdefghijklmnop"));
+    assert_eq!(v["a"].as_str(), Some("abcdefghijklmnop"));
 }
 
 #[test]
@@ -1901,11 +1685,7 @@ fn integer_plus_sign_in_decimal() {
     ];
     for (input, expected) in cases {
         let v = ctx.parse_ok(input);
-        assert_eq!(
-            v.get("a").unwrap().as_i64(),
-            Some(expected),
-            "input: {input}"
-        );
+        assert_eq!(v["a"].as_i64(), Some(expected), "input: {input}");
     }
 }
 
@@ -1917,11 +1697,7 @@ fn octal_digit_validation() {
     let cases: [(&str, i64); 3] = [("a = 0o0", 0), ("a = 0o7", 7), ("a = 0o10", 8)];
     for (input, expected) in cases {
         let v = ctx.parse_ok(input);
-        assert_eq!(
-            v.get("a").unwrap().as_i64(),
-            Some(expected),
-            "input: {input}"
-        );
+        assert_eq!(v["a"].as_i64(), Some(expected), "input: {input}");
     }
 
     // Invalid octal digits (8, 9)

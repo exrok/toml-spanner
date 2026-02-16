@@ -17,7 +17,7 @@ fn push_and_realloc() {
     // with_single creates a one-element array
     let a = Array::with_single(ival(42), &arena);
     assert_eq!(a.len(), 1);
-    assert_eq!(a.get(0).unwrap().as_i64(), Some(42));
+    assert_eq!(a[0].as_i64(), Some(42));
 
     // Push from empty through all realloc thresholds (0 -> 4 -> 8 -> beyond)
     let mut a = Array::new();
@@ -31,7 +31,7 @@ fn push_and_realloc() {
 
     // Verify all values survived reallocs
     for i in 0..9 {
-        assert_eq!(a.get(i).unwrap().as_i64(), Some(i as i64));
+        assert_eq!(a[i].as_i64(), Some(i as i64));
     }
 }
 
@@ -43,8 +43,8 @@ fn get_and_get_mut() {
     a.push(ival(20), &arena);
 
     // get: valid and out of bounds
-    assert_eq!(a.get(0).unwrap().as_i64(), Some(10));
-    assert_eq!(a.get(1).unwrap().as_i64(), Some(20));
+    assert_eq!(a[0].as_i64(), Some(10));
+    assert_eq!(a[1].as_i64(), Some(20));
     assert!(a.get(2).is_none());
     assert!(a.get(100).is_none());
 
@@ -53,8 +53,8 @@ fn get_and_get_mut() {
     if let crate::value::ValueMut::Integer(i) = v.value_mut() {
         *i = 99;
     }
-    assert_eq!(a.get(0).unwrap().as_i64(), Some(99));
-    assert_eq!(a.get(1).unwrap().as_i64(), Some(20));
+    assert_eq!(a[0].as_i64(), Some(99));
+    assert_eq!(a[1].as_i64(), Some(20));
 
     // get_mut: out of bounds
     assert!(a.get_mut(2).is_none());
@@ -70,7 +70,7 @@ fn get_and_get_mut() {
     if let crate::value::ValueMut::Integer(i) = s[1].value_mut() {
         *i = 200;
     }
-    assert_eq!(a.get(1).unwrap().as_i64(), Some(200));
+    assert_eq!(a[1].as_i64(), Some(200));
 }
 
 #[test]
@@ -90,7 +90,7 @@ fn pop_and_last_mut() {
     if let crate::value::ValueMut::Integer(i) = last.value_mut() {
         *i = 99;
     }
-    assert_eq!(a.get(2).unwrap().as_i64(), Some(99));
+    assert_eq!(a[2].as_i64(), Some(99));
 
     // pop returns (modified) last, then remaining in reverse
     assert_eq!(a.pop().unwrap().as_i64(), Some(99));
@@ -118,9 +118,9 @@ fn iterators() {
             *i += 10;
         }
     }
-    assert_eq!(a.get(0).unwrap().as_i64(), Some(11));
-    assert_eq!(a.get(1).unwrap().as_i64(), Some(12));
-    assert_eq!(a.get(2).unwrap().as_i64(), Some(13));
+    assert_eq!(a[0].as_i64(), Some(11));
+    assert_eq!(a[1].as_i64(), Some(12));
+    assert_eq!(a[2].as_i64(), Some(13));
 
     let vals: Vec<i64> = a.into_iter().map(|v| v.as_i64().unwrap()).collect();
     assert_eq!(vals, vec![11, 12, 13]);

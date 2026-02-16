@@ -189,26 +189,13 @@ impl<'de> Parser<'de> {
         // Removing the following introduces 8% performance
         // regression across the board.
         {
-            let line_info = Some(self.to_linecol(std::hint::black_box(0)));
-            std::hint::black_box(&line_info);
+            for entry in self.bytes.iter().enumerate() {
+                std::hint::black_box(&entry);
+                break;
+            }
         }
 
         Error { kind, span }
-    }
-
-    pub fn to_linecol(&self, offset: usize) -> (u32, u32) {
-        let mut line_start = 0;
-        let mut line_num = 0;
-        for (i, &b) in self.bytes.iter().enumerate() {
-            if i >= offset {
-                return (line_num as u32, (offset - line_start) as u32);
-            }
-            if b == b'\n' {
-                line_num += 1;
-                line_start = i + 1;
-            }
-        }
-        (line_num as u32, (offset - line_start) as u32)
     }
 
     #[inline]

@@ -204,7 +204,7 @@ fn table_access_and_mutation() {
     assert_eq!(table.span(), Span::new(0, 100));
 
     // get
-    assert_eq!(table.get("a").unwrap().as_i64(), Some(1));
+    assert_eq!(table["a"].as_i64(), Some(1));
     assert!(table.get("missing").is_none());
 
     // get_key_value
@@ -218,7 +218,7 @@ fn table_access_and_mutation() {
     if let crate::value::ValueMut::Integer(i) = v.value_mut() {
         *i = 99;
     }
-    assert_eq!(table.get("a").unwrap().as_i64(), Some(99));
+    assert_eq!(table["a"].as_i64(), Some(99));
     assert!(table.get_mut("missing").is_none());
 
     // values_mut: mutate all values
@@ -227,8 +227,8 @@ fn table_access_and_mutation() {
             *i += 10;
         }
     }
-    assert_eq!(table.get("a").unwrap().as_i64(), Some(109));
-    assert_eq!(table.get("b").unwrap().as_i64(), Some(12));
+    assert_eq!(table["a"].as_i64(), Some(109));
+    assert_eq!(table["b"].as_i64(), Some(12));
 
     // remove
     let v = table.remove("b").unwrap();
@@ -315,7 +315,7 @@ fn table_iterators() {
             *i += 100;
         }
     }
-    assert_eq!(table.get("a").unwrap().as_i64(), Some(101));
+    assert_eq!(table["a"].as_i64(), Some(101));
 
     // Owned iteration via into_iter
     let table = make_table(&arena);
