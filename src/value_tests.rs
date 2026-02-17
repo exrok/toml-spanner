@@ -410,12 +410,12 @@ fn parse_method() {
 fn spanned_table_set_span_preserves_flag() {
     let mut v = Item::table_header(InnerTable::new(), sp(10, 20));
 
-    unsafe { v.as_spanned_table_mut_unchecked() }.set_span_start(99);
+    unsafe { v.as_table_mut_unchecked() }.set_span_start(99);
     assert_eq!(v.tag(), TAG_TABLE);
     assert_eq!(v.flag(), FLAG_HEADER);
     assert_eq!(v.span().start, 99);
 
-    unsafe { v.as_spanned_table_mut_unchecked() }.set_span_end(200);
+    unsafe { v.as_table_mut_unchecked() }.set_span_end(200);
     assert_eq!(v.flag(), FLAG_HEADER);
     assert_eq!(v.span().end, 200);
 }

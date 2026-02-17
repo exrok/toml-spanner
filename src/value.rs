@@ -381,7 +381,7 @@ impl<'de> Item<'de> {
                 Kind::Float => Value::Float(&self.payload.float),
                 Kind::Boolean => Value::Boolean(&self.payload.boolean),
                 Kind::Array => Value::Array(&self.payload.array),
-                Kind::Table => Value::Table(self.as_spanned_table_unchecked()),
+                Kind::Table => Value::Table(self.as_table_unchecked()),
             }
         }
     }
@@ -398,7 +398,7 @@ impl<'de> Item<'de> {
                 Kind::Float => ValueMut::Float(&mut self.payload.float),
                 Kind::Boolean => ValueMut::Boolean(&mut self.payload.boolean),
                 Kind::Array => ValueMut::Array(&mut self.payload.array),
-                Kind::Table => ValueMut::Table(self.as_spanned_table_mut_unchecked()),
+                Kind::Table => ValueMut::Table(self.as_table_mut_unchecked()),
             }
         }
     }
@@ -467,7 +467,7 @@ impl<'de> Item<'de> {
     pub fn as_table(&self) -> Option<&Table<'de>> {
         if self.is_table() {
             // SAFETY: is_table() check guarantees this item is a table variant.
-            Some(unsafe { self.as_spanned_table_unchecked() })
+            Some(unsafe { self.as_table_unchecked() })
         } else {
             None
         }
@@ -487,7 +487,7 @@ impl<'de> Item<'de> {
     pub fn expect_table(&mut self) -> Result<&mut Table<'de>, Error> {
         if self.is_table() {
             // SAFETY: is_table() check guarantees this item is a table variant.
-            Ok(unsafe { self.as_spanned_table_mut_unchecked() })
+            Ok(unsafe { self.as_table_mut_unchecked() })
         } else {
             Err(self.expected("a table"))
         }
@@ -509,7 +509,7 @@ impl<'de> Item<'de> {
     pub fn as_table_mut(&mut self) -> Option<&mut Table<'de>> {
         if self.is_table() {
             // SAFETY: is_table() check guarantees this item is a table variant.
-            Some(unsafe { self.as_spanned_table_mut_unchecked() })
+            Some(unsafe { self.as_table_mut_unchecked() })
         } else {
             None
         }
@@ -517,7 +517,7 @@ impl<'de> Item<'de> {
 
     /// Returns a mutable table pointer (parser-internal).
     #[inline]
-    pub(crate) unsafe fn as_table_mut_unchecked(&mut self) -> &mut InnerTable<'de> {
+    pub(crate) unsafe fn as_inner_table_mut_unchecked(&mut self) -> &mut InnerTable<'de> {
         debug_assert!(self.is_table());
         unsafe { &mut self.payload.table }
     }
@@ -527,7 +527,7 @@ impl<'de> Item<'de> {
     /// SAFETY: The caller must ensure `self.is_table()` is true. Both types
     /// are `#[repr(C)]` with identical layout when the payload is a table.
     #[inline]
-    pub(crate) unsafe fn as_spanned_table_mut_unchecked(&mut self) -> &mut Table<'de> {
+    pub(crate) unsafe fn as_table_mut_unchecked(&mut self) -> &mut Table<'de> {
         debug_assert!(self.is_table());
         unsafe { &mut *(self as *mut Item<'de>).cast::<Table<'de>>() }
     }
@@ -538,7 +538,7 @@ impl<'de> Item<'de> {
     ///
     /// The caller must ensure `self.is_table()` is true.
     #[inline]
-    pub(crate) unsafe fn as_spanned_table_unchecked(&self) -> &Table<'de> {
+    pub(crate) unsafe fn as_table_unchecked(&self) -> &Table<'de> {
         debug_assert!(self.is_table());
         // SAFETY: Both types are `#[repr(C)]` with identical layout when the payload is a table.
         unsafe { &*(self as *const Item<'de>).cast::<Table<'de>>() }

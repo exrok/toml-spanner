@@ -60,17 +60,17 @@ static HEX: [i8; 256] = build_hex_table();
 /// or the arena; both are stable for the lifetime of the parse.
 /// `first_key_span` is the `span.start()` of the **first** key ever inserted
 /// into the table and serves as a cheap, collision-free table discriminator.
-struct KeyIndex<'de> {
+struct KeyRef<'de> {
     key_ptr: NonNull<u8>,
     len: u32,
     first_key_span: u32,
     marker: std::marker::PhantomData<&'de str>,
 }
 
-impl<'de> KeyIndex<'de> {
+impl<'de> KeyRef<'de> {
     #[inline]
     fn new(key: &'de str, first_key_span: u32) -> Self {
-        KeyIndex {
+        KeyRef {
             // SAFETY: str::as_ptr() is guaranteed non-null.
             key_ptr: unsafe { NonNull::new_unchecked(key.as_ptr() as *mut u8) },
             len: key.len() as u32,
@@ -80,7 +80,7 @@ impl<'de> KeyIndex<'de> {
     }
 }
 
-impl<'de> KeyIndex<'de> {
+impl<'de> KeyRef<'de> {
     #[inline]
     fn as_str(&self) -> &'de str {
         // SAFETY: key_ptr and len were captured from a valid &'de str in new().
@@ -94,7 +94,7 @@ impl<'de> KeyIndex<'de> {
     }
 }
 
-impl<'de> Hash for KeyIndex<'de> {
+impl<'de> Hash for KeyRef<'de> {
     #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.as_str().hash(state);
@@ -102,14 +102,14 @@ impl<'de> Hash for KeyIndex<'de> {
     }
 }
 
-impl<'de> PartialEq for KeyIndex<'de> {
+impl<'de> PartialEq for KeyRef<'de> {
     #[inline]
     fn eq(&self, other: &Self) -> bool {
         self.first_key_span == other.first_key_span && self.as_str() == other.as_str()
     }
 }
 
-impl<'de> Eq for KeyIndex<'de> {}
+impl<'de> Eq for KeyRef<'de> {}
 
 struct Parser<'de> {
     /// Raw bytes of the input. Always valid UTF-8 (derived from `&str`).
@@ -123,7 +123,7 @@ struct Parser<'de> {
 
     // Global key-index for O(1) lookups in large tables.
     // Maps (table-discriminator, key-name) → entry index in the table.
-    table_index: foldhash::HashMap<KeyIndex<'de>, usize>,
+    index: foldhash::HashMap<KeyRef<'de>, usize>,
 }
 
 #[allow(unsafe_code)]
@@ -143,7 +143,7 @@ impl<'de> Parser<'de> {
             error_span: Span::new(0, 0),
             error_kind: None,
             // initialize to about ~ 8 KB
-            table_index: foldhash::HashMap::with_capacity_and_hasher(
+            index: foldhash::HashMap::with_capacity_and_hasher(
                 256,
                 foldhash::fast::RandomState::default(),
             ),
@@ -301,10 +301,12 @@ impl<'de> Parser<'de> {
     /// and end position of the "token" at the cursor. This provides compatible
     /// error spans with the old tokenizer.
     fn scan_token_desc_and_end(&self) -> (&'static str, usize) {
-        match self.peek_byte() {
-            None => ("eof", self.bytes.len()),
-            Some(b'\n' | b'\r') => ("a newline", self.cursor + 1),
-            Some(b' ' | b'\t') => {
+        let Some(b) = self.peek_byte() else {
+            return ("eof", self.bytes.len());
+        };
+        match b {
+            b'\n' | b'\r' => ("a newline", self.cursor + 1),
+            b' ' | b'\t' => {
                 let mut end = self.cursor + 1;
                 while end < self.bytes.len()
                     && (self.bytes[end] == b' ' || self.bytes[end] == b'\t')
@@ -313,25 +315,25 @@ impl<'de> Parser<'de> {
                 }
                 ("whitespace", end)
             }
-            Some(b'#') => ("a comment", self.cursor + 1),
-            Some(b'=') => ("an equals", self.cursor + 1),
-            Some(b'.') => ("a period", self.cursor + 1),
-            Some(b',') => ("a comma", self.cursor + 1),
-            Some(b':') => ("a colon", self.cursor + 1),
-            Some(b'+') => ("a plus", self.cursor + 1),
-            Some(b'{') => ("a left brace", self.cursor + 1),
-            Some(b'}') => ("a right brace", self.cursor + 1),
-            Some(b'[') => ("a left bracket", self.cursor + 1),
-            Some(b']') => ("a right bracket", self.cursor + 1),
-            Some(b'\'' | b'"') => ("a string", self.cursor + 1),
-            Some(b) if is_keylike_byte(b) => {
+            b'#' => ("a comment", self.cursor + 1),
+            b'=' => ("an equals", self.cursor + 1),
+            b'.' => ("a period", self.cursor + 1),
+            b',' => ("a comma", self.cursor + 1),
+            b':' => ("a colon", self.cursor + 1),
+            b'+' => ("a plus", self.cursor + 1),
+            b'{' => ("a left brace", self.cursor + 1),
+            b'}' => ("a right brace", self.cursor + 1),
+            b'[' => ("a left bracket", self.cursor + 1),
+            b']' => ("a right bracket", self.cursor + 1),
+            b'\'' | b'"' => ("a string", self.cursor + 1),
+            _ if is_keylike_byte(b) => {
                 let mut end = self.cursor + 1;
                 while end < self.bytes.len() && is_keylike_byte(self.bytes[end]) {
                     end += 1;
                 }
                 ("an identifier", end)
             }
-            Some(_) => ("a character", self.cursor + 1),
+            _ => ("a character", self.cursor + 1),
         }
     }
 
@@ -348,8 +350,18 @@ impl<'de> Parser<'de> {
     }
 
     fn read_table_key(&mut self) -> Result<Key<'de>, ParseError> {
-        match self.peek_byte() {
-            Some(b'"') => {
+        let Some(b) = self.peek_byte() else {
+            return Err(self.set_error(
+                self.bytes.len(),
+                None,
+                ErrorKind::Wanted {
+                    expected: "a table key",
+                    found: "eof",
+                },
+            ));
+        };
+        match b {
+            b'"' => {
                 let start = self.cursor;
                 self.cursor += 1;
                 let (key, multiline) = match self.read_string(start, b'"') {
@@ -365,7 +377,7 @@ impl<'de> Parser<'de> {
                 }
                 Ok(key)
             }
-            Some(b'\'') => {
+            b'\'' => {
                 let start = self.cursor;
                 self.cursor += 1;
                 let (key, multiline) = match self.read_string(start, b'\'') {
@@ -381,13 +393,13 @@ impl<'de> Parser<'de> {
                 }
                 Ok(key)
             }
-            Some(b) if is_keylike_byte(b) => {
+            b if is_keylike_byte(b) => {
                 let start = self.cursor;
                 let name = self.read_keylike();
                 let span = Span::new(start as u32, self.cursor as u32);
                 Ok(Key { name, span })
             }
-            Some(_) => {
+            _ => {
                 let start = self.cursor;
                 let (found_desc, end) = self.scan_token_desc_and_end();
                 Err(self.set_error(
@@ -399,14 +411,6 @@ impl<'de> Parser<'de> {
                     },
                 ))
             }
-            None => Err(self.set_error(
-                self.bytes.len(),
-                None,
-                ErrorKind::Wanted {
-                    expected: "a table key",
-                    found: "eof",
-                },
-            )),
         }
     }
 
@@ -1349,7 +1353,7 @@ impl<'de> Parser<'de> {
                 ));
             }
             // SAFETY: is_table() verified by the guard above.
-            unsafe { Ok(value.as_table_mut_unchecked()) }
+            unsafe { Ok(value.as_inner_table_mut_unchecked()) }
         } else {
             let span = key.span;
             let inserted = self.insert_value_known_to_be_unique(
@@ -1358,7 +1362,7 @@ impl<'de> Parser<'de> {
                 Item::table_dotted(InnerTable::new(), span),
             );
             // SAFETY: Item::table_dotted() produces a table-tagged item.
-            unsafe { Ok(inserted.as_table_mut_unchecked()) }
+            unsafe { Ok(inserted.as_inner_table_mut_unchecked()) }
         }
     }
 
@@ -1366,7 +1370,7 @@ impl<'de> Parser<'de> {
     /// Creates implicit tables (no flag bits) if not found.
     /// Handles arrays-of-tables by navigating into the last element.
     ///
-    /// Returns a `SpannedTable` view of the table navigated into.
+    /// Returns a `Table` view of the table navigated into.
     fn navigate_header_intermediate<'b>(
         &mut self,
         st: &'b mut Table<'de>,
@@ -1376,29 +1380,28 @@ impl<'de> Parser<'de> {
 
         if let Some(idx) = self.indexed_find(table, key.name) {
             let (existing_key, existing) = &mut table.entries_mut()[idx];
-            let first_key_span = existing_key.span;
-            let is_table = existing.is_table();
-            let is_frozen = existing.is_frozen();
-            let is_aot = existing.is_aot();
+            let existing_span = existing_key.span;
 
-            if is_table {
-                if is_frozen {
-                    return Err(self.set_duplicate_key_error(first_key_span, key.span, key.name));
+            // Note: I would use safey accessor heres but that would cause issues
+            // with NLL limitiations.
+            if existing.is_table() {
+                if existing.is_frozen() {
+                    return Err(self.set_duplicate_key_error(existing_span, key.span, key.name));
                 }
                 // SAFETY: is_table() verified by the preceding check.
-                unsafe { Ok(existing.as_spanned_table_mut_unchecked()) }
-            } else if is_aot {
+                unsafe { Ok(existing.as_table_mut_unchecked()) }
+            } else if existing.is_aot() {
                 // unwrap is safe since we just check it's an array of tables and thus a array.
                 let arr = existing.as_array_mut().unwrap();
                 // unwrap is safe as array's of tables always have atleast one value by construction
                 let last = arr.last_mut().unwrap();
                 if !last.is_table() {
-                    return Err(self.set_duplicate_key_error(first_key_span, key.span, key.name));
+                    return Err(self.set_duplicate_key_error(existing_span, key.span, key.name));
                 }
                 // SAFETY: last.is_table() verified by the preceding check.
-                unsafe { Ok(last.as_spanned_table_mut_unchecked()) }
+                unsafe { Ok(last.as_table_mut_unchecked()) }
             } else {
-                Err(self.set_duplicate_key_error(first_key_span, key.span, key.name))
+                Err(self.set_duplicate_key_error(existing_span, key.span, key.name))
             }
         } else {
             let span = key.span;
@@ -1408,7 +1411,7 @@ impl<'de> Parser<'de> {
                 Item::table(InnerTable::new(), span),
             );
             // SAFETY: Item::table() produces a table-tagged item.
-            unsafe { Ok(inserted.as_spanned_table_mut_unchecked()) }
+            unsafe { Ok(inserted.as_table_mut_unchecked()) }
         }
     }
     fn insert_value_known_to_be_unique<'t>(
@@ -1423,12 +1426,10 @@ impl<'de> Parser<'de> {
             let table_id = unsafe { table.first_key_span_start_unchecked() };
             if len == INDEXED_TABLE_THRESHOLD {
                 for (i, (key, _)) in table.entries().iter().enumerate() {
-                    self.table_index
-                        .insert(KeyIndex::new(key.as_str(), table_id), i);
+                    self.index.insert(KeyRef::new(key.as_str(), table_id), i);
                 }
             }
-            self.table_index
-                .insert(KeyIndex::new(key.as_str(), table_id), len);
+            self.index.insert(KeyRef::new(key.as_str(), table_id), len);
         }
         &mut table.insert(key, item, self.arena).1
     }
@@ -1447,32 +1448,27 @@ impl<'de> Parser<'de> {
         let table = &mut st.value;
 
         if let Some(idx) = self.indexed_find(table, key.name) {
-            let (existing_key, value) = &mut table.entries_mut()[idx];
+            let (existing_key, existing) = &mut table.entries_mut()[idx];
             let first_key_span = existing_key.span;
-            let is_table = value.is_table();
-            let is_frozen = value.is_frozen();
-            let has_header = value.has_header_bit();
-            let has_dotted = value.has_dotted_bit();
-            let val_span = value.span();
 
-            if !is_table || is_frozen {
+            if !existing.is_table() || existing.is_frozen() {
                 return Err(self.set_duplicate_key_error(first_key_span, key.span, key.name));
             }
-            if has_header {
+            if existing.has_header_bit() {
                 return Err(self.set_error(
                     header_start as usize,
                     Some(header_end as usize),
                     ErrorKind::DuplicateTable {
                         name: String::from(key.name),
-                        first: val_span,
+                        first: existing.span(),
                     },
                 ));
             }
-            if has_dotted {
+            if existing.has_dotted_bit() {
                 return Err(self.set_duplicate_key_error(first_key_span, key.span, key.name));
             }
             // SAFETY: is_table() verified by the preceding checks.
-            let table = unsafe { value.as_spanned_table_mut_unchecked() };
+            let table = unsafe { existing.as_table_mut_unchecked() };
             table.set_header_flag();
             table.set_span_start(header_start);
             table.set_span_end(header_end);
@@ -1488,7 +1484,7 @@ impl<'de> Parser<'de> {
             );
             Ok(Ctx {
                 // SAFETY: Item::table_header() produces a table-tagged item.
-                table: unsafe { inserted.as_spanned_table_mut_unchecked() },
+                table: unsafe { inserted.as_table_mut_unchecked() },
                 array_end_span: None,
             })
         }
@@ -1508,14 +1504,12 @@ impl<'de> Parser<'de> {
         let table = &mut st.value;
 
         if let Some(idx) = self.indexed_find(table, key.name) {
-            let (existing_key, value) = &mut table.entries_mut()[idx];
+            let (existing_key, existing) = &mut table.entries_mut()[idx];
             let first_key_span = existing_key.span;
-            let is_aot = value.is_aot();
-            let is_table = value.is_table();
 
-            if is_aot {
+            if existing.is_aot() {
                 // SAFETY: is_aot verified by the preceding check, which implies is_array().
-                let (end_flag, arr) = unsafe { value.split_array_end_flag() };
+                let (end_flag, arr) = unsafe { existing.split_array_end_flag() };
                 let entry_span = Span::new(header_start, header_end);
                 arr.push(
                     Item::table_header(InnerTable::new(), entry_span),
@@ -1524,10 +1518,10 @@ impl<'de> Parser<'de> {
                 let entry = arr.last_mut().unwrap();
                 Ok(Ctx {
                     // SAFETY: Item::table_header() produces a table-tagged item.
-                    table: unsafe { entry.as_spanned_table_mut_unchecked() },
+                    table: unsafe { entry.as_table_mut_unchecked() },
                     array_end_span: Some(end_flag),
                 })
-            } else if is_table {
+            } else if existing.is_table() {
                 Err(self.set_error(
                     header_start as usize,
                     Some(header_end as usize),
@@ -1550,7 +1544,7 @@ impl<'de> Parser<'de> {
             let entry = arr.last_mut().unwrap();
             Ok(Ctx {
                 // SAFETY: Item::table_header() (used in with_single) produces a table-tagged item.
-                table: unsafe { entry.as_spanned_table_mut_unchecked() },
+                table: unsafe { entry.as_table_mut_unchecked() },
                 array_end_span: Some(end_flag),
             })
         }
@@ -1585,15 +1579,11 @@ impl<'de> Parser<'de> {
             for (i, (key, _)) in table.entries().iter().enumerate() {
                 // Wish I could use insert_unique here but that would require
                 // pulling in hashbrown :(
-                self.table_index
-                    .insert(KeyIndex::new(key.as_str(), table_id), i);
+                self.index.insert(KeyRef::new(key.as_str(), table_id), i);
             }
         }
 
-        match self
-            .table_index
-            .entry(KeyIndex::new(key.as_str(), table_id))
-        {
+        match self.index.entry(KeyRef::new(key.as_str(), table_id)) {
             std::collections::hash_map::Entry::Occupied(occupied_entry) => {
                 let idx = *occupied_entry.get();
                 let (existing_key, _) = &table.entries()[idx];
@@ -1616,9 +1606,7 @@ impl<'de> Parser<'de> {
         if table.len() > INDEXED_TABLE_THRESHOLD {
             // SAFETY: len > INDEXED_TABLE_THRESHOLD (> 6), so the table is non-empty.
             let first_key_span = unsafe { table.first_key_span_start_unchecked() };
-            self.table_index
-                .get(&KeyIndex::new(name, first_key_span))
-                .copied()
+            self.index.get(&KeyRef::new(name, first_key_span)).copied()
         } else {
             table.find_index(name)
         }
@@ -1725,7 +1713,7 @@ impl<'de> Parser<'de> {
 
     fn process_key_value(&mut self, ctx: &mut Ctx<'_, 'de>) -> Result<(), ParseError> {
         let line_start = self.cursor as u32;
-        // Borrow the Table payload from the SpannedTable. NLL drops this
+        // Borrow the Table payload from the Table. NLL drops this
         // borrow at its last use (the insert_value call), freeing ctx.st
         // for the span updates that follow.
         let mut table_ref: &mut InnerTable<'de> = &mut ctx.table.value;
