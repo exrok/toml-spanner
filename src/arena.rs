@@ -85,11 +85,13 @@ impl Arena {
         let addr = ptr.as_ptr() as usize;
         let aligned_addr = (addr + ALLOC_ALIGN - 1) & !(ALLOC_ALIGN - 1);
         let padding = aligned_addr - addr;
-        let needed = padding + size;
+        let needed = padding.saturating_add(size);
+        let remaining = self.end.get().as_ptr() as usize - addr;
 
-        if addr + needed <= self.end.get().as_ptr() as usize {
-            // Safety: padding+size bytes fit within the current slab.
-            // Using add() from ptr preserves provenance.
+        if needed <= remaining {
+            // Safety: needed bytes fit within the current slab (end >= ptr is
+            // invariant, so remaining cannot underflow). Using add() from ptr
+            // preserves provenance.
             unsafe {
                 self.ptr
                     .set(NonNull::new_unchecked(ptr.as_ptr().add(needed)));
@@ -123,8 +125,10 @@ impl Arena {
         let head = self.ptr.get().as_ptr() as usize;
 
         if old_end == head {
-            let new_end = ptr.as_ptr() as usize + new_size;
-            if new_end <= self.end.get().as_ptr() as usize {
+            // Compare as new_size <= end - ptr instead of ptr + new_size <= end
+            // to avoid wrapping overflow when new_size is very large.
+            let remaining = self.end.get().as_ptr() as usize - ptr.as_ptr() as usize;
+            if new_size <= remaining {
                 // Safety: new_end is within the current slab. Advance the bump
                 // pointer by the growth delta, preserving provenance via add().
                 let extra = new_size - old_size;
@@ -152,8 +156,10 @@ impl Arena {
         let addr = ptr.as_ptr() as usize;
         let aligned_addr = (addr + ALLOC_ALIGN - 1) & !(ALLOC_ALIGN - 1);
         let padding = aligned_addr - addr;
+        // Cannot overflow: grow() panics if HEADER_SIZE + size overflows,
+        // and post-grow ptr is SLAB_ALIGN-aligned so padding is always 0.
         let needed = padding + size;
-        debug_assert!(addr + needed <= self.end.get().as_ptr() as usize);
+        debug_assert!(needed <= self.end.get().as_ptr() as usize - addr);
 
         // Safety: grow() guarantees the new slab is large enough.
         // Using add() from ptr preserves provenance.
@@ -182,6 +188,8 @@ impl Arena {
     }
 
     fn grow(&self, size: usize) {
+        // SAFETY: self.slab always points to a valid SlabHeader — either the
+        // static EMPTY_SLAB sentinel or a heap-allocated header written in grow().
         let current_size = unsafe { self.slab.get().as_ref().size };
 
         let min_slab = HEADER_SIZE.checked_add(size).expect("layout overflow");
@@ -194,6 +202,7 @@ impl Arena {
         let slab_layout =
             Layout::from_size_align(new_size, SLAB_ALIGN).expect("slab layout overflow");
 
+        // SAFETY: slab_layout was validated by Layout::from_size_align above.
         let raw = unsafe { std::alloc::alloc(slab_layout) };
         let Some(base) = NonNull::new(raw) else {
             std::alloc::handle_alloc_error(slab_layout);

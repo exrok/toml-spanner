@@ -252,3 +252,66 @@ fn alloc_then_scratch_then_alloc() {
     let first_bytes = unsafe { std::slice::from_raw_parts(a.as_ptr(), 32) };
     assert!(first_bytes.iter().all(|&b| b == 0xAA));
 }
+
+#[test]
+#[should_panic(expected = "layout overflow")]
+fn alloc_usize_max_panics() {
+    let arena = Arena::new();
+    arena.alloc(8);
+    arena.alloc(usize::MAX);
+}
+
+#[test]
+#[should_panic(expected = "layout overflow")]
+fn alloc_usize_max_unaligned_panics() {
+    let arena = Arena::new();
+    // Allocating 1 byte leaves the bump pointer 1 past an aligned boundary,
+    // so the next alloc has padding = ALLOC_ALIGN - 1 = 7. With regular
+    // addition, 7 + usize::MAX wraps to 6.
+    arena.alloc(1);
+    arena.alloc(usize::MAX);
+}
+
+#[test]
+#[should_panic(expected = "layout overflow")]
+fn alloc_overflow_smallest_wrapping_size() {
+    let arena = Arena::new();
+    arena.alloc(1); // bump pointer is now misaligned (padding will be 7)
+    // Smallest size that wraps when padding is maximal:
+    // 7 + (usize::MAX - 6) = usize::MAX + 1. Regular addition wraps to 0;
+    // saturating_add correctly yields usize::MAX, failing the bounds check.
+    arena.alloc(usize::MAX - (ALLOC_ALIGN - 2));
+}
+
+#[test]
+fn alloc_overflow_preserves_arena_state() {
+    let arena = Arena::new();
+    arena.alloc(8);
+    let ptr_before = arena.ptr.get();
+    let end_before = arena.end.get();
+
+    // grow() panics via checked_add before modifying any arena state, so
+    // after catching the panic, ptr/end/slab must be unchanged.
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        arena.alloc(usize::MAX);
+    }));
+
+    assert!(result.is_err());
+    assert_eq!(arena.ptr.get(), ptr_before);
+    assert_eq!(arena.end.get(), end_before);
+
+    // Arena is still usable after the caught panic.
+    let p = arena.alloc(16);
+    assert_eq!(p.as_ptr() as usize % ALLOC_ALIGN, 0);
+}
+
+#[test]
+#[should_panic(expected = "layout overflow")]
+fn realloc_usize_max_panics() {
+    let arena = Arena::new();
+    let ptr = arena.alloc(8);
+    // ptr is the most recent allocation (old_end == head), so realloc tries
+    // the in-place path. The remaining-based bounds check must reject
+    // usize::MAX without the old ptr + new_size addition wrapping.
+    unsafe { arena.realloc(ptr, 8, usize::MAX) };
+}

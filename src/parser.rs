@@ -71,6 +71,7 @@ impl<'de> KeyIndex<'de> {
     #[inline]
     fn new(key: &'de str, first_key_span: u32) -> Self {
         KeyIndex {
+            // SAFETY: str::as_ptr() is guaranteed non-null.
             key_ptr: unsafe { NonNull::new_unchecked(key.as_ptr() as *mut u8) },
             len: key.len() as u32,
             first_key_span,
@@ -82,6 +83,8 @@ impl<'de> KeyIndex<'de> {
 impl<'de> KeyIndex<'de> {
     #[inline]
     fn as_str(&self) -> &'de str {
+        // SAFETY: key_ptr and len were captured from a valid &'de str in new().
+        // The PhantomData<&'de str> ensures the borrow is live.
         unsafe {
             std::str::from_utf8_unchecked(std::slice::from_raw_parts(
                 self.key_ptr.as_ptr(),
@@ -192,12 +195,7 @@ impl<'de> Parser<'de> {
         // Black Magic Optimization:
         // Removing the following introduces 8% performance
         // regression across the board.
-        {
-            for entry in self.bytes.iter().enumerate() {
-                std::hint::black_box(&entry);
-                break;
-            }
-        }
+        std::hint::black_box(&self.bytes.iter().enumerate().next());
 
         Error { kind, span }
     }
@@ -599,6 +597,8 @@ impl<'de> Parser<'de> {
                 }
                 b'\\' if delim == b'"' => {
                     let arena = self.arena;
+                    // SAFETY: the closure only runs when scratch is None, so no
+                    // other Scratch or arena.alloc() call is active.
                     let s = scratch.get_or_insert_with(|| unsafe { arena.scratch() });
                     s.extend(&self.bytes[flush_from..i]);
                     if let Err(e) = self.read_basic_escape(s, start, multiline) {
@@ -712,7 +712,7 @@ impl<'de> Parser<'de> {
         let mut buf = [0u8; 4];
         let len = chr.encode_utf8(&mut buf).len();
         scratch.extend(&buf[..len]);
-        return Ok(());
+        Ok(())
     }
 
     fn read_hex(
@@ -768,14 +768,14 @@ impl<'de> Parser<'de> {
 
         // Base-prefixed integers (0x, 0o, 0b).
         // TOML forbids signs on these, so only match when first byte is '0'.
-        if sign == 2 {
-            if let [b'0', format, rest @ ..] = s.as_bytes() {
-                match format {
-                    b'x' => return self.integer_hex(rest, Span::new(start, end)),
-                    b'o' => return self.integer_octal(rest, Span::new(start, end)),
-                    b'b' => return self.integer_binary(rest, Span::new(start, end)),
-                    _ => {}
-                }
+        if sign == 2
+            && let [b'0', format, rest @ ..] = s.as_bytes()
+        {
+            match format {
+                b'x' => return self.integer_hex(rest, Span::new(start, end)),
+                b'o' => return self.integer_octal(rest, Span::new(start, end)),
+                b'b' => return self.integer_binary(rest, Span::new(start, end)),
+                _ => {}
             }
         }
 
@@ -1056,6 +1056,8 @@ impl<'de> Parser<'de> {
 
         // Scratch is not committed — arena pointer stays unchanged, space is
         // reused by subsequent allocations.
+        // SAFETY: scratch contains only ASCII digits, signs, dots, and 'e'/'E'
+        // copied from validated input via push_strip_underscores.
         let n: f64 = match unsafe { std::str::from_utf8_unchecked(scratch.as_bytes()) }.parse() {
             Ok(n) => n,
             Err(_) => {
@@ -1181,11 +1183,7 @@ impl<'de> Parser<'de> {
         if let [b'0'..=b'9', ..] = key.as_bytes() {
             self.number(at as u32, end, key, sign)
         } else {
-            return Err(self.set_error(
-                at as usize,
-                Some(self.cursor as usize),
-                ErrorKind::InvalidNumber,
-            ));
+            Err(self.set_error(at, Some(self.cursor), ErrorKind::InvalidNumber))
         }
     }
 
@@ -1350,7 +1348,7 @@ impl<'de> Parser<'de> {
                     },
                 ));
             }
-            // Safety: check above ensures value is table
+            // SAFETY: is_table() verified by the guard above.
             unsafe { Ok(value.as_table_mut_unchecked()) }
         } else {
             let span = key.span;
@@ -1359,6 +1357,7 @@ impl<'de> Parser<'de> {
                 key,
                 Item::table_dotted(InnerTable::new(), span),
             );
+            // SAFETY: Item::table_dotted() produces a table-tagged item.
             unsafe { Ok(inserted.as_table_mut_unchecked()) }
         }
     }
@@ -1386,6 +1385,7 @@ impl<'de> Parser<'de> {
                 if is_frozen {
                     return Err(self.set_duplicate_key_error(first_key_span, key.span, key.name));
                 }
+                // SAFETY: is_table() verified by the preceding check.
                 unsafe { Ok(existing.as_spanned_table_mut_unchecked()) }
             } else if is_aot {
                 // unwrap is safe since we just check it's an array of tables and thus a array.
@@ -1395,6 +1395,7 @@ impl<'de> Parser<'de> {
                 if !last.is_table() {
                     return Err(self.set_duplicate_key_error(first_key_span, key.span, key.name));
                 }
+                // SAFETY: last.is_table() verified by the preceding check.
                 unsafe { Ok(last.as_spanned_table_mut_unchecked()) }
             } else {
                 Err(self.set_duplicate_key_error(first_key_span, key.span, key.name))
@@ -1406,6 +1407,7 @@ impl<'de> Parser<'de> {
                 key,
                 Item::table(InnerTable::new(), span),
             );
+            // SAFETY: Item::table() produces a table-tagged item.
             unsafe { Ok(inserted.as_spanned_table_mut_unchecked()) }
         }
     }
@@ -1417,6 +1419,7 @@ impl<'de> Parser<'de> {
     ) -> &'t mut value::Item<'de> {
         let len = table.len();
         if len >= INDEXED_TABLE_THRESHOLD {
+            // SAFETY: len >= INDEXED_TABLE_THRESHOLD (>= 6), so the table is non-empty.
             let table_id = unsafe { table.first_key_span_start_unchecked() };
             if len == INDEXED_TABLE_THRESHOLD {
                 for (i, (key, _)) in table.entries().iter().enumerate() {
@@ -1468,6 +1471,7 @@ impl<'de> Parser<'de> {
             if has_dotted {
                 return Err(self.set_duplicate_key_error(first_key_span, key.span, key.name));
             }
+            // SAFETY: is_table() verified by the preceding checks.
             let table = unsafe { value.as_spanned_table_mut_unchecked() };
             table.set_header_flag();
             table.set_span_start(header_start);
@@ -1483,6 +1487,7 @@ impl<'de> Parser<'de> {
                 Item::table_header(InnerTable::new(), Span::new(header_start, header_end)),
             );
             Ok(Ctx {
+                // SAFETY: Item::table_header() produces a table-tagged item.
                 table: unsafe { inserted.as_spanned_table_mut_unchecked() },
                 array_end_span: None,
             })
@@ -1509,6 +1514,7 @@ impl<'de> Parser<'de> {
             let is_table = value.is_table();
 
             if is_aot {
+                // SAFETY: is_aot verified by the preceding check, which implies is_array().
                 let (end_flag, arr) = unsafe { value.split_array_end_flag() };
                 let entry_span = Span::new(header_start, header_end);
                 arr.push(
@@ -1517,6 +1523,7 @@ impl<'de> Parser<'de> {
                 );
                 let entry = arr.last_mut().unwrap();
                 Ok(Ctx {
+                    // SAFETY: Item::table_header() produces a table-tagged item.
                     table: unsafe { entry.as_spanned_table_mut_unchecked() },
                     array_end_span: Some(end_flag),
                 })
@@ -1538,9 +1545,11 @@ impl<'de> Parser<'de> {
                 array_span,
             );
             let inserted = self.insert_value_known_to_be_unique(table, key, array_val);
+            // SAFETY: Item::array_aot() produces an array-tagged item.
             let (end_flag, arr) = unsafe { inserted.split_array_end_flag() };
             let entry = arr.last_mut().unwrap();
             Ok(Ctx {
+                // SAFETY: Item::table_header() (used in with_single) produces a table-tagged item.
                 table: unsafe { entry.as_spanned_table_mut_unchecked() },
                 array_end_span: Some(end_flag),
             })
@@ -1564,10 +1573,10 @@ impl<'de> Parser<'de> {
                     ));
                 }
             }
-            table.insert(key, item, &self.arena);
+            table.insert(key, item, self.arena);
             return Ok(());
         }
-        // Safety: We now table len > 0, from above check.
+        // SAFETY: len >= INDEXED_TABLE_THRESHOLD (>= 6), so the table is non-empty.
         let table_id = unsafe { table.first_key_span_start_unchecked() };
 
         // Note: if find a duplicate we bail out, terminating the parsing with an error.
@@ -1588,12 +1597,12 @@ impl<'de> Parser<'de> {
             std::collections::hash_map::Entry::Occupied(occupied_entry) => {
                 let idx = *occupied_entry.get();
                 let (existing_key, _) = &table.entries()[idx];
-                return Err(self.set_duplicate_key_error(existing_key.span, key.span, key.name));
+                Err(self.set_duplicate_key_error(existing_key.span, key.span, key.name))
             }
             std::collections::hash_map::Entry::Vacant(vacant_entry) => {
                 vacant_entry.insert(table.len());
-                table.insert(key, item, &self.arena);
-                return Ok(());
+                table.insert(key, item, self.arena);
+                Ok(())
             }
         }
     }
@@ -1605,6 +1614,7 @@ impl<'de> Parser<'de> {
         // NOTE: I would return a refernce to actual entry here, however this
         // runs into all sorts of NLL limitations.
         if table.len() > INDEXED_TABLE_THRESHOLD {
+            // SAFETY: len > INDEXED_TABLE_THRESHOLD (> 6), so the table is non-empty.
             let first_key_span = unsafe { table.first_key_span_start_unchecked() };
             self.table_index
                 .get(&KeyIndex::new(name, first_key_span))
@@ -1796,7 +1806,6 @@ pub fn parse<'de>(s: &'de str, arena: &'de Arena) -> Result<Table<'de>, Error> {
         });
     }
 
-    // SAFETY: root is a table, so the SpannedTable reinterpretation is valid.
     let mut root_st = Table::new(Span::new(0, s.len() as u32));
     let mut parser = Parser::new(s, arena);
     match parser.parse_document(&mut root_st) {

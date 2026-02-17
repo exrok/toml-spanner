@@ -42,12 +42,14 @@ impl<'de> InnerTable<'de> {
         &mut self,
         key: Key<'de>,
         item: Item<'de>,
-        arena: &Arena,
+        arena: &'de Arena,
     ) -> &mut TableEntry<'de> {
         let len = self.len;
         if self.len == self.cap {
             self.grow(arena);
         }
+        // SAFETY: grow() ensures len < cap, so ptr.add(len) is within the
+        // allocation. The write targets uninitialized memory past the current length.
         unsafe {
             let ptr = self.ptr.as_ptr().add(len as usize);
             ptr.write((key, item));
@@ -125,23 +127,28 @@ impl<'de> InnerTable<'de> {
     /// Returns the span start of the first key. Used as a table discriminator
     /// in the parser's hash index.
     ///
-    /// # Panics
+    /// # Safety
     ///
-    /// Debug-asserts that the table is non-empty.
+    /// The table must be non-empty (`self.len > 0`).
     #[inline]
     pub(crate) unsafe fn first_key_span_start_unchecked(&self) -> u32 {
         debug_assert!(self.len > 0);
+        // SAFETY: caller guarantees len > 0, so the first entry is initialized.
         unsafe { (*self.ptr.as_ptr()).0.span.start }
     }
 
     /// Returns a slice of all entries.
     #[inline]
     pub fn entries(&self) -> &[TableEntry<'de>] {
+        // SAFETY: ptr points to arena-allocated memory with at least len
+        // initialized entries. When len == 0, ptr is NonNull::dangling() which
+        // satisfies from_raw_parts' alignment requirement for zero-length slices.
         unsafe { std::slice::from_raw_parts(self.ptr.as_ptr(), self.len as usize) }
     }
 
     #[inline]
     pub(crate) fn entries_mut(&mut self) -> &mut [TableEntry<'de>] {
+        // SAFETY: same as entries() — ptr is valid for len initialized entries.
         unsafe { std::slice::from_raw_parts_mut(self.ptr.as_ptr(), self.len as usize) }
     }
 
@@ -157,6 +164,8 @@ impl<'de> InnerTable<'de> {
     /// Remove entry at `idx` by swapping it with the last entry.
     fn remove_at(&mut self, idx: usize) -> (Key<'de>, Item<'de>) {
         let last = self.len as usize - 1;
+        // SAFETY: idx was returned by find_index, so idx < len and the
+        // pointer is within initialized entries. read() moves the value out.
         let ptr = unsafe { self.ptr.as_ptr().add(idx) };
         let entry = unsafe { ptr.read() };
         if idx != last {
@@ -170,7 +179,7 @@ impl<'de> InnerTable<'de> {
     }
 
     #[cold]
-    fn grow(&mut self, arena: &Arena) {
+    fn grow(&mut self, arena: &'de Arena) {
         let new_cap = if self.cap == 0 {
             MIN_CAP
         } else {
@@ -179,7 +188,7 @@ impl<'de> InnerTable<'de> {
         self.grow_to(new_cap, arena);
     }
 
-    fn grow_to(&mut self, new_cap: u32, arena: &Arena) {
+    fn grow_to(&mut self, new_cap: u32, arena: &'de Arena) {
         let new_size = new_cap as usize * size_of::<TableEntry<'_>>();
         if self.cap > 0 {
             let old_size = self.cap as usize * size_of::<TableEntry<'_>>();
@@ -213,6 +222,8 @@ impl<'de> Iterator for IntoIter<'de> {
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.index < self.table.len {
+            // SAFETY: index < len is checked above, so the read is within
+            // bounds of initialized entries.
             let entry = unsafe { self.table.ptr.as_ptr().add(self.index as usize).read() };
             self.index += 1;
             Some(entry)
@@ -301,7 +312,7 @@ impl std::fmt::Debug for Table<'_> {
 
 impl<'de> Table<'de> {
     /// Inserts a key-value pair. Does **not** check for duplicates.
-    pub fn insert(&mut self, key: Key<'de>, value: Item<'de>, arena: &Arena) {
+    pub fn insert(&mut self, key: Key<'de>, value: Item<'de>, arena: &'de Arena) {
         self.value.insert(key, value, arena);
     }
 

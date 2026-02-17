@@ -45,7 +45,7 @@ impl<'de> Array<'de> {
     }
 
     /// Creates an array with pre-allocated capacity.
-    pub fn with_capacity(cap: u32, arena: &Arena) -> Self {
+    pub fn with_capacity(cap: u32, arena: &'de Arena) -> Self {
         let mut arr = Self::new();
         if cap > 0 {
             arr.grow_to(cap, arena);
@@ -54,8 +54,10 @@ impl<'de> Array<'de> {
     }
 
     /// Creates an array containing a single value.
-    pub fn with_single(value: Item<'de>, arena: &Arena) -> Self {
+    pub fn with_single(value: Item<'de>, arena: &'de Arena) -> Self {
         let mut arr = Self::with_capacity(MIN_CAP, arena);
+        // SAFETY: with_capacity allocated space for at least MIN_CAP items,
+        // so writing at index 0 is within bounds.
         unsafe {
             arr.ptr.as_ptr().write(value);
         }
@@ -65,11 +67,12 @@ impl<'de> Array<'de> {
 
     /// Appends a value to the end of the array.
     #[inline]
-    pub fn push(&mut self, value: Item<'de>, arena: &Arena) {
+    pub fn push(&mut self, value: Item<'de>, arena: &'de Arena) {
         let len = self.len;
         if len == self.cap {
             self.grow(arena);
         }
+        // SAFETY: grow() ensures len < cap, so ptr.add(len) is within the allocation.
         unsafe {
             self.ptr.as_ptr().add(len as usize).write(value);
         }
@@ -92,6 +95,8 @@ impl<'de> Array<'de> {
     #[inline]
     pub fn get(&self, index: usize) -> Option<&Item<'de>> {
         if index < self.len as usize {
+            // SAFETY: index < len is checked above, so the pointer is within
+            // initialized elements.
             Some(unsafe { &*self.ptr.as_ptr().add(index) })
         } else {
             None
@@ -102,6 +107,7 @@ impl<'de> Array<'de> {
     #[inline]
     pub fn get_mut(&mut self, index: usize) -> Option<&mut Item<'de>> {
         if index < self.len as usize {
+            // SAFETY: index < len is checked above.
             Some(unsafe { &mut *self.ptr.as_ptr().add(index) })
         } else {
             None
@@ -115,6 +121,8 @@ impl<'de> Array<'de> {
             None
         } else {
             self.len -= 1;
+            // SAFETY: len was > 0 and was just decremented, so ptr.add(len)
+            // points to the last initialized element.
             Some(unsafe { self.ptr.as_ptr().add(self.len as usize).read() })
         }
     }
@@ -125,6 +133,7 @@ impl<'de> Array<'de> {
         if self.len == 0 {
             None
         } else {
+            // SAFETY: len > 0 is checked above, so ptr.add(len - 1) is within bounds.
             Some(unsafe { &mut *self.ptr.as_ptr().add(self.len as usize - 1) })
         }
     }
@@ -141,6 +150,8 @@ impl<'de> Array<'de> {
         if self.len == 0 {
             &[]
         } else {
+            // SAFETY: len > 0 is checked above. ptr points to arena-allocated
+            // memory with at least len initialized items.
             unsafe { std::slice::from_raw_parts(self.ptr.as_ptr(), self.len as usize) }
         }
     }
@@ -151,12 +162,13 @@ impl<'de> Array<'de> {
         if self.len == 0 {
             &mut []
         } else {
+            // SAFETY: same as as_slice() — ptr is valid for len initialized items.
             unsafe { std::slice::from_raw_parts_mut(self.ptr.as_ptr(), self.len as usize) }
         }
     }
 
     #[cold]
-    fn grow(&mut self, arena: &Arena) {
+    fn grow(&mut self, arena: &'de Arena) {
         let new_cap = if self.cap == 0 {
             MIN_CAP
         } else {
@@ -165,7 +177,7 @@ impl<'de> Array<'de> {
         self.grow_to(new_cap, arena);
     }
 
-    fn grow_to(&mut self, new_cap: u32, arena: &Arena) {
+    fn grow_to(&mut self, new_cap: u32, arena: &'de Arena) {
         let new_size = new_cap as usize * size_of::<Item<'_>>();
         if self.cap > 0 {
             let old_size = self.cap as usize * size_of::<Item<'_>>();
@@ -213,6 +225,8 @@ impl<'de> Iterator for IntoIter<'de> {
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.index < self.arr.len {
+            // SAFETY: index < len is checked above, so the read is within
+            // initialized elements.
             let val = unsafe { self.arr.ptr.as_ptr().add(self.index as usize).read() };
             self.index += 1;
             Some(val)

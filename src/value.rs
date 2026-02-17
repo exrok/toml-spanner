@@ -231,6 +231,9 @@ enum Kind {
 impl<'de> Item<'de> {
     #[inline]
     fn kind(&self) -> Kind {
+        debug_assert!((self.start_and_tag & TAG_MASK) as u8 <= Kind::Table as u8);
+        // SAFETY: tag bits 0-2 are always in 0..=5 (set only by pub(crate)
+        // constructors). All values are valid Kind discriminants.
         unsafe { std::mem::transmute::<u8, Kind>(self.start_and_tag as u8 & 0x7) }
     }
     #[inline]
@@ -304,6 +307,9 @@ impl<'de> Item<'de> {
     pub(crate) unsafe fn split_array_end_flag(&mut self) -> (&mut u32, &mut Array<'de>) {
         debug_assert!(self.is_array());
         let ptr = self as *mut Item<'de>;
+        // SAFETY: end_and_flag and payload.array are at disjoint offsets within
+        // the repr(C) layout. addr_of_mut! creates derived pointers without
+        // intermediate references, avoiding aliasing violations.
         unsafe {
             let end_flag = &mut *std::ptr::addr_of_mut!((*ptr).end_and_flag);
             let array = &mut *std::ptr::addr_of_mut!((*ptr).payload.array).cast::<Array<'de>>();
@@ -366,6 +372,8 @@ impl<'de> Item<'de> {
     /// Returns a borrowed view for pattern matching.
     #[inline(never)]
     pub fn value(&self) -> Value<'_, 'de> {
+        // SAFETY: kind() returns the discriminant set at construction. Each
+        // match arm reads the union field that was written for that discriminant.
         unsafe {
             match self.kind() {
                 Kind::String => Value::String(&self.payload.string),
@@ -381,6 +389,8 @@ impl<'de> Item<'de> {
     /// Returns a mutable view for pattern matching.
     #[inline(never)]
     pub fn value_mut(&mut self) -> ValueMut<'_, 'de> {
+        // SAFETY: kind() returns the discriminant set at construction. Each
+        // match arm accesses the union field that was written for that discriminant.
         unsafe {
             match self.kind() {
                 Kind::String => ValueMut::String(&mut self.payload.string),
@@ -399,6 +409,7 @@ impl<'de> Item<'de> {
     #[inline]
     pub fn as_str(&self) -> Option<&str> {
         if self.tag() == TAG_STRING {
+            // SAFETY: tag check guarantees the payload is a string.
             Some(unsafe { self.payload.string })
         } else {
             None
@@ -409,6 +420,7 @@ impl<'de> Item<'de> {
     #[inline]
     pub fn as_i64(&self) -> Option<i64> {
         if self.tag() == TAG_INTEGER {
+            // SAFETY: tag check guarantees the payload is an integer.
             Some(unsafe { self.payload.integer })
         } else {
             None
@@ -432,6 +444,7 @@ impl<'de> Item<'de> {
     #[inline]
     pub fn as_bool(&self) -> Option<bool> {
         if self.tag() == TAG_BOOLEAN {
+            // SAFETY: tag check guarantees the payload is a boolean.
             Some(unsafe { self.payload.boolean })
         } else {
             None
@@ -442,6 +455,7 @@ impl<'de> Item<'de> {
     #[inline]
     pub fn as_array(&self) -> Option<&Array<'de>> {
         if self.tag() == TAG_ARRAY {
+            // SAFETY: tag check guarantees the payload is an array.
             Some(unsafe { &self.payload.array })
         } else {
             None
@@ -452,6 +466,7 @@ impl<'de> Item<'de> {
     #[inline]
     pub fn as_table(&self) -> Option<&Table<'de>> {
         if self.is_table() {
+            // SAFETY: is_table() check guarantees this item is a table variant.
             Some(unsafe { self.as_spanned_table_unchecked() })
         } else {
             None
@@ -460,6 +475,7 @@ impl<'de> Item<'de> {
     /// Returns a mutable array reference, or an error if this is not an array.
     pub fn expect_array(&mut self) -> Result<&mut Array<'de>, Error> {
         if self.is_array() {
+            // SAFETY: is_array() check guarantees the payload is an array.
             Ok(unsafe { &mut self.payload.array })
         } else {
             Err(self.expected("a array"))
@@ -470,6 +486,7 @@ impl<'de> Item<'de> {
     /// This is the typical entry point for implementing [`Deserialize`](crate::Deserialize).
     pub fn expect_table(&mut self) -> Result<&mut Table<'de>, Error> {
         if self.is_table() {
+            // SAFETY: is_table() check guarantees this item is a table variant.
             Ok(unsafe { self.as_spanned_table_mut_unchecked() })
         } else {
             Err(self.expected("a table"))
@@ -480,6 +497,7 @@ impl<'de> Item<'de> {
     #[inline]
     pub fn as_array_mut(&mut self) -> Option<&mut Array<'de>> {
         if self.tag() == TAG_ARRAY {
+            // SAFETY: tag check guarantees the payload is an array.
             Some(unsafe { &mut self.payload.array })
         } else {
             None
@@ -490,6 +508,7 @@ impl<'de> Item<'de> {
     #[inline]
     pub fn as_table_mut(&mut self) -> Option<&mut Table<'de>> {
         if self.is_table() {
+            // SAFETY: is_table() check guarantees this item is a table variant.
             Some(unsafe { self.as_spanned_table_mut_unchecked() })
         } else {
             None
@@ -513,9 +532,15 @@ impl<'de> Item<'de> {
         unsafe { &mut *(self as *mut Item<'de>).cast::<Table<'de>>() }
     }
 
+    /// Reinterprets this [`Item`] as a [`Table`] (shared reference).
+    ///
+    /// # Safety
+    ///
+    /// The caller must ensure `self.is_table()` is true.
     #[inline]
     pub(crate) unsafe fn as_spanned_table_unchecked(&self) -> &Table<'de> {
         debug_assert!(self.is_table());
+        // SAFETY: Both types are `#[repr(C)]` with identical layout when the payload is a table.
         unsafe { &*(self as *const Item<'de>).cast::<Table<'de>>() }
     }
 
@@ -807,6 +832,12 @@ pub struct MaybeItem<'de> {
     end_and_flag: u32,
 }
 
+// SAFETY: MaybeItem is only constructed as either (a) the static NONE sentinel
+// (payload is zeroed, tag is TAG_NONE — no pointers are dereferenced), or
+// (b) a reinterpretation of &Item via from_ref. In both cases the data is
+// accessed only through shared references. All payload variants (integers,
+// floats, bools, &str, Array, InnerTable) are safe to share across threads
+// when behind a shared reference.
 unsafe impl Sync for MaybeItem<'_> {}
 
 pub(crate) static NONE: MaybeItem<'static> = MaybeItem {
@@ -818,6 +849,9 @@ pub(crate) static NONE: MaybeItem<'static> = MaybeItem {
 impl<'de> MaybeItem<'de> {
     /// Views an [`Item`] reference as a `MaybeItem`.
     pub fn from_ref<'a>(item: &'a Item<'de>) -> &'a Self {
+        // SAFETY: Item and MaybeItem are both #[repr(C)] with identical field
+        // layout (Payload, u32, u32). Size and alignment equality is verified
+        // by const assertions.
         unsafe { &*(item as *const Item<'de>).cast::<MaybeItem<'de>>() }
     }
     #[inline]
@@ -827,6 +861,8 @@ impl<'de> MaybeItem<'de> {
     /// Returns the underlying [`Item`], or [`None`] if this is a missing value.
     pub fn item(&self) -> Option<&Item<'de>> {
         if self.tag() != TAG_NONE {
+            // SAFETY: tag != TAG_NONE means this was created via from_ref from
+            // a valid Item. Item and MaybeItem have identical repr(C) layout.
             Some(unsafe { &*(self as *const MaybeItem<'de>).cast::<Item<'de>>() })
         } else {
             None
@@ -836,6 +872,7 @@ impl<'de> MaybeItem<'de> {
     #[inline]
     pub fn as_str(&self) -> Option<&str> {
         if self.tag() == TAG_STRING {
+            // SAFETY: tag check guarantees the payload is a string.
             Some(unsafe { self.payload.string })
         } else {
             None
@@ -846,6 +883,7 @@ impl<'de> MaybeItem<'de> {
     #[inline]
     pub fn as_i64(&self) -> Option<i64> {
         if self.tag() == TAG_INTEGER {
+            // SAFETY: tag check guarantees the payload is an integer.
             Some(unsafe { self.payload.integer })
         } else {
             None
@@ -865,6 +903,7 @@ impl<'de> MaybeItem<'de> {
     #[inline]
     pub fn as_bool(&self) -> Option<bool> {
         if self.tag() == TAG_BOOLEAN {
+            // SAFETY: tag check guarantees the payload is a boolean.
             Some(unsafe { self.payload.boolean })
         } else {
             None
@@ -875,6 +914,7 @@ impl<'de> MaybeItem<'de> {
     #[inline]
     pub fn as_array(&self) -> Option<&Array<'de>> {
         if self.tag() == TAG_ARRAY {
+            // SAFETY: tag check guarantees the payload is an array.
             Some(unsafe { &self.payload.array })
         } else {
             None
@@ -885,6 +925,9 @@ impl<'de> MaybeItem<'de> {
     #[inline]
     pub fn as_table(&self) -> Option<&Table<'de>> {
         if self.tag() == TAG_TABLE {
+            // SAFETY: tag == TAG_TABLE guarantees the payload is a table.
+            // MaybeItem and Table have identical repr(C) layout (verified by
+            // const size/align assertions on Item and Table).
             Some(unsafe { &*(self as *const Self).cast::<Table<'de>>() })
         } else {
             None
