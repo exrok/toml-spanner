@@ -178,6 +178,12 @@ impl<'de> Array<'de> {
     }
 
     fn grow_to(&mut self, new_cap: u32, arena: &'de Arena) {
+        // On 64-bit, u32 * size_of::<Item>() cannot overflow usize.
+        #[cfg(target_pointer_width = "32")]
+        let new_size = (new_cap as usize)
+            .checked_mul(size_of::<Item<'_>>())
+            .expect("capacity overflow");
+        #[cfg(not(target_pointer_width = "32"))]
         let new_size = new_cap as usize * size_of::<Item<'_>>();
         if self.cap > 0 {
             let old_size = self.cap as usize * size_of::<Item<'_>>();

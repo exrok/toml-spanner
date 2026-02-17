@@ -42,7 +42,7 @@ pub enum ErrorKind {
     /// EOF was reached when looking for a value.
     UnexpectedEof,
 
-    /// The input file is larger than the maximum supported size of 4GiB.
+    /// The input file is larger than the maximum supported size of 512 MiB.
     FileTooLarge,
 
     /// An invalid character not allowed in a string was found.
@@ -209,7 +209,7 @@ impl Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match &self.kind {
             ErrorKind::UnexpectedEof => f.write_str("unexpected eof encountered"),
-            ErrorKind::FileTooLarge => f.write_str("file is too large (maximum 4GiB)"),
+            ErrorKind::FileTooLarge => f.write_str("file is too large (maximum 512 MiB)"),
             ErrorKind::InvalidCharInString(c) => {
                 rtry!(f.write_str("invalid character in string: `"));
                 rtry!(std::fmt::Display::fmt(c, f));
@@ -411,7 +411,7 @@ impl Error {
                 .with_message(msg.to_string())
                 .with_labels(vec![Label::primary(fid, self.span)]),
             ErrorKind::FileTooLarge => diag
-                .with_message("file is too large (maximum 4GiB)")
+                .with_message("file is too large (maximum 512 MiB)")
                 .with_labels(vec![Label::primary(fid, self.span)]),
         }
     }

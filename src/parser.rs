@@ -1787,7 +1787,7 @@ pub fn parse<'de>(s: &'de str, arena: &'de Arena) -> Result<Table<'de>, Error> {
     // limiting span.end to 29 bits (512 MiB).
     const MAX_SIZE: usize = (1u32 << 29) as usize;
 
-    if s.len() > MAX_SIZE {
+    if s.len() >= MAX_SIZE {
         return Err(Error {
             kind: ErrorKind::FileTooLarge,
             span: Span::new(0, 0),

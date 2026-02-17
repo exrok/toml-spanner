@@ -98,7 +98,7 @@ fn error_display_all_variants() {
                 kind: ErrorKind::FileTooLarge,
                 span,
             },
-            "file is too large (maximum 4GiB)",
+            "file is too large (maximum 512 MiB)",
         ),
         (
             Error {
