@@ -305,7 +305,8 @@ impl<'de> Parser<'de> {
             return ("eof", self.bytes.len());
         };
         match b {
-            b'\n' | b'\r' => ("a newline", self.cursor + 1),
+            b'\n' => ("a newline", self.cursor + 1),
+            b'\r' => ("a carriage return", self.cursor + 1),
             b' ' | b'\t' => {
                 let mut end = self.cursor + 1;
                 while end < self.bytes.len()
@@ -659,6 +660,12 @@ impl<'de> Parser<'de> {
                         let c = if b == b'\r' && self.peek_byte() == Some(b'\n') {
                             self.cursor += 1;
                             '\n'
+                        } else if b == b'\r' {
+                            return Err(self.set_error(
+                                i,
+                                None,
+                                ErrorKind::InvalidCharInString('\r'),
+                            ));
                         } else {
                             b as char
                         };
@@ -1186,6 +1193,8 @@ impl<'de> Parser<'de> {
 
         if let [b'0'..=b'9', ..] = key.as_bytes() {
             self.number(at as u32, end, key, sign)
+        } else if byte == b'\r' {
+            Err(self.set_error(at, None, ErrorKind::Unexpected('\r')))
         } else {
             Err(self.set_error(at, Some(self.cursor), ErrorKind::InvalidNumber))
         }

@@ -566,6 +566,56 @@ fn crlf_handling() {
         matches!(e.kind, ErrorKind::InvalidCharInString('\n')),
         "input: a = \"hello\\r\\nworld\""
     );
+
+    // Bare CR in array
+    let e = ctx.parse_err("a = [ \r ]");
+    assert!(
+        matches!(e.kind, ErrorKind::Unexpected('\r')),
+        "bare CR in array: {:?}",
+        e.kind,
+    );
+
+    // Bare CR in inline table (hits read_table_key, reported as "a carriage return")
+    let e = ctx.parse_err("a = { \r }");
+    assert!(
+        matches!(
+            e.kind,
+            ErrorKind::Wanted {
+                expected: "a table key",
+                found: "a carriage return",
+            }
+        ),
+        "bare CR in inline table: {:?}",
+        e.kind,
+    );
+
+    // Bare CR after key-value (via eat_newline_or_eof)
+    let e = ctx.parse_err("a = 1\r");
+    assert!(
+        matches!(
+            e.kind,
+            ErrorKind::Wanted {
+                expected: "newline",
+                found: "a carriage return",
+            }
+        ),
+        "bare CR after key-value: {:?}",
+        e.kind,
+    );
+
+    // Bare CR after table header (via eat_newline_or_eof)
+    let e = ctx.parse_err("[a]\r");
+    assert!(
+        matches!(
+            e.kind,
+            ErrorKind::Wanted {
+                expected: "newline",
+                found: "a carriage return",
+            }
+        ),
+        "bare CR after table header: {:?}",
+        e.kind,
+    );
 }
 
 #[test]
@@ -634,6 +684,16 @@ fn multiline_string_edge_cases() {
     assert!(
         matches!(e.kind, ErrorKind::InvalidEscape(' ')),
         "input: a = \"\"\"\\  x\"\"\""
+    );
+
+    // Bare CR after line-ending backslash is invalid (only space/tab are
+    // valid whitespace before the newline per the TOML ABNF: mlb-escaped-nl
+    // = escape ws newline, where ws = *wschar and wschar = SP / HTAB).
+    let e = ctx.parse_err("a = \"\"\"\\\r\r\n\"\"\"");
+    assert!(
+        matches!(e.kind, ErrorKind::InvalidCharInString('\r')),
+        "bare CR after line-ending backslash: {:?}",
+        e.kind,
     );
 }
 

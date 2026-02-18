@@ -2,8 +2,8 @@
 source: integ-tests/tests/parser.rs
 expression: error
 ---
-error[invalid-number]: 
+error[unexpected]: 
   ┌─ array_value:1:7
   │
 1 │ a = [  ]
-  │        unable to parse number
+  │        unexpected character '\r'
