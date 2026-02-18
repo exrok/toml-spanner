@@ -178,8 +178,8 @@ impl Metadata {
     }
 }
 
-fn run(input: &str) {
+#[inline(never)]
+fn run(input: &str) -> Project {
     let table: toml::Table = input.parse().unwrap();
-    let project = Project::from_toml(&table);
-    std::hint::black_box(&project);
+    Project::from_toml(&table)
 }

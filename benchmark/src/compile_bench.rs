@@ -100,7 +100,8 @@ const MAIN_SUFFIX: &str = r#"
 
 fn main() {
     let input = std::io::read_to_string(std::io::stdin()).unwrap();
-    run(&input);
+    let mut project = run(&input);
+    std::hint::black_box(&mut project);
 }
 "#;
 
@@ -266,7 +267,11 @@ pub fn run_compile_bench(release: bool) {
     write!(script, "\"Additional compile time over baseline (ms)\"").unwrap();
     script.push_str(s2);
     script.push_str(&data);
-    let s3 = s3.replacen("plot ", &format!("set xrange [0:{}]\nplot ", max_delta + 500), 1);
+    let s3 = s3.replacen(
+        "plot ",
+        &format!("set xrange [0:{}]\nplot ", max_delta + 500),
+        1,
+    );
     script.push_str(&s3);
 
     let mut gnuplot = Command::new("gnuplot")

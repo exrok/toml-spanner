@@ -54,7 +54,7 @@ struct Metadata {
     keywords: Vec<String>,
 }
 
-fn run(input: &str) {
-    let project: Project = toml::from_str(input).unwrap();
-    std::hint::black_box(&project);
+#[inline(never)]
+fn run(input: &str) -> Project {
+    toml::from_str(input).unwrap()
 }

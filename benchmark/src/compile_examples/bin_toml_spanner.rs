@@ -136,10 +136,10 @@ impl<'de> Deserialize<'de> for Metadata {
     }
 }
 
-fn run(input: &str) {
+#[inline(never)]
+fn run(input: &str) -> Project {
     let arena = toml_spanner::Arena::new();
     let table = toml_spanner::parse(input, &arena).unwrap();
     let mut item = table.into_item();
-    let project = Project::deserialize(&mut item).unwrap();
-    std::hint::black_box(&project);
+    Project::deserialize(&mut item).unwrap()
 }

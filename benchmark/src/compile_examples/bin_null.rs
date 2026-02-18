@@ -50,6 +50,7 @@ struct Metadata {
 }
 
 #[allow(clippy::todo)]
-fn run(_input: &str) {
+#[inline(never)]
+fn run(_input: &str) -> Project {
     todo!()
 }

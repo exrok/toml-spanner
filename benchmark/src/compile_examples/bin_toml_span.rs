@@ -137,8 +137,8 @@ impl<'de> Deserialize<'de> for Metadata {
     }
 }
 
-fn run(input: &str) {
+#[inline(never)]
+fn run(input: &str) -> Project {
     let mut value = toml_span::parse(input).unwrap();
-    let project = Project::deserialize(&mut value).unwrap();
-    std::hint::black_box(&project);
+    Project::deserialize(&mut value).unwrap()
 }
