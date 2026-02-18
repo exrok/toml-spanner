@@ -219,21 +219,26 @@ impl<'de> Parser<'de> {
             false
         }
     }
+    #[cold]
+    fn expected_error(&mut self, b: u8) -> ParseError {
+        let start = self.cursor;
+        let (found_desc, end) = self.scan_token_desc_and_end();
+        self.set_error(
+            start,
+            Some(end),
+            ErrorKind::Wanted {
+                expected: byte_describe(b),
+                found: found_desc,
+            },
+        )
+    }
 
     fn expect_byte(&mut self, b: u8) -> Result<(), ParseError> {
-        if self.eat_byte(b) {
+        if self.peek_byte() == Some(b) {
+            self.cursor += 1;
             Ok(())
         } else {
-            let start = self.cursor;
-            let (found_desc, end) = self.scan_token_desc_and_end();
-            Err(self.set_error(
-                start,
-                Some(end),
-                ErrorKind::Wanted {
-                    expected: byte_describe(b),
-                    found: found_desc,
-                },
-            ))
+            return Err(self.expected_error(b));
         }
     }
 
@@ -247,14 +252,15 @@ impl<'de> Parser<'de> {
         }
     }
 
-    fn eat_comment(&mut self) -> Result<bool, ParseError> {
-        if !self.eat_byte(b'#') {
-            return Ok(false);
+    fn eat_whitespace_to(&mut self) -> Option<u8> {
+        while let Some(b) = self.peek_byte() {
+            if b == b' ' || b == b'\t' {
+                self.cursor += 1;
+            } else {
+                return Some(b);
+            }
         }
-        while let Some(0x09 | 0x20..=0x7E | 0x80..) = self.peek_byte() {
-            self.cursor += 1;
-        }
-        self.eat_newline_or_eof().map(|()| true)
+        None
     }
 
     fn eat_newline_or_eof(&mut self) -> Result<(), ParseError> {
@@ -281,6 +287,16 @@ impl<'de> Parser<'de> {
                 ))
             }
         }
+    }
+
+    fn eat_comment(&mut self) -> Result<bool, ParseError> {
+        if !self.eat_byte(b'#') {
+            return Ok(false);
+        }
+        while let Some(0x09 | 0x20..=0x7E | 0x80..) = self.peek_byte() {
+            self.cursor += 1;
+        }
+        self.eat_newline_or_eof().map(|()| true)
     }
 
     fn eat_newline(&mut self) -> bool {
@@ -1310,34 +1326,34 @@ impl<'de> Parser<'de> {
         self.expect_byte(b']')
     }
 
+    #[inline(always)]
     fn eat_inline_table_whitespace(&mut self) -> Result<(), ParseError> {
         loop {
-            self.eat_whitespace();
-            if self.eat_newline() {
-                continue;
-            }
-            match self.eat_comment() {
-                Ok(true) => {}
-                Ok(false) => break,
-                Err(e) => return Err(e),
+            match self.peek_byte() {
+                Some(b' ' | b'\t' | b'\n') => self.cursor += 1,
+                Some(b'\r') if self.peek_byte_at(1) == Some(b'\n') => self.cursor += 2,
+                Some(b'#') => match self.eat_comment() {
+                    Ok(_) => {}
+                    Err(e) => return Err(e),
+                },
+                _ => return Ok(()),
             }
         }
-        Ok(())
     }
 
+    #[inline(always)]
     fn eat_intermediate(&mut self) -> Result<(), ParseError> {
         loop {
-            self.eat_whitespace();
-            if self.eat_newline() {
-                continue;
-            }
-            match self.eat_comment() {
-                Ok(true) => {}
-                Ok(false) => break,
-                Err(e) => return Err(e),
+            match self.peek_byte() {
+                Some(b' ' | b'\t' | b'\n') => self.cursor += 1,
+                Some(b'\r') if self.peek_byte_at(1) == Some(b'\n') => self.cursor += 2,
+                Some(b'#') => match self.eat_comment() {
+                    Ok(_) => {}
+                    Err(e) => return Err(e),
+                },
+                _ => return Ok(()),
             }
         }
-        Ok(())
     }
 
     /// Navigate into an existing or new table for a dotted-key intermediate
@@ -1677,8 +1693,8 @@ impl<'de> Parser<'de> {
             Err(e) => return Err(e),
         };
         loop {
-            self.eat_whitespace();
-            if self.eat_byte(b'.') {
+            if self.eat_whitespace_to() == Some(b'.') {
+                self.cursor += 1;
                 self.eat_whitespace();
                 current = match self.navigate_header_intermediate(current, key) {
                     Ok(p) => p,
@@ -1692,8 +1708,6 @@ impl<'de> Parser<'de> {
                 break;
             }
         }
-
-        self.eat_whitespace();
         if let Err(e) = self.expect_byte(b']') {
             return Err(e);
         }
