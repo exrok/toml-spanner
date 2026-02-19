@@ -1,0 +1,22 @@
+---
+source: integ-tests/tests/parser.rs
+expression: spans
+---
+note[datetime]: root_odt5
+  ┌─ spec_odt_no_sec:1:8
+  │
+1 │ odt5 = 1979-05-27 07:32Z
+  │        ^^^^^^^^^^^^^^^^^
+
+note[datetime]: root_odt6
+  ┌─ spec_odt_no_sec:2:8
+  │
+2 │ odt6 = 1979-05-27 07:32-07:00
+  │        ^^^^^^^^^^^^^^^^^^^^^^
+
+note[table]: root
+  ┌─ spec_odt_no_sec:1:1
+  │  
+1 │ ╭ odt5 = 1979-05-27 07:32Z
+2 │ │ odt6 = 1979-05-27 07:32-07:00
+  │ ╰─────────────────────────────^

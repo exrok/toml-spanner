@@ -1,11 +1,7 @@
 ---
 source: integ-tests/tests/parser.rs
-expression: error
+expression: valid_toml
 ---
-error[invalid-number]: 
-  ┌─ tz_neg:1:6
-  │
-1 │ tz = 2016-09-09T09:09:09.123456789-02:00
-  │      ^^^^^^^^^^^^^ unable to parse number
-
-
+{
+  "tz": "2016-09-09T09:09:09.123456789-02:00"
+}

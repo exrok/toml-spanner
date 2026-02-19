@@ -10,6 +10,6 @@ debug = 1
 toml-spanner.path = ".."
 jsony_bench.path = "/home/user/Projects/git/jsony/jsony_bench"
 oorandom = "11.1.5"
-toml = { version = "*" }
+toml = { version = "1" }
 toml-span = { version = "0.7" }
 serde = { version = "1", features = ["derive"] }

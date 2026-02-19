@@ -132,9 +132,11 @@ impl Plotter {
         write!(render, "{label:?}").unwrap();
         render.push_str(self.s2);
         render.push_str(data);
-        let s3 = self
-            .s3
-            .replacen("plot ", &format!("set xrange [0:{:.1}]\nplot ", xrange_max), 1);
+        let s3 = self.s3.replacen(
+            "plot ",
+            &format!("set xrange [0:{:.1}]\nplot ", xrange_max),
+            1,
+        );
         render.push_str(&s3);
 
         let mut gnuplot = std::process::Command::new("gnuplot")
@@ -185,12 +187,6 @@ fn main() {
         .map(|name| (name, lockfile_version(&lock_path, name)))
         .collect();
 
-    println!("=== Versions ===");
-    for (name, version) in &versions {
-        println!("  {name} {version}");
-    }
-    println!();
-
     let mut bench = jsony_bench::Bencher::new();
     bench.calibrate();
 
@@ -210,6 +206,11 @@ fn main() {
 
     println!("===== toml_span =======");
     let span_stats = bench_end2end_config_toml_span(&mut bench, configs);
+    println!("=== Versions ===");
+    for (name, version) in &versions {
+        println!("  {name} {version}");
+    }
+    println!();
 
     // --- Graph generation ---
     let graph_benchmarks = [

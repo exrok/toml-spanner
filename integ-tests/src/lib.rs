@@ -178,6 +178,7 @@ pub fn collect_spans(key: &str, val: &toml_spanner::Item<'_>, diags: &mut Vec<Di
 
             "table"
         }
+        Value::Datetime(_) => "datetime",
     };
 
     diags.push(

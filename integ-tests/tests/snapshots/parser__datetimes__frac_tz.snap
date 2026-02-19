@@ -1,0 +1,8 @@
+---
+source: integ-tests/tests/parser.rs
+expression: valid_toml
+---
+{
+  "wita1": "1987-07-05T17:45:56.123+08:00",
+  "wita2": "1987-07-05T17:45:56.6+08:00"
+}

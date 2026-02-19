@@ -176,6 +176,7 @@ fn value_and_type_checks() {
             Value::Boolean(_) => "boolean",
             Value::Array(_) => "array",
             Value::Table(_) => "table",
+            Value::Datetime(_) => "moment",
         };
         assert_eq!(kind, *exp);
     }

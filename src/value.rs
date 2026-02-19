@@ -3,7 +3,7 @@
 #[cfg(test)]
 #[path = "./value_tests.rs"]
 mod tests;
-use crate::{Error, ErrorKind, Span, Table};
+use crate::{Datetime, Error, ErrorKind, Span, Table};
 use std::fmt;
 use std::mem::ManuallyDrop;
 
@@ -21,9 +21,10 @@ pub(crate) const TAG_FLOAT: u32 = 2;
 pub(crate) const TAG_BOOLEAN: u32 = 3;
 pub(crate) const TAG_ARRAY: u32 = 4;
 pub(crate) const TAG_TABLE: u32 = 5;
+pub(crate) const TAG_MOMENT: u32 = 6;
 
 // Only set in maybe item
-pub(crate) const TAG_NONE: u32 = 6;
+pub(crate) const TAG_NONE: u32 = 7;
 
 /// 3-bit state field in `end_and_flag` encoding container kind and sub-state.
 /// Bit 2 set → table, bits 1:0 == 01 → array. Allows dispatch without
@@ -47,6 +48,7 @@ union Payload<'de> {
     boolean: bool,
     array: ManuallyDrop<Array<'de>>,
     table: ManuallyDrop<InnerTable<'de>>,
+    moment: Datetime,
 }
 
 /// A parsed TOML value with span information.
@@ -215,6 +217,17 @@ impl<'de> Item<'de> {
             },
         )
     }
+
+    #[inline]
+    pub(crate) fn moment(m: Datetime, span: Span) -> Self {
+        Self::raw(
+            TAG_MOMENT,
+            FLAG_NONE,
+            span.start,
+            span.end,
+            Payload { moment: m },
+        )
+    }
 }
 #[derive(Clone, Copy)]
 #[repr(u8)]
@@ -226,13 +239,14 @@ enum Kind {
     Boolean = 3,
     Array = 4,
     Table = 5,
+    Moment = 6,
 }
 
 impl<'de> Item<'de> {
     #[inline]
     fn kind(&self) -> Kind {
-        debug_assert!((self.start_and_tag & TAG_MASK) as u8 <= Kind::Table as u8);
-        // SAFETY: tag bits 0-2 are always in 0..=5 (set only by pub(crate)
+        debug_assert!((self.start_and_tag & TAG_MASK) as u8 <= Kind::Moment as u8);
+        // SAFETY: tag bits 0-2 are always in 0..=6 (set only by pub(crate)
         // constructors). All values are valid Kind discriminants.
         unsafe { std::mem::transmute::<u8, Kind>(self.start_and_tag as u8 & 0x7) }
     }
@@ -264,6 +278,7 @@ impl<'de> Item<'de> {
             TAG_FLOAT => "float",
             TAG_BOOLEAN => "boolean",
             TAG_ARRAY => "array",
+            TAG_MOMENT => "datetime",
             _ => "table",
         }
     }
@@ -348,6 +363,7 @@ pub enum Value<'a, 'de> {
     Array(&'a Array<'de>),
     /// A table value.
     Table(&'a Table<'de>),
+    Datetime(&'a Datetime),
 }
 
 /// Mutable view into an [`Item`] for pattern matching.
@@ -366,6 +382,7 @@ pub enum ValueMut<'a, 'de> {
     Array(&'a mut Array<'de>),
     /// A table value.
     Table(&'a mut Table<'de>),
+    Datetime(&'a Datetime),
 }
 
 impl<'de> Item<'de> {
@@ -382,6 +399,7 @@ impl<'de> Item<'de> {
                 Kind::Boolean => Value::Boolean(&self.payload.boolean),
                 Kind::Array => Value::Array(&self.payload.array),
                 Kind::Table => Value::Table(self.as_table_unchecked()),
+                Kind::Moment => Value::Datetime(&self.payload.moment),
             }
         }
     }
@@ -399,6 +417,7 @@ impl<'de> Item<'de> {
                 Kind::Boolean => ValueMut::Boolean(&mut self.payload.boolean),
                 Kind::Array => ValueMut::Array(&mut self.payload.array),
                 Kind::Table => ValueMut::Table(self.as_table_mut_unchecked()),
+                Kind::Moment => ValueMut::Datetime(&mut self.payload.moment),
             }
         }
     }
@@ -472,6 +491,18 @@ impl<'de> Item<'de> {
             None
         }
     }
+
+    /// Returns a borrowed [`Moment`] if this is a datetime value.
+    #[inline]
+    pub fn as_moment(&self) -> Option<&Datetime> {
+        if self.tag() == TAG_MOMENT {
+            // SAFETY: tag check guarantees the payload is a moment.
+            Some(unsafe { &self.payload.moment })
+        } else {
+            None
+        }
+    }
+
     /// Returns a mutable array reference, or an error if this is not an array.
     pub fn expect_array(&mut self) -> Result<&mut Array<'de>, Error> {
         if self.is_array() {
@@ -615,6 +646,10 @@ impl fmt::Debug for Item<'_> {
             Value::Boolean(b) => b.fmt(f),
             Value::Array(a) => a.fmt(f),
             Value::Table(t) => t.fmt(f),
+            Value::Datetime(m) => {
+                let mut buf = std::mem::MaybeUninit::uninit();
+                f.write_str(m.format(&mut buf))
+            }
         }
     }
 }
@@ -645,6 +680,10 @@ impl serde::Serialize for Item<'_> {
                     map.serialize_entry(&*k.name, v)?;
                 }
                 map.end()
+            }
+            Value::Datetime(m) => {
+                let mut buf = std::mem::MaybeUninit::uninit();
+                ser.serialize_str(m.format(&mut buf))
             }
         }
     }
@@ -929,6 +968,17 @@ impl<'de> MaybeItem<'de> {
             // MaybeItem and Table have identical repr(C) layout (verified by
             // const size/align assertions on Item and Table).
             Some(unsafe { &*(self as *const Self).cast::<Table<'de>>() })
+        } else {
+            None
+        }
+    }
+
+    /// Returns a borrowed [`Moment`] if this is a datetime value.
+    #[inline]
+    pub fn as_moment(&self) -> Option<&Datetime> {
+        if self.tag() == TAG_MOMENT {
+            // SAFETY: tag check guarantees the payload is a moment.
+            Some(unsafe { &self.payload.moment })
         } else {
             None
         }
