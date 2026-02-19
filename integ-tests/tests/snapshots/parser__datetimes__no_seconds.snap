@@ -1,0 +1,10 @@
+---
+source: integ-tests/tests/parser.rs
+expression: valid_toml
+---
+{
+  "ws1": "13:37:00",
+  "ws2": "1979-05-27T07:32:00Z",
+  "ws3": "1979-05-27T07:32:00-07:00",
+  "ws4": "1979-05-27T07:32:00"
+}

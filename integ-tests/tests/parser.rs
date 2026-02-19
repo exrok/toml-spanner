@@ -286,17 +286,50 @@ b = { foo = "bar" }
 }
 
 mod datetimes {
-    use super::invalid;
+    use super::{invalid, valid};
 
-    invalid!(utc, "utc = 2016-09-09T09:09:09Z");
-    invalid!(utc_punkt, "utc = 2016-09-09T09:09:09.1Z");
-    invalid!(tz, "tz = 2016-09-09T09:09:09.2+10:00");
-    invalid!(tz_neg, "tz = 2016-09-09T09:09:09.123456789-02:00");
+    valid!(utc, "utc = 2016-09-09T09:09:09Z");
+    valid!(utc_punkt, "utc = 2016-09-09T09:09:09.1Z");
+    valid!(tz, "tz = 2016-09-09T09:09:09.2+10:00");
+    valid!(tz_neg, "tz = 2016-09-09T09:09:09.123456789-02:00");
     invalid!(utc_trailing_dot, "utc = 2016-09-09T09:09:09.Z");
     invalid!(utc_invalid, "utc = 2016-9-09T09:09:09Z");
     invalid!(tz2, "tz = 2016-09-09T09:09:09+2:00");
     invalid!(tz_neg2, "tz = 2016-09-09T09:09:09-2:00");
     invalid!(tz_neg3, "tz = 2016-09-09T09:09:09Z-2:00");
+
+    // Offset datetimes with +/- timezone and trailing comments
+    valid!(
+        tz_with_comment,
+        "dt = 1979-05-27T07:32:12-07:00  # c\nd = 1979-05-27 # Comment"
+    );
+    // Lowercase t and z
+    valid!(lowercase_tz, "lower = 1987-07-05t17:45:00z");
+    // Fractional seconds with timezone offsets
+    valid!(
+        frac_tz,
+        "wita1 = 1987-07-05T17:45:56.123+08:00\nwita2 = 1987-07-05T17:45:56.6+08:00"
+    );
+    // No-seconds datetimes
+    valid!(
+        no_seconds,
+        "ws1 = 13:37\nws2 = 1979-05-27 07:32Z\nws3 = 1979-05-27 07:32-07:00\nws4 = 1979-05-27T07:32"
+    );
+    // Various timezone offsets
+    valid!(
+        timezone_offsets,
+        "utc = 1987-07-05T17:45:56Z\npdt = 1987-07-05T17:45:56-05:00\nnzst = 1987-07-05T17:45:56+12:00\nnzdt = 1987-07-05T17:45:56+13:00"
+    );
+    // Spec example offset datetimes
+    valid!(
+        spec_odt,
+        "odt1 = 1979-05-27T07:32:00Z\nodt2 = 1979-05-27T00:32:00-07:00\nodt3 = 1979-05-27T00:32:00.5-07:00\nodt4 = 1979-05-27T00:32:00.999-07:00"
+    );
+    // Spec no-seconds with offsets
+    valid!(
+        spec_odt_no_sec,
+        "odt5 = 1979-05-27 07:32Z\nodt6 = 1979-05-27 07:32-07:00"
+    );
 }
 
 mod require_newlines {

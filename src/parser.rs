@@ -13,6 +13,7 @@ use crate::{
     arena::Arena,
     error::{Error, ErrorKind},
     table::{InnerTable, Table},
+    time::DateTime,
     value::{self, Item, Key},
 };
 use std::char;
@@ -818,6 +819,14 @@ impl<'de> Parser<'de> {
                 }
                 _ => Err(self.set_error(at, Some(end as usize), ErrorKind::InvalidNumber)),
             };
+        }
+
+        if sign == 2 {
+            let head = &self.bytes[start as usize..];
+            if let Some((consumed, moment)) = DateTime::munch(head) {
+                self.cursor = start as usize + consumed;
+                return Ok(Item::moment(moment, Span::new(start, self.cursor as u32)));
+            }
         }
 
         if let Ok(v) = self.integer_decimal(bytes, Span::new(start, end), sign) {

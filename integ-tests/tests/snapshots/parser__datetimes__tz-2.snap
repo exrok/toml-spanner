@@ -1,0 +1,15 @@
+---
+source: integ-tests/tests/parser.rs
+expression: spans
+---
+note[datetime]: root_tz
+  ┌─ tz:1:6
+  │
+1 │ tz = 2016-09-09T09:09:09.2+10:00
+  │      ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+note[table]: root
+  ┌─ tz:1:1
+  │
+1 │ tz = 2016-09-09T09:09:09.2+10:00
+  │ ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

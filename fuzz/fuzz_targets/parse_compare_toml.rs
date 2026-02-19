@@ -1,23 +1,24 @@
 #![no_main]
 
-use libfuzzer_sys::fuzz_target;
+use libfuzzer_sys::{Corpus, fuzz_target};
 use toml_spanner::Value;
 
-fuzz_target!(|data: &[u8]| {
+fuzz_target!(|data: &[u8]| -> Corpus {
     let Ok(text) = std::str::from_utf8(data) else {
-        return;
+        return Corpus::Keep;
     };
 
     let arena = toml_spanner::Arena::new();
     let spanner_result = toml_spanner::parse(text, &arena);
+
+    if text.contains("$__toml_") {
+        // toml uses magic keys starting with $__toml_ for internal purposes.
+        return Corpus::Reject;
+    }
     let toml_result = text.parse::<toml::Table>();
 
     match (spanner_result, toml_result) {
         (Ok(spanner_val), Ok(toml_tbl)) => {
-            // Both parsed successfully — values must match exactly.
-            // Datetimes cannot appear here since toml-spanner would have
-            // rejected the input if it contained any.
-
             assert!(
                 tables_match(&spanner_val, &toml_tbl),
                 "values differ for input:\n{text}\nspanner: {spanner_val:?}\ntoml: {toml_tbl:?}"
@@ -25,12 +26,8 @@ fuzz_target!(|data: &[u8]| {
         }
         (Ok(spanner_val), Err(toml_err)) => {
             if toml_err.message().contains("recursion limit") {
-                return;
+                return Corpus::Reject;
             }
-            if toml_err.message().contains("datetime") {
-                return;
-            }
-            // toml-spanner must never accept input that the toml crate rejects.
             panic!(
                 "toml-spanner accepted but toml rejected!\n\
                  input:\n{text}\n\
@@ -39,19 +36,9 @@ fuzz_target!(|data: &[u8]| {
             );
         }
         (Err(spanner_err), Ok(toml_tbl)) => {
-            // if text.contains("-_") || text.contains("+_") {
-            //     return;
-            // }
-            // toml accepted but toml-spanner rejected. Only acceptable if the
-            // parsed value contains datetimes (unsupported by toml-spanner).
-            //
-            // Note: the other known difference (integer range) cannot manifest
-            // here because toml::Value::Integer is i64, so if the toml crate
-            // parsed successfully the integer already fits in i64.
             let toml_val = toml::Value::Table(toml_tbl);
-            assert!(
-                contains_datetime(&toml_val),
-                "toml accepted but toml-spanner rejected unexpectedly!\n\
+            panic!(
+                "toml accepted but toml-spanner rejected!\n\
                  input:\n{text}\n\
                  toml: {toml_val:?}\n\
                  spanner error: {spanner_err:?}"
@@ -59,32 +46,40 @@ fuzz_target!(|data: &[u8]| {
         }
         (Err(_), Err(_)) => {}
     }
+    Corpus::Keep
 });
 
-/// Returns true if a `toml::Value` tree contains any `Datetime` variant.
-fn contains_datetime(val: &toml::Value) -> bool {
-    match val {
-        toml::Value::Datetime(_) => true,
-        toml::Value::Array(arr) => arr.iter().any(contains_datetime),
-        toml::Value::Table(tbl) => tbl.values().any(contains_datetime),
-        _ => false,
-    }
-}
-
-/// Strict recursive comparison between a `toml_spanner::Value` and a
-/// `toml::Value`. Since both parsers succeeded, no datetimes can be present
-/// (toml-spanner would have rejected the input). Any mismatch is a real bug.
 fn tables_match(spanner: &toml_spanner::Table<'_>, toml_val: &toml::Table) -> bool {
-    spanner.len() == toml_val.len()
-        && spanner
-            .into_iter()
-            .zip(toml_val.iter())
-            .all(|((sk, sv), (tk, tv))| &*sk.name == tk && values_match(sv, tv))
+    if spanner.len() != toml_val.len() {
+        return false;
+    }
+    if spanner
+        .into_iter()
+        .zip(toml_val.iter())
+        .all(|((sk, sv), (tk, tv))| &*sk.name == tk && values_match(sv, tv))
+    {
+        return true;
+    }
+    // Even though toml are supposed preserve order the two libraries differ in there
+    // definition of order. In edge cases like:
+    // [[U.U]]
+    // [US]
+    // [[U.U]]
+    // [U]
+    // toml-spanner will use order is `U, US` but toml will say `US, U`.
+    for (key, value) in spanner {
+        match toml_val.get(key.name) {
+            Some(toml_value) => {
+                if !values_match(value, toml_value) {
+                    return false;
+                }
+            }
+            None => return false,
+        }
+    }
+    true
 }
 
-/// Strict recursive comparison between a `toml_spanner::Value` and a
-/// `toml::Value`. Since both parsers succeeded, no datetimes can be present
-/// (toml-spanner would have rejected the input). Any mismatch is a real bug.
 fn values_match(spanner: &toml_spanner::Item<'_>, toml_val: &toml::Value) -> bool {
     match (spanner.value(), toml_val) {
         (Value::String(s), toml::Value::String(t)) => s == t,
@@ -99,13 +94,73 @@ fn values_match(spanner: &toml_spanner::Item<'_>, toml_val: &toml::Value) -> boo
                     .zip(ta.iter())
                     .all(|(s, t)| values_match(s, t))
         }
-        (Value::Table(st), toml::Value::Table(tt)) => {
-            st.len() == tt.len()
-                && st
-                    .into_iter()
-                    .zip(tt.iter())
-                    .all(|((sk, sv), (tk, tv))| &*sk.name == tk && values_match(sv, tv))
+        (Value::Table(st), toml::Value::Table(tt)) => tables_match(st, tt),
+        (Value::Datetime(sd), toml::Value::Datetime(td)) => datetimes_match(sd, td),
+        _ => false,
+    }
+}
+
+fn datetimes_match(spanner: &toml_spanner::Datetime, toml_dt: &toml::value::Datetime) -> bool {
+    let dates_match = match (spanner.date(), &toml_dt.date) {
+        (Some(sd), Some(td)) => sd.year == td.year && sd.month == td.month && sd.day == td.day,
+        (None, None) => true,
+        _ => false,
+    };
+    if !dates_match {
+        return false;
+    }
+
+    let times_match = match (spanner.time(), &toml_dt.time) {
+        (Some(st), Some(tt)) => {
+            if st.hour != tt.hour || st.minute != tt.minute {
+                return false;
+            }
+            match tt.second {
+                Some(s) => {
+                    if !st.has_seconds() || st.second != s {
+                        return false;
+                    }
+                }
+                None => {
+                    if st.has_seconds() {
+                        return false;
+                    }
+                }
+            }
+            match tt.nanosecond {
+                Some(n) => {
+                    if st.subsecond_precision() == 0 || st.nanosecond != n {
+                        return false;
+                    }
+                }
+                None => {
+                    if st.subsecond_precision() != 0 {
+                        return false;
+                    }
+                }
+            }
+            true
         }
+        (None, None) => true,
+        _ => false,
+    };
+    if !times_match {
+        return false;
+    }
+
+    match (spanner.offset(), &toml_dt.offset) {
+        (Some(toml_spanner::TimeOffset::Z), Some(toml::value::Offset::Z)) => true,
+        (Some(toml_spanner::TimeOffset::Custom { minutes }), Some(toml::value::Offset::Z)) => {
+            minutes == 0
+        }
+        (Some(toml_spanner::TimeOffset::Z), Some(toml::value::Offset::Custom { minutes })) => {
+            *minutes == 0
+        }
+        (
+            Some(toml_spanner::TimeOffset::Custom { minutes: sm }),
+            Some(toml::value::Offset::Custom { minutes: tm }),
+        ) => sm == *tm,
+        (None, None) => true,
         _ => false,
     }
 }

@@ -22,6 +22,15 @@ pub struct Error {
 
 impl std::error::Error for Error {}
 
+impl Error {
+    pub fn custom(message: impl Display, span: Span) -> Self {
+        Self {
+            kind: ErrorKind::Custom(std::borrow::Cow::Owned(message.to_string())),
+            span,
+        }
+    }
+}
+
 impl Debug for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Error")

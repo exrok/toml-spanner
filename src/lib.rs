@@ -74,6 +74,7 @@ mod error;
 mod parser;
 mod span;
 mod table;
+mod time;
 mod value;
 
 pub use arena::Arena;
@@ -82,7 +83,8 @@ pub use error::{Error, ErrorKind};
 pub use parser::parse;
 pub use span::{Span, Spanned};
 pub use table::Table;
-pub use value::{Item, Key, MaybeItem, Value, ValueMut};
+pub use time::{Date, DateTime, Time, TimeOffset, MAX_FORMAT_LEN};
+pub use value::{Item, Key, Kind, MaybeItem, Value, ValueMut};
 
 #[cfg(feature = "serde")]
 pub mod impl_serde;
