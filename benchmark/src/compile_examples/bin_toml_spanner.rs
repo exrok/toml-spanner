@@ -1,6 +1,7 @@
 #![allow(unused)]
 
-use toml_spanner::{Deserialize, Error, Item, ValueMut};
+use toml_spanner::Item;
+use toml_spanner::de::{Context, Deserialize, Failed, TableHelper};
 
 #[derive(Debug)]
 struct Project {
@@ -14,18 +15,18 @@ struct Project {
 }
 
 impl<'de> Deserialize<'de> for Project {
-    fn deserialize(value: &mut Item<'de>) -> Result<Self, Error> {
-        let table = value.expect_table()?;
+    fn deserialize(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
+        let mut th = value.table_helper(ctx)?;
         let project = Self {
-            name: table.required("name")?,
-            version: table.required("version")?,
-            description: table.optional("description")?,
-            settings: table.required("settings")?,
-            dependencies: table.required("dependencies")?,
-            targets: table.required("targets")?,
-            metadata: table.optional("metadata")?,
+            name: th.required("name")?,
+            version: th.required("version")?,
+            description: th.optional("description"),
+            settings: th.required("settings")?,
+            dependencies: th.required("dependencies")?,
+            targets: th.required("targets")?,
+            metadata: th.optional("metadata"),
         };
-        table.expect_empty()?;
+        th.expect_empty()?;
         Ok(project)
     }
 }
@@ -38,14 +39,14 @@ struct Settings {
 }
 
 impl<'de> Deserialize<'de> for Settings {
-    fn deserialize(value: &mut Item<'de>) -> Result<Self, Error> {
-        let table = value.expect_table()?;
+    fn deserialize(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
+        let mut th = value.table_helper(ctx)?;
         let settings = Self {
-            optimize: table.required("optimize")?,
-            parallel: table.optional("parallel")?,
-            features: table.required("features")?,
+            optimize: th.required("optimize")?,
+            parallel: th.optional("parallel"),
+            features: th.required("features")?,
         };
-        table.expect_empty()?;
+        th.expect_empty()?;
         Ok(settings)
     }
 }
@@ -59,15 +60,15 @@ struct Dependency {
 }
 
 impl<'de> Deserialize<'de> for Dependency {
-    fn deserialize(value: &mut Item<'de>) -> Result<Self, Error> {
-        let table = value.expect_table()?;
+    fn deserialize(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
+        let mut th = value.table_helper(ctx)?;
         let dep = Self {
-            name: table.required("name")?,
-            version: table.optional("version")?,
-            path: table.optional("path")?,
-            optional: table.required("optional")?,
+            name: th.required("name")?,
+            version: th.optional("version"),
+            path: th.optional("path"),
+            optional: th.required("optional")?,
         };
-        table.expect_empty()?;
+        th.expect_empty()?;
         Ok(dep)
     }
 }
@@ -81,15 +82,15 @@ struct Target {
 }
 
 impl<'de> Deserialize<'de> for Target {
-    fn deserialize(value: &mut Item<'de>) -> Result<Self, Error> {
-        let table = value.expect_table()?;
+    fn deserialize(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
+        let mut th = value.table_helper(ctx)?;
         let target = Self {
-            name: table.required("name")?,
-            kind: table.required("kind")?,
-            sources: table.required("sources")?,
-            settings: table.optional("settings")?,
+            name: th.required("name")?,
+            kind: th.required("kind")?,
+            sources: th.required("sources")?,
+            settings: th.optional("settings"),
         };
-        table.expect_empty()?;
+        th.expect_empty()?;
         Ok(target)
     }
 }
@@ -102,14 +103,14 @@ struct TargetSettings {
 }
 
 impl<'de> Deserialize<'de> for TargetSettings {
-    fn deserialize(value: &mut Item<'de>) -> Result<Self, Error> {
-        let table = value.expect_table()?;
+    fn deserialize(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
+        let mut th = value.table_helper(ctx)?;
         let settings = Self {
-            optimize_level: table.optional("optimize_level")?,
-            debug: table.optional("debug")?,
-            extra_flags: table.required("extra_flags")?,
+            optimize_level: th.optional("optimize_level"),
+            debug: th.optional("debug"),
+            extra_flags: th.required("extra_flags")?,
         };
-        table.expect_empty()?;
+        th.expect_empty()?;
         Ok(settings)
     }
 }
@@ -123,15 +124,15 @@ struct Metadata {
 }
 
 impl<'de> Deserialize<'de> for Metadata {
-    fn deserialize(value: &mut Item<'de>) -> Result<Self, Error> {
-        let table = value.expect_table()?;
+    fn deserialize(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
+        let mut th = value.table_helper(ctx)?;
         let metadata = Self {
-            authors: table.required("authors")?,
-            license: table.optional("license")?,
-            repository: table.optional("repository")?,
-            keywords: table.required("keywords")?,
+            authors: th.required("authors")?,
+            license: th.optional("license"),
+            repository: th.optional("repository"),
+            keywords: th.required("keywords")?,
         };
-        table.expect_empty()?;
+        th.expect_empty()?;
         Ok(metadata)
     }
 }
@@ -139,7 +140,11 @@ impl<'de> Deserialize<'de> for Metadata {
 #[inline(never)]
 fn run(input: &str) -> Project {
     let arena = toml_spanner::Arena::new();
-    let table = toml_spanner::parse(input, &arena).unwrap();
-    let mut item = table.into_item();
-    Project::deserialize(&mut item).unwrap()
+    let mut root = toml_spanner::parse(input, &arena).unwrap();
+    // Need to match the behaviour of toml-span, panic with errors not just
+    // sentinal.
+    match root.deserialize::<Project>() {
+        Ok(project) => project,
+        Err(_) => panic!("{:?}", root.errors()),
+    }
 }

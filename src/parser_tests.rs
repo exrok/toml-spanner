@@ -13,15 +13,15 @@ impl TestCtx {
     }
 
     fn parse_ok<'a>(&'a self, input: &'a str) -> Table<'a> {
-        crate::parse(input, &self.arena)
+        crate::parser::parse(input, &self.arena)
             .unwrap_or_else(|e| panic!("parse failed for {input:?}: {e}"))
+            .into_table()
     }
 
     fn parse_err(&self, input: &str) -> crate::Error {
-        match crate::parse(input, &self.arena) {
-            Ok(value) => panic!(
-                "For input `{input}` expected error but parsed successfully: {:?}",
-                value
+        match crate::parser::parse(input, &self.arena) {
+            Ok(_) => panic!(
+                "For input `{input}` expected error but parsed successfully"
             ),
             Err(err) => err,
         }
@@ -370,16 +370,16 @@ fn value_into_kind() {
     let ctx = TestCtx::new();
     let mut v = ctx.parse_ok("a = \"hello\"\nb = 42\nc = [1, 2]\nd = {x = 1}");
 
-    let a = v.remove("a").unwrap();
+    let (_, a) = v.remove_entry("a").unwrap();
     assert_eq!(a.as_str().unwrap(), "hello");
 
-    let b = v.remove("b").unwrap();
+    let (_, b) = v.remove_entry("b").unwrap();
     assert_eq!(b.as_i64().unwrap(), 42);
 
-    let c = v.remove("c").unwrap();
+    let (_, c) = v.remove_entry("c").unwrap();
     assert_eq!(c.as_array().unwrap().len(), 2);
 
-    let d = v.remove("d").unwrap();
+    let (_, d) = v.remove_entry("d").unwrap();
     assert_eq!(d.as_table().unwrap().len(), 1);
 }
 

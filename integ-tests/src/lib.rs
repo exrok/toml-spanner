@@ -27,16 +27,6 @@ macro_rules! valid {
     };
 }
 
-#[macro_export]
-macro_rules! unexpected {
-    ($name:ident, $err:expr, $toml:expr) => {{
-        let file = $crate::File::new(stringify!($name), $toml);
-        let error = $crate::emit_diags(&file, $err);
-
-        panic!("unexpected toml deserialization errors:\n{error}");
-    }};
-}
-
 /// Loads a valid toml file, deserializes it to the specified type and asserts
 /// the debug snapshot matches
 #[macro_export]
@@ -47,15 +37,17 @@ macro_rules! valid_de {
             let toml_str = std::fs::read_to_string(concat!("data/", stringify!($name), ".toml"))
                 .expect(concat!("failed to load ", stringify!($name), ".toml"));
             let arena = toml_spanner::Arena::new();
-            let table = toml_spanner::parse(&toml_str, &arena).expect("failed to parse toml");
-            let mut valid_toml = table.into_item();
+            let mut root = toml_spanner::parse(&toml_str, &arena).expect("failed to parse toml");
 
-            match <$kind>::deserialize(&mut valid_toml) {
-                Ok(de) => {
+            match root.deserialize::<$kind>() {
+                Ok(de) if !root.has_errors() => {
                     insta::assert_debug_snapshot!(de);
                 }
-                Err(err) => {
-                    $crate::unexpected!($name, Some(err.to_diagnostic(())), &toml_str);
+                _ => {
+                    let file = $crate::File::new(stringify!($name), &toml_str);
+                    let diags = root.errors().iter().map(|e| e.to_diagnostic(()));
+                    let error = $crate::emit_diags(&file, diags);
+                    panic!("unexpected toml deserialization errors:\n{error}");
                 }
             }
         }
@@ -64,15 +56,17 @@ macro_rules! valid_de {
         #[test]
         fn $name() {
             let arena = toml_spanner::Arena::new();
-            let table = toml_spanner::parse($toml, &arena).expect("failed to parse toml");
-            let mut valid_toml = table.into_item();
+            let mut root = toml_spanner::parse($toml, &arena).expect("failed to parse toml");
 
-            match <$kind>::deserialize(&mut valid_toml) {
-                Ok(de) => {
+            match root.deserialize::<$kind>() {
+                Ok(de) if !root.has_errors() => {
                     insta::assert_debug_snapshot!(de);
                 }
-                Err(err) => {
-                    $crate::unexpected!($name, Some(err.to_diagnostic(())), $toml);
+                _ => {
+                    let file = $crate::File::new(stringify!($name), $toml);
+                    let diags = root.errors().iter().map(|e| e.to_diagnostic(()));
+                    let error = $crate::emit_diags(&file, diags);
+                    panic!("unexpected toml deserialization errors:\n{error}");
                 }
             }
         }
@@ -89,15 +83,15 @@ macro_rules! invalid_de {
             let toml_str = std::fs::read_to_string(concat!("data/", stringify!($name), ".toml"))
                 .expect(concat!("failed to load ", stringify!($name), ".toml"));
             let arena = toml_spanner::Arena::new();
-            let table = toml_spanner::parse(&toml_str, &arena).expect("failed to parse toml");
-            let mut valid_toml = table.into_item();
+            let mut root = toml_spanner::parse(&toml_str, &arena).expect("failed to parse toml");
 
-            match <$kind>::deserialize(&mut valid_toml) {
-                Ok(de) => {
+            match root.deserialize::<$kind>() {
+                Ok(de) if !root.has_errors() => {
                     panic!("expected errors but deserialized '{de:#?}' successfully");
                 }
-                Err(err) => {
-                    $crate::error_snapshot!($name, Some(err.to_diagnostic(())), &toml_str);
+                _ => {
+                    let diags: Vec<_> = root.errors().iter().map(|e| e.to_diagnostic(())).collect();
+                    $crate::error_snapshot!($name, diags, &toml_str);
                 }
             }
         }
@@ -106,15 +100,15 @@ macro_rules! invalid_de {
         #[test]
         fn $name() {
             let arena = toml_spanner::Arena::new();
-            let table = toml_spanner::parse($toml, &arena).expect("failed to parse toml");
-            let mut valid_toml = table.into_item();
+            let mut root = toml_spanner::parse($toml, &arena).expect("failed to parse toml");
 
-            match <$kind>::deserialize(&mut valid_toml) {
-                Ok(de) => {
+            match root.deserialize::<$kind>() {
+                Ok(de) if !root.has_errors() => {
                     panic!("expected errors but deserialized '{de:#?}' successfully");
                 }
-                Err(err) => {
-                    $crate::error_snapshot!($name, Some(err.to_diagnostic(())), $toml);
+                _ => {
+                    let diags: Vec<_> = root.errors().iter().map(|e| e.to_diagnostic(())).collect();
+                    $crate::error_snapshot!($name, diags, $toml);
                 }
             }
         }

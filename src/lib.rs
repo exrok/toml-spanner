@@ -6,27 +6,27 @@
 //!
 //! # Quick start
 //!
-//! Use [`parse`] with a TOML string and an [`Arena`] to get a [`Table`].
+//! Use [`parse`] with a TOML string and an [`Arena`] to get a [`Root`].
 //! ```
 //! # fn main() -> Result<(), toml_spanner::Error> {
 //! let arena = toml_spanner::Arena::new();
-//! let table = toml_spanner::parse("key = 'value'", &arena)?;
+//! let root = toml_spanner::parse("key = 'value'", &arena)?;
 //! # Ok(())
 //! # }
 //! ```
 //! Traverse the tree for inspection via index operators which return a [`MaybeItem`]:
 //! ```
 //! # let arena = toml_spanner::Arena::new();
-//! # let table = toml_spanner::parse("", &arena).unwrap();
-//! let name: Option<&str> = table["name"].as_str();
-//! let numbers: Option<i64> = table["numbers"][50].as_i64();
+//! # let root = toml_spanner::parse("", &arena).unwrap();
+//! let name: Option<&str> = root["name"].as_str();
+//! let numbers: Option<i64> = root["numbers"][50].as_i64();
 //! ```
 //! Use the [`MaybeItem::item()`] method get an [`Item`] which contains a [`Value`] and [`Span`].
 //! ```rust
 //! # use toml_spanner::{Value, Span};
 //! # let arena = toml_spanner::Arena::new();
-//! # let table = toml_spanner::parse("item = 0", &arena).unwrap();
-//! let Some(item) = table["item"].item() else {
+//! # let root = toml_spanner::parse("item = 0", &arena).unwrap();
+//! let Some(item) = root["item"].item() else {
 //!     panic!("Missing key `custom`");
 //! };
 //! match item.value() {
@@ -41,17 +41,19 @@
 //! // Get byte offset of where item was defined in the source.
 //! let Span{start, end} = item.span();
 //! ```
-//! ## Deserialization Helpers on Table
-//! [`Table`] provides a number of methods that can extract, deserialization and
-//! produce [`Error`] errors as needed with [`Span`] information.
 //!
-//! Extract values with [`Table::required`] and [`Table::optional`] converted via the [`Deserialize`] trait.
+//! ## Deserialization
+//!
+//! Use [`Root::helper()`] to create a [`TableHelper`] for type-safe field extraction
+//! via the [`Deserialize`] trait. Errors are accumulated in the [`Root`]'s context
+//! rather than failing on the first error.
+//!
 //! ```
 //! # fn main() -> Result<(), toml_spanner::Error> {
 //! # let arena = toml_spanner::Arena::new();
-//! # let mut table = toml_spanner::parse("numbers = [1, 2]", &arena)?;
-//! let name: Option<String> = table.optional("name")?;
-//! let numbers: Vec<u32> = table.required("numbers")?;
+//! # let mut root = toml_spanner::parse("name = 'hello'", &arena)?;
+//! let mut helper = root.helper();
+//! let name: String = helper.required("name").ok().unwrap();
 //! # Ok(())
 //! # }
 //! ```
@@ -61,20 +63,9 @@
 //! ```
 //! # fn main() -> Result<(), toml_spanner::Error> {
 //! # let arena = toml_spanner::Arena::new();
-//! # let mut table = toml_spanner::parse("ip-address = '127.0.0.1'", &arena)?;
-//! let item = table.required_item("ip-address")?;
+//! # let root = toml_spanner::parse("ip-address = '127.0.0.1'", &arena)?;
+//! let item = root["ip-address"].item().unwrap();
 //! let ip: std::net::Ipv4Addr = item.parse()?;
-//! # Ok(())
-//! # }
-//! ```
-//!
-//! After extracting all expected values, you can optionally assert it's now empty catching
-//! unknown fields.
-//! ```
-//! # fn main() -> Result<(), toml_spanner::Error> {
-//! # let arena = toml_spanner::Arena::new();
-//! # let mut table = toml_spanner::parse("", &arena)?;
-//! table.expect_empty()?;
 //! # Ok(())
 //! # }
 //! ```
@@ -83,7 +74,7 @@
 //! <summary>Toggle More Extensive Example</summary>
 //!
 //! ```
-//! use toml_spanner::{Arena, Deserialize, Error, Item};
+//! use toml_spanner::{Arena, Deserialize, Item, de::{Context, Failed, TableHelper}};
 //!
 //! #[derive(Debug)]
 //! struct Things {
@@ -93,13 +84,16 @@
 //! }
 //!
 //! impl<'de> Deserialize<'de> for Things {
-//!     fn deserialize(value: &mut Item<'de>) -> Result<Self, Error> {
-//!         let table = value.expect_table()?;
-//!         Ok(Things {
-//!             name: table.required("name")?,
-//!             value: table.required("value")?,
-//!             color: table.optional("color")?,
-//!         })
+//!     fn deserialize(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
+//!         let Some(table) = value.as_table() else {
+//!             return Err(ctx.error_expected_but_found("a table", value));
+//!         };
+//!         let mut th = TableHelper::new(ctx, table);
+//!         let name = th.required("name")?;
+//!         let value = th.required("value")?;
+//!         let color = th.optional("color");
+//!         th.expect_empty()?;
+//!         Ok(Things { name, value, color })
 //!     }
 //! }
 //!
@@ -117,30 +111,31 @@
 //! "#;
 //!
 //! let arena = Arena::new();
-//! let mut table = toml_spanner::parse(content, &arena)?;
+//! let mut root = toml_spanner::parse(content, &arena)?;
 //!
 //! // Null-coalescing index operators — missing keys return a None-like
 //! // MaybeItem instead of panicking.
-//! assert_eq!(table["things"][0]["color"].as_str(), None);
-//! assert_eq!(table["things"][1]["color"].as_str(), Some("green"));
+//! assert_eq!(root["things"][0]["color"].as_str(), None);
+//! assert_eq!(root["things"][1]["color"].as_str(), Some("green"));
 //!
-//! // Deserialize typed values out of the table.
-//! let things: Vec<Things> = table.required("things")?;
-//! let dev_mode: bool = table.optional("dev-mode")?.unwrap_or(false);
+//! // Deserialize typed values out of the root table.
+//! let mut helper = root.helper();
+//! let things: Vec<Things> = helper.required("things").ok().unwrap();
+//! let dev_mode: bool = helper.optional("dev-mode").unwrap_or(false);
 //! // Error if unconsumed fields remain.
-//! table.expect_empty()?;
+//! helper.expect_empty().ok();
 //!
 //! assert_eq!(things.len(), 2);
 //! assert_eq!(things[0].name, "hammer");
 //! assert!(dev_mode);
-//! # Ok::<(), Error>(())
+//! # Ok::<(), toml_spanner::Error>(())
 //! ```
 //!
 //! </details>
 
 mod arena;
 mod array;
-mod de;
+pub mod de;
 mod error;
 mod parser;
 mod span;
@@ -150,8 +145,9 @@ mod value;
 
 pub use arena::Arena;
 pub use array::Array;
+pub use de::{Context, Deserialize, Failed, TableHelper};
 pub use error::{Error, ErrorKind};
-pub use parser::parse;
+pub use parser::{Root, parse};
 pub use span::{Span, Spanned};
 pub use table::Table;
 pub use time::{Date, DateTime, MAX_FORMAT_LEN, Time, TimeOffset};
@@ -160,45 +156,3 @@ pub use value::{Item, Key, Kind, MaybeItem, Value, ValueMut};
 #[cfg(feature = "serde")]
 pub mod impl_serde;
 
-/// Converts a parsed TOML [`Item`] into a typed Rust value.
-///
-/// Implement this trait on your own types to extract them from a parsed TOML
-/// document via [`Table::required`] and [`Table::optional`].
-///
-/// Built-in implementations are provided for common types: [`bool`], integer
-/// types ([`i8`] through [`i64`], [`u8`] through [`u64`], [`usize`]),
-/// floating-point types ([`f32`], [`f64`]), [`String`],
-/// [`Cow<'de, str>`](std::borrow::Cow), [`Str`], [`Vec<T>`], and
-/// [`Spanned<T>`].
-///
-/// # Examples
-///
-/// ```
-/// use toml_spanner::{Deserialize, Error, Item};
-///
-/// struct Endpoint {
-///     host: String,
-///     port: u16,
-/// }
-///
-/// impl<'de> Deserialize<'de> for Endpoint {
-///     fn deserialize(item: &mut Item<'de>) -> Result<Self, Error> {
-///         let table = item.expect_table()?;
-///         Ok(Endpoint {
-///             host: table.required("host")?,
-///             port: table.required("port")?,
-///         })
-///     }
-/// }
-/// ```
-pub trait Deserialize<'de>: Sized {
-    /// Deserializes `Self` from the given [`Item`], returning an error on failure.
-    fn deserialize(item: &mut Item<'de>) -> Result<Self, Error>;
-}
-
-/// Object-safe version of [`Deserialize`] for types that do not borrow from
-/// the input.
-///
-/// Automatically implemented for every `T: for<'de> Deserialize<'de>`.
-pub trait DeserializeOwned: for<'de> Deserialize<'de> {}
-impl<T> DeserializeOwned for T where T: for<'de> Deserialize<'de> {}

@@ -9,16 +9,17 @@
 mod tests;
 
 use crate::{
-    Span,
+    MaybeItem, Span,
     arena::Arena,
+    de::{Failed, TableHelper},
     error::{Error, ErrorKind},
     table::{InnerTable, Table},
     time::DateTime,
     value::{self, Item, Key},
 };
+use std::char;
 use std::hash::{Hash, Hasher};
 use std::ptr::NonNull;
-use std::{char, task::Context};
 
 const MAX_RECURSION_DEPTH: i16 = 256;
 // When a method returns Err(ParseError), the full error details have already
@@ -37,7 +38,10 @@ struct Ctx<'b, 'de> {
 }
 
 /// Tables with at least this many entries use the hash index for lookups.
-const INDEXED_TABLE_THRESHOLD: usize = 6;
+/// Note: Looking purely at parsing benchmarks you might be inclined to raise
+///  this value higher, however the same index is then used during deserialization
+///  where the loss of initializing the index is recouped.
+pub const INDEXED_TABLE_THRESHOLD: usize = 6;
 
 const fn build_hex_table() -> [i8; 256] {
     let mut table = [-1i8; 256];
@@ -70,7 +74,7 @@ pub(crate) struct KeyRef<'de> {
 
 impl<'de> KeyRef<'de> {
     #[inline]
-    fn new(key: &'de str, first_key_span: u32) -> Self {
+    pub(crate) fn new(key: &'de str, first_key_span: u32) -> Self {
         KeyRef {
             // SAFETY: str::as_ptr() is guaranteed non-null.
             key_ptr: unsafe { NonNull::new_unchecked(key.as_ptr() as *mut u8) },
@@ -98,8 +102,11 @@ impl<'de> KeyRef<'de> {
 impl<'de> Hash for KeyRef<'de> {
     #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
-        self.as_str().hash(state);
         self.first_key_span.hash(state);
+        // Note: KeyRef is ment only beused inside the Index where it's
+        // the KeyRef is entireity of the Hash Input so we don't have to
+        // worry about prefix freedom.
+        self.as_str().hash(state);
     }
 }
 
@@ -1808,12 +1815,82 @@ impl<'de> Parser<'de> {
     }
 }
 
-/// Parses a TOML string into a [`Table`].
+/// Holds both the root table and the parsing context for deserialization.
 ///
-/// The returned table borrows from both the input string and the [`Arena`],
-/// so both must outlive the table. The arena is used to store escape sequences;
-/// plain strings borrow directly from the input.
-pub fn parse<'de>(s: &'de str, arena: &'de Arena) -> Result<Table<'de>, Error> {
+/// During deserialization the document tree remains immutable. Use
+/// [`Root::into_table()`] to extract the table for mutable access.
+pub struct Root<'de> {
+    pub(crate) table: Table<'de>,
+    pub ctx: crate::de::Context<'de>,
+}
+
+impl<'de> Root<'de> {
+    /// Extracts the root table for mutable access. Root is consumed.
+    /// You can also access the root table immutably via [`Root::table()`].
+    pub fn into_table(self) -> Table<'de> {
+        self.table
+    }
+
+    /// Converts the root table into an [`Item`] with the same span and payload.
+    pub fn into_item(self) -> Item<'de> {
+        self.table.into_item()
+    }
+
+    /// Access the root table immutably.
+    pub fn table(&self) -> &Table<'de> {
+        &self.table
+    }
+
+    /// Create a [`TableHelper`] for the root table.
+    pub fn helper<'ctx>(&'ctx mut self) -> TableHelper<'ctx, 'ctx, 'de> {
+        TableHelper::new(&mut self.ctx, &self.table)
+    }
+
+    /// Deserialize the root table into a typed value.
+    pub fn deserialize<T>(&mut self) -> Result<T, Failed>
+    where
+        T: crate::de::Deserialize<'de>,
+    {
+        T::deserialize(&mut self.ctx, self.table.as_item())
+    }
+
+    /// Returns the accumulated deserialization errors.
+    pub fn errors(&self) -> &[Error] {
+        &self.ctx.errors
+    }
+
+    /// Returns `true` if any deserialization errors have been recorded.
+    pub fn has_errors(&self) -> bool {
+        !self.ctx.errors.is_empty()
+    }
+}
+
+impl<'de> std::ops::Index<&str> for Root<'de> {
+    type Output = MaybeItem<'de>;
+
+    fn index(&self, key: &str) -> &Self::Output {
+        &self.table[key]
+    }
+}
+
+#[cfg(feature = "serde")]
+impl serde::Serialize for Root<'_> {
+    fn serialize<S>(&self, ser: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        self.table.serialize(ser)
+    }
+}
+
+impl std::fmt::Debug for Root<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.table.fmt(f)
+    }
+}
+
+#[inline(never)]
+pub fn parse<'de>(s: &'de str, arena: &'de Arena) -> Result<Root<'de>, Error> {
     // Tag bits use the low 3 bits of start_and_tag, limiting span.start to
     // 29 bits (512 MiB). The flag state uses the low 3 bits of end_and_flag,
     // limiting span.end to 29 bits (512 MiB).
@@ -1835,7 +1912,14 @@ pub fn parse<'de>(s: &'de str, arena: &'de Arena) -> Result<Table<'de>, Error> {
     // Note that root is about the drop (but doesn't implement drop), so we can take
     // ownership of this table.
     // todo don't do this
-    Ok(root_st)
+    Ok(Root {
+        table: root_st,
+        ctx: crate::de::Context {
+            errors: Vec::new(),
+            index: parser.index,
+            arena,
+        },
+    })
 }
 
 #[inline]

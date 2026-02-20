@@ -65,7 +65,7 @@ fn inner_get_and_mutate() {
     assert!(t.get("missing").is_none());
 
     // get_key_value: returns both key and value
-    let (k, v) = t.get_key_value("a").unwrap();
+    let (k, v) = t.get_entry("a").unwrap();
     assert_eq!(&*k.name, "a");
     assert_eq!(v.as_i64(), Some(10));
 
@@ -92,14 +92,14 @@ fn inner_remove() {
     // Remove only element
     let mut t = InnerTable::new();
     t.insert(key("a"), ival(1), &arena);
-    let v = t.remove("a").unwrap();
+    let (_, v) = t.remove_entry("a").unwrap();
     assert_eq!(v.as_i64(), Some(1));
     assert!(t.is_empty());
 
     // Remove not-found
     let mut t = InnerTable::new();
     t.insert(key("a"), ival(1), &arena);
-    assert!(t.remove("missing").is_none());
+    assert!(t.remove_entry("missing").is_none());
     assert_eq!(t.len(), 1);
 
     // Swap-remove behavior: removing first swaps last element into its slot
@@ -107,7 +107,7 @@ fn inner_remove() {
     t.insert(key("a"), ival(1), &arena);
     t.insert(key("b"), ival(2), &arena);
     t.insert(key("c"), ival(3), &arena);
-    let v = t.remove("a").unwrap();
+    let (_, v) = t.remove_entry("a").unwrap();
     assert_eq!(v.as_i64(), Some(1));
     assert_eq!(t.len(), 2);
     let entries = t.entries();
@@ -119,7 +119,7 @@ fn inner_remove() {
     t.insert(key("a"), ival(1), &arena);
     t.insert(key("b"), ival(2), &arena);
     t.insert(key("c"), ival(3), &arena);
-    let v = t.remove("b").unwrap();
+    let (_, v) = t.remove_entry("b").unwrap();
     assert_eq!(v.as_i64(), Some(2));
     assert_eq!(t.len(), 2);
     let entries = t.entries();
@@ -131,7 +131,7 @@ fn inner_remove() {
     t.insert(key("a"), ival(1), &arena);
     t.insert(key("b"), ival(2), &arena);
     t.insert(key("c"), ival(3), &arena);
-    let v = t.remove("c").unwrap();
+    let (_, v) = t.remove_entry("c").unwrap();
     assert_eq!(v.as_i64(), Some(3));
     assert_eq!(t.len(), 2);
 
@@ -152,23 +152,13 @@ fn inner_iterators() {
     t.insert(key("b"), ival(2), &arena);
     t.insert(key("c"), ival(3), &arena);
 
-    // values_mut: mutate all values
-    for v in t.values_mut() {
-        if let crate::value::ValueMut::Integer(i) = v.value_mut() {
-            *i += 100;
-        }
-    }
-    assert_eq!(t.get("a").unwrap().as_i64(), Some(101));
-    assert_eq!(t.get("b").unwrap().as_i64(), Some(102));
-    assert_eq!(t.get("c").unwrap().as_i64(), Some(103));
-
     // IntoIter: collect and verify
     let iter = IntoIter { table: t, index: 0 };
     assert_eq!(iter.size_hint(), (3, Some(3)));
     assert_eq!(iter.len(), 3);
     let vals: Vec<_> = iter.collect();
     assert_eq!(vals.len(), 3);
-    assert_eq!(vals[0].1.as_i64(), Some(101));
+    assert_eq!(vals[0].1.as_i64(), Some(1));
 
     // IntoIter: size_hint updates after next()
     let mut t2 = InnerTable::new();
@@ -220,78 +210,6 @@ fn table_access_and_mutation() {
     }
     assert_eq!(table["a"].as_i64(), Some(99));
     assert!(table.get_mut("missing").is_none());
-
-    // values_mut: mutate all values
-    for v in table.values_mut() {
-        if let crate::value::ValueMut::Integer(i) = v.value_mut() {
-            *i += 10;
-        }
-    }
-    assert_eq!(table["a"].as_i64(), Some(109));
-    assert_eq!(table["b"].as_i64(), Some(12));
-
-    // remove
-    let v = table.remove("b").unwrap();
-    assert_eq!(v.as_i64(), Some(12));
-    assert_eq!(table.len(), 2);
-    assert!(table.remove("missing").is_none());
-
-    // remove_entry
-    let (k, v) = table.remove_entry("a").unwrap();
-    assert_eq!(&*k.name, "a");
-    assert_eq!(v.as_i64(), Some(109));
-    assert!(table.remove_entry("missing").is_none());
-
-    // into_item
-    let arena2 = Arena::new();
-    let table2 = make_table(&arena2);
-    let item = table2.into_item();
-    assert!(item.as_table().is_some());
-    assert_eq!(item.as_table().unwrap().len(), 3);
-}
-
-#[test]
-fn table_deserialization_helpers() {
-    let arena = Arena::new();
-
-    // required: success consumes the key
-    let mut table = make_table(&arena);
-    let v: i64 = table.required("a").unwrap();
-    assert_eq!(v, 1);
-    assert!(table.get("a").is_none());
-
-    // required: missing key returns MissingField error
-    let err = table.required::<i64>("missing").unwrap_err();
-    assert!(matches!(
-        err.kind,
-        crate::ErrorKind::MissingField("missing")
-    ));
-
-    // optional: present key returns Some
-    let mut table = make_table(&arena);
-    let v: Option<i64> = table.optional("a").unwrap();
-    assert_eq!(v, Some(1));
-
-    // optional: missing key returns None
-    let v: Option<i64> = table.optional("missing").unwrap();
-    assert!(v.is_none());
-
-    // optional: wrong type returns Wanted error
-    let mut table = make_table(&arena);
-    let err = table.optional::<String>("a").unwrap_err();
-    assert!(matches!(err.kind, crate::ErrorKind::Wanted { .. }));
-
-    // expect_empty: succeeds when all keys are consumed
-    let mut table = make_table(&arena);
-    table.remove("a");
-    table.remove("b");
-    table.remove("c");
-    table.expect_empty().unwrap();
-
-    // expect_empty: fails when keys remain
-    let table = make_table(&arena);
-    let err = table.expect_empty().unwrap_err();
-    assert!(matches!(err.kind, crate::ErrorKind::UnexpectedKeys { .. }));
 }
 
 #[test]

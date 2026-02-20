@@ -1,7 +1,8 @@
 #![allow(dead_code)]
 
 use integ_tests::{invalid_de, valid_de};
-use toml_spanner::{Deserialize, Error, Item, Spanned};
+use toml_spanner::de::{Context, Deserialize, Failed, TableHelper};
+use toml_spanner::{Item, Spanned};
 
 #[derive(Debug)]
 struct Boop {
@@ -10,16 +11,11 @@ struct Boop {
 }
 
 impl<'de> Deserialize<'de> for Boop {
-    fn deserialize(value: &mut Item<'de>) -> Result<Self, Error> {
-        let toml_spanner::ValueMut::Table(table) = value.value_mut() else {
-            return Err(value.expected("a table").into());
-        };
-
-        let s = table.required("s")?;
-        let os = table.optional("os")?;
-
-        table.expect_empty()?;
-
+    fn deserialize(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
+        let mut th = value.table_helper(ctx)?;
+        let s = th.required("s")?;
+        let os = th.optional("os");
+        th.expect_empty()?;
         Ok(Self { s, os })
     }
 }
@@ -38,38 +34,52 @@ struct Package {
     version: Option<String>,
 }
 
-impl<'de> Deserialize<'de> for Package {
-    fn deserialize(value: &mut Item<'de>) -> Result<Self, Error> {
-        fn from_str(s: &str) -> (String, Option<String>) {
-            if let Some((name, version)) = s.split_once(':') {
-                (name.to_owned(), Some(version.to_owned()))
-            } else {
-                (s.to_owned(), None)
-            }
+impl Package {
+    fn from_str(s: &str) -> (String, Option<String>) {
+        if let Some((name, version)) = s.split_once(':') {
+            (name.to_owned(), Some(version.to_owned()))
+        } else {
+            (s.to_owned(), None)
         }
+    }
+}
 
-        if value.as_str().is_some() {
-            let s = value.expect_string(None)?;
-            let (name, version) = from_str(&s);
+impl<'de> Deserialize<'de> for Package {
+    fn deserialize(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
+        if let Some(s) = value.as_str() {
+            let (name, version) = Self::from_str(s);
             Ok(Self { name, version })
         } else if value.as_table().is_some() {
-            let toml_spanner::ValueMut::Table(table) = value.value_mut() else {
-                unreachable!()
-            };
-
-            if let Some(mut val) = table.remove("crate") {
-                let s = val.expect_string(Some("a package string"))?;
-                let (name, version) = from_str(&s);
-
+            let mut th = value.table_helper(ctx)?;
+            if let Some(crate_str) = th.optional::<String>("crate") {
+                let (name, version) = Self::from_str(&crate_str);
                 Ok(Self { name, version })
             } else {
-                let name = table.required("name")?;
-                let version = table.optional("version")?;
-
+                let name = th.required("name")?;
+                let version = th.optional("version");
                 Ok(Self { name, version })
             }
         } else {
-            Err(value.expected("a string or table").into())
+            Err(ctx.error_expected_but_found("a string or table", value))
+        }
+    }
+}
+
+/// Trait for types that can be deserialized from a shared [`TableHelper`],
+/// allowing multiple types to extract fields from the same table (flattening).
+trait DeserializeTable<'de>: Sized {
+    fn deserialize_table(th: &mut TableHelper<'_, '_, 'de>) -> Result<Self, Failed>;
+}
+
+impl<'de> DeserializeTable<'de> for Package {
+    fn deserialize_table(th: &mut TableHelper<'_, '_, 'de>) -> Result<Self, Failed> {
+        if let Some(crate_str) = th.optional::<String>("crate") {
+            let (name, version) = Self::from_str(&crate_str);
+            Ok(Self { name, version })
+        } else {
+            let name = th.required("name")?;
+            let version = th.optional("version");
+            Ok(Self { name, version })
         }
     }
 }
@@ -80,11 +90,9 @@ struct Array {
 }
 
 impl<'de> Deserialize<'de> for Array {
-    fn deserialize(value: &mut Item<'de>) -> Result<Self, Error> {
-        let toml_spanner::ValueMut::Table(table) = value.value_mut() else {
-            return Err(value.expected("a table").into());
-        };
-        let packages = table.required("packages")?;
+    fn deserialize(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
+        let mut th = value.table_helper(ctx)?;
+        let packages = th.required("packages")?;
         Ok(Self { packages })
     }
 }
@@ -110,17 +118,23 @@ pub struct PackageSpecOrExtended<T> {
 
 impl<'de, T> Deserialize<'de> for PackageSpecOrExtended<T>
 where
-    T: Deserialize<'de>,
+    T: DeserializeTable<'de>,
 {
-    fn deserialize(value: &mut Item<'de>) -> Result<Self, Error> {
-        let spec = Package::deserialize(value)?;
-
-        let inner = if value.has_keys() {
-            Some(T::deserialize(value)?)
+    fn deserialize(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
+        if let Some(s) = value.as_str() {
+            let (name, version) = Package::from_str(s);
+            return Ok(Self {
+                spec: Package { name, version },
+                inner: None,
+            });
+        }
+        let mut th = value.table_helper(ctx)?;
+        let spec = Package::deserialize_table(&mut th)?;
+        let inner = if th.remaining_count() > 0 {
+            Some(T::deserialize_table(&mut th)?)
         } else {
             None
         };
-
         Ok(Self { spec, inner })
     }
 }
@@ -130,13 +144,18 @@ struct Reason {
     reason: String,
 }
 
+impl<'de> DeserializeTable<'de> for Reason {
+    fn deserialize_table(th: &mut TableHelper<'_, '_, 'de>) -> Result<Self, Failed> {
+        let reason = th.required("reason")?;
+        Ok(Self { reason })
+    }
+}
+
 impl<'de> Deserialize<'de> for Reason {
-    fn deserialize(value: &mut Item<'de>) -> Result<Self, Error> {
-        let toml_spanner::ValueMut::Table(table) = value.value_mut() else {
-            return Err(value.expected("a table").into());
-        };
-        let reason = table.required("reason")?;
-        table.expect_empty()?;
+    fn deserialize(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
+        let mut th = value.table_helper(ctx)?;
+        let reason = th.required("reason")?;
+        th.expect_empty()?;
         Ok(Self { reason })
     }
 }
@@ -147,11 +166,9 @@ struct Flattened {
 }
 
 impl<'de> Deserialize<'de> for Flattened {
-    fn deserialize(value: &mut Item<'de>) -> Result<Self, Error> {
-        let toml_spanner::ValueMut::Table(table) = value.value_mut() else {
-            return Err(value.expected("a table").into());
-        };
-        let flattened = table.required("flattened")?;
+    fn deserialize(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
+        let mut th = value.table_helper(ctx)?;
+        let flattened = th.required("flattened")?;
         Ok(Self { flattened })
     }
 }
@@ -164,22 +181,20 @@ struct Ohno {
 }
 
 impl<'de> Deserialize<'de> for Ohno {
-    fn deserialize(value: &mut Item<'de>) -> Result<Self, Error> {
-        let toml_spanner::ValueMut::Table(table) = value.value_mut() else {
-            return Err(value.expected("a table").into());
-        };
-        let year = table.required("year")?;
+    fn deserialize(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
+        let mut th = value.table_helper(ctx)?;
+        let year = th.required("year")?;
 
         if let Some(snbh) =
-            table.optional::<Spanned<std::borrow::Cow<'de, str>>>("this-is-deprecated")?
+            th.optional::<Spanned<std::borrow::Cow<'de, str>>>("this-is-deprecated")
         {
-            return Err(toml_spanner::Error::from((
+            return Err(th.ctx.push_error(toml_spanner::Error::from((
                 toml_spanner::ErrorKind::Custom("this-is-deprecated is deprecated".into()),
                 snbh.span,
-            )));
+            ))));
         }
 
-        table.expect_empty()?;
+        th.expect_empty()?;
         Ok(Self { year })
     }
 }

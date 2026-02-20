@@ -307,40 +307,51 @@ fn type_error_helpers() {
     ));
     assert_eq!(err.span, sp(0, 2));
 
-    // take_string success
-    let mut v = Item::string("hello", sp(0, 5));
-    let s = v.expect_string(None).unwrap();
-    assert_eq!(&*s, "hello");
+    // expect_string success
+    let arena = Arena::new();
+    let mut ctx = crate::de::Context {
+        arena: &arena,
+        index: Default::default(),
+        errors: Vec::new(),
+    };
+    let v = Item::string("hello", sp(0, 5));
+    let s = v.expect_string(&mut ctx).unwrap();
+    assert_eq!(s, "hello");
 
-    // take_string wrong type returns error
-    let mut v = Item::integer(42, sp(0, 2));
-    assert!(v.expect_string(None).is_err());
-
-    // take_string custom error message is preserved
-    let mut v = Item::integer(42, sp(0, 2));
-    let err = v.expect_string(Some("a custom msg")).unwrap_err();
-    if let crate::ErrorKind::Wanted { expected, .. } = err.kind {
-        assert_eq!(expected, "a custom msg");
-    } else {
-        panic!("expected Wanted error");
-    }
+    // expect_string wrong type records error
+    let v = Item::integer(42, sp(0, 2));
+    assert!(v.expect_string(&mut ctx).is_err());
+    assert_eq!(ctx.errors.len(), 1);
+    assert!(matches!(
+        ctx.errors[0].kind,
+        crate::ErrorKind::Wanted {
+            expected: "a string",
+            found: "integer"
+        }
+    ));
 }
 
 #[test]
 fn expect_and_mut_accessors() {
     let arena = Arena::new();
 
+    let mut ctx = crate::de::Context {
+        arena: &arena,
+        index: Default::default(),
+        errors: Vec::new(),
+    };
+
     // expect_array success
     let mut arr = Array::new();
     arr.push(Item::integer(1, sp(0, 1)), &arena);
-    let mut v = Item::array(arr, sp(0, 5));
-    let a = v.expect_array().unwrap();
+    let v = Item::array(arr, sp(0, 5));
+    let a = v.expect_array(&mut ctx).unwrap();
     assert_eq!(a.len(), 1);
 
     // expect_array type mismatch
-    let mut v = Item::integer(42, sp(0, 2));
-    let err = v.expect_array().unwrap_err();
-    assert!(matches!(err.kind, crate::ErrorKind::Wanted { .. }));
+    let v = Item::integer(42, sp(0, 2));
+    assert!(v.expect_array(&mut ctx).is_err());
+    assert!(matches!(ctx.errors.last().unwrap().kind, crate::ErrorKind::Wanted { .. }));
 
     // expect_table success
     let mut tab = InnerTable::new();
@@ -352,14 +363,14 @@ fn expect_and_mut_accessors() {
         Item::integer(1, sp(0, 1)),
         &arena,
     );
-    let mut v = Item::table(tab, sp(0, 5));
-    let t = v.expect_table().unwrap();
+    let v = Item::table(tab, sp(0, 5));
+    let t = v.expect_table(&mut ctx).unwrap();
     assert_eq!(t.len(), 1);
 
     // expect_table type mismatch
-    let mut v = Item::integer(42, sp(0, 2));
-    let err = v.expect_table().unwrap_err();
-    assert!(matches!(err.kind, crate::ErrorKind::Wanted { .. }));
+    let v = Item::integer(42, sp(0, 2));
+    assert!(v.expect_table(&mut ctx).is_err());
+    assert!(matches!(ctx.errors.last().unwrap().kind, crate::ErrorKind::Wanted { .. }));
 
     // as_array_mut on array
     let mut v = Item::array(Array::new(), sp(0, 2));
@@ -392,17 +403,17 @@ fn expect_and_mut_accessors() {
 #[test]
 fn parse_method() {
     // Success
-    let mut v = Item::string("42", sp(0, 2));
+    let v = Item::string("42", sp(0, 2));
     let parsed: i32 = v.parse::<i32, _>().unwrap();
     assert_eq!(parsed, 42);
 
     // Parse failure (invalid content)
-    let mut v = Item::string("not_a_number", sp(0, 12));
+    let v = Item::string("not_a_number", sp(0, 12));
     let err = v.parse::<i32, _>().unwrap_err();
     assert!(matches!(err.kind, crate::ErrorKind::Custom(..)));
 
     // Wrong type (not a string)
-    let mut v = Item::integer(42, sp(0, 2));
+    let v = Item::integer(42, sp(0, 2));
     let err = v.parse::<i32, _>().unwrap_err();
     assert!(matches!(err.kind, crate::ErrorKind::Wanted { .. }));
 }

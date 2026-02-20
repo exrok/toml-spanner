@@ -1,3 +1,6 @@
+
+[action.build-docs]
+cmd = ["cargo", "doc"]
 [action.benchmark]
 pwd = "./benchmark"
 cmd = ["cargo", "+nightly", "run", "--release"]

@@ -4,11 +4,11 @@
 #[path = "./table_tests.rs"]
 mod tests;
 
+use crate::Span;
 use crate::value::{
     FLAG_HEADER, FLAG_MASK, FLAG_SHIFT, FLAG_TABLE, Item, Key, MaybeItem, NONE, TAG_MASK,
     TAG_SHIFT, TAG_TABLE,
 };
-use crate::{Deserialize, Error, ErrorKind, Span};
 use std::mem::size_of;
 use std::ptr::NonNull;
 
@@ -71,7 +71,7 @@ impl<'de> InnerTable<'de> {
     }
 
     /// Linear scan for a key, returning both key and value references.
-    pub fn get_key_value(&self, name: &str) -> Option<(&Key<'de>, &Item<'de>)> {
+    pub fn get_entry(&self, name: &str) -> Option<(&Key<'de>, &Item<'de>)> {
         for entry in self.entries() {
             if entry.0.name == name {
                 return Some((&entry.0, &entry.1));
@@ -106,22 +106,11 @@ impl<'de> InnerTable<'de> {
         self.get(name).is_some()
     }
 
-    /// Removes the first entry matching `name`, returning its value.
-    /// Uses swap-remove, so the ordering of remaining entries may change.
-    pub fn remove(&mut self, name: &str) -> Option<Item<'de>> {
-        self.remove_entry(name).map(|(_, v)| v)
-    }
-
     /// Removes the first entry matching `name`, returning the key-value pair.
     /// Uses swap-remove, so the ordering of remaining entries may change.
     pub fn remove_entry(&mut self, name: &str) -> Option<(Key<'de>, Item<'de>)> {
         let idx = self.find_index(name)?;
         Some(self.remove_at(idx))
-    }
-
-    /// Returns an iterator over mutable references to the values.
-    pub fn values_mut(&mut self) -> impl Iterator<Item = &mut Item<'de>> {
-        self.entries_mut().iter_mut().map(|(_, v)| v)
     }
 
     /// Returns the span start of the first key. Used as a table discriminator
@@ -257,10 +246,22 @@ impl ExactSizeIterator for IntoIter<'_> {}
 /// - **Index operators** — `table["key"]` returns a [`MaybeItem`] that never
 ///   panics on missing keys, and supports chained indexing.
 /// - **`get` / `get_mut`** — return `Option<&Item>` / `Option<&mut Item>`.
-/// - **`required` / `optional`** — deserialize and *remove* a field in one
-///   step, used when implementing [`Deserialize`](crate::Deserialize).
-///   After extracting all expected fields, call [`expect_empty`](Self::expect_empty)
-///   to reject unknown keys.
+///
+/// For type-safe deserialization, use [`Item::table_helper`](crate::value::Item::table_helper)
+/// to create a [`TableHelper`](crate::de::TableHelper).
+///
+/// # Lookup performance
+///
+/// Direct lookups ([`get`](Self::get), `table["key"]`) perform a linear scan
+/// over entries — O(n) in the number of keys. For small tables or a handful
+/// of lookups, as is typical in TOML, this is well fast enough.
+///
+/// For structured deserialization of larger tables, use
+/// [`TableHelper`](crate::de::TableHelper) via
+/// [`Root::helper`](crate::Root::helper) or
+/// [`Item::table_helper`](crate::value::Item::table_helper). The
+/// [`Context`](crate::de::Context) returned by [`parse`](crate::parse)
+/// carries the parser's hash index.
 ///
 /// # Constructing tables
 ///
@@ -274,9 +275,8 @@ impl ExactSizeIterator for IntoIter<'_> {}
 /// `Table` implements [`IntoIterator`] (both by reference and by value),
 /// yielding `(`[`Key`]`, `[`Item`]`)` pairs.
 ///
-/// Removal via [`remove`](Self::remove), [`required`](Self::required), and
-/// [`optional`](Self::optional) uses swap-remove and may reorder remaining
-/// entries.
+/// Removal via [`remove`](Self::remove) uses swap-remove and may reorder
+/// remaining entries.
 #[repr(C)]
 pub struct Table<'de> {
     pub(crate) value: InnerTable<'de>,
@@ -336,7 +336,7 @@ impl<'de> Table<'de> {
 
     /// Linear scan for a key, returning both key and value references.
     pub fn get_key_value(&self, name: &str) -> Option<(&Key<'de>, &Item<'de>)> {
-        self.value.get_key_value(name)
+        self.value.get_entry(name)
     }
 
     /// Returns a reference to the value for `name`.
@@ -355,21 +355,10 @@ impl<'de> Table<'de> {
         self.value.contains_key(name)
     }
 
-    /// Removes the first entry matching `name`, returning its value.
-    /// Uses swap-remove, so the ordering of remaining entries may change.
-    pub fn remove(&mut self, name: &str) -> Option<Item<'de>> {
-        self.value.remove(name)
-    }
-
     /// Removes the first entry matching `name`, returning the key-value pair.
     /// Uses swap-remove, so the ordering of remaining entries may change.
     pub fn remove_entry(&mut self, name: &str) -> Option<(Key<'de>, Item<'de>)> {
         self.value.remove_entry(name)
-    }
-
-    /// Returns an iterator over mutable references to the values.
-    pub fn values_mut(&mut self) -> impl Iterator<Item = &mut Item<'de>> {
-        self.value.values_mut()
     }
 
     /// Returns a slice of all entries.
@@ -379,73 +368,18 @@ impl<'de> Table<'de> {
     }
 
     /// Converts this `Table` into an [`Item`] with the same span and payload.
+    pub fn as_item(&self) -> &Item<'de> {
+        unsafe {
+            // SAFETY: Table and Item have the same layout and alignment, so this
+            // is safe as long as we don't mutate through the Item reference.
+            &*(self as *const Table<'de> as *const Item<'de>)
+        }
+    }
+
+    /// Converts this `Table` into an [`Item`] with the same span and payload.
     pub fn into_item(self) -> Item<'de> {
         let span = self.span();
         Item::table(self.value, span)
-    }
-
-    /// Removes a field return as an item, returning an error if the key is missing.
-    pub fn required_item(&mut self, name: &'static str) -> Result<Item<'de>, Error> {
-        let Some(val) = self.value.remove(name) else {
-            return Err(Error {
-                kind: ErrorKind::MissingField(name),
-                span: self.span(),
-            });
-        };
-
-        Ok(val)
-    }
-
-    /// Removes and deserializes a field, returning an error if the key is missing.
-    pub fn required<T: Deserialize<'de>>(&mut self, name: &'static str) -> Result<T, Error> {
-        let Some(mut val) = self.value.remove(name) else {
-            return Err(Error {
-                kind: ErrorKind::MissingField(name),
-                span: self.span(),
-            });
-        };
-
-        T::deserialize(&mut val)
-    }
-
-    /// Removes and deserializes a field, returning [`None`] if the key is missing.
-    pub fn optional<T: Deserialize<'de>>(&mut self, name: &str) -> Result<Option<T>, Error> {
-        let Some(mut val) = self.value.remove(name) else {
-            return Ok(None);
-        };
-
-        match T::deserialize(&mut val) {
-            Ok(value) => Ok(Some(value)),
-            Err(err) => Err(err),
-        }
-    }
-
-    /// Returns an error if the table still has unconsumed entries.
-    ///
-    /// Call this after extracting all expected fields with [`required`](Self::required)
-    /// and [`optional`](Self::optional) to reject unknown keys.
-    pub fn expect_empty(&self) -> Result<(), Error> {
-        if self.value.is_empty() {
-            return Ok(());
-        }
-
-        // let keys = self
-        //     .value
-        //     .entries()
-        //     .iter()
-        //     .map(|(key, _)| (key.name.into(), key.span))
-        //     .collect();
-        // Note: collect version ends up generating a lot of code bloat
-        // despite being more efficient in theory.
-        let mut keys = Vec::with_capacity(self.value.len());
-        for (key, _) in self.value.entries() {
-            keys.push((key.name.into(), key.span));
-        }
-
-        Err(Error::from((
-            ErrorKind::UnexpectedKeys { keys },
-            self.span(),
-        )))
     }
 }
 

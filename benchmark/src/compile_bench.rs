@@ -113,8 +113,11 @@ struct Result {
     stats: Stats,
 }
 
-pub fn run_compile_bench(release: bool) {
-    let projects = make_projects();
+pub fn run_compile_bench(release: bool, all: bool, report: bool) {
+    let mut projects = make_projects();
+    if !all {
+        projects.retain(|p| p.display_name == "null" || p.display_name == "toml-spanner");
+    }
     let mode = if release { "release" } else { "debug" };
     println!("=== Compile-time benchmark ({mode} builds, {ITERATIONS} iterations) ===\n");
 
@@ -206,6 +209,10 @@ pub fn run_compile_bench(release: bool) {
             stats: Stats::compute(&durations),
         });
         println!();
+    }
+
+    if !report {
+        return;
     }
 
     // Print summary table

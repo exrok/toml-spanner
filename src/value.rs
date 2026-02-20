@@ -63,6 +63,17 @@ union Payload<'de> {
 /// access). These operators return [`MaybeItem`] and never panic — missing
 /// keys or out-of-bounds indices produce a `None` variant instead.
 ///
+/// # Lookup performance
+///
+/// String-key lookups (`item["key"]`, [`as_table`](Self::as_table) +
+/// [`Table::get`]) perform a linear scan over the table entries — O(n) in
+/// the number of keys. For small tables or a handful of lookups, as is
+/// typical in TOML, this is well fast enough.
+///
+/// For structured deserialization of larger tables, use
+/// [`TableHelper`](crate::de::TableHelper) with the [`Context`](crate::de::Context)
+/// returned by [`parse`](crate::parse).
+///
 /// # Examples
 ///
 /// ```
@@ -531,27 +542,6 @@ impl<'de> Item<'de> {
         }
     }
 
-    /// Returns a mutable array reference, or an error if this is not an array.
-    pub fn expect_array(&mut self) -> Result<&mut Array<'de>, Error> {
-        if self.is_array() {
-            // SAFETY: is_array() check guarantees the payload is an array.
-            Ok(unsafe { &mut self.payload.array })
-        } else {
-            Err(self.expected("a array"))
-        }
-    }
-    /// Returns a mutable table reference, or an error if this is not a table.
-    ///
-    /// This is the typical entry point for implementing [`Deserialize`](crate::Deserialize).
-    pub fn expect_table(&mut self) -> Result<&mut Table<'de>, Error> {
-        if self.is_table() {
-            // SAFETY: is_table() check guarantees this item is a table variant.
-            Ok(unsafe { self.as_table_mut_unchecked() })
-        } else {
-            Err(self.expected("a table"))
-        }
-    }
-
     /// Returns a mutable array reference.
     #[inline]
     pub fn as_array_mut(&mut self) -> Option<&mut Array<'de>> {
@@ -638,26 +628,13 @@ impl<'de> Item<'de> {
         T: std::str::FromStr<Err = E>,
         E: std::fmt::Display,
     {
-        let s = self.expect_string(None)?;
+        let Some(s) = self.as_str() else {
+            return Err(self.expected("a string"));
+        };
         match s.parse() {
             Ok(v) => Ok(v),
             Err(err) => Err(Error {
                 kind: ErrorKind::Custom(format!("failed to parse string: {err}").into()),
-                span: self.span(),
-            }),
-        }
-    }
-
-    /// Takes the value as a string, returning an error if it is not a string.
-    #[inline]
-    pub fn expect_string(&self, msg: Option<&'static str>) -> Result<&'de str, Error> {
-        match self.value() {
-            Value::String(s) => Ok(*s),
-            _ => Err(Error {
-                kind: ErrorKind::Wanted {
-                    expected: msg.unwrap_or("a string"),
-                    found: self.type_str(),
-                },
                 span: self.span(),
             }),
         }

@@ -71,8 +71,11 @@ impl From<Span> for std::ops::Range<usize> {
 /// use toml_spanner::{Arena, Spanned};
 ///
 /// let arena = Arena::new();
-/// let mut table = toml_spanner::parse("name = \"hello\"", &arena)?;
-/// let name: Spanned<String> = table.required("name")?;
+/// let mut root = toml_spanner::parse("name = \"hello\"", &arena)?;
+/// let name: Spanned<String> = {
+///     let mut helper = root.helper();
+///     helper.required("name").ok().unwrap()
+/// };
 /// assert_eq!(name.value, "hello");
 /// assert!(name.span.start < name.span.end);
 /// # Ok::<(), toml_spanner::Error>(())
@@ -196,14 +199,17 @@ where
     }
 }
 
-impl<'de, T> crate::Deserialize<'de> for Spanned<T>
+impl<'de, T> crate::de::Deserialize<'de> for Spanned<T>
 where
-    T: crate::Deserialize<'de>,
+    T: crate::de::Deserialize<'de>,
 {
     #[inline]
-    fn deserialize(value: &mut crate::value::Item<'de>) -> Result<Self, crate::Error> {
+    fn deserialize(
+        ctx: &mut crate::de::Context<'de>,
+        value: &crate::value::Item<'de>,
+    ) -> Result<Self, crate::de::Failed> {
         let span = value.span();
-        let value = T::deserialize(value)?;
-        Ok(Self { span, value })
+        let inner = T::deserialize(ctx, value)?;
+        Ok(Self { span, value: inner })
     }
 }

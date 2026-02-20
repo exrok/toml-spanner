@@ -7,5 +7,3 @@ error[missing-field]: missing field 's'
   │
 1 │ os = 20
   │ ^^^^^^^ table with missing field
-
-

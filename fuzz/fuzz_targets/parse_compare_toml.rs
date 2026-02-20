@@ -20,7 +20,7 @@ fuzz_target!(|data: &[u8]| -> Corpus {
     match (spanner_result, toml_result) {
         (Ok(spanner_val), Ok(toml_tbl)) => {
             assert!(
-                tables_match(&spanner_val, &toml_tbl),
+                tables_match(&spanner_val.table(), &toml_tbl),
                 "values differ for input:\n{text}\nspanner: {spanner_val:?}\ntoml: {toml_tbl:?}"
             );
         }
@@ -95,12 +95,12 @@ fn values_match(spanner: &toml_spanner::Item<'_>, toml_val: &toml::Value) -> boo
                     .all(|(s, t)| values_match(s, t))
         }
         (Value::Table(st), toml::Value::Table(tt)) => tables_match(st, tt),
-        (Value::Datetime(sd), toml::Value::Datetime(td)) => datetimes_match(sd, td),
+        (Value::DateTime(sd), toml::Value::Datetime(td)) => datetimes_match(sd, td),
         _ => false,
     }
 }
 
-fn datetimes_match(spanner: &toml_spanner::Datetime, toml_dt: &toml::value::Datetime) -> bool {
+fn datetimes_match(spanner: &toml_spanner::DateTime, toml_dt: &toml::value::Datetime) -> bool {
     let dates_match = match (spanner.date(), &toml_dt.date) {
         (Some(sd), Some(td)) => sd.year == td.year && sd.month == td.month && sd.day == td.day,
         (None, None) => true,

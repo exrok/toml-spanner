@@ -1,16 +1,22 @@
-use crate::Deserialize;
+use super::Deserialize;
 use crate::arena::Arena;
 use crate::span::Spanned;
 
 fn parse_val<'a, T: Deserialize<'a>>(input: &'a str, arena: &'a Arena) -> Result<T, crate::Error> {
-    let mut table = crate::parse(input, arena).unwrap();
-    table.required::<T>("v")
+    let mut root = crate::parser::parse(input, arena).unwrap();
+    let result = {
+        let mut helper = root.helper();
+        helper.required::<T>("v")
+    };
+    match result {
+        Ok(val) => Ok(val),
+        Err(_) => Err(root.ctx.errors.remove(0)),
+    }
 }
 
 #[test]
 fn deser_strings() {
     let arena = Arena::new();
-
     // String (owned)
     let val: String = parse_val(r#"v = "hello""#, &arena).unwrap();
     assert_eq!(val, "hello");
@@ -140,8 +146,62 @@ fn deser_vecs() {
 fn deser_spanned() {
     let arena = Arena::new();
     let input = "v = 42";
-    let mut table = crate::parse(input, &arena).unwrap();
-    let val: Spanned<i64> = table.required("v").unwrap();
+    let mut root = crate::parser::parse(input, &arena).unwrap();
+    let val: Spanned<i64> = {
+        let mut helper = root.helper();
+        helper.required("v").unwrap()
+    };
     assert_eq!(val.value, 42);
     assert_eq!(&input[val.span.start as usize..val.span.end as usize], "42");
+}
+
+#[test]
+fn into_remaining() {
+    fn check(key_count: usize, use_every_nth: usize) {
+        let mut toml = String::new();
+        for i in 0..key_count {
+            if !toml.is_empty() {
+                toml.push('\n');
+            }
+            toml.push_str(&format!("k{i} = {i}"));
+        }
+        let arena = Arena::new();
+        let mut root = crate::parser::parse(&toml, &arena).unwrap();
+        let mut helper = root.helper();
+
+        let mut expected_remaining = Vec::new();
+        for i in 0..key_count {
+            let name = format!("k{i}");
+            if use_every_nth > 0 && i % use_every_nth == 0 {
+                let _: Option<i64> = helper.optional(&name);
+            } else {
+                expected_remaining.push(name);
+            }
+        }
+
+        let keys: Vec<_> = helper.into_remaining().map(|(k, _)| k.name).collect();
+        assert_eq!(
+            keys, expected_remaining,
+            "key_count={key_count} use_every_nth={use_every_nth}"
+        );
+    }
+
+    // Empty table.
+    check(0, 0);
+    // Single bucket, none/some/all used.
+    check(3, 0);
+    check(3, 2);
+    check(3, 1);
+    // Exact bucket boundary.
+    check(64, 0);
+    check(64, 2);
+    check(64, 1);
+    // Multi-bucket, non-aligned.
+    check(65, 0);
+    check(65, 3);
+    check(65, 1);
+    // Two full buckets + partial third.
+    check(150, 0);
+    check(150, 5);
+    check(150, 1);
 }

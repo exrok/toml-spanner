@@ -176,8 +176,10 @@ fn main() {
         return;
     }
     if std::env::args().any(|a| a == "compile") {
-        let release = std::env::args().any(|a| a == "--release");
-        compile_bench::run_compile_bench(release);
+        let all = std::env::args().any(|a| a == "--all");
+        let dev = std::env::args().any(|a| a == "--dev");
+        let report = std::env::args().any(|a| a == "--report");
+        compile_bench::run_compile_bench(!dev, all, report);
         return;
     }
 

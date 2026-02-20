@@ -104,8 +104,11 @@ fn spanned_basics_and_comparison() {
 fn spanned_deserialize() {
     let arena = crate::arena::Arena::new();
     let input = "v = 42";
-    let mut table = crate::parse(input, &arena).unwrap();
-    let val: Spanned<i64> = table.required("v").unwrap();
+    let mut root = crate::parser::parse(input, &arena).unwrap();
+    let val: Spanned<i64> = {
+        let mut helper = root.helper();
+        helper.required("v").unwrap()
+    };
     assert_eq!(val.value, 42);
     assert_eq!(&input[val.span.start as usize..val.span.end as usize], "42");
 }
