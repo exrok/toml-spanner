@@ -49,7 +49,7 @@ impl<'de> Deserialize<'de> for Package {
         }
 
         if value.as_str().is_some() {
-            let s = value.take_string(None)?;
+            let s = value.expect_string(None)?;
             let (name, version) = from_str(&s);
             Ok(Self { name, version })
         } else if value.as_table().is_some() {
@@ -58,7 +58,7 @@ impl<'de> Deserialize<'de> for Package {
             };
 
             if let Some(mut val) = table.remove("crate") {
-                let s = val.take_string(Some("a package string"))?;
+                let s = val.expect_string(Some("a package string"))?;
                 let (name, version) = from_str(&s);
 
                 Ok(Self { name, version })

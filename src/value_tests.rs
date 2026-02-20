@@ -176,7 +176,7 @@ fn value_and_type_checks() {
             Value::Boolean(_) => "boolean",
             Value::Array(_) => "array",
             Value::Table(_) => "table",
-            Value::Datetime(_) => "moment",
+            Value::DateTime(_) => "moment",
         };
         assert_eq!(kind, *exp);
     }
@@ -309,16 +309,16 @@ fn type_error_helpers() {
 
     // take_string success
     let mut v = Item::string("hello", sp(0, 5));
-    let s = v.take_string(None).unwrap();
+    let s = v.expect_string(None).unwrap();
     assert_eq!(&*s, "hello");
 
     // take_string wrong type returns error
     let mut v = Item::integer(42, sp(0, 2));
-    assert!(v.take_string(None).is_err());
+    assert!(v.expect_string(None).is_err());
 
     // take_string custom error message is preserved
     let mut v = Item::integer(42, sp(0, 2));
-    let err = v.take_string(Some("a custom msg")).unwrap_err();
+    let err = v.expect_string(Some("a custom msg")).unwrap_err();
     if let crate::ErrorKind::Wanted { expected, .. } = err.kind {
         assert_eq!(expected, "a custom msg");
     } else {

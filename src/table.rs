@@ -384,6 +384,18 @@ impl<'de> Table<'de> {
         Item::table(self.value, span)
     }
 
+    /// Removes a field return as an item, returning an error if the key is missing.
+    pub fn required_item(&mut self, name: &'static str) -> Result<Item<'de>, Error> {
+        let Some(val) = self.value.remove(name) else {
+            return Err(Error {
+                kind: ErrorKind::MissingField(name),
+                span: self.span(),
+            });
+        };
+
+        Ok(val)
+    }
+
     /// Removes and deserializes a field, returning an error if the key is missing.
     pub fn required<T: Deserialize<'de>>(&mut self, name: &'static str) -> Result<T, Error> {
         let Some(mut val) = self.value.remove(name) else {

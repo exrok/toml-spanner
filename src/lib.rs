@@ -6,12 +6,81 @@
 //!
 //! # Quick start
 //!
-//! Call [`parse`] with a TOML string and an [`Arena`] to get a [`Table`]. Then
-//! extract values with [`Table::required`] and [`Table::optional`], or index
-//! into nested structures with bracket operators that return [`MaybeItem`]
-//! (never panic on missing keys).
+//! Use [`parse`] with a TOML string and an [`Arena`] to get a [`Table`].
+//! ```
+//! # fn main() -> Result<(), toml_spanner::Error> {
+//! let arena = toml_spanner::Arena::new();
+//! let table = toml_spanner::parse("key = 'value'", &arena)?;
+//! # Ok(())
+//! # }
+//! ```
+//! Traverse the tree for inspection via index operators which return a [`MaybeItem`]:
+//! ```
+//! # let arena = toml_spanner::Arena::new();
+//! # let table = toml_spanner::parse("", &arena).unwrap();
+//! let name: Option<&str> = table["name"].as_str();
+//! let numbers: Option<i64> = table["numbers"][50].as_i64();
+//! ```
+//! Use the [`MaybeItem::item()`] method get an [`Item`] which contains a [`Value`] and [`Span`].
+//! ```rust
+//! # use toml_spanner::{Value, Span};
+//! # let arena = toml_spanner::Arena::new();
+//! # let table = toml_spanner::parse("item = 0", &arena).unwrap();
+//! let Some(item) = table["item"].item() else {
+//!     panic!("Missing key `custom`");
+//! };
+//! match item.value() {
+//!      Value::String(string) => {},
+//!      Value::Integer(integer) => {}
+//!      Value::Float(float) => {},
+//!      Value::Boolean(boolean) => {},
+//!      Value::Array(array) => {},
+//!      Value::Table(table) => {},
+//!      Value::DateTime(date_time) => {},
+//! }
+//! // Get byte offset of where item was defined in the source.
+//! let Span{start, end} = item.span();
+//! ```
+//! ## Deserialization Helpers on Table
+//! [`Table`] provides a number of methods that can extract, deserialization and
+//! produce [`Error`] errors as needed with [`Span`] information.
 //!
-//! # Examples
+//! Extract values with [`Table::required`] and [`Table::optional`] converted via the [`Deserialize`] trait.
+//! ```
+//! # fn main() -> Result<(), toml_spanner::Error> {
+//! # let arena = toml_spanner::Arena::new();
+//! # let mut table = toml_spanner::parse("numbers = [1, 2]", &arena)?;
+//! let name: Option<String> = table.optional("name")?;
+//! let numbers: Vec<u32> = table.required("numbers")?;
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! Extract values with [`Item::parse`] which uses [`std::str::FromStr`] expecting a String kinded TOML Value.
+//!
+//! ```
+//! # fn main() -> Result<(), toml_spanner::Error> {
+//! # let arena = toml_spanner::Arena::new();
+//! # let mut table = toml_spanner::parse("ip-address = '127.0.0.1'", &arena)?;
+//! let item = table.required_item("ip-address")?;
+//! let ip: std::net::Ipv4Addr = item.parse()?;
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! After extracting all expected values, you can optionally assert it's now empty catching
+//! unknown fields.
+//! ```
+//! # fn main() -> Result<(), toml_spanner::Error> {
+//! # let arena = toml_spanner::Arena::new();
+//! # let mut table = toml_spanner::parse("", &arena)?;
+//! table.expect_empty()?;
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! <details>
+//! <summary>Toggle More Extensive Example</summary>
 //!
 //! ```
 //! use toml_spanner::{Arena, Deserialize, Error, Item};
@@ -66,6 +135,8 @@
 //! assert!(dev_mode);
 //! # Ok::<(), Error>(())
 //! ```
+//!
+//! </details>
 
 mod arena;
 mod array;
@@ -83,7 +154,7 @@ pub use error::{Error, ErrorKind};
 pub use parser::parse;
 pub use span::{Span, Spanned};
 pub use table::Table;
-pub use time::{Date, DateTime, Time, TimeOffset, MAX_FORMAT_LEN};
+pub use time::{Date, DateTime, MAX_FORMAT_LEN, Time, TimeOffset};
 pub use value::{Item, Key, Kind, MaybeItem, Value, ValueMut};
 
 #[cfg(feature = "serde")]

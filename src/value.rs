@@ -390,7 +390,7 @@ pub enum Value<'a, 'de> {
     /// A table value.
     Table(&'a Table<'de>),
     /// A datetime value.
-    Datetime(&'a DateTime),
+    DateTime(&'a DateTime),
 }
 
 /// Mutable view into an [`Item`] for pattern matching.
@@ -410,7 +410,7 @@ pub enum ValueMut<'a, 'de> {
     /// A table value.
     Table(&'a mut Table<'de>),
     /// A datetime value (read-only; datetime fields are not mutable).
-    Datetime(&'a DateTime),
+    DateTime(&'a DateTime),
 }
 
 impl<'de> Item<'de> {
@@ -427,7 +427,7 @@ impl<'de> Item<'de> {
                 Kind::Boolean => Value::Boolean(&self.payload.boolean),
                 Kind::Array => Value::Array(&self.payload.array),
                 Kind::Table => Value::Table(self.as_table_unchecked()),
-                Kind::DateTime => Value::Datetime(&self.payload.moment),
+                Kind::DateTime => Value::DateTime(&self.payload.moment),
             }
         }
     }
@@ -445,7 +445,7 @@ impl<'de> Item<'de> {
                 Kind::Boolean => ValueMut::Boolean(&mut self.payload.boolean),
                 Kind::Array => ValueMut::Array(&mut self.payload.array),
                 Kind::Table => ValueMut::Table(self.as_table_mut_unchecked()),
-                Kind::DateTime => ValueMut::Datetime(&mut self.payload.moment),
+                Kind::DateTime => ValueMut::DateTime(&mut self.payload.moment),
             }
         }
     }
@@ -633,12 +633,12 @@ impl<'de> Item<'de> {
     ///
     /// Returns an error if the value is not a string or parsing fails.
     #[inline]
-    pub fn parse<T, E>(&mut self) -> Result<T, Error>
+    pub fn parse<T, E>(&self) -> Result<T, Error>
     where
         T: std::str::FromStr<Err = E>,
         E: std::fmt::Display,
     {
-        let s = self.take_string(None)?;
+        let s = self.expect_string(None)?;
         match s.parse() {
             Ok(v) => Ok(v),
             Err(err) => Err(Error {
@@ -650,8 +650,7 @@ impl<'de> Item<'de> {
 
     /// Takes the value as a string, returning an error if it is not a string.
     #[inline]
-    pub fn take_string(&mut self, msg: Option<&'static str>) -> Result<&'de str, Error> {
-        let span = self.span();
+    pub fn expect_string(&self, msg: Option<&'static str>) -> Result<&'de str, Error> {
         match self.value() {
             Value::String(s) => Ok(*s),
             _ => Err(Error {
@@ -659,7 +658,7 @@ impl<'de> Item<'de> {
                     expected: msg.unwrap_or("a string"),
                     found: self.type_str(),
                 },
-                span,
+                span: self.span(),
             }),
         }
     }
@@ -674,7 +673,7 @@ impl fmt::Debug for Item<'_> {
             Value::Boolean(b) => b.fmt(f),
             Value::Array(a) => a.fmt(f),
             Value::Table(t) => t.fmt(f),
-            Value::Datetime(m) => {
+            Value::DateTime(m) => {
                 let mut buf = std::mem::MaybeUninit::uninit();
                 f.write_str(m.format(&mut buf))
             }
@@ -709,7 +708,7 @@ impl serde::Serialize for Item<'_> {
                 }
                 map.end()
             }
-            Value::Datetime(m) => {
+            Value::DateTime(m) => {
                 let mut buf = std::mem::MaybeUninit::uninit();
                 ser.serialize_str(m.format(&mut buf))
             }

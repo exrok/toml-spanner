@@ -16,9 +16,9 @@ use crate::{
     time::DateTime,
     value::{self, Item, Key},
 };
-use std::char;
 use std::hash::{Hash, Hasher};
 use std::ptr::NonNull;
+use std::{char, task::Context};
 
 const MAX_RECURSION_DEPTH: i16 = 256;
 // When a method returns Err(ParseError), the full error details have already
@@ -61,7 +61,7 @@ static HEX: [i8; 256] = build_hex_table();
 /// or the arena; both are stable for the lifetime of the parse.
 /// `first_key_span` is the `span.start()` of the **first** key ever inserted
 /// into the table and serves as a cheap, collision-free table discriminator.
-struct KeyRef<'de> {
+pub(crate) struct KeyRef<'de> {
     key_ptr: NonNull<u8>,
     len: u32,
     first_key_span: u32,
