@@ -1,4 +1,23 @@
 
+
+[service.fuzz]
+cmd = [
+    "cargo",
+    "+nightly",
+    "fuzz",
+    "run",
+    "--debug-assertions", # this is default but lets be explicit
+    "-j",
+    { var = "jobs" },
+    { var = "$profile" },
+]
+# Make fuzz tests run slightly faster
+env.RUSTFLAGS = "-C target-cpu=native"
+profiles = ["datetime", "parse_compare_toml", "parse_value"]
+var.jobs.default = "1"
+var.jobs.description = "Number of job processes to spawn during fuzzing."
+var.sanitizer.default = "address"
+
 [action.build-docs]
 cmd = ["cargo", "doc"]
 

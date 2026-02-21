@@ -107,6 +107,28 @@ pub struct Time {
     pub nanosecond: u32,
 }
 
+impl std::fmt::Debug for Time {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Time")
+            .field("hour", &self.hour)
+            .field("minute", &self.minute)
+            .field("second", &self.second)
+            .field("nanosecond", &self.nanosecond)
+            .finish()
+    }
+}
+
+impl PartialEq for Time {
+    fn eq(&self, other: &Self) -> bool {
+        self.hour == other.hour
+            && self.minute == other.minute
+            && self.second == other.second
+            && self.nanosecond == other.nanosecond
+    }
+}
+
+impl Eq for Time {}
+
 impl Time {
     /// Returns the number of fractional-second digits present in the source.
     ///
@@ -661,7 +683,7 @@ impl DateTime {
             }
 
             if self.offset_minutes != i16::MIN {
-                if self.offset_minutes == 0 || self.offset_minutes == i16::MAX {
+                if self.offset_minutes == i16::MAX {
                     write_byte(buf, &mut pos, b'Z');
                 } else {
                     let (sign, abs) = if self.offset_minutes < 0 {
