@@ -302,13 +302,6 @@ const HAS_TIME: u8 = 1 << 1;
 const HAS_SECONDS: u8 = 1 << 2;
 const NANO_SHIFT: u8 = 4;
 
-/// Maximum number of bytes produced by [`DateTime::format`].
-///
-/// Use this to size the [`MaybeUninit`] buffer passed to [`DateTime::format`].
-///
-/// [`MaybeUninit`]: std::mem::MaybeUninit
-pub const MAX_FORMAT_LEN: usize = 48;
-
 fn is_leap_year(year: u16) -> bool {
     (((year as u64 * 1073750999) as u32) & 3221352463) <= 126976
 }
@@ -320,51 +313,6 @@ fn days_in_month(year: u16, month: u8) -> u8 {
     } else {
         DAYS[month as usize]
     }
-}
-
-#[inline(always)]
-unsafe fn write_byte(ptr: *mut u8, pos: &mut usize, b: u8) {
-    unsafe {
-        *ptr.add(*pos) = b;
-    }
-    *pos += 1;
-}
-
-#[inline(always)]
-unsafe fn write_2(ptr: *mut u8, pos: &mut usize, val: u8) {
-    unsafe {
-        *ptr.add(*pos) = b'0' + val / 10;
-        *ptr.add(*pos + 1) = b'0' + val % 10;
-    }
-    *pos += 2;
-}
-
-#[inline(always)]
-unsafe fn write_4(ptr: *mut u8, pos: &mut usize, val: u16) {
-    unsafe {
-        *ptr.add(*pos) = b'0' + (val / 1000) as u8;
-        *ptr.add(*pos + 1) = b'0' + ((val / 100) % 10) as u8;
-        *ptr.add(*pos + 2) = b'0' + ((val / 10) % 10) as u8;
-        *ptr.add(*pos + 3) = b'0' + (val % 10) as u8;
-    }
-    *pos += 4;
-}
-
-#[inline(always)]
-unsafe fn write_frac(ptr: *mut u8, pos: &mut usize, nanos: u32, nd: u8) {
-    let mut val = nanos;
-    let mut i: usize = 8;
-    loop {
-        unsafe {
-            *ptr.add(*pos + i) = b'0' + (val % 10) as u8;
-        }
-        val /= 10;
-        if i == 0 {
-            break;
-        }
-        i -= 1;
-    }
-    *pos += nd as usize;
 }
 
 /// Error returned when parsing a [`DateTime`] from a string via [`FromStr`].
@@ -395,6 +343,12 @@ impl FromStr for DateTime {
 }
 
 impl DateTime {
+    /// Maximum number of bytes produced by [`DateTime::format`].
+    ///
+    /// Use this to size the [`MaybeUninit`] buffer passed to [`DateTime::format`].
+    ///
+    /// [`MaybeUninit`]: std::mem::MaybeUninit
+    pub const MAX_FORMAT_LEN: usize = 40;
     /// Returns the time component, or [`None`] for a local-date value.
     pub fn time(&self) -> Option<Time> {
         if self.flags & HAS_TIME != 0 {
@@ -603,69 +557,128 @@ impl DateTime {
     /// Formats this datetime into the provided buffer and returns the result as a `&str`.
     ///
     /// The output follows RFC 3339 formatting and matches the TOML serialization
-    /// of the value. The caller must supply an uninitialized buffer of
-    /// [`MAX_FORMAT_LEN`] bytes; the returned `&str` borrows from that buffer.
+    /// of the value. The caller must supply an uninitializebuffer of [`MAX_FORMAT_LEN`] bytes;
+    /// the returned `&str` borrows from that buffer, starting from the beginning.
     ///
     /// # Examples
     ///
     /// ```
     /// use std::mem::MaybeUninit;
-    /// use toml_spanner::{DateTime, MAX_FORMAT_LEN};
+    /// use toml_spanner::DateTime;
     ///
     /// let dt: DateTime = "2026-01-04T12:30:45Z".parse().unwrap();
     /// let mut buf = MaybeUninit::uninit();
     /// assert_eq!(dt.format(&mut buf), "2026-01-04T12:30:45Z");
+    /// assert_eq!(size_of_val(&buf), DateTime::MAX_FORMAT_LEN);
     /// ```
-    pub fn format<'a>(&self, buf: &'a mut MaybeUninit<[u8; MAX_FORMAT_LEN]>) -> &'a str {
-        let ptr = buf.as_mut_ptr() as *mut u8;
+    pub fn format<'a>(&self, buf: &'a mut MaybeUninit<[u8; DateTime::MAX_FORMAT_LEN]>) -> &'a str {
+        #[inline(always)]
+        fn write_byte(
+            buf: &mut [MaybeUninit<u8>; DateTime::MAX_FORMAT_LEN],
+            pos: &mut usize,
+            b: u8,
+        ) {
+            buf[*pos].write(b);
+            *pos += 1;
+        }
+
+        #[inline(always)]
+        fn write_2(
+            buf: &mut [MaybeUninit<u8>; DateTime::MAX_FORMAT_LEN],
+            pos: &mut usize,
+            val: u8,
+        ) {
+            buf[*pos].write(b'0' + val / 10);
+            buf[*pos + 1].write(b'0' + val % 10);
+            *pos += 2;
+        }
+
+        #[inline(always)]
+        fn write_4(
+            buf: &mut [MaybeUninit<u8>; DateTime::MAX_FORMAT_LEN],
+            pos: &mut usize,
+            val: u16,
+        ) {
+            buf[*pos].write(b'0' + (val / 1000) as u8);
+            buf[*pos + 1].write(b'0' + ((val / 100) % 10) as u8);
+            buf[*pos + 2].write(b'0' + ((val / 10) % 10) as u8);
+            buf[*pos + 3].write(b'0' + (val % 10) as u8);
+            *pos += 4;
+        }
+
+        #[inline(always)]
+        fn write_frac(
+            buf: &mut [MaybeUninit<u8>; DateTime::MAX_FORMAT_LEN],
+            pos: &mut usize,
+            nanos: u32,
+            nd: u8,
+        ) {
+            let mut val = nanos;
+            let mut i: usize = 8;
+            loop {
+                buf[*pos + i].write(b'0' + (val % 10) as u8);
+                val /= 10;
+                if i == 0 {
+                    break;
+                }
+                i -= 1;
+            }
+            *pos += nd as usize;
+        }
+
+        // SAFETY: MaybeUninit<u8> has identical layout to u8
+        let buf: &mut [MaybeUninit<u8>; Self::MAX_FORMAT_LEN] =
+            unsafe { &mut *(buf.as_mut_ptr() as *mut [MaybeUninit<u8>; Self::MAX_FORMAT_LEN]) };
         let mut pos: usize = 0;
 
-        unsafe {
-            if self.flags & HAS_DATE != 0 {
-                write_4(ptr, &mut pos, self.date.year);
-                write_byte(ptr, &mut pos, b'-');
-                write_2(ptr, &mut pos, self.date.month);
-                write_byte(ptr, &mut pos, b'-');
-                write_2(ptr, &mut pos, self.date.day);
-
-                if self.flags & HAS_TIME != 0 {
-                    write_byte(ptr, &mut pos, b'T');
-                }
-            }
+        if self.flags & HAS_DATE != 0 {
+            write_4(buf, &mut pos, self.date.year);
+            write_byte(buf, &mut pos, b'-');
+            write_2(buf, &mut pos, self.date.month);
+            write_byte(buf, &mut pos, b'-');
+            write_2(buf, &mut pos, self.date.day);
 
             if self.flags & HAS_TIME != 0 {
-                write_2(ptr, &mut pos, self.hour);
-                write_byte(ptr, &mut pos, b':');
-                write_2(ptr, &mut pos, self.minute);
-                write_byte(ptr, &mut pos, b':');
-                write_2(ptr, &mut pos, self.seconds);
+                write_byte(buf, &mut pos, b'T');
+            }
+        }
 
-                if self.flags & HAS_SECONDS != 0 {
-                    let nd = ((self.flags >> NANO_SHIFT) & 0xF) as u8;
-                    if nd > 0 {
-                        write_byte(ptr, &mut pos, b'.');
-                        write_frac(ptr, &mut pos, self.nanos, nd);
-                    }
-                }
+        if self.flags & HAS_TIME != 0 {
+            write_2(buf, &mut pos, self.hour);
+            write_byte(buf, &mut pos, b':');
+            write_2(buf, &mut pos, self.minute);
+            write_byte(buf, &mut pos, b':');
+            write_2(buf, &mut pos, self.seconds);
 
-                if self.offset_minutes != i16::MIN {
-                    if self.offset_minutes == 0 || self.offset_minutes == i16::MAX {
-                        write_byte(ptr, &mut pos, b'Z');
-                    } else {
-                        let (sign, abs) = if self.offset_minutes < 0 {
-                            (b'-', (-self.offset_minutes) as u16)
-                        } else {
-                            (b'+', self.offset_minutes as u16)
-                        };
-                        write_byte(ptr, &mut pos, sign);
-                        write_2(ptr, &mut pos, (abs / 60) as u8);
-                        write_byte(ptr, &mut pos, b':');
-                        write_2(ptr, &mut pos, (abs % 60) as u8);
-                    }
+            if self.flags & HAS_SECONDS != 0 {
+                let nd = ((self.flags >> NANO_SHIFT) & 0xF) as u8;
+                if nd > 0 {
+                    write_byte(buf, &mut pos, b'.');
+                    write_frac(buf, &mut pos, self.nanos, nd);
                 }
             }
 
-            std::str::from_utf8_unchecked(std::slice::from_raw_parts(ptr, pos))
+            if self.offset_minutes != i16::MIN {
+                if self.offset_minutes == 0 || self.offset_minutes == i16::MAX {
+                    write_byte(buf, &mut pos, b'Z');
+                } else {
+                    let (sign, abs) = if self.offset_minutes < 0 {
+                        (b'-', (-self.offset_minutes) as u16)
+                    } else {
+                        (b'+', self.offset_minutes as u16)
+                    };
+                    write_byte(buf, &mut pos, sign);
+                    write_2(buf, &mut pos, (abs / 60) as u8);
+                    write_byte(buf, &mut pos, b':');
+                    write_2(buf, &mut pos, (abs % 60) as u8);
+                }
+            }
+        }
+
+        // SAFETY: buf[..pos] has been fully initialized by the write calls above,
+        // and all written bytes are valid ASCII digits/punctuation.
+        unsafe {
+            std::str::from_utf8_unchecked(std::slice::from_raw_parts(buf.as_ptr().cast(), pos))
         }
     }
 
