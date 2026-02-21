@@ -4,6 +4,7 @@ rustflags = [
     # do not change or add/remove here, but one can add exceptions after this section
     # for more info see: <https://github.com/EmbarkStudios/rust-ecosystem/issues/59>
     "-Wclippy::await_holding_lock",
+    "-Aclippy::question_mark",
     "-Wclippy::char_lit_as_u8",
     "-Wclippy::checked_conversions",
     "-Wclippy::dbg_macro",
@@ -69,6 +70,7 @@ rustflags = [
     "-Wfuture_incompatible",
     "-Wnonstandard_style",
     "-Wrust_2018_idioms",
+    "-Aclippy::manual_range_contains",
     # END - Embark standard lints v6 for Rust 1.55+
     "-Dunexpected_cfgs",
 ]

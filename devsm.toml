@@ -3,9 +3,53 @@
 cmd = ["cargo", "doc"]
 
 [action.benchmark]
+cmd = [
+    "cargo",
+    "+nightly",
+    "run",
+    "--release",
+    { if.profile = "compile-time", then = [
+        "--",
+        "compile",
+    ] },
+]
 pwd = "./benchmark"
-cmd = ["cargo", "+nightly", "run", "--release"]
+profiles = ["runtime", "compile-time"]
 
+[test.clippy]
+cmd = ["cargo", "clippy"]
+tag = ["lint"]
+
+[test.cargo-test]
+cmd = ["cargo", "test"]
+
+[test.miri-stress-tests]
+pwd = "stress-tests"
+cmd = ["cargo", "+nightly", "miri", "run", "--", "3"]
+tag = ["slow"]
+
+[test.stress-tests]
+pwd = "stress-tests"
+cmd = ["cargo", "run", "--", "5000"]
+tag = ["slow"]
+
+[test.miri-tests]
+info = "Requires `cargo-nextest` and miri."
+cmd = ["cargo", "+nightly", "miri", "nextest", "run"]
+tag = ["slow"]
+
+[test.miri-tests-32bit]
+info = "Requires `cargo-nextest` and miri."
+cmd = [
+    "cargo",
+    "+nightly",
+    "miri",
+    "test",
+    "--lib",
+    "--target",
+    "i686-unknown-linux-gnu",
+]
+tag = ["slow"]
 
 [test.offical-toml-test-suite]
 info = """

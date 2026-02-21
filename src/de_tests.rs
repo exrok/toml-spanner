@@ -199,9 +199,13 @@ fn into_remaining() {
     // Multi-bucket, non-aligned.
     check(65, 0);
     check(65, 3);
-    check(65, 1);
-    // Two full buckets + partial third.
-    check(150, 0);
-    check(150, 5);
-    check(150, 1);
+
+    // too slow under mirir.
+    if !cfg!(miri) {
+        check(65, 1);
+        // Two full buckets + partial third.
+        check(150, 0);
+        check(150, 5);
+        check(150, 1);
+    }
 }

@@ -1,4 +1,4 @@
-use std::{i16, mem::MaybeUninit, str::FromStr};
+use std::{mem::MaybeUninit, str::FromStr};
 
 #[cfg(test)]
 #[path = "./time_tests.rs"]
@@ -130,7 +130,7 @@ impl Time {
 /// leap second rules are not enforced, you should generally being converting
 /// these time values, to a more complete time library like jiff before use.
 ///
-/// The DateTime type is essentially more compact version of:
+/// The `DateTime` type is essentially more compact version of:
 /// ```
 /// use toml_spanner::{Date, Time, TimeOffset};
 /// struct DateTime {
@@ -156,8 +156,8 @@ impl Time {
 /// }
 /// ```
 ///
-/// # Constructing a DateTime
-/// Generally, you should be parsing DateTime values from a TOML document, but for testing purposes,
+/// # Constructing a `DateTime`
+/// Generally, you should be parsing `DateTime` values from a TOML document, but for testing purposes,
 /// `FromStr` is also implemented allowing for `"2026-01-04".parse::<DateTime>()`.
 ///
 /// ```
@@ -439,11 +439,10 @@ impl DateTime {
                         }
                         value.date.day = d;
                         value.flags |= HAS_DATE;
-                        if byte == b'T' || byte == b't' {
-                            state = State::Hour;
-                            break 'next;
-                        } else if byte == b' '
-                            && input.get(i + 1).is_some_and(|b| b.is_ascii_digit())
+                        if byte == b'T'
+                            || byte == b't'
+                            || (byte == b' '
+                                && input.get(i + 1).is_some_and(|b| b.is_ascii_digit()))
                         {
                             state = State::Hour;
                             break 'next;
@@ -466,7 +465,7 @@ impl DateTime {
                         if len != 2 || m > 59 {
                             break 'outer;
                         }
-                        value.minute = m as u8;
+                        value.minute = m;
                         value.flags |= HAS_TIME;
                         if byte == b':' {
                             state = State::Second;
@@ -502,7 +501,7 @@ impl DateTime {
                             s += 1;
                         }
                         value.nanos = nanos;
-                        value.flags |= (nd as u8) << NANO_SHIFT;
+                        value.flags |= nd << NANO_SHIFT;
                         // fallthrough to check outer
                     }
                     State::OffHour => {
@@ -627,8 +626,11 @@ impl DateTime {
         }
 
         // SAFETY: MaybeUninit<u8> has identical layout to u8
-        let buf: &mut [MaybeUninit<u8>; Self::MAX_FORMAT_LEN] =
-            unsafe { &mut *(buf.as_mut_ptr() as *mut [MaybeUninit<u8>; Self::MAX_FORMAT_LEN]) };
+        let buf: &mut [MaybeUninit<u8>; Self::MAX_FORMAT_LEN] = unsafe {
+            &mut *buf
+                .as_mut_ptr()
+                .cast::<[MaybeUninit<u8>; Self::MAX_FORMAT_LEN]>()
+        };
         let mut pos: usize = 0;
 
         if self.flags & HAS_DATE != 0 {
@@ -651,7 +653,7 @@ impl DateTime {
             write_2(buf, &mut pos, self.seconds);
 
             if self.flags & HAS_SECONDS != 0 {
-                let nd = ((self.flags >> NANO_SHIFT) & 0xF) as u8;
+                let nd = (self.flags >> NANO_SHIFT) & 0xF;
                 if nd > 0 {
                     write_byte(buf, &mut pos, b'.');
                     write_frac(buf, &mut pos, self.nanos, nd);

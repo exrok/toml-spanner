@@ -26,8 +26,9 @@ pub struct TableHelper<'ctx, 'table, 'de> {
 struct FixedBitset([u64]);
 
 impl FixedBitset {
-    pub fn new<'de>(capacity: usize, arena: &'de Arena) -> &'de mut FixedBitset {
-        let bitset_len = (capacity + 63) / 64;
+    #[allow(clippy::mut_from_ref)]
+    pub fn new(capacity: usize, arena: &Arena) -> &mut FixedBitset {
+        let bitset_len = capacity.div_ceil(64);
         let bitset = arena.alloc(bitset_len).cast::<u64>();
         for offset in 0..bitset_len {
             unsafe {
@@ -160,6 +161,7 @@ impl<'ctx, 't, 'de> TableHelper<'ctx, 't, 'de> {
             return None;
         };
 
+        #[allow(clippy::manual_ok_err)]
         match T::deserialize(self.ctx, val) {
             Ok(value) => Some(value),
             // Note: The parent will already have recorded the error

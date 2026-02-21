@@ -22,7 +22,7 @@ debug-assertions = true
 [workspace]
 resolver = "3"
 members = ["snapshot-tests"]
-exclude = ["fuzz", "benchmark", "toml-test-harness"]
+exclude = ["fuzz", "benchmark", "toml-test-harness", "stress-tests"]
 
 [features]
 serde = ["dep:serde"]

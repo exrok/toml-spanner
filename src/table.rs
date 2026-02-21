@@ -372,7 +372,7 @@ impl<'de> Table<'de> {
         unsafe {
             // SAFETY: Table and Item have the same layout and alignment, so this
             // is safe as long as we don't mutate through the Item reference.
-            &*(self as *const Table<'de> as *const Item<'de>)
+            &*(self as *const Table<'de>).cast::<Item<'de>>()
         }
     }
 

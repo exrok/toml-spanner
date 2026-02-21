@@ -41,3 +41,10 @@ path = "fuzz_targets/parse_compare_toml.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "datetime"
+path = "fuzz_targets/datetime.rs"
+test = false
+doc = false
+bench = false

@@ -456,7 +456,7 @@ impl<'de> Item<'de> {
                 Kind::Boolean => ValueMut::Boolean(&mut self.payload.boolean),
                 Kind::Array => ValueMut::Array(&mut self.payload.array),
                 Kind::Table => ValueMut::Table(self.as_table_mut_unchecked()),
-                Kind::DateTime => ValueMut::DateTime(&mut self.payload.moment),
+                Kind::DateTime => ValueMut::DateTime(&self.payload.moment),
             }
         }
     }

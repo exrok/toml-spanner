@@ -246,7 +246,7 @@ impl<'de> Parser<'de> {
             self.cursor += 1;
             Ok(())
         } else {
-            return Err(self.expected_error(b));
+            Err(self.expected_error(b))
         }
     }
 
