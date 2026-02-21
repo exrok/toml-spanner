@@ -1,0 +1,11 @@
+---
+source: snapshot-tests/tests/parser.rs
+expression: error
+---
+error[duplicate-key]: 
+  ┌─ key_then_dotted:3:10
+  │
+2 │         a = 1
+  │         - first key instance
+3 │         [a.b]
+  │          ^ duplicate key

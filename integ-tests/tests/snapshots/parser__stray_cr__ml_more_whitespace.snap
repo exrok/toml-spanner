@@ -1,11 +1,0 @@
----
-source: integ-tests/tests/parser.rs
-expression: error
----
-error[invalid-char-in-string]: 
-  ┌─ ml_more_whitespace:1:6
-  │
-1 │ """    """
-  │       invalid character '\r' in string
-
-

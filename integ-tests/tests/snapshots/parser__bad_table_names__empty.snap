@@ -1,9 +1,0 @@
----
-source: integ-tests/tests/parser.rs
-expression: error
----
-error[wanted]: 
-  ┌─ empty:1:2
-  │
-1 │ []
-  │  ^ expected a table key

@@ -1,0 +1,60 @@
+---
+source: snapshot-tests/tests/parser.rs
+expression: spans
+---
+note[string]: root_fruit_apple_color
+  ┌─ table_9_valid:2:16
+  │
+2 │ apple.color = "red"
+  │                ^^^
+
+note[bool]: root_fruit_apple_taste_sweet
+  ┌─ table_9_valid:3:21
+  │
+3 │ apple.taste.sweet = true
+  │                     ^^^^
+
+note[table]: root_fruit_apple_taste
+  ┌─ table_9_valid:3:7
+  │
+3 │ apple.taste.sweet = true
+  │       ^^^^^
+
+note[bool]: root_fruit_apple_texture_smooth
+  ┌─ table_9_valid:9:10
+  │
+9 │ smooth = true
+  │          ^^^^
+
+note[table]: root_fruit_apple_texture
+  ┌─ table_9_valid:8:1
+  │  
+8 │ ╭ [fruit.apple.texture]  # you can add sub-tables
+9 │ │ smooth = true
+  │ ╰─────────────^
+
+note[table]: root_fruit_apple
+  ┌─ table_9_valid:2:1
+  │
+2 │ apple.color = "red"
+  │ ^^^^^
+
+note[table]: root_fruit
+  ┌─ table_9_valid:1:1
+  │  
+1 │ ╭ [fruit]
+2 │ │ apple.color = "red"
+3 │ │ apple.taste.sweet = true
+  │ ╰────────────────────────^
+
+note[table]: root
+   ┌─ table_9_valid:1:1
+   │  
+ 1 │ ╭ [fruit]
+ 2 │ │ apple.color = "red"
+ 3 │ │ apple.taste.sweet = true
+ 4 │ │ 
+   · │
+ 9 │ │ smooth = true
+10 │ │ 
+   │ ╰^

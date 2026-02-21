@@ -1,9 +1,0 @@
----
-source: integ-tests/tests/parser.rs
-expression: error
----
-error[invalid-number]: 
-  ┌─ newline_after_equal:1:5
-  │
-1 │ key=
-  │     ^ unable to parse number

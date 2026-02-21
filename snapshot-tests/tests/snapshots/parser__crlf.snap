@@ -1,0 +1,20 @@
+---
+source: snapshot-tests/tests/parser.rs
+expression: valid_toml
+---
+{
+  "project": {
+    "name": "splay",
+    "version": "0.1.0",
+    "authors": [
+      "alex@crichton.co"
+    ]
+  },
+  "lib": [
+    {
+      "path": "lib.rs",
+      "name": "splay",
+      "description": "A Rust implementation of a TAR file reader and writer. This library does not\r\ncurrently handle compression, but it is abstract over all I/O readers and\r\nwriters. Additionally, great lengths are taken to ensure that the entire\r\ncontents are never required to be entirely resident in memory all at once.\r\n"
+    }
+  ]
+}

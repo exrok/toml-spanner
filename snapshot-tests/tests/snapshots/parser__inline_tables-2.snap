@@ -1,0 +1,141 @@
+---
+source: snapshot-tests/tests/parser.rs
+expression: spans
+---
+note[table]: root_a
+  ┌─ inline_tables:1:5
+  │
+1 │ a = {}
+  │     ^^
+
+note[integer]: root_b_b
+  ┌─ inline_tables:2:8
+  │
+2 │ b = {b=1}
+  │        ^
+
+note[table]: root_b
+  ┌─ inline_tables:2:5
+  │
+2 │ b = {b=1}
+  │     ^^^^^
+
+note[integer]: root_c_b
+  ┌─ inline_tables:3:17
+  │
+3 │ c = {   b   =   1    }
+  │                 ^
+
+note[table]: root_c
+  ┌─ inline_tables:3:5
+  │
+3 │ c = {   b   =   1    }
+  │     ^^^^^^^^^^^^^^^^^^
+
+note[integer]: root_d_a
+  ┌─ inline_tables:4:8
+  │
+4 │ d = {a=1,b=2}
+  │        ^
+
+note[integer]: root_d_b
+  ┌─ inline_tables:4:12
+  │
+4 │ d = {a=1,b=2}
+  │            ^
+
+note[table]: root_d
+  ┌─ inline_tables:4:5
+  │
+4 │ d = {a=1,b=2}
+  │     ^^^^^^^^^
+
+note[integer]: root_e_a
+  ┌─ inline_tables:5:8
+  │
+5 │ e = {a=1,b=2,c={}}
+  │        ^
+
+note[integer]: root_e_b
+  ┌─ inline_tables:5:12
+  │
+5 │ e = {a=1,b=2,c={}}
+  │            ^
+
+note[table]: root_e_c
+  ┌─ inline_tables:5:16
+  │
+5 │ e = {a=1,b=2,c={}}
+  │                ^^
+
+note[table]: root_e
+  ┌─ inline_tables:5:5
+  │
+5 │ e = {a=1,b=2,c={}}
+  │     ^^^^^^^^^^^^^^
+
+note[array]: root_f_a
+  ┌─ inline_tables:6:8
+  │  
+6 │   f = {a=[
+  │ ╭────────^
+7 │ │ ]}
+  │ ╰─^
+
+note[table]: root_f
+  ┌─ inline_tables:6:5
+  │  
+6 │   f = {a=[
+  │ ╭─────^
+7 │ │ ]}
+  │ ╰──^
+
+note[array]: root_g_a
+  ┌─ inline_tables:8:10
+  │  
+8 │   g = {"a"=[
+  │ ╭──────────^
+9 │ │ ]}
+  │ ╰─^
+
+note[table]: root_g
+  ┌─ inline_tables:8:5
+  │  
+8 │   g = {"a"=[
+  │ ╭─────^
+9 │ │ ]}
+  │ ╰──^
+
+note[table]: root_h_0
+   ┌─ inline_tables:11:5
+   │
+11 │     {},
+   │     ^^
+
+note[table]: root_h_1
+   ┌─ inline_tables:12:5
+   │
+12 │     {},
+   │     ^^
+
+note[array]: root_h
+   ┌─ inline_tables:10:5
+   │  
+10 │   h = [
+   │ ╭─────^
+11 │ │     {},
+12 │ │     {},
+13 │ │ ]
+   │ ╰─^
+
+note[table]: root
+   ┌─ inline_tables:1:1
+   │  
+ 1 │ ╭ a = {}
+ 2 │ │ b = {b=1}
+ 3 │ │ c = {   b   =   1    }
+ 4 │ │ d = {a=1,b=2}
+   · │
+12 │ │     {},
+13 │ │ ]
+   │ ╰─^

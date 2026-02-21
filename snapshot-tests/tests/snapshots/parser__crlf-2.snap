@@ -1,0 +1,96 @@
+---
+source: snapshot-tests/tests/parser.rs
+expression: spans
+---
+note[string]: root_project_name
+  ┌─ crlf:3:9
+  │
+3 │ name = "splay"
+  │         ^^^^^
+
+note[string]: root_project_version
+  ┌─ crlf:4:12
+  │
+4 │ version = "0.1.0"
+  │            ^^^^^
+
+note[string]: root_project_authors_0
+  ┌─ crlf:5:13
+  │
+5 │ authors = ["alex@crichton.co"]
+  │             ^^^^^^^^^^^^^^^^
+
+note[array]: root_project_authors
+  ┌─ crlf:5:11
+  │
+5 │ authors = ["alex@crichton.co"]
+  │           ^^^^^^^^^^^^^^^^^^^^
+
+note[table]: root_project
+  ┌─ crlf:1:1
+  │  
+1 │ ╭ [project]
+2 │ │ 
+3 │ │ name = "splay"
+4 │ │ version = "0.1.0"
+5 │ │ authors = ["alex@crichton.co"]
+  │ ╰──────────────────────────────^
+
+note[string]: root_lib_0_path
+  ┌─ crlf:9:9
+  │
+9 │ path = "lib.rs"
+  │         ^^^^^^
+
+note[string]: root_lib_0_name
+   ┌─ crlf:10:9
+   │
+10 │ name = "splay"
+   │         ^^^^^
+
+note[string]: root_lib_0_description
+   ┌─ crlf:11:18
+   │  
+11 │   description = """A Rust implementation of a TAR file reader and writer. This library does not
+   │ ╭──────────────────^
+12 │ │ currently handle compression, but it is abstract over all I/O readers and
+13 │ │ writers. Additionally, great lengths are taken to ensure that the entire
+14 │ │ contents are never required to be entirely resident in memory all at once.
+15 │ │ """
+   │ ╰^
+
+note[table]: root_lib_0
+   ┌─ crlf:7:1
+   │  
+ 7 │ ╭ [[lib]]
+ 8 │ │ 
+ 9 │ │ path = "lib.rs"
+10 │ │ name = "splay"
+   · │
+14 │ │ contents are never required to be entirely resident in memory all at once.
+15 │ │ """
+   │ ╰───^
+
+note[array]: root_lib
+   ┌─ crlf:7:1
+   │  
+ 7 │ ╭ [[lib]]
+ 8 │ │ 
+ 9 │ │ path = "lib.rs"
+10 │ │ name = "splay"
+   · │
+14 │ │ contents are never required to be entirely resident in memory all at once.
+15 │ │ """
+   │ ╰───^
+
+note[table]: root
+   ┌─ crlf:1:1
+   │  
+ 1 │ ╭ [project]
+ 2 │ │ 
+ 3 │ │ name = "splay"
+ 4 │ │ version = "0.1.0"
+   · │
+14 │ │ contents are never required to be entirely resident in memory all at once.
+15 │ │ """
+   │ ╰───^

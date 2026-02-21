@@ -1,0 +1,11 @@
+---
+source: snapshot-tests/tests/parser.rs
+expression: error
+---
+error[unexpected-eof]: unexpected end of file
+  ┌─ eof:1:6
+  │
+1 │ key =
+  │      ^
+
+

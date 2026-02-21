@@ -1,0 +1,9 @@
+---
+source: snapshot-tests/tests/parser.rs
+expression: error
+---
+error[invalid-number]: 
+  ┌─ plus_bin:1:5
+  │
+1 │ a = +0b0
+  │     ^^^^ unable to parse number

@@ -1,0 +1,9 @@
+---
+source: snapshot-tests/tests/de.rs
+expression: error
+---
+error[out-of-range]: number is out of range of 'u8'
+  ┌─ custom_error:1:8
+  │
+1 │ year = 40_000
+  │        ^^^^^^

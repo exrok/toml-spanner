@@ -1,0 +1,18 @@
+---
+source: snapshot-tests/tests/valid.rs
+expression: valid_toml
+---
+{
+  "workspace": {
+    "members": true,
+    "other": false,
+    "foo": {
+      "bar": 3
+    },
+    "bar": {
+      "inline": {
+        "foo": 3
+      }
+    }
+  }
+}

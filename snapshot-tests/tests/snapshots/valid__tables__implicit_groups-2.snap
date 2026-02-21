@@ -1,0 +1,35 @@
+---
+source: snapshot-tests/tests/valid.rs
+expression: spans
+---
+note[integer]: root_a_b_c_answer
+  ┌─ implicit_groups:2:10
+  │
+2 │ answer = 42
+  │          ^^
+
+note[table]: root_a_b_c
+  ┌─ implicit_groups:1:1
+  │
+1 │ ╭ [a.b.c]
+2 │ │ answer = 42
+  │ ╰───────────^
+
+note[table]: root_a_b
+  ┌─ implicit_groups:1:4
+  │
+1 │ [a.b.c]
+  │    ^
+
+note[table]: root_a
+  ┌─ implicit_groups:1:2
+  │
+1 │ [a.b.c]
+  │  ^
+
+note[table]: root
+  ┌─ implicit_groups:1:1
+  │
+1 │ ╭ [a.b.c]
+2 │ │ answer = 42
+  │ ╰───────────^

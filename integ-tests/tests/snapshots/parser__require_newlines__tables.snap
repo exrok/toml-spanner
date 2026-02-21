@@ -1,9 +1,0 @@
----
-source: integ-tests/tests/parser.rs
-expression: error
----
-error[wanted]: 
-  ┌─ tables:3:6
-  │
-3 │ 0="0"[[0000l0]]
-  │      ^ expected newline

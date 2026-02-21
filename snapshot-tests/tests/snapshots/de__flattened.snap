@@ -1,0 +1,51 @@
+---
+source: snapshot-tests/tests/de.rs
+expression: de
+---
+Flattened {
+    flattened: [
+        PackageSpecOrExtended {
+            spec: Package {
+                name: "simple",
+                version: None,
+            },
+            inner: None,
+        },
+        PackageSpecOrExtended {
+            spec: Package {
+                name: "single",
+                version: Some(
+                    "0.2.0",
+                ),
+            },
+            inner: None,
+        },
+        PackageSpecOrExtended {
+            spec: Package {
+                name: "split",
+                version: Some(
+                    ">=0.2",
+                ),
+            },
+            inner: None,
+        },
+        PackageSpecOrExtended {
+            spec: Package {
+                name: "split2",
+                version: None,
+            },
+            inner: None,
+        },
+        PackageSpecOrExtended {
+            spec: Package {
+                name: "single2",
+                version: None,
+            },
+            inner: Some(
+                Reason {
+                    reason: "additional data",
+                },
+            ),
+        },
+    ],
+}

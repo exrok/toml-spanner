@@ -1,0 +1,9 @@
+---
+source: snapshot-tests/tests/parser.rs
+expression: error
+---
+error[invalid-number]: 
+  ┌─ neg_two_zeros:1:5
+  │
+1 │ a = -00
+  │     ^^^ unable to parse number

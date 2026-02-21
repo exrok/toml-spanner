@@ -1,0 +1,16 @@
+---
+source: snapshot-tests/tests/parser.rs
+expression: valid_toml
+---
+{
+  "fruit": {
+    "apple": {
+      "color": "red",
+      "seeds": [
+        {
+          "size": 2
+        }
+      ]
+    }
+  }
+}

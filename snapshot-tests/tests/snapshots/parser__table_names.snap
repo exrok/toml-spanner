@@ -1,0 +1,14 @@
+---
+source: snapshot-tests/tests/parser.rs
+expression: valid_toml
+---
+{
+  "a": {
+    "b": {}
+  },
+  "f f": {},
+  "f.f": {},
+  "\"": {},
+  "a.a": {},
+  "\"\"": {}
+}

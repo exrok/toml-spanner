@@ -1,0 +1,9 @@
+---
+source: snapshot-tests/tests/parser.rs
+expression: error
+---
+error[invalid-number]: 
+  ┌─ trailing:1:7
+  │
+1 │ foo = 0_
+  │       ^^ unable to parse number

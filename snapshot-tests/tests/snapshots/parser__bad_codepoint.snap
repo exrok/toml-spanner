@@ -1,0 +1,9 @@
+---
+source: snapshot-tests/tests/parser.rs
+expression: error
+---
+error[invalid-escape-value]: 
+  ┌─ bad_codepoint:1:9
+  │
+1 │ foo = "\uD800"
+  │         ^^^^ invalid escape value

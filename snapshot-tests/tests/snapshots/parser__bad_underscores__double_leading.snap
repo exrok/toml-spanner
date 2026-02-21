@@ -1,0 +1,9 @@
+---
+source: snapshot-tests/tests/parser.rs
+expression: error
+---
+error[invalid-number]: 
+  ┌─ double_leading:1:7
+  │
+1 │ foo = __0
+  │       ^^^ unable to parse number

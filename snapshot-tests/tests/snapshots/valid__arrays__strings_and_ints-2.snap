@@ -1,0 +1,29 @@
+---
+source: snapshot-tests/tests/valid.rs
+expression: spans
+---
+note[string]: root_strings-and-ints_0
+  ┌─ strings_and_ints:1:22
+  │
+1 │ strings-and-ints = ["hi", 42]
+  │                      ^^
+
+note[integer]: root_strings-and-ints_1
+  ┌─ strings_and_ints:1:27
+  │
+1 │ strings-and-ints = ["hi", 42]
+  │                           ^^
+
+note[array]: root_strings-and-ints
+  ┌─ strings_and_ints:1:20
+  │
+1 │ strings-and-ints = ["hi", 42]
+  │                    ^^^^^^^^^^
+
+note[table]: root
+  ┌─ strings_and_ints:1:1
+  │
+1 │ strings-and-ints = ["hi", 42]
+  │ ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+

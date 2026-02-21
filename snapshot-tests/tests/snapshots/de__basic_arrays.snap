@@ -1,0 +1,32 @@
+---
+source: snapshot-tests/tests/de.rs
+expression: de
+---
+Array {
+    packages: [
+        Package {
+            name: "first",
+            version: None,
+        },
+        Package {
+            name: "second",
+            version: None,
+        },
+        Package {
+            name: "third",
+            version: Some(
+                "3.0.0",
+            ),
+        },
+        Package {
+            name: "fourth",
+            version: Some(
+                "0.1",
+            ),
+        },
+        Package {
+            name: "last",
+            version: None,
+        },
+    ],
+}

@@ -160,7 +160,7 @@ tests.
 
 ```bash
 cargo test --workspace                          # all tests
-cargo test -p integ-tests                       # integration tests only
+cargo test -p snapshot-tests                       # integration tests only
 cargo +nightly miri nextest run                 # undefined behavior checks
 cargo +nightly fuzz run parse_compare_toml      # fuzz against the toml crate
 cargo +nightly fuzz run parse_value             # fuzz the parser directly
@@ -170,7 +170,7 @@ cargo +nightly miri nextes -p toml-spanner --target i686-unknown-linux-gnu
 ```
 
 Integration tests use [insta](https://insta.rs/) for snapshot assertions.
-Run `cargo insta test -p integ-tests` and `cargo insta review` to review
+Run `cargo insta test -p snapshot-tests` and `cargo insta review` to review
 changes.
 
 Code coverage:

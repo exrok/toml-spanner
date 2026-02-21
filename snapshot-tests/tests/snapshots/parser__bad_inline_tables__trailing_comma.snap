@@ -1,0 +1,11 @@
+---
+source: snapshot-tests/tests/parser.rs
+expression: error
+---
+error[wanted]:
+  ┌─ trailing_comma:1:10
+  │
+1 │ a = {a=1,}
+  │          ^^ expected a table key
+
+

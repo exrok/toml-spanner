@@ -1,0 +1,22 @@
+---
+source: snapshot-tests/tests/parser.rs
+expression: spans
+---
+note[datetime]: root_wita1
+  ┌─ frac_tz:1:9
+  │
+1 │ wita1 = 1987-07-05T17:45:56.123+08:00
+  │         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+note[datetime]: root_wita2
+  ┌─ frac_tz:2:9
+  │
+2 │ wita2 = 1987-07-05T17:45:56.6+08:00
+  │         ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+note[table]: root
+  ┌─ frac_tz:1:1
+  │  
+1 │ ╭ wita1 = 1987-07-05T17:45:56.123+08:00
+2 │ │ wita2 = 1987-07-05T17:45:56.6+08:00
+  │ ╰───────────────────────────────────^

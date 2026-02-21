@@ -1,0 +1,9 @@
+---
+source: snapshot-tests/tests/parser.rs
+expression: error
+---
+error[wanted]: 
+  ┌─ exclamation:1:2
+  │
+1 │ [!]
+  │  ^ expected a table key

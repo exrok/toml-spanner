@@ -1,9 +1,0 @@
----
-source: integ-tests/tests/parser.rs
-expression: error
----
-error[invalid-number]: 
-  ┌─ underscore_after_exp:1:5
-  │
-1 │ a = 73e_3
-  │     ^^^^^ unable to parse number

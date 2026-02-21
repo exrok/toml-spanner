@@ -1,9 +1,0 @@
----
-source: integ-tests/tests/parser.rs
-expression: error
----
-error[wanted]: 
-  ┌─ only_comma:1:6
-  │
-1 │ a = {,}
-  │      ^ expected a table key

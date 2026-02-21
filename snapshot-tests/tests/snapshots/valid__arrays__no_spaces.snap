@@ -1,0 +1,11 @@
+---
+source: snapshot-tests/tests/valid.rs
+expression: valid_toml
+---
+{
+  "ints": [
+    1,
+    2,
+    3
+  ]
+}

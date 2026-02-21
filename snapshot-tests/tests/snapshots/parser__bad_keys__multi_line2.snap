@@ -1,0 +1,9 @@
+---
+source: snapshot-tests/tests/parser.rs
+expression: error
+---
+error[multiline-string-key]: 
+  ┌─ multi_line2:1:1
+  │
+1 │ """"""=3
+  │ ^^^ multiline keys are not allowed

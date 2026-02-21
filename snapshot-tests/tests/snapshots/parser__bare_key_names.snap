@@ -1,0 +1,16 @@
+---
+source: snapshot-tests/tests/parser.rs
+expression: valid_toml
+---
+"!" = 3
+"\"" = 3
+- = 3
+8 = 8
+_ = 3
+a = 3
+"a^b" = 3
+"character encoding" = 'value'
+foo = 3
+foo_-2--3--r23f--4-f2-4 = 3
+foo_3 = 3
+"ʎǝʞ" = 'value'

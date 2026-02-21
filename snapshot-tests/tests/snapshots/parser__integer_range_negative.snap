@@ -1,0 +1,9 @@
+---
+source: snapshot-tests/tests/parser.rs
+expression: error
+---
+error[invalid-number]: 
+  ┌─ integer_range_negative:1:5
+  │
+1 │ a = -9223372036854775809
+  │     ^^^^^^^^^^^^^^^^^^^^ unable to parse number

@@ -1,0 +1,36 @@
+---
+source: snapshot-tests/tests/parser.rs
+expression: spans
+---
+note[datetime]: root_ws1
+  ┌─ no_seconds:1:7
+  │
+1 │ ws1 = 13:37
+  │       ^^^^^
+
+note[datetime]: root_ws2
+  ┌─ no_seconds:2:7
+  │
+2 │ ws2 = 1979-05-27 07:32Z
+  │       ^^^^^^^^^^^^^^^^^
+
+note[datetime]: root_ws3
+  ┌─ no_seconds:3:7
+  │
+3 │ ws3 = 1979-05-27 07:32-07:00
+  │       ^^^^^^^^^^^^^^^^^^^^^^
+
+note[datetime]: root_ws4
+  ┌─ no_seconds:4:7
+  │
+4 │ ws4 = 1979-05-27T07:32
+  │       ^^^^^^^^^^^^^^^^
+
+note[table]: root
+  ┌─ no_seconds:1:1
+  │  
+1 │ ╭ ws1 = 13:37
+2 │ │ ws2 = 1979-05-27 07:32Z
+3 │ │ ws3 = 1979-05-27 07:32-07:00
+4 │ │ ws4 = 1979-05-27T07:32
+  │ ╰──────────────────────^

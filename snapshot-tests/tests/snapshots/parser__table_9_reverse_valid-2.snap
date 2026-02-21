@@ -1,0 +1,60 @@
+---
+source: snapshot-tests/tests/parser.rs
+expression: spans
+---
+note[bool]: root_fruit_apple_texture_smooth
+  ┌─ table_9_reverse_valid:2:10
+  │
+2 │ smooth = true
+  │          ^^^^
+
+note[table]: root_fruit_apple_texture
+  ┌─ table_9_reverse_valid:1:1
+  │  
+1 │ ╭ [fruit.apple.texture]  # you can add sub-tables
+2 │ │ smooth = true
+  │ ╰─────────────^
+
+note[string]: root_fruit_apple_color
+  ┌─ table_9_reverse_valid:5:16
+  │
+5 │ apple.color = "red"
+  │                ^^^
+
+note[bool]: root_fruit_apple_taste_sweet
+  ┌─ table_9_reverse_valid:6:21
+  │
+6 │ apple.taste.sweet = true
+  │                     ^^^^
+
+note[table]: root_fruit_apple_taste
+  ┌─ table_9_reverse_valid:6:7
+  │
+6 │ apple.taste.sweet = true
+  │       ^^^^^
+
+note[table]: root_fruit_apple
+  ┌─ table_9_reverse_valid:1:8
+  │
+1 │ [fruit.apple.texture]  # you can add sub-tables
+  │        ^^^^^
+
+note[table]: root_fruit
+  ┌─ table_9_reverse_valid:4:1
+  │  
+4 │ ╭ [fruit]
+5 │ │ apple.color = "red"
+6 │ │ apple.taste.sweet = true
+  │ ╰────────────────────────^
+
+note[table]: root
+   ┌─ table_9_reverse_valid:1:1
+   │  
+ 1 │ ╭ [fruit.apple.texture]  # you can add sub-tables
+ 2 │ │ smooth = true
+ 3 │ │ 
+ 4 │ │ [fruit]
+   · │
+ 9 │ │ # [fruit.apple.taste]  # INVALID
+10 │ │ 
+   │ ╰^

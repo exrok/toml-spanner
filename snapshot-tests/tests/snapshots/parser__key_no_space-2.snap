@@ -1,0 +1,17 @@
+---
+source: snapshot-tests/tests/parser.rs
+expression: spans
+---
+note[integer]: root_foo
+  ┌─ key_no_space:1:5
+  │
+1 │ foo=42
+  │     ^^
+
+note[table]: root
+  ┌─ key_no_space:1:1
+  │
+1 │ foo=42
+  │ ^^^^^^
+
+

@@ -1,0 +1,10 @@
+---
+source: snapshot-tests/tests/valid.rs
+expression: valid_toml
+---
+{
+  "strings-and-ints": [
+    "hi",
+    42
+  ]
+}

@@ -1,9 +1,0 @@
----
-source: integ-tests/tests/parser.rs
-expression: error
----
-error[wanted]: 
-  ┌─ strings:2:5
-  │
-2 │ 0=""o=""m=""r=""00="0"q="""0"""e="""0"""
-  │     ^ expected newline

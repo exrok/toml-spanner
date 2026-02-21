@@ -1,0 +1,9 @@
+---
+source: snapshot-tests/tests/de.rs
+expression: error
+---
+error[missing-field]: missing field 's'
+  ┌─ missing_required:1:1
+  │
+1 │ os = 20
+  │ ^^^^^^^ table with missing field

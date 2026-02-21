@@ -1,0 +1,9 @@
+---
+source: snapshot-tests/tests/parser.rs
+expression: error
+---
+error[invalid-char-in-string]: 
+  ┌─ ml_basic:1:4
+  │
+1 │ """"""
+  │     invalid character '\r' in string

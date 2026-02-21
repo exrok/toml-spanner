@@ -1,0 +1,9 @@
+---
+source: snapshot-tests/tests/parser.rs
+expression: error
+---
+error[unexpected]: 
+  ┌─ single:1:1
+  │
+1 │ 
+  │ ^ unexpected character '\r'

@@ -1,9 +1,0 @@
----
-source: integ-tests/tests/parser.rs
-expression: error
----
-error[wanted]: 
-  ┌─ true_trailing:1:11
-  │
-1 │ foo = true2
-  │           ^ expected newline

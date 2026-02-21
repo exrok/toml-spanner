@@ -1,0 +1,7 @@
+---
+source: snapshot-tests/tests/parser.rs
+expression: valid_toml
+---
+{
+  "lower": "1987-07-05T17:45:00Z"
+}

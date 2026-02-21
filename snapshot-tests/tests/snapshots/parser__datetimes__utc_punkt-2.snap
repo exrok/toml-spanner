@@ -1,0 +1,15 @@
+---
+source: snapshot-tests/tests/parser.rs
+expression: spans
+---
+note[datetime]: root_utc
+  ┌─ utc_punkt:1:7
+  │
+1 │ utc = 2016-09-09T09:09:09.1Z
+  │       ^^^^^^^^^^^^^^^^^^^^^^
+
+note[table]: root
+  ┌─ utc_punkt:1:1
+  │
+1 │ utc = 2016-09-09T09:09:09.1Z
+  │ ^^^^^^^^^^^^^^^^^^^^^^^^^^^^

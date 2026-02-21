@@ -1,0 +1,18 @@
+---
+source: snapshot-tests/tests/valid.rs
+expression: valid_toml
+---
+{
+  "answer": 42,
+  "neganswer": -42,
+  "neg_zero": 0,
+  "pos_zero": 0,
+  "hex1": 3735928559,
+  "hex2": 3735928559,
+  "hex3": 3735928559,
+  "oct1": 342391,
+  "oct2": 493,
+  "bin1": 214,
+  "long-answer": 9223372036854775807,
+  "long-neganswer": -9223372036854775808
+}

@@ -1,0 +1,9 @@
+---
+source: snapshot-tests/tests/parser.rs
+expression: error
+---
+error[invalid-number]: 
+  ┌─ underscore_before_dot:1:5
+  │
+1 │ a = 73_.5
+  │     ^^^ unable to parse number

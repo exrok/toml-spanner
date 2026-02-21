@@ -1,9 +1,0 @@
----
-source: integ-tests/tests/parser.rs
-expression: error
----
-error[wanted]: 
-  ┌─ leading_t:1:7
-  │
-1 │ foo = t2
-  │       ^ expected the literal `true`

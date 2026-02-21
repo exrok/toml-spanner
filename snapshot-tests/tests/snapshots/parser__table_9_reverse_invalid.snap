@@ -1,0 +1,12 @@
+---
+source: snapshot-tests/tests/parser.rs
+expression: error
+---
+error[dotted-key-invalid-type]: dotted key attempted to extend non-table type
+  ┌─ table_9_reverse_invalid:6:7
+  │
+2 │ [fruit.apple.taste]  # INVALID
+  │              ----- non-table
+  ·
+6 │ apple.taste.sweet = true
+  │       ^^^^^ attempted to extend table here

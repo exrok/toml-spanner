@@ -1,0 +1,36 @@
+---
+source: snapshot-tests/tests/parser.rs
+expression: spans
+---
+note[datetime]: root_utc
+  ┌─ timezone_offsets:1:7
+  │
+1 │ utc = 1987-07-05T17:45:56Z
+  │       ^^^^^^^^^^^^^^^^^^^^
+
+note[datetime]: root_pdt
+  ┌─ timezone_offsets:2:7
+  │
+2 │ pdt = 1987-07-05T17:45:56-05:00
+  │       ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+note[datetime]: root_nzst
+  ┌─ timezone_offsets:3:8
+  │
+3 │ nzst = 1987-07-05T17:45:56+12:00
+  │        ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+note[datetime]: root_nzdt
+  ┌─ timezone_offsets:4:8
+  │
+4 │ nzdt = 1987-07-05T17:45:56+13:00
+  │        ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+note[table]: root
+  ┌─ timezone_offsets:1:1
+  │  
+1 │ ╭ utc = 1987-07-05T17:45:56Z
+2 │ │ pdt = 1987-07-05T17:45:56-05:00
+3 │ │ nzst = 1987-07-05T17:45:56+12:00
+4 │ │ nzdt = 1987-07-05T17:45:56+13:00
+  │ ╰────────────────────────────────^

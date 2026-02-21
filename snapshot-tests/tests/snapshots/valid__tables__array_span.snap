@@ -1,0 +1,15 @@
+---
+source: snapshot-tests/tests/valid.rs
+expression: valid_toml
+---
+{
+  "array": [
+    {
+      "members": true,
+      "other": false
+    },
+    {
+      "members": false
+    }
+  ]
+}

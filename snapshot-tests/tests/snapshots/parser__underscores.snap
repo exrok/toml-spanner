@@ -1,0 +1,11 @@
+---
+source: snapshot-tests/tests/parser.rs
+expression: valid_toml
+---
+{
+  "ten": 10,
+  "hundred": 100,
+  "thousand": 1000,
+  "thousand-pos": 1000,
+  "thousand-neg": -1000
+}

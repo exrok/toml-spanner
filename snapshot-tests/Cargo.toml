@@ -1,0 +1,11 @@
+[package]
+name = "snapshot-tests"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+codespan-reporting = "0.13"
+insta = { version = "1.34", features = ["json"] }
+pretty_assertions = "1.4"
+toml-spanner = { path = "..", features = ["reporting", "serde"] }

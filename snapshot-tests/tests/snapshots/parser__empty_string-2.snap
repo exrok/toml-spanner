@@ -1,0 +1,17 @@
+---
+source: snapshot-tests/tests/parser.rs
+expression: spans
+---
+note[string]: root_foo
+  ┌─ empty_string:1:7
+  │
+1 │ foo = ""
+  │       ^
+
+note[table]: root
+  ┌─ empty_string:1:1
+  │
+1 │ foo = ""
+  │ ^^^^^^^^
+
+

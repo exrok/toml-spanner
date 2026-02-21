@@ -155,6 +155,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "snapshot-tests"
+version = "0.1.0"
+dependencies = [
+ "codespan-reporting",
+ "insta",
+ "pretty_assertions",
+ "toml-spanner",
+]
+
+[[package]]
 name = "itoa"
 version = "1.0.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -195,12 +205,6 @@ name = "once_cell"
 version = "1.21.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "42f5e15c9953c5e4ccceeb2e7382a716482c34515315f7b03532b8b4e8393d2d"
-
-[[package]]
-name = "oorandom"
-version = "11.1.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d6790f58c7ff633d8771f42965289203411a5e5c68388703c06e14f24770b41e"
 
 [[package]]
 name = "pretty_assertions"
@@ -315,16 +319,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bbbb5d9659141646ae647b42fe094daf6c6192d1620870b449d9557f748b2daa"
 
 [[package]]
-name = "snapshot-tests"
-version = "0.1.0"
-dependencies = [
- "codespan-reporting",
- "insta",
- "pretty_assertions",
- "toml-spanner",
-]
-
-[[package]]
 name = "syn"
 version = "2.0.115"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -359,11 +353,10 @@ dependencies = [
 
 [[package]]
 name = "toml-spanner"
-version = "0.3.0"
+version = "0.1.0"
 dependencies = [
  "codespan-reporting",
  "foldhash 0.2.0",
- "oorandom",
  "serde",
 ]
 

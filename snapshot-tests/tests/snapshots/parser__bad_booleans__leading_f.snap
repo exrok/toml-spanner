@@ -1,0 +1,9 @@
+---
+source: snapshot-tests/tests/parser.rs
+expression: error
+---
+error[wanted]: 
+  ┌─ leading_f:1:7
+  │
+1 │ foo = f2
+  │       ^ expected the literal `false`

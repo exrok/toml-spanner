@@ -1,0 +1,408 @@
+---
+source: snapshot-tests/tests/parser.rs
+expression: spans
+---
+note[integer]: root_a_b
+  ┌─ inline_tables_multiline:4:9
+  │
+4 │     b = 1
+  │         ^
+
+note[table]: root_a
+  ┌─ inline_tables_multiline:3:5
+  │  
+3 │   a = {
+  │ ╭─────^
+4 │ │     b = 1
+5 │ │ }
+  │ ╰─^
+
+note[integer]: root_b_a
+  ┌─ inline_tables_multiline:9:9
+  │
+9 │     a = 1,
+  │         ^
+
+note[integer]: root_b_b
+   ┌─ inline_tables_multiline:10:9
+   │
+10 │     b = 2
+   │         ^
+
+note[table]: root_b
+   ┌─ inline_tables_multiline:8:5
+   │  
+ 8 │   b = {
+   │ ╭─────^
+ 9 │ │     a = 1,
+10 │ │     b = 2
+11 │ │ }
+   │ ╰─^
+
+note[integer]: root_c_a
+   ┌─ inline_tables_multiline:15:9
+   │
+15 │     a = 1,
+   │         ^
+
+note[integer]: root_c_b_c
+   ┌─ inline_tables_multiline:17:13
+   │
+17 │         c = 2
+   │             ^
+
+note[table]: root_c_b
+   ┌─ inline_tables_multiline:16:9
+   │  
+16 │       b = {
+   │ ╭─────────^
+17 │ │         c = 2
+18 │ │     }
+   │ ╰─────^
+
+note[table]: root_c
+   ┌─ inline_tables_multiline:14:5
+   │  
+14 │   c = {
+   │ ╭─────^
+15 │ │     a = 1,
+16 │ │     b = {
+17 │ │         c = 2
+18 │ │     }
+19 │ │ }
+   │ ╰─^
+
+note[integer]: root_d_a_0
+   ┌─ inline_tables_multiline:24:9
+   │
+24 │         1,
+   │         ^
+
+note[integer]: root_d_a_1
+   ┌─ inline_tables_multiline:25:9
+   │
+25 │         2,
+   │         ^
+
+note[integer]: root_d_a_2
+   ┌─ inline_tables_multiline:26:9
+   │
+26 │         3
+   │         ^
+
+note[array]: root_d_a
+   ┌─ inline_tables_multiline:23:9
+   │  
+23 │       a = [
+   │ ╭─────────^
+24 │ │         1,
+25 │ │         2,
+26 │ │         3
+27 │ │     ]
+   │ ╰─────^
+
+note[table]: root_d
+   ┌─ inline_tables_multiline:22:5
+   │  
+22 │   d = {
+   │ ╭─────^
+23 │ │     a = [
+24 │ │         1,
+25 │ │         2,
+26 │ │         3
+27 │ │     ]
+28 │ │ }
+   │ ╰─^
+
+note[integer]: root_e_a
+   ┌─ inline_tables_multiline:32:13
+   │
+32 │     a   =   1,
+   │             ^
+
+note[integer]: root_e_b
+   ┌─ inline_tables_multiline:33:9
+   │
+33 │     b = 2,
+   │         ^
+
+note[integer]: root_e_c
+   ┌─ inline_tables_multiline:34:13
+   │
+34 │         c = 3
+   │             ^
+
+note[table]: root_e
+   ┌─ inline_tables_multiline:31:5
+   │  
+31 │   e = {
+   │ ╭─────^
+32 │ │     a   =   1,
+33 │ │     b = 2,
+34 │ │         c = 3
+35 │ │ }
+   │ ╰─^
+
+note[integer]: root_f_a
+   ┌─ inline_tables_multiline:40:9
+   │
+40 │     a = 1,
+   │         ^
+
+note[integer]: root_f_b
+   ┌─ inline_tables_multiline:42:9
+   │
+42 │     b = 2
+   │         ^
+
+note[table]: root_f
+   ┌─ inline_tables_multiline:38:5
+   │  
+38 │   f = {
+   │ ╭─────^
+39 │ │     # this is a comment
+40 │ │     a = 1,
+41 │ │     # another comment
+42 │ │     b = 2
+43 │ │ }
+   │ ╰─^
+
+note[integer]: root_g_a_b_c
+   ┌─ inline_tables_multiline:49:17
+   │
+49 │             c = 1
+   │                 ^
+
+note[table]: root_g_a_b
+   ┌─ inline_tables_multiline:48:13
+   │  
+48 │           b = {
+   │ ╭─────────────^
+49 │ │             c = 1
+50 │ │         }
+   │ ╰─────────^
+
+note[table]: root_g_a
+   ┌─ inline_tables_multiline:47:9
+   │  
+47 │       a = {
+   │ ╭─────────^
+48 │ │         b = {
+49 │ │             c = 1
+50 │ │         }
+51 │ │     },
+   │ ╰─────^
+
+note[integer]: root_g_d_0
+   ┌─ inline_tables_multiline:53:9
+   │
+53 │         1,
+   │         ^
+
+note[integer]: root_g_d_1
+   ┌─ inline_tables_multiline:54:9
+   │
+54 │         2
+   │         ^
+
+note[array]: root_g_d
+   ┌─ inline_tables_multiline:52:9
+   │  
+52 │       d = [
+   │ ╭─────────^
+53 │ │         1,
+54 │ │         2
+55 │ │     ]
+   │ ╰─────^
+
+note[table]: root_g
+   ┌─ inline_tables_multiline:46:5
+   │  
+46 │   g = {
+   │ ╭─────^
+47 │ │     a = {
+48 │ │         b = {
+49 │ │             c = 1
+   · │
+55 │ │     ]
+56 │ │ }
+   │ ╰─^
+
+note[integer]: root_h_a
+   ┌─ inline_tables_multiline:60:9
+   │
+60 │     a = 1,
+   │         ^
+
+note[table]: root_h
+   ┌─ inline_tables_multiline:59:5
+   │  
+59 │   h = {
+   │ ╭─────^
+60 │ │     a = 1,
+61 │ │ }
+   │ ╰─^
+
+note[integer]: root_i_a
+   ┌─ inline_tables_multiline:65:9
+   │
+65 │     a = 1,
+   │         ^
+
+note[integer]: root_i_b
+   ┌─ inline_tables_multiline:66:9
+   │
+66 │     b = 2,
+   │         ^
+
+note[integer]: root_i_c
+   ┌─ inline_tables_multiline:67:9
+   │
+67 │     c = 3,
+   │         ^
+
+note[table]: root_i
+   ┌─ inline_tables_multiline:64:5
+   │  
+64 │   i = {
+   │ ╭─────^
+65 │ │     a = 1,
+66 │ │     b = 2,
+67 │ │     c = 3,
+68 │ │ }
+   │ ╰─^
+
+note[integer]: root_j_a
+   ┌─ inline_tables_multiline:72:9
+   │
+72 │     a = 1,
+   │         ^
+
+note[integer]: root_j_b_c
+   ┌─ inline_tables_multiline:74:13
+   │
+74 │         c = 2,
+   │             ^
+
+note[table]: root_j_b
+   ┌─ inline_tables_multiline:73:9
+   │  
+73 │       b = {
+   │ ╭─────────^
+74 │ │         c = 2,
+75 │ │     },
+   │ ╰─────^
+
+note[table]: root_j
+   ┌─ inline_tables_multiline:71:5
+   │  
+71 │   j = {
+   │ ╭─────^
+72 │ │     a = 1,
+73 │ │     b = {
+74 │ │         c = 2,
+75 │ │     },
+76 │ │ }
+   │ ╰─^
+
+note[integer]: root_k_a_0
+   ┌─ inline_tables_multiline:80:10
+   │
+80 │     a = [1, 2, 3],
+   │          ^
+
+note[integer]: root_k_a_1
+   ┌─ inline_tables_multiline:80:13
+   │
+80 │     a = [1, 2, 3],
+   │             ^
+
+note[integer]: root_k_a_2
+   ┌─ inline_tables_multiline:80:16
+   │
+80 │     a = [1, 2, 3],
+   │                ^
+
+note[array]: root_k_a
+   ┌─ inline_tables_multiline:80:9
+   │
+80 │     a = [1, 2, 3],
+   │         ^^^^^^^^^
+
+note[table]: root_k
+   ┌─ inline_tables_multiline:79:5
+   │  
+79 │   k = {
+   │ ╭─────^
+80 │ │     a = [1, 2, 3],
+81 │ │ }
+   │ ╰─^
+
+note[integer]: root_l_a_b_c
+   ┌─ inline_tables_multiline:87:17
+   │
+87 │             c = 1,
+   │                 ^
+
+note[table]: root_l_a_b
+   ┌─ inline_tables_multiline:86:13
+   │  
+86 │           b = {
+   │ ╭─────────────^
+87 │ │             c = 1,
+88 │ │         },
+   │ ╰─────────^
+
+note[table]: root_l_a
+   ┌─ inline_tables_multiline:85:9
+   │  
+85 │       a = {
+   │ ╭─────────^
+86 │ │         b = {
+87 │ │             c = 1,
+88 │ │         },
+89 │ │     },
+   │ ╰─────^
+
+note[integer]: root_l_d_0
+   ┌─ inline_tables_multiline:90:10
+   │
+90 │     d = [1, 2],
+   │          ^
+
+note[integer]: root_l_d_1
+   ┌─ inline_tables_multiline:90:13
+   │
+90 │     d = [1, 2],
+   │             ^
+
+note[array]: root_l_d
+   ┌─ inline_tables_multiline:90:9
+   │
+90 │     d = [1, 2],
+   │         ^^^^^^
+
+note[table]: root_l
+   ┌─ inline_tables_multiline:84:5
+   │  
+84 │   l = {
+   │ ╭─────^
+85 │ │     a = {
+86 │ │         b = {
+87 │ │             c = 1,
+   · │
+90 │ │     d = [1, 2],
+91 │ │ }
+   │ ╰─^
+
+note[table]: root
+   ┌─ inline_tables_multiline:1:1
+   │  
+ 1 │ ╭ # Multiline inline tables (TOML 1.1.0 feature)
+ 2 │ │ # Test basic newlines inside inline tables
+ 3 │ │ a = {
+ 4 │ │     b = 1
+   · │
+91 │ │ }
+92 │ │ 
+   │ ╰^

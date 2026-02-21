@@ -1,0 +1,11 @@
+---
+source: snapshot-tests/tests/parser.rs
+expression: error
+---
+error[invalid-char-in-string]: 
+  ┌─ newline2:1:2
+  │  
+1 │   "
+  │ ╭─^
+2 │ │ "|=3
+  │ ╰^ invalid character '\n' in string

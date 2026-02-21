@@ -1,0 +1,9 @@
+---
+source: snapshot-tests/tests/parser.rs
+expression: error
+---
+error[wanted]: 
+  ┌─ false_trailing:1:12
+  │
+1 │ foo = false2
+  │            ^ expected newline

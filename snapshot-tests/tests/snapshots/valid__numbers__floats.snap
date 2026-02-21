@@ -1,0 +1,20 @@
+---
+source: snapshot-tests/tests/valid.rs
+expression: valid_toml
+---
+{
+  "normal": 1.0,
+  "normal-exp": 1.0,
+  "normal-pos-exp": 1.0,
+  "normal-neg-exp": 1.0,
+  "neg-exp": 1.0,
+  "multi-dec-exp": 1.001,
+  "two-exp": 20000000000.0,
+  "two-pos-exp": 200000000000.0,
+  "two-neg-exp": 0.0000000002,
+  "twenty": 20.0,
+  "twenty-exp": 200000000000.0,
+  "twenty-punkt-ett": 201000000000.0,
+  "longpi": 3.141592653589793,
+  "neglongpi": -3.141592653589793
+}

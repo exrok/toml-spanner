@@ -1,0 +1,9 @@
+---
+source: snapshot-tests/tests/parser.rs
+expression: error
+---
+error[invalid-number]: 
+  ┌─ trailing_exp3:1:5
+  │
+1 │ a = 0.0E
+  │     ^ unable to parse number

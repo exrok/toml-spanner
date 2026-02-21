@@ -1,0 +1,39 @@
+---
+source: snapshot-tests/tests/valid.rs
+expression: spans
+---
+note[string]: root_people_0_first_name
+  ┌─ one:2:15
+  │
+2 │ first_name = "Bruce"
+  │               ^^^^^
+
+note[string]: root_people_0_last_name
+  ┌─ one:3:14
+  │
+3 │ last_name = "Springsteen"
+  │              ^^^^^^^^^^^
+
+note[table]: root_people_0
+  ┌─ one:1:1
+  │
+1 │ ╭ [[people]]
+2 │ │ first_name = "Bruce"
+3 │ │ last_name = "Springsteen"
+  │ ╰─────────────────────────^
+
+note[array]: root_people
+  ┌─ one:1:1
+  │
+1 │ ╭ [[people]]
+2 │ │ first_name = "Bruce"
+3 │ │ last_name = "Springsteen"
+  │ ╰─────────────────────────^
+
+note[table]: root
+  ┌─ one:1:1
+  │
+1 │ ╭ [[people]]
+2 │ │ first_name = "Bruce"
+3 │ │ last_name = "Springsteen"
+  │ ╰─────────────────────────^

@@ -1,0 +1,10 @@
+---
+source: snapshot-tests/tests/de.rs
+expression: de
+---
+Boop {
+    s: "boop string",
+    os: Some(
+        20,
+    ),
+}

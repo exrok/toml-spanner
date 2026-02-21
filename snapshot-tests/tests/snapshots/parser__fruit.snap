@@ -1,0 +1,31 @@
+---
+source: snapshot-tests/tests/parser.rs
+expression: valid_toml
+---
+{
+  "fruit": [
+    {
+      "name": "apple",
+      "physical": {
+        "color": "red",
+        "shape": "round"
+      },
+      "variety": [
+        {
+          "name": "red delicious"
+        },
+        {
+          "name": "granny smith"
+        }
+      ]
+    },
+    {
+      "name": "banana",
+      "variety": [
+        {
+          "name": "plantain"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,9 @@
+---
+source: snapshot-tests/tests/parser.rs
+expression: error
+---
+error[invalid-hex-escape]: 
+  ┌─ hex2:1:10
+  │
+1 │ foo = "\u"
+  │          ^ invalid hex escape '"'

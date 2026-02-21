@@ -1,0 +1,22 @@
+---
+source: snapshot-tests/tests/parser.rs
+expression: spans
+---
+note[datetime]: root_dt
+  ┌─ tz_with_comment:1:6
+  │
+1 │ dt = 1979-05-27T07:32:12-07:00  # c
+  │      ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+note[datetime]: root_d
+  ┌─ tz_with_comment:2:5
+  │
+2 │ d = 1979-05-27 # Comment
+  │     ^^^^^^^^^^
+
+note[table]: root
+  ┌─ tz_with_comment:1:1
+  │  
+1 │ ╭ dt = 1979-05-27T07:32:12-07:00  # c
+2 │ │ d = 1979-05-27 # Comment
+  │ ╰────────────────────────^

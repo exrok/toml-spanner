@@ -1,0 +1,9 @@
+---
+source: snapshot-tests/tests/parser.rs
+expression: error
+---
+error[wanted]: 
+  ┌─ bare_number:1:2
+  │
+1 │ 4
+  │  ^ expected an equals

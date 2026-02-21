@@ -1,11 +1,0 @@
----
-source: integ-tests/tests/parser.rs
-expression: error
----
-error[invalid-char-in-string]: 
-  ┌─ value_str:1:6
-  │
-1 │ a = ""
-  │       invalid character '\r' in string
-
-

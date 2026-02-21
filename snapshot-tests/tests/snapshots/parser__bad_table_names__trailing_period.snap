@@ -1,0 +1,9 @@
+---
+source: snapshot-tests/tests/parser.rs
+expression: error
+---
+error[wanted]: 
+  ┌─ trailing_period:1:4
+  │
+1 │ [a.]
+  │    ^ expected a table key

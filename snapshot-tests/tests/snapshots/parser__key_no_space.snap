@@ -1,0 +1,7 @@
+---
+source: snapshot-tests/tests/parser.rs
+expression: valid_toml
+---
+{
+  "foo": 42
+}

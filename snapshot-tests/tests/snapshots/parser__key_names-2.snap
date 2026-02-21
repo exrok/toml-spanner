@@ -1,0 +1,99 @@
+---
+source: snapshot-tests/tests/parser.rs
+expression: spans
+---
+note[integer]: root_foo
+  ┌─ key_names:1:7
+  │
+1 │ foo = 3
+  │       ^
+
+note[integer]: root_foo_3
+  ┌─ key_names:2:9
+  │
+2 │ foo_3 = 3
+  │         ^
+
+note[integer]: root_foo_-2--3--r23f--4-f2-4
+  ┌─ key_names:3:27
+  │
+3 │ foo_-2--3--r23f--4-f2-4 = 3
+  │                           ^
+
+note[integer]: root__
+  ┌─ key_names:4:5
+  │
+4 │ _ = 3
+  │     ^
+
+note[integer]: root_-
+  ┌─ key_names:5:5
+  │
+5 │ - = 3
+  │     ^
+
+note[integer]: root_8
+  ┌─ key_names:6:5
+  │
+6 │ 8 = 8
+  │     ^
+
+note[integer]: root_a
+  ┌─ key_names:7:7
+  │
+7 │ "a" = 3
+  │       ^
+
+note[integer]: root_!
+  ┌─ key_names:8:7
+  │
+8 │ "!" = 3
+  │       ^
+
+note[integer]: root_a^b
+  ┌─ key_names:9:9
+  │
+9 │ "a^b" = 3
+  │         ^
+
+note[integer]: root_"
+   ┌─ key_names:10:8
+   │
+10 │ "\"" = 3
+   │        ^
+
+note[string]: root_character encoding
+   ┌─ key_names:11:25
+   │
+11 │ "character encoding" = "value"
+   │                         ^^^^^
+
+note[string]: root_ʎǝʞ
+   ┌─ key_names:12:10
+   │
+12 │ 'ʎǝʞ' = "value"
+   │          ^^^^^
+
+note[integer]: root_key#name
+   ┌─ key_names:13:14
+   │
+13 │ "key#name" = 5
+   │              ^
+
+note[integer]: root_~!@#$^&*()_+-`1234567890[]\|/?><.,;:'
+   ┌─ key_names:14:44
+   │
+14 │ "~!@#$^&*()_+-`1234567890[]\\|/?><.,;:'" = 1
+   │                                            ^
+
+note[table]: root
+   ┌─ key_names:1:1
+   │  
+ 1 │ ╭ foo = 3
+ 2 │ │ foo_3 = 3
+ 3 │ │ foo_-2--3--r23f--4-f2-4 = 3
+ 4 │ │ _ = 3
+   · │
+14 │ │ "~!@#$^&*()_+-`1234567890[]\\|/?><.,;:'" = 1
+15 │ │ 
+   │ ╰^

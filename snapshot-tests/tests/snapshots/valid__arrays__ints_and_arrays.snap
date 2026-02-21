@@ -1,0 +1,12 @@
+---
+source: snapshot-tests/tests/valid.rs
+expression: valid_toml
+---
+{
+  "arrays-and-ints": [
+    1,
+    [
+      "Arrays are not integers."
+    ]
+  ]
+}

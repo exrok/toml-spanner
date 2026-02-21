@@ -1,9 +1,0 @@
----
-source: integ-tests/tests/parser.rs
-expression: error
----
-error[invalid-number]: 
-  ┌─ no_digit_before_dot_pos:1:5
-  │
-1 │ a = +.7
-  │     ^ unable to parse number

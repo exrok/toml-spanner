@@ -1,0 +1,8 @@
+---
+source: snapshot-tests/tests/parser.rs
+expression: valid_toml
+---
+{
+  "dt": "1979-05-27T07:32:12-07:00",
+  "d": "1979-05-27"
+}

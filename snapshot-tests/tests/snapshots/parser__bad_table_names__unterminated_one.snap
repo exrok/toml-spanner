@@ -1,0 +1,9 @@
+---
+source: snapshot-tests/tests/parser.rs
+expression: error
+---
+error[unterminated-string]: 
+  ┌─ unterminated_one:1:2
+  │
+1 │ [']
+  │  ^ eof reached before string terminator

@@ -1,0 +1,11 @@
+---
+source: snapshot-tests/tests/parser.rs
+expression: error
+---
+error[wanted]: 
+  ┌─ newline:1:4
+  │  
+1 │   key
+  │ ╭───^
+2 │ │ =3
+  │ ╰^ expected an equals

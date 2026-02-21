@@ -1,0 +1,58 @@
+---
+source: snapshot-tests/tests/valid.rs
+expression: spans
+---
+note[integer]: root_group_answer
+  ┌─ comments:8:10
+  │
+8 │ answer = 42 # Comment
+  │          ^^
+
+note[integer]: root_group_more_0
+   ┌─ comments:17:3
+   │
+17 │   42, 42, # Comments within arrays are fun.
+   │   ^^
+
+note[integer]: root_group_more_1
+   ┌─ comments:17:7
+   │
+17 │   42, 42, # Comments within arrays are fun.
+   │       ^^
+
+note[array]: root_group_more
+   ┌─ comments:11:8
+   │
+11 │   more = [ # Comment
+   │ ╭────────^
+12 │ │   # What about multiple # comments?
+13 │ │   # Can you handle it?
+14 │ │   #
+   · │
+23 │ │ # ] Did I fool you?
+24 │ │ ] # Hopefully not.
+   │ ╰─^
+
+note[table]: root_group
+   ┌─ comments:7:1
+   │
+ 7 │ ╭ [group] # Comment
+ 8 │ │ answer = 42 # Comment
+ 9 │ │ # no-extraneous-keys-please = 999
+10 │ │ # In between comment.
+   · │
+23 │ │ # ] Did I fool you?
+24 │ │ ] # Hopefully not.
+   │ ╰─^
+
+note[table]: root
+   ┌─ comments:1:1
+   │
+ 1 │ ╭ # Top comment.
+ 2 │ │   # Top comment.
+ 3 │ │ # Top comment.
+ 4 │ │
+   · │
+24 │ │ ] # Hopefully not.
+25 │ │
+   │ ╰^

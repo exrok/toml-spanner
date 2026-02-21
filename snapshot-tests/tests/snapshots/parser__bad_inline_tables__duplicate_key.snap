@@ -1,0 +1,11 @@
+---
+source: snapshot-tests/tests/parser.rs
+expression: error
+---
+error[duplicate-key]: 
+  ┌─ duplicate_key:1:10
+  │
+1 │ a = {a=1,a=1}
+  │      -   ^ duplicate key
+  │      │    
+  │      first key instance

@@ -1,0 +1,8 @@
+---
+source: snapshot-tests/tests/parser.rs
+expression: valid_toml
+---
+{
+  "null": "\u0000",
+  "letter": "a"
+}

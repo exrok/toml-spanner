@@ -1,9 +1,0 @@
----
-source: integ-tests/tests/parser.rs
-expression: error
----
-error[wanted]: 
-  ┌─ tz_neg3:1:26
-  │
-1 │ tz = 2016-09-09T09:09:09Z-2:00
-  │                          ^^ expected newline

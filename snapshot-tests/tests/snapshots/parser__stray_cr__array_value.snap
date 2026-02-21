@@ -1,0 +1,9 @@
+---
+source: snapshot-tests/tests/parser.rs
+expression: error
+---
+error[unexpected]: 
+  ┌─ array_value:1:7
+  │
+1 │ a = [  ]
+  │        unexpected character '\r'

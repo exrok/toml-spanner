@@ -1,0 +1,14 @@
+---
+source: snapshot-tests/tests/parser.rs
+expression: error
+---
+error[duplicate-table]: 
+  ┌─ table_then_dotted_then_table_again:6:1
+  │    
+2 │ ╭   [a]
+3 │ │   foo="bar"
+  │ ╰───────────' first table instance
+  ·    
+6 │   ╭ [a]
+7 │   │ 
+  │   ╰^ duplicate table

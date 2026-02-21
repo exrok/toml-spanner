@@ -1,9 +1,0 @@
----
-source: integ-tests/tests/parser.rs
-expression: error
----
-error[wanted]: 
-  ┌─ pipe:1:4
-  │
-1 │ key|=3
-  │    ^ expected an equals
