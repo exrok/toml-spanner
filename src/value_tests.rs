@@ -306,14 +306,19 @@ fn type_error_helpers() {
         }
     ));
     assert_eq!(err.span, sp(0, 2));
+}
 
-    // expect_string success
+#[cfg(feature = "deserialization")]
+#[test]
+fn expect_helpers() {
     let arena = Arena::new();
     let mut ctx = crate::de::Context {
         arena: &arena,
         index: Default::default(),
         errors: Vec::new(),
     };
+
+    // expect_string success
     let v = Item::string("hello", sp(0, 5));
     let s = v.expect_string(&mut ctx).unwrap();
     assert_eq!(s, "hello");
@@ -329,17 +334,6 @@ fn type_error_helpers() {
             found: "integer"
         }
     ));
-}
-
-#[test]
-fn expect_and_mut_accessors() {
-    let arena = Arena::new();
-
-    let mut ctx = crate::de::Context {
-        arena: &arena,
-        index: Default::default(),
-        errors: Vec::new(),
-    };
 
     // expect_array success
     let mut arr = Array::new();
@@ -377,6 +371,11 @@ fn expect_and_mut_accessors() {
         ctx.errors.last().unwrap().kind,
         crate::ErrorKind::Wanted { .. }
     ));
+}
+
+#[test]
+fn mut_accessors() {
+    let arena = Arena::new();
 
     // as_array_mut on array
     let mut v = Item::array(Array::new(), sp(0, 2));

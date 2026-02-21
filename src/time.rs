@@ -355,6 +355,16 @@ pub struct DateTime {
     nanos: u32,
 }
 
+impl std::fmt::Debug for DateTime {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("DateTime")
+            .field("date", &self.date())
+            .field("time", &self.time())
+            .field("offset", &self.offset())
+            .finish()
+    }
+}
+
 const HAS_DATE: u8 = 1 << 0;
 const HAS_TIME: u8 = 1 << 1;
 const HAS_SECONDS: u8 = 1 << 2;

@@ -135,6 +135,7 @@
 
 mod arena;
 mod array;
+#[cfg(feature = "deserialization")]
 mod de;
 mod error;
 mod parser;
@@ -145,6 +146,7 @@ mod value;
 
 pub use arena::Arena;
 pub use array::Array;
+#[cfg(feature = "deserialization")]
 pub use de::{Context, Deserialize, Failed, TableHelper};
 pub use error::{Error, ErrorKind};
 pub use parser::{Root, parse};

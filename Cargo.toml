@@ -13,6 +13,7 @@ repository = "https://github.com/exrok/toml-spanner"
 documentation = "https://docs.rs/toml-spanner"
 readme = "README.md"
 categories = ["parser-implementations", "config"]
+rust-version = "1.90"
 
 [profile.dev-fast]
 inherits = "dev"
@@ -31,6 +32,8 @@ exclude = [
 ]
 
 [features]
+default = ["deserialization"]
+deserialization = []
 serde = ["dep:serde"]
 reporting = ["dep:codespan-reporting"]
 

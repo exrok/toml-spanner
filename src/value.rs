@@ -391,6 +391,7 @@ impl<'de> Item<'de> {
 /// }
 /// # Ok::<(), toml_spanner::Error>(())
 /// ```
+#[derive(Debug)]
 pub enum Value<'a, 'de> {
     /// A string value.
     String(&'a &'de str),

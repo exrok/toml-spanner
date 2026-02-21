@@ -199,6 +199,7 @@ where
     }
 }
 
+#[cfg(feature = "deserialization")]
 impl<'de, T> crate::de::Deserialize<'de> for Spanned<T>
 where
     T: crate::de::Deserialize<'de>,

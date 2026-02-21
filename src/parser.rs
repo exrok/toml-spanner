@@ -11,12 +11,13 @@ mod tests;
 use crate::{
     MaybeItem, Span,
     arena::Arena,
-    de::{Failed, TableHelper},
     error::{Error, ErrorKind},
     table::{InnerTable, Table},
     time::DateTime,
     value::{self, Item, Key},
 };
+#[cfg(feature = "deserialization")]
+use crate::de::{Failed, TableHelper};
 use std::char;
 use std::hash::{Hash, Hasher};
 use std::ptr::NonNull;
@@ -1821,6 +1822,7 @@ impl<'de> Parser<'de> {
 /// [`Root::into_table()`] to extract the table for mutable access.
 pub struct Root<'de> {
     pub(crate) table: Table<'de>,
+    #[cfg(feature = "deserialization")]
     pub ctx: crate::de::Context<'de>,
 }
 
@@ -1840,7 +1842,10 @@ impl<'de> Root<'de> {
     pub fn table(&self) -> &Table<'de> {
         &self.table
     }
+}
 
+#[cfg(feature = "deserialization")]
+impl<'de> Root<'de> {
     /// Create a [`TableHelper`] for the root table.
     pub fn helper<'ctx>(&'ctx mut self) -> TableHelper<'ctx, 'ctx, 'de> {
         TableHelper::new(&mut self.ctx, &self.table)
@@ -1932,6 +1937,7 @@ pub fn parse<'de>(document: &'de str, arena: &'de Arena) -> Result<Root<'de>, Er
     // todo don't do this
     Ok(Root {
         table: root_st,
+        #[cfg(feature = "deserialization")]
         ctx: crate::de::Context {
             errors: Vec::new(),
             index: parser.index,

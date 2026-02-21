@@ -100,6 +100,7 @@ fn spanned_basics_and_comparison() {
     assert_eq!(format!("{:?}", s), "42");
 }
 
+#[cfg(feature = "deserialization")]
 #[test]
 fn spanned_deserialize() {
     let arena = crate::arena::Arena::new();
