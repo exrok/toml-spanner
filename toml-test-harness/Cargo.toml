@@ -1,0 +1,9 @@
+[package]
+name = "toml-test-harness"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+codespan-reporting = "0.13.1"
+jsony = { version = "0.1.8", default-features = false }
+toml-spanner = { path = "..", features = ["reporting"] }

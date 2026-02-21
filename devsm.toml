@@ -1,6 +1,19 @@
 
 [action.build-docs]
 cmd = ["cargo", "doc"]
+
 [action.benchmark]
 pwd = "./benchmark"
 cmd = ["cargo", "+nightly", "run", "--release"]
+
+
+[test.offical-toml-test-suite]
+info = """
+Validate toml-spanner against https://github.com/toml-lang/toml-test decoder test suite
+Requires `toml-test` to be installed, see REPO for installation procedure.
+"""
+pwd = "toml-test-harness"
+sh = '''
+BIN=$(cargo --config "target.'cfg(unix)'.runner = 'echo'" run --release || exit 1)
+toml-test test -toml 1.1 "-decoder=$BIN"
+'''
