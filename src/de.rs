@@ -12,6 +12,40 @@ use crate::{
     value::{self, Item},
 };
 
+/// Guides deserialization of a [`Table`] by tracking which fields have been
+/// consumed.
+///
+/// Create one via [`Root::helper`](crate::Root::helper) for the root table,
+/// or [`Item::table_helper`] / [`TableHelper::new`] for nested tables.
+/// Then extract fields with [`required`](Self::required) and
+/// [`optional`](Self::optional), and finish with
+/// [`expect_empty`](Self::expect_empty) to reject unknown keys.
+///
+/// Errors are accumulated in the shared [`Context`] rather than failing on
+/// the first problem, so a single parse pass can report multiple issues.
+///
+/// # Examples
+///
+/// ```
+/// use toml_spanner::{Arena, Deserialize, Item, Context, Failed, TableHelper};
+///
+/// struct Config {
+///     name: String,
+///     port: u16,
+///     debug: bool,
+/// }
+///
+/// impl<'de> Deserialize<'de> for Config {
+///     fn deserialize(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
+///         let mut th = value.table_helper(ctx)?;
+///         let name = th.required("name")?;
+///         let port = th.required("port")?;
+///         let debug = th.optional("debug").unwrap_or(false);
+///         th.expect_empty()?;
+///         Ok(Config { name, port, debug })
+///     }
+/// }
+/// ```
 pub struct TableHelper<'ctx, 'table, 'de> {
     pub ctx: &'ctx mut Context<'de>,
     pub table: &'table Table<'de>,
@@ -54,6 +88,10 @@ impl FixedBitset {
     }
 }
 
+/// An iterator over table entries that were **not** consumed by
+/// [`TableHelper::required`] or [`TableHelper::optional`].
+///
+/// Obtained via [`TableHelper::into_remaining`].
 pub struct RemainingEntriesIter<'t, 'de> {
     entries: &'t [(Key<'de>, Item<'de>)],
     remaining_cells: std::slice::Iter<'de, u64>,
@@ -95,6 +133,10 @@ impl<'t, 'de> Iterator for RemainingEntriesIter<'t, 'de> {
 }
 
 impl<'ctx, 't, 'de> TableHelper<'ctx, 't, 'de> {
+    /// Creates a new helper for the given table.
+    ///
+    /// Prefer [`Item::table_helper`] when implementing [`Deserialize`], or
+    /// [`Root::helper`](crate::Root::helper) for the root table.
     pub fn new(ctx: &'ctx mut Context<'de>, table: &'t Table<'de>) -> Self {
         let table_id = if table.len() > INDEXED_TABLE_THRESHOLD {
             // Note due to 512MB limit this will fit in i32.
@@ -110,6 +152,12 @@ impl<'ctx, 't, 'de> TableHelper<'ctx, 't, 'de> {
             used_count: 0,
         }
     }
+    /// Looks up a key-value entry without marking it as consumed.
+    ///
+    /// This is useful for peeking at a field before deciding how to
+    /// deserialize it. The entry will still be flagged as unexpected by
+    /// [`expect_empty`](Self::expect_empty) unless it is later consumed by
+    /// [`required`](Self::required) or [`optional`](Self::optional).
     pub fn get_entry(&self, key: &str) -> Option<&'t (Key<'de>, Item<'de>)> {
         if self.table_id < 0 {
             for entry in self.table.entries() {
@@ -125,7 +173,109 @@ impl<'ctx, 't, 'de> TableHelper<'ctx, 't, 'de> {
             }
         }
     }
-    fn get_entry_recording_use(&mut self, key: &str) -> Option<&'t (Key<'de>, Item<'de>)> {
+
+    /// Extracts a required field and transforms it with `func`.
+    ///
+    /// Looks up `name`, marks it as consumed, and passes the [`Item`] to
+    /// `func`. This is useful for parsing string values via
+    /// [`Item::parse`] or applying custom validation without implementing
+    /// [`Deserialize`].
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Failed`] if the key is absent or if `func` returns an error.
+    /// In both cases the error is pushed onto the shared [`Context`].
+    pub fn required_mapped<T>(
+        &mut self,
+        name: &'static str,
+        func: fn(&Item<'de>) -> Result<T, Error>,
+    ) -> Result<T, Failed> {
+        let Some((_, item)) = self.optional_entry(name) else {
+            return Err(self.report_missing_field(name));
+        };
+
+        func(item).map_err(|err| {
+            self.ctx.push_error(Error {
+                kind: ErrorKind::Custom(std::borrow::Cow::Owned(err.to_string())),
+                span: item.span(),
+            })
+        })
+    }
+
+    /// Extracts an optional field and transforms it with `func`.
+    ///
+    /// Returns [`None`] if the key is missing (no error recorded) or if
+    /// `func` returns an error (the error is pushed onto the [`Context`]).
+    /// The field is marked as consumed so
+    /// [`expect_empty`](Self::expect_empty) will not flag it as unexpected.
+    pub fn optional_mapped<T>(
+        &mut self,
+        name: &'static str,
+        func: fn(&Item<'de>) -> Result<T, Error>,
+    ) -> Option<T> {
+        let Some((_, item)) = self.optional_entry(name) else {
+            return None;
+        };
+
+        func(item)
+            .map_err(|err| {
+                self.ctx.push_error(Error {
+                    kind: ErrorKind::Custom(std::borrow::Cow::Owned(err.to_string())),
+                    span: item.span(),
+                })
+            })
+            .ok()
+    }
+
+    /// Returns the raw [`Item`] for a required field.
+    ///
+    /// Like [`required`](Self::required) but skips deserialization, giving
+    /// direct access to the parsed value. The field is marked as consumed.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Failed`] and records a
+    /// [`MissingField`](crate::ErrorKind::MissingField) error if the key is
+    /// absent.
+    pub fn required_item(&mut self, name: &'static str) -> Result<&'t Item<'de>, Failed> {
+        self.required_entry(name).map(|(_, value)| value)
+    }
+
+    /// Returns the raw [`Item`] for an optional field.
+    ///
+    /// Like [`optional`](Self::optional) but skips deserialization, giving
+    /// direct access to the parsed value. Returns [`None`] when the key is
+    /// missing (no error recorded). The field is marked as consumed.
+    pub fn optional_item(&mut self, name: &'static str) -> Option<&'t Item<'de>> {
+        self.optional_entry(name).map(|(_, value)| value)
+    }
+
+    /// Returns the `(`[`Key`]`, `[`Item`]`)` pair for a required field.
+    ///
+    /// Use this when you need the key's [`Span`](crate::Span) in addition to
+    /// the value. The field is marked as consumed.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Failed`] and records a
+    /// [`MissingField`](crate::ErrorKind::MissingField) error if the key is
+    /// absent.
+    pub fn required_entry(
+        &mut self,
+        name: &'static str,
+    ) -> Result<&'t (Key<'de>, Item<'de>), Failed> {
+        match self.optional_entry(name) {
+            Some(entry) => Ok(entry),
+            None => Err(self.report_missing_field(name)),
+        }
+    }
+
+    /// Returns the `(`[`Key`]`, `[`Item`]`)` pair for an optional field.
+    ///
+    /// Returns [`None`] when the key is missing (no error recorded). Use
+    /// this when you need the key's [`Span`](crate::Span) in addition to
+    /// the value. The field is marked as consumed.
+    pub fn optional_entry(&mut self, key: &str) -> Option<&'t (Key<'de>, Item<'de>)> {
         let entry = self.get_entry(key)?;
         let index = unsafe {
             let ptr = entry as *const (Key<'de>, Item<'de>);
@@ -137,6 +287,7 @@ impl<'ctx, 't, 'de> TableHelper<'ctx, 't, 'de> {
         }
         Some(entry)
     }
+
     #[cold]
     fn report_missing_field(&mut self, name: &'static str) -> Failed {
         self.ctx.errors.push(Error {
@@ -146,18 +297,30 @@ impl<'ctx, 't, 'de> TableHelper<'ctx, 't, 'de> {
         Failed
     }
 
+    /// Deserializes a required field, recording an error if the key is missing.
+    ///
+    /// The field is marked as consumed so [`expect_empty`](Self::expect_empty)
+    /// will not flag it as unexpected.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Failed`] if the key is absent or if `T::deserialize` fails.
+    /// In both cases the error is pushed onto the shared [`Context`].
     pub fn required<T: Deserialize<'de>>(&mut self, name: &'static str) -> Result<T, Failed> {
-        let Some((_, val)) = self.get_entry_recording_use(name) else {
+        let Some((_, val)) = self.optional_entry(name) else {
             return Err(self.report_missing_field(name));
         };
 
         T::deserialize(self.ctx, val)
     }
 
-    /// Removes and deserializes a field, returning [`None`] if the key is missing
-    /// or an error (recording the error in the context);
+    /// Deserializes an optional field, returning [`None`] if the key is missing
+    /// or deserialization fails (recording the error in the [`Context`]).
+    ///
+    /// The field is marked as consumed so [`expect_empty`](Self::expect_empty)
+    /// will not flag it as unexpected.
     pub fn optional<T: Deserialize<'de>>(&mut self, name: &str) -> Option<T> {
-        let Some((_, val)) = self.get_entry_recording_use(name) else {
+        let Some((_, val)) = self.optional_entry(name) else {
             return None;
         };
 
@@ -189,6 +352,17 @@ impl<'ctx, 't, 'de> TableHelper<'ctx, 't, 'de> {
         }
     }
 
+    /// Finishes deserialization, recording an error if any fields were not
+    /// consumed by [`required`](Self::required) or
+    /// [`optional`](Self::optional).
+    ///
+    /// Call this as the last step in a [`Deserialize`] implementation to
+    /// reject unknown keys.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Failed`] and pushes an [`ErrorKind::UnexpectedKeys`](crate::ErrorKind::UnexpectedKeys)
+    /// error if unconsumed fields remain.
     #[inline(never)]
     pub fn expect_empty(self) -> Result<(), Failed> {
         if self.used_count as usize == self.table.len() {
@@ -214,6 +388,14 @@ impl<'ctx, 't, 'de> TableHelper<'ctx, 't, 'de> {
     }
 }
 
+/// Shared deserialization state that accumulates errors and holds the arena.
+///
+/// A `Context` is created by [`parse`](crate::parse) and lives inside
+/// [`Root`](crate::Root). Pass it into [`TableHelper::new`] or
+/// [`Item::table_helper`] when implementing [`Deserialize`].
+///
+/// Multiple errors can be recorded during a single deserialization pass;
+/// inspect them afterwards via [`Root::errors`](crate::Root::errors).
 pub struct Context<'de> {
     pub arena: &'de Arena,
     pub(crate) index: HashMap<KeyRef<'de>, usize>,
@@ -221,6 +403,7 @@ pub struct Context<'de> {
 }
 
 impl<'de> Context<'de> {
+    /// Records a "expected X, found Y" type-mismatch error and returns [`Failed`].
     #[cold]
     pub fn error_expected_but_found(&mut self, message: &'static str, found: &Item<'_>) -> Failed {
         self.errors.push(Error {
@@ -233,6 +416,7 @@ impl<'de> Context<'de> {
         Failed
     }
 
+    /// Records a custom error message at the given span and returns [`Failed`].
     #[cold]
     pub fn error_message_at(&mut self, message: &'static str, at: Span) -> Failed {
         self.errors.push(Error {
@@ -241,12 +425,14 @@ impl<'de> Context<'de> {
         });
         Failed
     }
+    /// Pushes a pre-built [`Error`] and returns [`Failed`].
     #[cold]
     pub fn push_error(&mut self, error: Error) -> Failed {
         self.errors.push(error);
         Failed
     }
 
+    /// Records an out-of-range error for the type `name` and returns [`Failed`].
     #[cold]
     pub fn error_out_of_range(&mut self, name: &'static str, span: Span) -> Failed {
         self.errors.push(Error {
@@ -257,11 +443,49 @@ impl<'de> Context<'de> {
     }
 }
 
+/// Sentinel indicating that a deserialization error has been recorded in the
+/// [`Context`].
+///
+/// `Failed` carries no data — the actual error details live in
+/// [`Context::errors`](Context::errors). Return `Err(Failed)` from
+/// [`Deserialize::deserialize`] after calling one of the `Context::error_*`
+/// methods.
 #[derive(Debug)]
 pub struct Failed;
 
+/// Trait for types that can be deserialized from a TOML [`Item`].
+///
+/// Implement this on your own types to enable extraction via
+/// [`TableHelper::required`] and [`TableHelper::optional`].
+/// Built-in implementations are provided for primitive types, `String`,
+/// `Vec<T>`, `Box<T>`, `Option<T>` (via `optional`), and more.
+///
+/// # Examples
+///
+/// ```
+/// use toml_spanner::{Item, Context, Deserialize, Failed, TableHelper};
+///
+/// struct Point {
+///     x: f64,
+///     y: f64,
+/// }
+///
+/// impl<'de> Deserialize<'de> for Point {
+///     fn deserialize(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
+///         let mut th = value.table_helper(ctx)?;
+///         let x = th.required("x")?;
+///         let y = th.required("y")?;
+///         th.expect_empty()?;
+///         Ok(Point { x, y })
+///     }
+/// }
+/// ```
 pub trait Deserialize<'de>: Sized {
-    fn deserialize(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed>;
+    /// Attempts to produce `Self` from a TOML [`Item`].
+    ///
+    /// On failure, records one or more errors in `ctx` and returns
+    /// `Err(`[`Failed`]`)`.
+    fn deserialize(ctx: &mut Context<'de>, item: &Item<'de>) -> Result<Self, Failed>;
 }
 
 impl<'de, T: Deserialize<'de>, const N: usize> Deserialize<'de> for [T; N] {
@@ -437,9 +661,11 @@ where
 }
 
 impl<'de> Item<'de> {
-    /// Should be used when the string you expecting is more specific that just a string
-    /// Such as an IP-address, typically the message should still message string, like
-    /// "a IPv4 string"
+    /// Returns a string, or records an error with a custom `expected` message.
+    ///
+    /// Use this instead of [`expect_string`](Self::expect_string) when the
+    /// expected value is more specific than just "a string" — for example,
+    /// `"an IPv4 address"` or `"a hex color"`.
     pub fn expect_custom_string(
         &self,
         ctx: &mut Context<'de>,

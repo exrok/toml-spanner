@@ -11,6 +11,73 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] - ReleaseDate
 
+## [0.4.0] - 2026-02-21
+
+### Added
+
+- **DateTime support** — The parser now handles all TOML 1.1.0 temporal values:
+  offset date-times, local date-times, local dates, and local times. New types
+  `DateTime`, `Date`, `Time`, and `TimeOffset` are exported from the crate root.
+  `Value::DateTime` and `Kind::DateTime` variants are added to the value enums.
+  This removes the last spec-compliance gap — toml-spanner now fully implements
+  TOML 1.1.0.
+- **`Root` wrapper type** — `parse()` now returns `Root<'de>` instead of a bare
+  `Table`. `Root` bundles the parsed table with a deserialization `Context` that
+  carries the parser's hash index, enabling O(1) key lookups during
+  deserialization. Access the table via `Root::table()`, `Root::into_table()`,
+  or index operators directly on `Root`.
+- **`TableHelper` deserialization helper** — New `de::TableHelper` provides
+  `required()` and `optional()` field extraction with arena-allocated bitset
+  tracking of consumed fields. `expect_empty()` reports all unexpected keys at
+  once. `into_remaining()` iterates over unconsumed entries for catch-all
+  deserialization patterns.
+- **Multi-error accumulation** — The `de::Context` collects all deserialization
+  errors rather than failing on the first one. Call `Root::into_result()` or
+  inspect `ctx.errors` to retrieve accumulated diagnostics.
+- **`Kind` enum made public** — `Item::kind()` and the `Kind` enum are now
+  public, with `Debug` and `Display` impls for type-name formatting.
+- **`Error::custom` constructor** — Convenience method for creating errors with
+  a custom message and span.
+
+### Changed
+
+- **Immutable deserialization model** — The `Deserialize` trait signature changed
+  from `fn deserialize(item: &mut Item<'de>) -> Result<Self, Error>` to
+  `fn deserialize(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed>`.
+  Deserialization is now immutable over the parsed tree — fields are tracked via
+  a bitset rather than removed from the table. This preserves the hash index
+  built during parsing and simplifies borrow checking.
+- **`Deserialize` trait moved to `de` module** — The trait and its companion
+  `DeserializeOwned` are now in the public `de` module, along with `Context`,
+  `Failed`, and `TableHelper`. The `de` module is re-exported at the crate root
+  for convenience.
+- **`Table::required` / `optional` / `expect_empty` removed** — These methods
+  are replaced by `TableHelper::required`, `TableHelper::optional`, and
+  `TableHelper::expect_empty`. Use `Root::helper()` or
+  `Item::table_helper(ctx)` to obtain a `TableHelper`.
+- **`Table::remove` and `Table::values_mut` removed** — Use
+  `Table::remove_entry` instead of `remove`. Mutable value iteration is no
+  longer exposed.
+- **`parse()` returns `Root` instead of `Table`** — Callers that only need the
+  table can call `.into_table()` or `.table()`.
+- **Stricter arena lifetime bounds** — `Table::insert` and internal `grow`
+  methods now require `&'de Arena` instead of `&Arena`, preventing a potential
+  use-after-free when a shorter-lived arena was used for collection growth.
+- **Reject stray carriage returns** — The parser now rejects `\r` not followed
+  by `\n`, matching the TOML spec and the reference `toml` crate behavior.
+- **File size limit corrected** — Maximum input size is 512 MiB (exclusive),
+  corrected from the previously documented 4 GiB.
+- **`Table::as_item` replaces consuming conversion** — New `Table::as_item()`
+  returns `&Item<'de>` via zero-cost transmute, complementing the existing
+  `into_item()`.
+- **Micro parser optimizations** — Reduced redundant byte peeks, restructured
+  pattern matching to avoid matching on `u8` and `Option` simultaneously,
+  lowering generated MIR/LLVM IR.
+- **32-bit overflow protection** — `InnerTable::grow_to` uses checked
+  multiplication on 32-bit targets to prevent capacity overflow.
+- **Integration tests renamed** — `integ-tests` workspace member renamed to
+  `snapshot-tests` to better reflect its purpose.
+
 ## [0.3.0] - 2026-02-16
 
 ### Changed
@@ -95,7 +162,8 @@ Initial release of `toml-spanner`, forked from [`toml-span`](https://github.com/
 
 <!-- next-url -->
 
-[Unreleased]: https://github.com/exrok/toml-spanner/compare/0.3.0...HEAD
+[Unreleased]: https://github.com/exrok/toml-spanner/compare/0.4.0...HEAD
+[0.4.0]: https://github.com/exrok/toml-spanner/compare/0.3.0...0.4.0
 [0.3.0]: https://github.com/exrok/toml-spanner/compare/0.2.0...0.3.0
 [0.2.0]: https://github.com/exrok/toml-spanner/compare/0.1.0...0.2.0
 [0.1.0]: https://github.com/exrok/toml-spanner/releases/tag/0.1.0

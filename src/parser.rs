@@ -1889,22 +1889,40 @@ impl std::fmt::Debug for Root<'_> {
     }
 }
 
+/// Parses a TOML document and returns a [`Root`] containing the parsed tree.
+///
+/// Both `s` and `arena` must outlive the returned [`Root`] because parsed
+/// values borrow directly from the input string and allocate escaped strings
+/// into the arena.
+///
+/// # Errors
+///
+/// Returns an [`Error`] on the first syntax error encountered.
+///
+/// # Examples
+///
+/// ```
+/// let arena = toml_spanner::Arena::new();
+/// let root = toml_spanner::parse("key = 'value'", &arena)?;
+/// assert_eq!(root["key"].as_str(), Some("value"));
+/// # Ok::<(), toml_spanner::Error>(())
+/// ```
 #[inline(never)]
-pub fn parse<'de>(s: &'de str, arena: &'de Arena) -> Result<Root<'de>, Error> {
+pub fn parse<'de>(document: &'de str, arena: &'de Arena) -> Result<Root<'de>, Error> {
     // Tag bits use the low 3 bits of start_and_tag, limiting span.start to
     // 29 bits (512 MiB). The flag state uses the low 3 bits of end_and_flag,
     // limiting span.end to 29 bits (512 MiB).
     const MAX_SIZE: usize = (1u32 << 29) as usize;
 
-    if s.len() >= MAX_SIZE {
+    if document.len() >= MAX_SIZE {
         return Err(Error {
             kind: ErrorKind::FileTooLarge,
             span: Span::new(0, 0),
         });
     }
 
-    let mut root_st = Table::new(Span::new(0, s.len() as u32));
-    let mut parser = Parser::new(s, arena);
+    let mut root_st = Table::new(Span::new(0, document.len() as u32));
+    let mut parser = Parser::new(document, arena);
     match parser.parse_document(&mut root_st) {
         Ok(()) => {}
         Err(_) => return Err(parser.take_error()),

@@ -74,7 +74,7 @@
 //! <summary>Toggle More Extensive Example</summary>
 //!
 //! ```
-//! use toml_spanner::{Arena, Deserialize, Item, de::{Context, Failed, TableHelper}};
+//! use toml_spanner::{Arena, Deserialize, Item, Context, Failed, TableHelper};
 //!
 //! #[derive(Debug)]
 //! struct Things {
@@ -135,7 +135,7 @@
 
 mod arena;
 mod array;
-pub mod de;
+mod de;
 mod error;
 mod parser;
 mod span;

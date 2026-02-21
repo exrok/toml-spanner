@@ -65,16 +65,19 @@ cmd = ["cargo", "+nightly", "miri", "nextest", "run"]
 tag = ["slow", "miri"]
 
 [test.miri-tests-32bit]
-info = "Requires `cargo-nextest` and miri."
 cmd = [
     "cargo",
     "+nightly",
     "miri",
-    "test",
+    "nextest",
+    "run",
+    "-p",
+    "toml-spanner",
     "--lib",
     "--target",
     "i686-unknown-linux-gnu",
 ]
+info = "Requires `cargo-nextest` and miri."
 tag = ["slow", "miri"]
 
 [test.official-toml-test-suite]

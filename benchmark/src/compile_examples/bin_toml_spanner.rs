@@ -1,7 +1,6 @@
 #![allow(unused)]
 
-use toml_spanner::Item;
-use toml_spanner::de::{Context, Deserialize, Failed, TableHelper};
+use toml_spanner::{Context, Deserialize, Failed, Item, TableHelper};
 
 #[derive(Debug)]
 struct Project {

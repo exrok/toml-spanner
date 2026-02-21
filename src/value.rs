@@ -240,6 +240,9 @@ impl<'de> Item<'de> {
         )
     }
 }
+/// Discriminant for the TOML value types stored in an [`Item`].
+///
+/// Obtained via [`Item::kind`].
 #[derive(Clone, Copy)]
 #[repr(u8)]
 #[allow(unused)]
@@ -266,6 +269,7 @@ impl std::fmt::Display for Kind {
 }
 
 impl Kind {
+    /// Returns the TOML type name as a lowercase string (e.g. `"string"`, `"table"`).
     pub fn as_str(self) -> &'static str {
         match self {
             Kind::String => "string",
@@ -273,8 +277,8 @@ impl Kind {
             Kind::Float => "float",
             Kind::Boolean => "boolean",
             Kind::Array => "array",
-            Kind::Table => "datetime",
-            Kind::DateTime => "table",
+            Kind::Table => "table",
+            Kind::DateTime => "datetime",
         }
     }
 }
@@ -623,10 +627,10 @@ impl<'de> Item<'de> {
     ///
     /// Returns an error if the value is not a string or parsing fails.
     #[inline]
-    pub fn parse<T, E>(&self) -> Result<T, Error>
+    pub fn parse<T>(&self) -> Result<T, Error>
     where
-        T: std::str::FromStr<Err = E>,
-        E: std::fmt::Display,
+        T: std::str::FromStr,
+        <T as std::str::FromStr>::Err: std::fmt::Display,
     {
         let Some(s) = self.as_str() else {
             return Err(self.expected("a string"));

@@ -351,7 +351,10 @@ fn expect_and_mut_accessors() {
     // expect_array type mismatch
     let v = Item::integer(42, sp(0, 2));
     assert!(v.expect_array(&mut ctx).is_err());
-    assert!(matches!(ctx.errors.last().unwrap().kind, crate::ErrorKind::Wanted { .. }));
+    assert!(matches!(
+        ctx.errors.last().unwrap().kind,
+        crate::ErrorKind::Wanted { .. }
+    ));
 
     // expect_table success
     let mut tab = InnerTable::new();
@@ -370,7 +373,10 @@ fn expect_and_mut_accessors() {
     // expect_table type mismatch
     let v = Item::integer(42, sp(0, 2));
     assert!(v.expect_table(&mut ctx).is_err());
-    assert!(matches!(ctx.errors.last().unwrap().kind, crate::ErrorKind::Wanted { .. }));
+    assert!(matches!(
+        ctx.errors.last().unwrap().kind,
+        crate::ErrorKind::Wanted { .. }
+    ));
 
     // as_array_mut on array
     let mut v = Item::array(Array::new(), sp(0, 2));
@@ -404,17 +410,17 @@ fn expect_and_mut_accessors() {
 fn parse_method() {
     // Success
     let v = Item::string("42", sp(0, 2));
-    let parsed: i32 = v.parse::<i32, _>().unwrap();
+    let parsed: i32 = v.parse::<i32>().unwrap();
     assert_eq!(parsed, 42);
 
     // Parse failure (invalid content)
     let v = Item::string("not_a_number", sp(0, 12));
-    let err = v.parse::<i32, _>().unwrap_err();
+    let err = v.parse::<i32>().unwrap_err();
     assert!(matches!(err.kind, crate::ErrorKind::Custom(..)));
 
     // Wrong type (not a string)
     let v = Item::integer(42, sp(0, 2));
-    let err = v.parse::<i32, _>().unwrap_err();
+    let err = v.parse::<i32>().unwrap_err();
     assert!(matches!(err.kind, crate::ErrorKind::Wanted { .. }));
 }
 
@@ -654,10 +660,7 @@ fn datetime_items() {
     assert!(matches!(dt_item.value(), Value::DateTime(_)));
 
     // value_mut() returns DateTime variant
-    let mut dt_item_owned = Item::moment(
-        *dt_item.as_datetime().unwrap(),
-        dt_item.span(),
-    );
+    let mut dt_item_owned = Item::moment(*dt_item.as_datetime().unwrap(), dt_item.span());
     assert!(matches!(dt_item_owned.value_mut(), ValueMut::DateTime(_)));
 
     // Debug for datetime Item
@@ -701,18 +704,9 @@ fn kind_enum() {
     }
 
     // kind() returns correct Kind for each Item type
-    assert!(matches!(
-        Item::string("s", sp(0, 1)).kind(),
-        Kind::String
-    ));
-    assert!(matches!(
-        Item::integer(1, sp(0, 1)).kind(),
-        Kind::Integer
-    ));
-    assert!(matches!(
-        Item::float(1.0, sp(0, 1)).kind(),
-        Kind::Float
-    ));
+    assert!(matches!(Item::string("s", sp(0, 1)).kind(), Kind::String));
+    assert!(matches!(Item::integer(1, sp(0, 1)).kind(), Kind::Integer));
+    assert!(matches!(Item::float(1.0, sp(0, 1)).kind(), Kind::Float));
     assert!(matches!(
         Item::boolean(true, sp(0, 1)).kind(),
         Kind::Boolean

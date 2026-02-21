@@ -1,6 +1,6 @@
 [package]
 name = "toml-spanner"
-version = "0.3.0"
+version = "0.4.0"
 description = "High Performance Toml parser and deserializer that preserves span information with fast compile times."
 authors = [
     "Thomas Dagenais <exrok@i64.dev>",
@@ -22,7 +22,13 @@ debug-assertions = true
 [workspace]
 resolver = "3"
 members = ["snapshot-tests"]
-exclude = ["fuzz", "benchmark", "toml-test-harness", "stress-tests"]
+exclude = [
+    "third-party-integration-tests",
+    "fuzz",
+    "benchmark",
+    "toml-test-harness",
+    "stress-tests",
+]
 
 [features]
 serde = ["dep:serde"]

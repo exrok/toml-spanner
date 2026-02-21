@@ -191,10 +191,11 @@ impl Time {
 /// ```
 ///
 /// <details>
-/// <summary>Toggle Jiff Conversion Function Examples</summary>
+/// <summary>Toggle Jiff Conversions Examples</summary>
 ///
 /// ```ignore
-/// use toml_spanner::{Error as TomlError, Span as TomlSpan};
+/// use jiff::civil::Date;
+/// use toml_spanner::{Deserialize, Error as TomlError, Span as TomlSpan};
 ///
 /// fn extract_date(
 ///     datetime: &toml_spanner::DateTime,
@@ -251,7 +252,7 @@ impl Time {
 ///     }
 /// }
 ///
-/// fn to_jiff_date(item: &toml_spanner::Item) -> Result<jiff::civil::Date, TomlError> {
+/// fn to_jiff_date(item: &toml_spanner::Item<'_>) -> Result<jiff::civil::Date, TomlError> {
 ///     let Some(datetime) = item.as_datetime() else {
 ///         return Err(item.expected("date"));
 ///     };
@@ -266,7 +267,7 @@ impl Time {
 ///     extract_date(datetime, item.span())
 /// }
 ///
-/// fn to_jiff_datetime(item: &toml_spanner::Item) -> Result<jiff::civil::DateTime, TomlError> {
+/// fn to_jiff_datetime(item: &toml_spanner::Item<'_>) -> Result<jiff::civil::DateTime, TomlError> {
 ///     let Some(datetime) = item.as_datetime() else {
 ///         return Err(item.expected("civil datetime"));
 ///     };
@@ -284,7 +285,7 @@ impl Time {
 ///     ))
 /// }
 ///
-/// fn to_jiff_timestamp(item: &toml_spanner::Item) -> Result<jiff::Timestamp, TomlError> {
+/// fn to_jiff_timestamp(item: &toml_spanner::Item<'_>) -> Result<jiff::Timestamp, TomlError> {
 ///     let Some(datetime) = item.as_datetime() else {
 ///         return Err(item.expected("timestamp"));
 ///     };
@@ -300,6 +301,41 @@ impl Time {
 ///             item.span(),
 ///         )),
 ///     }
+/// }
+///
+/// #[derive(Debug)]
+/// pub struct TimeConfig {
+///     pub date: Date,
+///     pub datetime: jiff::civil::DateTime,
+///     pub timestamp: jiff::Timestamp,
+/// }
+///
+/// impl<'de> Deserialize<'de> for TimeConfig {
+///     fn deserialize(
+///         ctx: &mut toml_spanner::Context<'de>,
+///         value: &toml_spanner::Item<'de>,
+///     ) -> Result<Self, toml_spanner::Failed> {
+///         let mut th = value.table_helper(ctx)?;
+///         let config = TimeConfig {
+///             date: th.required_mapped("date", to_jiff_date)?,
+///             datetime: th.required_mapped("datetime", to_jiff_datetime)?,
+///             timestamp: th.required_mapped("timestamp", to_jiff_timestamp)?,
+///         };
+///         Ok(config)
+///     }
+/// }
+///
+/// fn main() {
+///     let arena = toml_spanner::Arena::new();
+///
+///     let toml_doc = r#"
+///         date = 1997-02-28
+///         datetime = 2066-01-30T14:45:00
+///         timestamp = 3291-12-01T00:45:00Z
+///     "#;
+///     let mut root = toml_spanner::parse(toml_doc, &arena).unwrap();
+///     let config: TimeConfig = root.deserialize().unwrap();
+///     println!("{:#?}", config);
 /// }
 /// ```
 ///

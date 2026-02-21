@@ -1,8 +1,7 @@
 #![allow(dead_code)]
 
 use snapshot_tests::{invalid_de, valid_de};
-use toml_spanner::de::{Context, Deserialize, Failed, TableHelper};
-use toml_spanner::{Item, Spanned};
+use toml_spanner::{Context, Deserialize, Failed, Item, Spanned, TableHelper};
 
 #[derive(Debug)]
 struct Boop {

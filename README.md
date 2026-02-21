@@ -6,76 +6,60 @@ has received significant performance improvements and reductions in compile time
 
 [![Crates.io](https://img.shields.io/crates/v/toml-spanner?style=flat-square)](https://crates.io/crates/toml-spanner)
 [![Docs.rs](https://img.shields.io/docsrs/toml-spanner?style=flat-square)](https://docs.rs/toml-spanner/latest/toml_spanner/)
-[![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
+[![License](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue?style=flat-square)](LICENSE-MIT)
 
-Like the original `toml-span` temporal values such as timestamps or local times are not supported.
+Unlike the original, `toml-spanner` aims to be a fully compliant TOML v1.1.0 parser,
+with conformance verified by extensive fuzzing against the `toml` crate and passing the
+official TOML test suite.
 
 ## Example
 
 ```rust
-use toml_spanner::{Deserialize, Error, Item};
+use toml_spanner::{Arena, Context, Deserialize, Failed, Item};
 
 #[derive(Debug)]
-struct Things {
-    name: String,
-    value: u32,
-    color: Option<String>,
-}
-
-impl<'de> Deserialize<'de> for Things {
-    fn deserialize(value: &mut Item<'de>) -> Result<Self, Error> {
-        let table = value.expect_table()?;
-        Ok(Things {
-            name: table.required("name")?,
-            value: table.required("value")?,
-            color: table.optional("color")?,
-        })
-    }
-}
-
 struct Config {
-    things: Vec<Things>,
-    dev_mode: bool,
+    nested: Vec<Config>,
+    enable: bool,
+    number: u32,
 }
 
-impl Config {
-    pub fn parse(content: &str) -> Result<Config, Error> {
-        let arena = toml_spanner::Arena::new();
-        let mut table = toml_spanner::parse(content, &arena)?;
+impl<'de> Deserialize<'de> for Config {
+    fn deserialize(ctx: &mut Context<'de>, item: &Item<'de>) -> Result<Self, Failed> {
+        let mut th = item.table_helper(ctx)?;
         let config = Config {
-            things: table.required("things")?,
-            dev_mode: table.optional("dev-mode")?.unwrap_or(false),
+            enable: th.optional("enabled").unwrap_or(false),
+            number: th.required("number")?,
+            nested: th.required("nested")?,
         };
-
-        // Report unexpected fields
-        table.expect_empty()?;
-
+        th.expect_empty()?;
         Ok(config)
     }
 }
 
+const TOML_DOCUMENT: &str = r#"
+enabled = false
+number = 37
+
+[[nested]]
+number = 43
+
+[[nested]]
+enabled = true
+number = 12
+"#;
+
 fn main() {
-    let content = r#"
-    dev-mode = true
+    let arena = Arena::new();
 
-    [[things]]
-    name = "hammer"
-    value = 43
-
-    [[things]]
-    name = "drill"
-    value = 300
-    color = "green"
-    "#;
-
-    match Config::parse(content) {
-        Ok(config) => {
-            println!("dev_mode: {}", config.dev_mode);
-            for thing in config.things {
-                println!("thing: {:?}", thing);
-            }
+    let mut root = toml_spanner::parse(TOML_DOCUMENT, &arena).unwrap();
+    if let Ok(config) = root.deserialize::<Config>() {
+        println!("parsed: {:?}", config);
+    } else {
+        println!("Deserialization Failure");
+        for error in root.errors() {
+            println!("error: {}", error);
         }
-        Err(e) => eprintln!("Error parsing config: {e}"),
     }
 }
 ```
@@ -125,8 +109,7 @@ time added users would experience during source based installs such as via `carg
 
 ## Divergence from `toml-span`
 
-While `toml-spanner` star
-ted as a fork of `toml-span`, it has since undergone
+While `toml-spanner` started as a fork of `toml-span`, it has since undergone
 extensive changes:
 
 - 10x faster than `toml-span`, and 5-8x faster than `toml` across
@@ -166,7 +149,7 @@ cargo +nightly fuzz run parse_compare_toml      # fuzz against the toml crate
 cargo +nightly fuzz run parse_value             # fuzz the parser directly
 
 # Test 32bit support under MIRI
-cargo +nightly miri nextes -p toml-spanner --target i686-unknown-linux-gnu
+cargo +nightly miri nextest run -p toml-spanner --target i686-unknown-linux-gnu
 ```
 
 Integration tests use [insta](https://insta.rs/) for snapshot assertions.
@@ -185,7 +168,6 @@ First off I just want to be up front and clear about the differences/limitations
 
 1. No `serde` support for deserialization, there is a `serde` feature, but that only enables serialization of the `Value` and `Spanned` types.
 1. No toml serialization. This crate is only intended to be a span preserving deserializer, there is no intention to provide serialization to toml, especially the advanced format preserving kind provided by `toml-edit`.
-1. No datetime deserialization. It would be trivial to add support for this (behind an optional feature), I just have no use for it at the moment. PRs welcome.
 
 ### License
 
