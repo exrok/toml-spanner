@@ -624,7 +624,7 @@ impl DateTime {
     /// Formats this datetime into the provided buffer and returns the result as a `&str`.
     ///
     /// The output follows RFC 3339 formatting and matches the TOML serialization
-    /// of the value. The caller must supply an uninitializebuffer of [`MAX_FORMAT_LEN`] bytes;
+    /// of the value. The caller must supply an uninitializebuffer of [`MAX_FORMAT_LEN`](Self::MAX_FORMAT_LEN) bytes;
     /// the returned `&str` borrows from that buffer, starting from the beginning.
     ///
     /// # Examples

@@ -51,8 +51,9 @@ fn cargo_toml(name: &str, deps: &str) -> String {
 }
 
 fn make_projects() -> Vec<Project> {
-    let spanner = spanner_path();
-    let spanner_dep = format!("toml-spanner.path = \"{}\"", spanner.display());
+    // let spanner = spanner_path();
+    // let spanner_dep = format!("toml-spanner.path = \"{}\"", spanner.display());
+    let spanner_dep = format!("toml-spanner.path = \"{}\"", "/code/toml-spanner-thin");
 
     vec![
         Project {

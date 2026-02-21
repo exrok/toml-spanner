@@ -1,6 +1,6 @@
 # toml-spanner
 
-High-performance, fast compiling, span preserving toml parsing for rust.
+High-performance, fast compiling, span preserving conformant TOML parsing for Rust.
 Originally forked from `toml-span` to add TOML 1.1.0 support, `toml-spanner`
 has received significant performance improvements and reductions in compile time.
 
@@ -8,9 +8,9 @@ has received significant performance improvements and reductions in compile time
 [![Docs.rs](https://img.shields.io/docsrs/toml-spanner?style=flat-square)](https://docs.rs/toml-spanner/latest/toml_spanner/)
 [![License](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue?style=flat-square)](LICENSE-MIT)
 
-Unlike the original, `toml-spanner` aims to be a fully compliant TOML v1.1.0 parser,
-with conformance verified by extensive fuzzing against the `toml` crate and passing the
-official TOML test suite.
+Unlike the original, `toml-spanner` aims to be a fully compliant TOML v1.1.0 parser, including
+full date-time support, with conformance verified by extensive fuzzing against the `toml` crate
+and passing the official TOML decoding test suite.
 
 ## Example
 
@@ -28,7 +28,7 @@ enabled = true
 number = 12
 ```
 
-Then you can parse the TOML document into `Item` tree, with the following:
+Then you can parse the TOML document into an `Item` tree, with the following:
 
 ```rust
 use toml_spanner::{Arena, Context, Deserialize, Failed, Item, Value};
@@ -37,7 +37,7 @@ let arena = Arena::new();
 let mut root = toml_spanner::parse(TOML_DOCUMENT, &arena).unwrap();
 ```
 
-You can navigate traverse the tree and inspect values:
+You can traverse the tree and inspect values:
 
 ```rust
 assert_eq!(root["nested"][1]["enabled"].as_bool(), Some(true));
@@ -49,8 +49,8 @@ match root["nested"].value() {
 }
 ```
 
-When the `deserialize` feature is enabled toml-spanner provides a set of
-helpers and trait to aid in deserializing `Item` trees into user defined types.
+When the `deserialize` feature is enabled, toml-spanner provides a set of
+helpers and a trait to aid in deserializing `Item` trees into user defined types.
 
 ```rust
 use toml_spanner::{Arena, Context, Deserialize, Failed, Item};
@@ -68,7 +68,7 @@ impl<'de> Deserialize<'de> for Config {
         let config = Config {
             enabled: th.optional("enabled").unwrap_or(false),
             number: th.required("number")?,
-            nested: th.required("nested")?,
+            nested: th.optional("nested").unwrap_or_default(),
         };
         th.expect_empty()?;
         Ok(config)
@@ -92,7 +92,7 @@ Please consult the [API documentation](https://docs.rs/toml-spanner/latest/toml_
 Measured on AMD Ryzen 9 5950X, 64GB RAM, Linux 6.18, rustc 1.93.0.
 Relative parse time across real-world TOML files (lower is better):
 
-![bench](https://github.com/user-attachments/assets/a762a25f-379f-4d9b-8901-5d2d25ec06c5)
+![bench](https://github.com/user-attachments/assets/59a8dfca-8987-4ea9-8023-faab553edab0)
 
 Crate Versions: `toml-spanner = 0.4.0`, `toml = 1.0.3+spec-1.1.0`, `toml-span = 0.7.0`
 
@@ -112,11 +112,17 @@ devsm.toml
   toml-span           56.8        266        711        141
 ```
 
+This runtime benchmark is pretty simple and focuses just on the parsing step. In practice,
+if you also deserialize into your own data types (where toml-spanner has only made marginal
+improvements), the total runtime improvement is less, but it is highly dependent on the content
+and target data types. Switching devsm from `toml-span` to `toml-spanner` saw a total 8x reduction
+in runtime measured from the actual application when including both parsing and deserialization.
+
 ### Compile Time
 
 Extra `cargo build --release` time for binaries using the respective crates (lower is better):
 
-![compile_bench](https://github.com/user-attachments/assets/acff6d37-5df5-4e79-a219-c9cc60c52c22)
+![compile_bench](https://github.com/user-attachments/assets/e10c0ba6-694c-4de5-bfc1-b85ef9ad9613)
 
 ```
                  median(ms)    added(ms)
@@ -127,7 +133,7 @@ toml                   3060        +2952
 toml+serde             5156        +5048
 ```
 
-Checkout `./benchmark` for more details, but numbers should simulate the additional
+Check out `./benchmark` for more details, but numbers should simulate the additional
 time added users would experience during source based installs such as via `cargo install`.
 
 ## Divergence from `toml-span`

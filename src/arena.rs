@@ -33,7 +33,7 @@ static EMPTY_SLAB: SlabHeader = SlabHeader {
 ///
 /// Create an `Arena` before calling [`parse`](crate::parse) and pass it by
 /// reference. The arena must live at least as long as the parsed [`Table`](crate::Table)
-/// because [`Str`](crate::Str) values may borrow from it.
+/// because parsed string values may borrow from it.
 ///
 /// All memory is freed when the arena is dropped.
 ///

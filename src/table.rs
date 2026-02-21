@@ -273,7 +273,7 @@ impl ExactSizeIterator for IntoIter<'_> {}
 /// `Table` implements [`IntoIterator`] (both by reference and by value),
 /// yielding `(`[`Key`]`, `[`Item`]`)` pairs.
 ///
-/// Removal via [`remove`](Self::remove) uses swap-remove and may reorder
+/// Removal via [`remove_entry`](Self::remove_entry) uses swap-remove and may reorder
 /// remaining entries.
 #[repr(C)]
 pub struct Table<'de> {
