@@ -1,6 +1,17 @@
 use super::*;
 
 #[test]
+fn default_impl() {
+    // Arena::default() should work like Arena::new()
+    let arena = Arena::default();
+    let ptr = arena.alloc(16);
+    assert_eq!(ptr.as_ptr() as usize % 8, 0);
+    unsafe { std::ptr::write_bytes(ptr.as_ptr(), 0xAA, 16) };
+    let bytes = unsafe { std::slice::from_raw_parts(ptr.as_ptr(), 16) };
+    assert!(bytes.iter().all(|&b| b == 0xAA));
+}
+
+#[test]
 fn alloc_basics() {
     let arena = Arena::new();
 

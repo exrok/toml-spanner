@@ -257,6 +257,39 @@ fn field_accessors() {
     let (_, val) = parse_ok("12:30:00");
     assert!(val.date().is_none(), "time-only should have no date");
 
+    // time() accessor: present with seconds and frac
+    let (_, val) = parse_ok("2023-06-15T12:30:45.123");
+    let t = val.time().unwrap();
+    assert_eq!((t.hour, t.minute, t.second), (12, 30, 45));
+    assert_eq!(t.nanosecond, 123000000);
+    assert!(t.has_seconds());
+    assert_eq!(t.subsecond_precision(), 3);
+
+    // time() accessor: no seconds (implicit :00)
+    let (_, val) = parse_ok("2023-06-15T12:30");
+    let t = val.time().unwrap();
+    assert_eq!((t.hour, t.minute, t.second), (12, 30, 0));
+    assert!(!t.has_seconds());
+    assert_eq!(t.subsecond_precision(), 0);
+
+    // time() absent on date-only
+    let (_, val) = parse_ok("2023-06-15");
+    assert!(val.time().is_none());
+
+    // Time Debug and PartialEq
+    let (_, val1) = parse_ok("12:30:45");
+    let (_, val2) = parse_ok("12:30:45");
+    let t1 = val1.time().unwrap();
+    let t2 = val2.time().unwrap();
+    assert_eq!(t1, t2);
+    let debug = format!("{:?}", t1);
+    assert!(debug.contains("hour"));
+    assert!(debug.contains("12"));
+
+    let (_, val3) = parse_ok("12:30:46");
+    let t3 = val3.time().unwrap();
+    assert_ne!(t1, t3);
+
     // offset accessor: Z
     let (_, val) = parse_ok("2023-06-15T12:30Z");
     assert_eq!(val.offset(), Some(TimeOffset::Z), "expected Z offset");
@@ -522,4 +555,34 @@ fn randomized_mutate_valid_input() {
         mutated[pos] = (rng.rand_u32() % 256) as u8;
         let _ = DateTime::munch(&mutated);
     }
+}
+
+#[test]
+fn from_str_and_error() {
+    use std::str::FromStr;
+
+    // Valid datetimes via FromStr
+    let dt = "2023-06-15T12:30:45Z".parse::<DateTime>().ok().unwrap();
+    assert_eq!(dt.date().unwrap().year, 2023);
+
+    let dt = DateTime::from_str("12:30:00").ok().unwrap();
+    assert!(dt.date().is_none());
+
+    let dt = DateTime::from_str("2023-06-15").ok().unwrap();
+    assert!(dt.time().is_none());
+
+    // Invalid strings
+    assert!(DateTime::from_str("not-a-date").is_err());
+    assert!(DateTime::from_str("").is_err());
+
+    // Trailing data causes error (FromStr requires full consumption)
+    assert!(DateTime::from_str("2023-06-15hello").is_err());
+
+    // DateTimeError Display
+    let err = DateTime::from_str("bad").err().unwrap();
+    let display = format!("{err}");
+    assert!(display.contains("Invalid"));
+
+    // DateTimeError is std::error::Error
+    let _: &dyn std::error::Error = &err;
 }

@@ -209,3 +209,209 @@ fn into_remaining() {
         check(150, 1);
     }
 }
+
+#[test]
+fn table_helper_workflows() {
+    let arena = Arena::new();
+
+    // expect_empty succeeds when all fields are consumed
+    let mut root = crate::parser::parse("a = 1\nb = 2", &arena).unwrap();
+    {
+        let mut helper = root.helper();
+        let _: i64 = helper.required("a").unwrap();
+        let _: i64 = helper.required("b").unwrap();
+        assert_eq!(helper.remaining_count(), 0);
+        helper.expect_empty().unwrap();
+    }
+    assert!(root.ctx.errors.is_empty());
+
+    // expect_empty fails with unexpected keys when fields are not consumed
+    let mut root = crate::parser::parse("a = 1\nb = 2\nc = 3", &arena).unwrap();
+    {
+        let mut helper = root.helper();
+        let _: i64 = helper.required("a").unwrap();
+        assert_eq!(helper.remaining_count(), 2);
+        assert!(helper.expect_empty().is_err());
+    }
+    assert!(matches!(
+        root.ctx.errors[0].kind,
+        crate::ErrorKind::UnexpectedKeys { .. }
+    ));
+
+    // required() returns MissingField error for nonexistent key
+    let mut root = crate::parser::parse("a = 1", &arena).unwrap();
+    {
+        let mut helper = root.helper();
+        assert!(helper.required::<i64>("nonexistent").is_err());
+    }
+    assert!(matches!(
+        root.ctx.errors[0].kind,
+        crate::ErrorKind::MissingField("nonexistent")
+    ));
+
+    // optional() returns None for missing key (no error) and None with
+    // error on type mismatch
+    let mut root = crate::parser::parse(r#"a = "string""#, &arena).unwrap();
+    {
+        let mut helper = root.helper();
+        assert!(helper.optional::<i64>("nonexistent").is_none());
+        assert!(helper.optional::<i64>("a").is_none());
+    }
+    assert_eq!(root.ctx.errors.len(), 1);
+
+    // Indexed table (7+ entries) exercises get_entry hash path
+    let mut lines = Vec::new();
+    for i in 0..8 {
+        lines.push(format!("k{i} = {i}"));
+    }
+    let input = lines.join("\n");
+    let mut root = crate::parser::parse(&input, &arena).unwrap();
+    {
+        let mut helper = root.helper();
+        let v: i64 = helper.required("k0").unwrap();
+        assert_eq!(v, 0);
+        let v: i64 = helper.required("k7").unwrap();
+        assert_eq!(v, 7);
+        assert!(helper.required::<i64>("nonexistent").is_err());
+        assert_eq!(helper.remaining_count(), 6);
+    }
+}
+
+#[test]
+fn deser_boxed_and_array_types() {
+    let arena = Arena::new();
+
+    // Box<str>
+    let val: Box<str> = parse_val(r#"v = "boxed""#, &arena).unwrap();
+    assert_eq!(&*val, "boxed");
+    let err = parse_val::<Box<str>>("v = 42", &arena).unwrap_err();
+    assert!(matches!(err.kind, crate::ErrorKind::Wanted { .. }));
+
+    // Box<T>
+    let val: Box<i64> = parse_val("v = 42", &arena).unwrap();
+    assert_eq!(*val, 42);
+    let err = parse_val::<Box<i64>>(r#"v = "nope""#, &arena).unwrap_err();
+    assert!(matches!(err.kind, crate::ErrorKind::Wanted { .. }));
+
+    // Box<[T]>
+    let val: Box<[i64]> = parse_val("v = [1, 2, 3]", &arena).unwrap();
+    assert_eq!(&*val, &[1, 2, 3]);
+    let err = parse_val::<Box<[i64]>>(r#"v = "nope""#, &arena).unwrap_err();
+    assert!(matches!(err.kind, crate::ErrorKind::Wanted { .. }));
+
+    // String wrong type
+    let err = parse_val::<String>("v = 42", &arena).unwrap_err();
+    assert!(matches!(err.kind, crate::ErrorKind::Wanted { .. }));
+
+    // [T; N] correct size
+    let val: [i64; 3] = parse_val("v = [1, 2, 3]", &arena).unwrap();
+    assert_eq!(val, [1, 2, 3]);
+
+    // [T; N] wrong size
+    let err = parse_val::<[i64; 2]>("v = [1, 2, 3]", &arena).unwrap_err();
+    assert!(matches!(err.kind, crate::ErrorKind::Custom(..)));
+
+    // &str and Cow<str> wrong type errors
+    let err = parse_val::<&str>("v = 42", &arena).unwrap_err();
+    assert!(matches!(err.kind, crate::ErrorKind::Wanted { .. }));
+    let err = parse_val::<std::borrow::Cow<'_, str>>("v = 42", &arena).unwrap_err();
+    assert!(matches!(err.kind, crate::ErrorKind::Wanted { .. }));
+
+    // Vec<T> with element type errors
+    let mut root = crate::parser::parse(r#"v = [1, "bad", 3, "worse"]"#, &arena).unwrap();
+    let result = {
+        let mut helper = root.helper();
+        helper.required::<Vec<i64>>("v")
+    };
+    assert!(result.is_err());
+    assert_eq!(root.ctx.errors.len(), 2);
+}
+
+#[test]
+fn expect_custom_string_and_context_errors() {
+    let arena = Arena::new();
+
+    // expect_custom_string via parse and helper
+    let mut root = crate::parser::parse("ip = \"127.0.0.1\"\nport = 8080", &arena).unwrap();
+    {
+        let helper = root.helper();
+        let (_, ip_item) = helper.get_entry("ip").unwrap();
+        assert_eq!(
+            ip_item
+                .expect_custom_string(helper.ctx, "an IPv4 address")
+                .unwrap(),
+            "127.0.0.1"
+        );
+        let (_, port_item) = helper.get_entry("port").unwrap();
+        assert!(port_item
+            .expect_custom_string(helper.ctx, "an IPv4 address")
+            .is_err());
+    }
+    assert!(matches!(
+        root.ctx.errors[0].kind,
+        crate::ErrorKind::Wanted {
+            expected: "an IPv4 address",
+            ..
+        }
+    ));
+
+    // table_helper() on table vs non-table items
+    let mut root =
+        crate::parser::parse("[sub]\na = 1\nval = 42", &arena).unwrap();
+    {
+        let helper = root.helper();
+        let (_, sub_item) = helper.get_entry("sub").unwrap();
+        let mut th = sub_item.table_helper(helper.ctx).unwrap();
+        let v: i64 = th.required("a").unwrap();
+        assert_eq!(v, 1);
+    }
+    let mut root = crate::parser::parse("val = 42", &arena).unwrap();
+    {
+        let helper = root.helper();
+        let (_, val_item) = helper.get_entry("val").unwrap();
+        assert!(val_item.table_helper(helper.ctx).is_err());
+    }
+
+    // Context::error_message_at and push_error
+    let span = crate::Span::new(0, 5);
+    let mut ctx = super::Context {
+        arena: &arena,
+        index: Default::default(),
+        errors: Vec::new(),
+    };
+    let _ = ctx.error_message_at("something went wrong", span);
+    let _ = ctx.push_error(crate::Error {
+        kind: crate::ErrorKind::InvalidNumber,
+        span,
+    });
+    assert_eq!(ctx.errors.len(), 2);
+    assert!(matches!(ctx.errors[0].kind, crate::ErrorKind::Custom(..)));
+    assert!(matches!(
+        ctx.errors[1].kind,
+        crate::ErrorKind::InvalidNumber
+    ));
+}
+
+#[test]
+fn root_methods() {
+    let arena = Arena::new();
+
+    // table(), errors(), has_errors(), Debug, Index
+    let root = crate::parser::parse("a = 1\nb = 2", &arena).unwrap();
+    assert_eq!(root.table().len(), 2);
+    assert_eq!(root["a"].as_i64(), Some(1));
+    assert!(root.errors().is_empty());
+    assert!(!root.has_errors());
+    let debug = format!("{:?}", root);
+    assert!(debug.contains("a"));
+
+    // into_item() converts root table to item
+    let root = crate::parser::parse("x = 42", &arena).unwrap();
+    let item = root.into_item();
+    assert_eq!(item.as_table().unwrap().len(), 1);
+
+    // deserialize() on root (type mismatch: root is table, asking for i64)
+    let mut root = crate::parser::parse("a = 1", &arena).unwrap();
+    assert!(root.deserialize::<i64>().is_err());
+    assert!(root.has_errors());
+}

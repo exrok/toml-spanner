@@ -16,6 +16,9 @@ var.jobs.default = "1"
 var.jobs.description = "Number of job processes to spawn during fuzzing."
 var.sanitizer.default = "address"
 
+[action.test-coverage]
+cmd = ["cargo", "+nightly", "llvm-cov", "-q", "--branch"]
+
 [action.review-snapshots]
 managed = false
 cmd = ["cargo", "insta", "review", "--workspace"]

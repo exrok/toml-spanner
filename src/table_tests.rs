@@ -319,3 +319,24 @@ fn index_operator() {
     let empty = Table::new(Span::new(0, 0));
     assert!(empty["anything"].item().is_none());
 }
+
+#[test]
+fn as_item_and_into_item() {
+    let arena = Arena::new();
+    let mut table = Table::new(Span::new(0, 50));
+    table.insert(key("x"), ival(42), &arena);
+    table.insert(key("y"), ival(99), &arena);
+
+    // as_item() returns a reference that preserves span and data
+    let item_ref = table.as_item();
+    assert_eq!(item_ref.span(), Span::new(0, 50));
+    assert_eq!(item_ref.as_table().unwrap().len(), 2);
+    assert_eq!(item_ref.as_table().unwrap().get("x").unwrap().as_i64(), Some(42));
+
+    // into_item() consumes the table and produces an owned Item
+    let table2 = make_table(&arena);
+    let item = table2.into_item();
+    assert_eq!(item.span(), Span::new(0, 100));
+    assert_eq!(item.as_table().unwrap().len(), 3);
+    assert_eq!(item.type_str(), "table");
+}

@@ -1801,3 +1801,131 @@ fn file_too_large() {
     let e = ctx.parse_err(&big);
     assert!(matches!(e.kind, ErrorKind::FileTooLarge));
 }
+
+#[test]
+fn invalid_true_false_literals() {
+    let ctx = TestCtx::new();
+
+    // 't' not followed by 'rue'
+    let e = ctx.parse_err("a = tru");
+    assert!(
+        matches!(
+            e.kind,
+            ErrorKind::Wanted {
+                expected: "the literal `true`",
+                ..
+            }
+        ),
+        "input: a = tru, got: {:?}",
+        e.kind
+    );
+    let e = ctx.parse_err("a = toast");
+    assert!(
+        matches!(
+            e.kind,
+            ErrorKind::Wanted {
+                expected: "the literal `true`",
+                ..
+            }
+        ),
+        "input: a = toast, got: {:?}",
+        e.kind
+    );
+
+    // 'f' not followed by 'alse'
+    let e = ctx.parse_err("a = fals");
+    assert!(
+        matches!(
+            e.kind,
+            ErrorKind::Wanted {
+                expected: "the literal `false`",
+                ..
+            }
+        ),
+        "input: a = fals, got: {:?}",
+        e.kind
+    );
+    let e = ctx.parse_err("a = foobar");
+    assert!(
+        matches!(
+            e.kind,
+            ErrorKind::Wanted {
+                expected: "the literal `false`",
+                ..
+            }
+        ),
+        "input: a = foobar, got: {:?}",
+        e.kind
+    );
+}
+
+#[test]
+fn datetime_values() {
+    let ctx = TestCtx::new();
+
+    // Datetime as value (exercises the DateTime::munch path in number())
+    let v = ctx.parse_ok("a = 2023-06-15T12:30:45Z");
+    assert!(v["a"].as_datetime().is_some());
+    assert_eq!(v["a"].as_datetime().unwrap().date().unwrap().year, 2023);
+
+    let v = ctx.parse_ok("a = 2023-06-15");
+    assert!(v["a"].as_datetime().is_some());
+
+    let v = ctx.parse_ok("a = 2023-06-15T12:30:45+05:30");
+    assert!(v["a"].as_datetime().is_some());
+}
+
+#[test]
+fn scan_token_whitespace_and_string() {
+    let ctx = TestCtx::new();
+
+    // Whitespace at position where a comma/brace is expected triggers
+    // scan_token_desc_and_end with whitespace (space/tab run)
+    let e = ctx.parse_err("a = {x = 1   ");
+    assert!(
+        matches!(e.kind, ErrorKind::Wanted { .. }),
+        "input: truncated inline table with trailing whitespace"
+    );
+
+    // String delimiter at unexpected position
+    let e = ctx.parse_err("[\"key\"\n]");
+    assert!(
+        matches!(e.kind, ErrorKind::Wanted { .. }),
+        "input: string where bracket expected"
+    );
+}
+
+#[test]
+fn duplicate_key_in_indexed_table() {
+    let ctx = TestCtx::new();
+
+    // Duplicate key in a table with 6+ entries (hash-indexed).
+    // This exercises the insert_value Occupied path with an existing index.
+    let mut lines = Vec::new();
+    for i in 0..7 {
+        lines.push(format!("k{i} = {i}"));
+    }
+    lines.push("k0 = 99".to_string()); // duplicate of k0
+    let input = lines.join("\n");
+    let e = ctx.parse_err(&input);
+    assert!(
+        matches!(e.kind, ErrorKind::DuplicateKey { .. }),
+        "duplicate in indexed table: {:?}",
+        e.kind
+    );
+
+    // Duplicate key in inline table with 6+ entries (exercises
+    // insert_value_known_to_be_unique bulk indexing and then
+    // an immediate duplicate on the 7th entry).
+    let mut pairs = Vec::new();
+    for i in 0..6 {
+        pairs.push(format!("k{i} = {i}"));
+    }
+    let input = format!("a = {{{}, k0 = 99}}", pairs.join(", "));
+    let e = ctx.parse_err(&input);
+    assert!(
+        matches!(e.kind, ErrorKind::DuplicateKey { .. }),
+        "duplicate in inline table: {:?}",
+        e.kind
+    );
+}

@@ -304,3 +304,20 @@ fn error_debug_fmt() {
     let debug = format!("{:?}", kind);
     assert_eq!(debug, "wanted");
 }
+
+#[test]
+fn error_constructors() {
+    // Error::custom()
+    let err = Error::custom("something broke", Span::new(5, 10));
+    assert_eq!(err.span, Span::new(5, 10));
+    assert!(matches!(err.kind, ErrorKind::Custom(..)));
+    assert_eq!(format!("{err}"), "something broke");
+
+    // From<(ErrorKind, Span)>
+    let err: Error = (ErrorKind::InvalidNumber, Span::new(0, 5)).into();
+    assert_eq!(err.span, Span::new(0, 5));
+    assert!(matches!(err.kind, ErrorKind::InvalidNumber));
+
+    // Error is std::error::Error
+    let _: &dyn std::error::Error = &err;
+}

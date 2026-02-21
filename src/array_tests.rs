@@ -11,6 +11,17 @@ fn ival(i: i64) -> Item<'static> {
 }
 
 #[test]
+fn default_impl() {
+    // Array::default() should work like Array::new()
+    let arena = Arena::new();
+    let mut a = Array::default();
+    assert!(a.is_empty());
+    a.push(ival(1), &arena);
+    assert_eq!(a.len(), 1);
+    assert_eq!(a[0].as_i64(), Some(1));
+}
+
+#[test]
 fn push_and_realloc() {
     let arena = Arena::new();
 

@@ -631,4 +631,98 @@ fn maybe_item_chained_and_none_propagation() {
     assert!(none.as_bool().is_none());
     assert!(none.as_array().is_none());
     assert!(none.as_table().is_none());
+    assert!(none.as_datetime().is_none());
+}
+
+#[test]
+fn datetime_items() {
+    let arena = Arena::new();
+
+    // Parse a TOML document with datetime values to get real datetime Items
+    let input = "dt = 2023-06-15T12:30:45Z\nd = 2023-06-15\nt = 12:30:45";
+    let root = crate::parser::parse(input, &arena).unwrap();
+
+    // as_datetime succeeds on datetime item
+    let dt_item = root.table().get("dt").unwrap();
+    let dt = dt_item.as_datetime().unwrap();
+    assert_eq!(dt.date().unwrap().year, 2023);
+
+    // type_str for datetime
+    assert_eq!(dt_item.type_str(), "datetime");
+
+    // value() returns DateTime variant
+    assert!(matches!(dt_item.value(), Value::DateTime(_)));
+
+    // value_mut() returns DateTime variant
+    let mut dt_item_owned = Item::moment(
+        *dt_item.as_datetime().unwrap(),
+        dt_item.span(),
+    );
+    assert!(matches!(dt_item_owned.value_mut(), ValueMut::DateTime(_)));
+
+    // Debug for datetime Item
+    let debug = format!("{:?}", dt_item);
+    assert!(debug.contains("2023"));
+
+    // as_datetime returns None for non-datetime types
+    let int_item = Item::integer(42, sp(0, 2));
+    assert!(int_item.as_datetime().is_none());
+
+    // MaybeItem::as_datetime
+    let maybe = MaybeItem::from_ref(dt_item);
+    assert!(maybe.as_datetime().is_some());
+
+    let int_item = Item::integer(42, sp(0, 2));
+    let maybe = MaybeItem::from_ref(&int_item);
+    assert!(maybe.as_datetime().is_none());
+
+    // NONE MaybeItem::as_datetime
+    assert!(NONE.as_datetime().is_none());
+}
+
+#[test]
+fn kind_enum() {
+    // Kind::as_str, Display, Debug
+    let kinds = [
+        Kind::String,
+        Kind::Integer,
+        Kind::Float,
+        Kind::Boolean,
+        Kind::Array,
+        Kind::Table,
+        Kind::DateTime,
+    ];
+    for kind in kinds {
+        let s = kind.as_str();
+        assert!(!s.is_empty());
+        assert_eq!(format!("{kind}"), s);
+        // Debug wraps the str in quotes
+        assert_eq!(format!("{kind:?}"), format!("\"{s}\""));
+    }
+
+    // kind() returns correct Kind for each Item type
+    assert!(matches!(
+        Item::string("s", sp(0, 1)).kind(),
+        Kind::String
+    ));
+    assert!(matches!(
+        Item::integer(1, sp(0, 1)).kind(),
+        Kind::Integer
+    ));
+    assert!(matches!(
+        Item::float(1.0, sp(0, 1)).kind(),
+        Kind::Float
+    ));
+    assert!(matches!(
+        Item::boolean(true, sp(0, 1)).kind(),
+        Kind::Boolean
+    ));
+    assert!(matches!(
+        Item::array(Array::new(), sp(0, 1)).kind(),
+        Kind::Array
+    ));
+    assert!(matches!(
+        Item::table(InnerTable::new(), sp(0, 1)).kind(),
+        Kind::Table
+    ));
 }
