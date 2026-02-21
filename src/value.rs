@@ -1,4 +1,3 @@
-#![allow(unsafe_code)]
 #![allow(clippy::manual_map)]
 #[cfg(test)]
 #[path = "./value_tests.rs"]

@@ -1,13 +1,13 @@
 // Deliberately avoid `?` operator throughout this module for compile-time
 // performance: explicit match/if-let prevents the compiler from generating
 // From::from conversion and drop-glue machinery at every call site.
-#![allow(clippy::question_mark)]
-#![allow(unsafe_code)]
 
 #[cfg(test)]
 #[path = "./parser_tests.rs"]
 mod tests;
 
+#[cfg(feature = "deserialization")]
+use crate::de::{Failed, TableHelper};
 use crate::{
     MaybeItem, Span,
     arena::Arena,
@@ -16,8 +16,6 @@ use crate::{
     time::DateTime,
     value::{self, Item, Key},
 };
-#[cfg(feature = "deserialization")]
-use crate::de::{Failed, TableHelper};
 use std::char;
 use std::hash::{Hash, Hasher};
 use std::ptr::NonNull;
@@ -135,7 +133,6 @@ struct Parser<'de> {
     index: foldhash::HashMap<KeyRef<'de>, usize>,
 }
 
-#[allow(unsafe_code)]
 impl<'de> Parser<'de> {
     fn new(input: &'de str, arena: &'de Arena) -> Self {
         let bytes = input.as_bytes();

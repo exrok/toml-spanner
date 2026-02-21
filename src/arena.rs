@@ -1,5 +1,3 @@
-#![allow(unsafe_code)]
-
 use std::alloc::Layout;
 use std::cell::Cell;
 use std::ptr::{self, NonNull};

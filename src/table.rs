@@ -1,5 +1,3 @@
-#![allow(unsafe_code)]
-
 #[cfg(test)]
 #[path = "./table_tests.rs"]
 mod tests;

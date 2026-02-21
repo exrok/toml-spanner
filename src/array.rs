@@ -1,5 +1,3 @@
-#![allow(unsafe_code)]
-
 #[cfg(test)]
 #[path = "./array_tests.rs"]
 mod tests;

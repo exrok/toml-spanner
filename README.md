@@ -28,9 +28,11 @@ enabled = true
 number = 12
 ```
 
-Then you parse the TOML document into `Item` tree, with the following:
+Then you can parse the TOML document into `Item` tree, with the following:
 
 ```rust
+use toml_spanner::{Arena, Context, Deserialize, Failed, Item, Value};
+
 let arena = Arena::new();
 let mut root = toml_spanner::parse(TOML_DOCUMENT, &arena).unwrap();
 ```
@@ -92,22 +94,22 @@ Relative parse time across real-world TOML files (lower is better):
 
 ![bench](https://github.com/user-attachments/assets/a762a25f-379f-4d9b-8901-5d2d25ec06c5)
 
-Crate Versions: `toml-spanner = 0.3.0`, `toml = 1.0.2+spec-1.1.0`, `toml-span = 0.7.0`
+Crate Versions: `toml-spanner = 0.4.0`, `toml = 1.0.3+spec-1.1.0`, `toml-span = 0.7.0`
 
 ```
                   time(μs)  cycles(K)   instr(K)  branch(K)
 zed/Cargo.toml
-  toml-spanner        25.1        119        441         92
-  toml               257.2       1220       3084        607
-  toml-span          381.6       1816       5048       1046
+  toml-spanner        24.6        116        439         91
+  toml               255.4       1212       3088        608
+  toml-span          389.3       1821       5049       1047
 extask.toml
-  toml-spanner         8.9         42        148         29
-  toml                78.7        376       1002        192
-  toml-span          105.0        500       1335        263
+  toml-spanner         8.8         41        149         28
+  toml                78.8        372       1005        192
+  toml-span          105.1        492       1337        264
 devsm.toml
-  toml-spanner         3.6         17         68         15
-  toml                32.3        155        422         80
-  toml-span           55.0        262        713        141
+  toml-spanner         3.7         17         69         14
+  toml                32.6        155        424         81
+  toml-span           56.8        266        711        141
 ```
 
 ### Compile Time
@@ -118,11 +120,11 @@ Extra `cargo build --release` time for binaries using the respective crates (low
 
 ```
                  median(ms)    added(ms)
-null                     99
-toml-spanner            655         +556
-toml-span              1375        +1276
-toml                   3027        +2928
-toml+serde             5037        +4938
+null                    108
+toml-spanner            739         +631
+toml-span              1378        +1270
+toml                   3060        +2952
+toml+serde             5156        +5048
 ```
 
 Checkout `./benchmark` for more details, but numbers should simulate the additional
