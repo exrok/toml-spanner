@@ -49,9 +49,9 @@ fn basic_scalar_values() {
     assert_eq!(v["a"].as_i64(), Some(-100));
 
     // float
-    let v = ctx.parse_ok("a = 3.14");
+    let v = ctx.parse_ok("a = 3.15");
     let f = v["a"].as_f64().unwrap();
-    assert!((f - 3.14).abs() < f64::EPSILON);
+    assert!((f - 3.15).abs() < f64::EPSILON);
 
     // booleans
     let v = ctx.parse_ok("a = true");
@@ -713,9 +713,9 @@ fn number_valid_edge_cases() {
         assert_eq!(v["a"].as_i64(), Some(expected), "input: {input}");
     }
 
-    let v = ctx.parse_ok("a = +3.14");
+    let v = ctx.parse_ok("a = +3.15");
     let f = v["a"].as_f64().unwrap();
-    assert!((f - 3.14).abs() < f64::EPSILON, "input: a = +3.14");
+    assert!((f - 3.15).abs() < f64::EPSILON, "input: a = +3.15");
 
     let v = ctx.parse_ok("a = +inf");
     assert_eq!(v["a"].as_f64(), Some(f64::INFINITY), "input: a = +inf");
@@ -1522,7 +1522,7 @@ fn hex_numbers_with_zero_digits() {
         ("a = 0x00", 0x00),
         ("a = 0x0a", 0x0a),
         ("a = 0xab", 0xab),
-        ("a = 0xAbCd", 0xAbCd),
+        ("a = 0xAbCd", 0xABCD),
     ];
     for (input, expected) in cases {
         let v = ctx.parse_ok(input);

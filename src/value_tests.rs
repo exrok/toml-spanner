@@ -28,9 +28,9 @@ fn constructors() {
     assert_eq!(v.as_i64(), Some(-9999));
 
     // Float
-    let v = Item::float(3.14, sp(0, 4));
+    let v = Item::float(3.15, sp(0, 4));
     assert_eq!(v.tag(), TAG_FLOAT);
-    assert_eq!(v.as_f64(), Some(3.14));
+    assert_eq!(v.as_f64(), Some(3.15));
     assert_eq!(v.span(), sp(0, 4));
     assert_eq!(v.type_str(), "float");
 
@@ -206,8 +206,8 @@ fn value_and_type_checks() {
 #[test]
 fn as_f64_converts_integers() {
     // Float value returned directly
-    let v = Item::float(3.14, sp(0, 4));
-    assert_eq!(v.as_f64(), Some(3.14));
+    let v = Item::float(3.15, sp(0, 4));
+    assert_eq!(v.as_f64(), Some(3.15));
 
     // Integer value converted to f64
     let v = Item::integer(42, sp(0, 2));
@@ -487,8 +487,8 @@ fn item_debug_fmt() {
     let v = Item::integer(42, sp(0, 2));
     assert_eq!(format!("{:?}", v), "42");
 
-    let v = Item::float(3.14, sp(0, 4));
-    assert_eq!(format!("{:?}", v), "3.14");
+    let v = Item::float(3.15, sp(0, 4));
+    assert_eq!(format!("{:?}", v), "3.15");
 
     let v = Item::boolean(true, sp(0, 4));
     assert_eq!(format!("{:?}", v), "true");

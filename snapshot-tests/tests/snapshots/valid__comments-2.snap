@@ -22,7 +22,7 @@ note[integer]: root_group_more_1
 
 note[array]: root_group_more
    ┌─ comments:11:8
-   │
+   │  
 11 │   more = [ # Comment
    │ ╭────────^
 12 │ │   # What about multiple # comments?
@@ -35,7 +35,7 @@ note[array]: root_group_more
 
 note[table]: root_group
    ┌─ comments:7:1
-   │
+   │  
  7 │ ╭ [group] # Comment
  8 │ │ answer = 42 # Comment
  9 │ │ # no-extraneous-keys-please = 999
@@ -47,12 +47,12 @@ note[table]: root_group
 
 note[table]: root
    ┌─ comments:1:1
-   │
+   │  
  1 │ ╭ # Top comment.
  2 │ │   # Top comment.
  3 │ │ # Top comment.
- 4 │ │
+ 4 │ │ 
    · │
 24 │ │ ] # Hopefully not.
-25 │ │
+25 │ │ 
    │ ╰^

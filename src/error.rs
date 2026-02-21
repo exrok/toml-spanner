@@ -394,7 +394,7 @@ impl Error {
                 ]),
             ErrorKind::Deprecated { new, .. } => diag
                 .with_message(format!(
-                    "deprecated field enountered, '{new}' should be used instead"
+                    "deprecated field encountered, '{new}' should be used instead"
                 ))
                 .with_labels(vec![
                     Label::primary(fid, self.span).with_message("deprecated field"),

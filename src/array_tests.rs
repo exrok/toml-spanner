@@ -102,6 +102,7 @@ fn pop_and_last_mut() {
 }
 
 #[test]
+#[allow(clippy::drop_non_drop)]
 fn iterators() {
     let arena = Arena::new();
 
@@ -141,7 +142,7 @@ fn iterators() {
     let mut iter = a.into_iter();
     assert_eq!(iter.next().unwrap().as_i64(), Some(0));
     assert_eq!(iter.next().unwrap().as_i64(), Some(1));
-    drop(iter);
+    drop(iter); // end borrow before creating next iterator
 
     let a = Array::new();
     let mut iter = a.into_iter();

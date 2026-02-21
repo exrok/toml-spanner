@@ -103,8 +103,8 @@ impl<'de> Hash for KeyRef<'de> {
     #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.first_key_span.hash(state);
-        // Note: KeyRef is ment only beused inside the Index where it's
-        // the KeyRef is entireity of the Hash Input so we don't have to
+        // Note: KeyRef is meant only beused inside the Index where it's
+        // the KeyRef is entirety of the Hash Input so we don't have to
         // worry about prefix freedom.
         self.as_str().hash(state);
     }
@@ -1424,7 +1424,7 @@ impl<'de> Parser<'de> {
             let existing_span = existing_key.span;
 
             // Note: I would use safey accessor heres but that would cause issues
-            // with NLL limitiations.
+            // with NLL limitations.
             if existing.is_table() {
                 if existing.is_frozen() {
                     return Err(self.set_duplicate_key_error(existing_span, key.span, key.name));
@@ -1642,7 +1642,7 @@ impl<'de> Parser<'de> {
     /// Uses the hash index for tables at or above the threshold, otherwise
     /// falls back to a linear scan.
     fn indexed_find(&self, table: &InnerTable<'de>, name: &str) -> Option<usize> {
-        // NOTE: I would return a refernce to actual entry here, however this
+        // NOTE: I would return a reference to actual entry here, however this
         // runs into all sorts of NLL limitations.
         if table.len() > INDEXED_TABLE_THRESHOLD {
             // SAFETY: len > INDEXED_TABLE_THRESHOLD (> 6), so the table is non-empty.

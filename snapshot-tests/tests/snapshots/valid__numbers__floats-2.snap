@@ -88,12 +88,12 @@ note[float]: root_neglongpi
 
 note[table]: root
    ┌─ floats:1:1
-   │
+   │  
  1 │ ╭ normal = 1.0
  2 │ │ normal-exp = 1.0e0
  3 │ │ normal-pos-exp = 1.0e+0
  4 │ │ normal-neg-exp = 1.0e-0
    · │
 14 │ │ neglongpi = -3.141592653589793
-15 │ │
+15 │ │ 
    │ ╰^

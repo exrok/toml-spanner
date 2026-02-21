@@ -66,7 +66,7 @@ impl RemainingEntriesIter<'_, '_> {
             if let Some(remaining) = self.entries.get(64..) {
                 self.entries = remaining;
             } else {
-                // Shouldn't occour in practice, but no need to panic here.
+                // Shouldn't occur in practice, but no need to panic here.
                 return false;
             }
             self.bits = !*bucket;
@@ -437,7 +437,7 @@ where
 }
 
 impl<'de> Item<'de> {
-    /// Should be used when the string you expecting is more specifc that just a string
+    /// Should be used when the string you expecting is more specific that just a string
     /// Such as an IP-address, typically the message should still message string, like
     /// "a IPv4 string"
     pub fn expect_custom_string(

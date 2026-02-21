@@ -10,14 +10,14 @@ note[table]: root_a_b
 
 note[table]: root_a
   ┌─ sub_empty:1:1
-  │
+  │  
 1 │ ╭ [a]
 2 │ │ [a.b]
   │ ╰^
 
 note[table]: root
   ┌─ sub_empty:1:1
-  │
+  │  
 1 │ ╭ [a]
 2 │ │ [a.b]
   │ ╰─────^

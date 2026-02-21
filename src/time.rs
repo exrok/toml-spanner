@@ -515,15 +515,15 @@ impl DateTime {
                         if len == 0 {
                             break 'outer;
                         }
-                        let nd = if len > 9 { 9u8 } else { len as u8 };
+                        let digit_count = if len > 9 { 9u8 } else { len as u8 };
                         let mut nanos = current;
-                        let mut s = nd;
+                        let mut s = digit_count;
                         while s < 9 {
                             nanos *= 10;
                             s += 1;
                         }
                         value.nanos = nanos;
-                        value.flags |= nd << NANO_SHIFT;
+                        value.flags |= digit_count << NANO_SHIFT;
                         // fallthrough to check outer
                     }
                     State::OffHour => {
@@ -632,7 +632,7 @@ impl DateTime {
             buf: &mut [MaybeUninit<u8>; DateTime::MAX_FORMAT_LEN],
             pos: &mut usize,
             nanos: u32,
-            nd: u8,
+            digit_count: u8,
         ) {
             let mut val = nanos;
             let mut i: usize = 8;
@@ -644,7 +644,7 @@ impl DateTime {
                 }
                 i -= 1;
             }
-            *pos += nd as usize;
+            *pos += digit_count as usize;
         }
 
         // SAFETY: MaybeUninit<u8> has identical layout to u8
@@ -675,10 +675,10 @@ impl DateTime {
             write_2(buf, &mut pos, self.seconds);
 
             if self.flags & HAS_SECONDS != 0 {
-                let nd = (self.flags >> NANO_SHIFT) & 0xF;
-                if nd > 0 {
+                let digit_count = (self.flags >> NANO_SHIFT) & 0xF;
+                if digit_count > 0 {
                     write_byte(buf, &mut pos, b'.');
-                    write_frac(buf, &mut pos, self.nanos, nd);
+                    write_frac(buf, &mut pos, self.nanos, digit_count);
                 }
             }
 

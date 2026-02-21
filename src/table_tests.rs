@@ -66,7 +66,7 @@ fn inner_get_and_mutate() {
 
     // get_key_value: returns both key and value
     let (k, v) = t.get_entry("a").unwrap();
-    assert_eq!(&*k.name, "a");
+    assert_eq!(k.name, "a");
     assert_eq!(v.as_i64(), Some(10));
 
     // get_mut: modify in place
@@ -111,8 +111,8 @@ fn inner_remove() {
     assert_eq!(v.as_i64(), Some(1));
     assert_eq!(t.len(), 2);
     let entries = t.entries();
-    assert_eq!(&*entries[0].0.name, "c"); // last swapped into first
-    assert_eq!(&*entries[1].0.name, "b");
+    assert_eq!(entries[0].0.name, "c"); // last swapped into first
+    assert_eq!(entries[1].0.name, "b");
 
     // Swap-remove behavior: removing middle swaps last element into its slot
     let mut t = InnerTable::new();
@@ -123,8 +123,8 @@ fn inner_remove() {
     assert_eq!(v.as_i64(), Some(2));
     assert_eq!(t.len(), 2);
     let entries = t.entries();
-    assert_eq!(&*entries[0].0.name, "a");
-    assert_eq!(&*entries[1].0.name, "c"); // last swapped into middle
+    assert_eq!(entries[0].0.name, "a");
+    assert_eq!(entries[1].0.name, "c"); // last swapped into middle
 
     // Removing last element: no swap needed
     let mut t = InnerTable::new();
@@ -139,7 +139,7 @@ fn inner_remove() {
     let mut t = InnerTable::new();
     t.insert(key("mykey"), ival(42), &arena);
     let (k, v) = t.remove_entry("mykey").unwrap();
-    assert_eq!(&*k.name, "mykey");
+    assert_eq!(k.name, "mykey");
     assert_eq!(v.as_i64(), Some(42));
     assert!(t.is_empty());
 }
@@ -199,7 +199,7 @@ fn table_access_and_mutation() {
 
     // get_key_value
     let (k, v) = table.get_key_value("b").unwrap();
-    assert_eq!(&*k.name, "b");
+    assert_eq!(k.name, "b");
     assert_eq!(v.as_i64(), Some(2));
     assert!(table.get_key_value("missing").is_none());
 
@@ -286,7 +286,7 @@ fn default_and_debug() {
     let table = make_table(&arena);
     let entries = table.entries();
     assert_eq!(entries.len(), 3);
-    assert_eq!(&*entries[0].0.name, "a");
+    assert_eq!(entries[0].0.name, "a");
 }
 
 #[test]

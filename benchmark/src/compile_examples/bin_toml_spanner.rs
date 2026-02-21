@@ -142,7 +142,7 @@ fn run(input: &str) -> Project {
     let arena = toml_spanner::Arena::new();
     let mut root = toml_spanner::parse(input, &arena).unwrap();
     // Need to match the behaviour of toml-span, panic with errors not just
-    // sentinal.
+    // sentinel.
     match root.deserialize::<Project>() {
         Ok(project) => project,
         Err(_) => panic!("{:?}", root.errors()),

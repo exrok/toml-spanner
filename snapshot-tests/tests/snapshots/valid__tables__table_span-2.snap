@@ -22,7 +22,7 @@ note[integer]: root_workspace_foo_bar
 
 note[table]: root_workspace_foo
   ┌─ table_span:5:1
-  │
+  │  
 5 │ ╭ [workspace.foo]
 6 │ │ bar=3
   │ ╰─────^
@@ -41,14 +41,14 @@ note[table]: root_workspace_bar_inline
 
 note[table]: root_workspace_bar
   ┌─ table_span:8:1
-  │
+  │  
 8 │ ╭ [workspace.bar]
 9 │ │ inline = { foo = 3 }
   │ ╰────────────────────^
 
 note[table]: root_workspace
   ┌─ table_span:2:1
-  │
+  │  
 2 │ ╭ [workspace]
 3 │ │ members = true
 4 │ │ other = false
@@ -56,12 +56,12 @@ note[table]: root_workspace
 
 note[table]: root
    ┌─ table_span:1:1
-   │
- 1 │ ╭
+   │  
+ 1 │ ╭ 
  2 │ │ [workspace]
  3 │ │ members = true
  4 │ │ other = false
    · │
-10 │ │
-11 │ │
+10 │ │ 
+11 │ │ 
    │ ╰^

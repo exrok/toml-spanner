@@ -120,7 +120,7 @@ mod bad_keys {
     invalid!(newline2, "\"\n\"|=3");
     invalid!(newline3, "\"something\nsomething else\"=3");
     invalid!(cr, "\"\r\"|=3");
-    invalid!(mutli_line, "''''''=3");
+    invalid!(multi_line, "''''''=3");
     invalid!(multi_line2, r#"""""""=3"#);
     invalid!(multi_line3, "'''key'''=3");
     invalid!(multi_line4, r#""""key"""=3"#);

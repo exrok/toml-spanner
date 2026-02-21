@@ -76,12 +76,12 @@ note[integer]: root_long-neganswer
 
 note[table]: root
    ┌─ integers:1:1
-   │
+   │  
  1 │ ╭ answer = 42
  2 │ │ neganswer = -42
- 3 │ │
+ 3 │ │ 
  4 │ │ neg_zero = -0
    · │
 20 │ │ long-neganswer = -9223372036854775808
-21 │ │
+21 │ │ 
    │ ╰^

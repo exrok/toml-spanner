@@ -1,0 +1,6 @@
+[files]
+extend-exclude = ["benchmark/data/random.toml", "benchmark/data/zed-lock.toml"]
+ignore-vcs = true
+
+[default.extend-words]
+"alse" = "alse" # Truncated "false"

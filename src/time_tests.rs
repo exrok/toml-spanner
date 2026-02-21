@@ -34,6 +34,7 @@ fn roundtrips() {
     let exact = &[
         // full datetimes with offsets
         "1979-05-27T07:32:00Z",
+        "1979-05-27T07:32:00+00:00",
         "1979-05-27T00:32:00-23:00",
         "2000-12-17T00:32:00.5-07:00",
         "1979-05-27T00:32:00.999999+21:20",
@@ -118,8 +119,6 @@ fn roundtrips() {
         // lowercase t/z
         ("1987-07-05t17:45:00z", "1987-07-05T17:45:00Z"),
         ("1987-07-05t17:45:00", "1987-07-05T17:45:00"),
-        // +00:00 normalizes to Z
-        ("2023-01-01T00:00+00:00", "2023-01-01T00:00:00Z"),
         // offset boundaries
         ("2023-01-01T00:00+23:59", "2023-01-01T00:00:00+23:59"),
         ("2023-01-01T00:00-23:59", "2023-01-01T00:00:00-23:59"),
@@ -353,7 +352,7 @@ fn leap_year_known_values() {
 #[cfg_attr(miri, ignore)]
 fn leap_year_exhaustive() {
     fn is_leap_naive(y: u16) -> bool {
-        (y % 4 == 0 && y % 100 != 0) || y % 400 == 0
+        (y.is_multiple_of(4) && !y.is_multiple_of(100)) || y.is_multiple_of(400)
     }
     for y in 0..=9999 {
         assert_eq!(
@@ -385,18 +384,18 @@ fn randomized_roundtrip_time_only() {
     for _ in 0..iterations {
         let hour = (rng.rand_u32() % 24) as u8;
         let minute = (rng.rand_u32() % 60) as u8;
-        let has_seconds = rng.rand_u32() % 2 == 0;
+        let has_seconds = rng.rand_u32().is_multiple_of(2);
         if has_seconds {
             let second = (rng.rand_u32() % 60) as u8;
-            let nd = rng.rand_u32() % 10; // 0 = no frac, 1-9 = frac digits
-            if nd == 0 {
+            let digit_count = rng.rand_u32() % 10; // 0 = no frac, 1-9 = frac digits
+            if digit_count == 0 {
                 roundtrip(&format!("{hour:02}:{minute:02}:{second:02}"));
             } else {
-                let max_val = 10u32.pow(nd);
+                let max_val = 10u32.pow(digit_count);
                 let frac = rng.rand_u32() % max_val;
                 let s = format!(
                     "{hour:02}:{minute:02}:{second:02}.{frac:0>width$}",
-                    width = nd as usize
+                    width = digit_count as usize
                 );
                 roundtrip(&s);
             }
@@ -423,17 +422,17 @@ fn randomized_roundtrip_full_datetime() {
         let mut s = format!("{year:04}-{month:02}-{day:02}T{hour:02}:{minute:02}");
         let mut expected = s.clone();
 
-        let has_seconds = rng.rand_u32() % 2 == 0;
+        let has_seconds = rng.rand_u32().is_multiple_of(2);
         if has_seconds {
             let second = (rng.rand_u32() % 60) as u8;
             let sec_str = format!(":{second:02}");
             s += &sec_str;
             expected += &sec_str;
-            let nd = rng.rand_u32() % 10;
-            if nd > 0 {
-                let max_val = 10u32.pow(nd);
+            let digit_count = rng.rand_u32() % 10;
+            if digit_count > 0 {
+                let max_val = 10u32.pow(digit_count);
                 let frac = rng.rand_u32() % max_val;
-                let frac_str = format!(".{frac:0>width$}", width = nd as usize);
+                let frac_str = format!(".{frac:0>width$}", width = digit_count as usize);
                 s += &frac_str;
                 expected += &frac_str;
             }
@@ -449,7 +448,7 @@ fn randomized_roundtrip_full_datetime() {
                 expected += "Z";
             }
             _ => {
-                let sign = if rng.rand_u32() % 2 == 0 { '+' } else { '-' };
+                let sign = if rng.rand_u32().is_multiple_of(2) { '+' } else { '-' };
                 let oh = (rng.rand_u32() % 24) as u8;
                 let om = (rng.rand_u32() % 60) as u8;
                 // +00:00 roundtrips as Z, so avoid that

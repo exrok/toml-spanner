@@ -1,7 +1,7 @@
 # toml-spanner
 
 High-performance, fast compiling, span preserving toml parsing for rust.
-Orginally forked from `toml-span` to add TOML 1.1.0 support, `toml-spanner`
+Originally forked from `toml-span` to add TOML 1.1.0 support, `toml-spanner`
 has received significant performance improvements and reductions in compile time.
 
 [![Crates.io](https://img.shields.io/crates/v/toml-spanner?style=flat-square)](https://crates.io/crates/toml-spanner)

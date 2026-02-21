@@ -114,6 +114,7 @@ fn realloc_cross_slab() {
 }
 
 #[test]
+#[allow(clippy::drop_non_drop)]
 fn scratch_basics() {
     let arena = Arena::new();
     arena.alloc(8);
@@ -123,7 +124,7 @@ fn scratch_basics() {
     scratch.push(b'h');
     scratch.push(b'i');
     assert_eq!(scratch.as_bytes(), b"hi");
-    drop(scratch);
+    drop(scratch); // end borrow before creating next scratch
 
     // extend appends slices; length is tracked correctly.
     let mut scratch = unsafe { arena.scratch() };
@@ -131,7 +132,7 @@ fn scratch_basics() {
     scratch.extend(b"world");
     assert_eq!(scratch.as_bytes(), b"hello world");
     assert_eq!(scratch.as_bytes().len(), 11);
-    drop(scratch);
+    drop(scratch); // end borrow before creating next scratch
 
     // Empty scratch returns empty slice.
     let scratch = unsafe { arena.scratch() };
@@ -185,6 +186,7 @@ fn scratch_drop_without_commit() {
 }
 
 #[test]
+#[allow(clippy::drop_non_drop)]
 fn scratch_growth() {
     let arena = Arena::new();
     arena.alloc(8);
@@ -194,7 +196,7 @@ fn scratch_growth() {
     let pattern: Vec<u8> = (0u8..=255).cycle().take(2048).collect();
     scratch.extend(&pattern);
     assert_eq!(scratch.as_bytes(), &pattern[..]);
-    drop(scratch);
+    drop(scratch); // end borrow before creating next scratch
 
     // push one byte at a time across growth boundaries preserves data.
     let mut scratch = unsafe { arena.scratch() };
@@ -205,18 +207,18 @@ fn scratch_growth() {
     for (i, &b) in scratch.as_bytes().iter().enumerate() {
         assert_eq!(b, (i & 0xFF) as u8, "mismatch at index {i}");
     }
-    drop(scratch);
+    drop(scratch); // end borrow before creating next scratch
 
     // Multiple growth rounds via chunked extend.
     let mut scratch = unsafe { arena.scratch() };
     let mut expected = Vec::new();
     for round in 0u8..10 {
-        let chunk: Vec<u8> = std::iter::repeat(round).take(512).collect();
+        let chunk: Vec<u8> = std::iter::repeat_n(round, 512).collect();
         scratch.extend(&chunk);
         expected.extend(&chunk);
     }
     assert_eq!(scratch.as_bytes(), &expected[..]);
-    drop(scratch);
+    drop(scratch); // end borrow before creating next scratch
 
     // Commit after growth returns correct data and doesn't overlap next alloc.
     let mut scratch = unsafe { arena.scratch() };

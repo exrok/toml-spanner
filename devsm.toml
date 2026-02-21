@@ -1,5 +1,3 @@
-
-
 [service.fuzz]
 cmd = [
     "cargo",
@@ -17,6 +15,10 @@ profiles = ["datetime", "parse_compare_toml", "parse_value"]
 var.jobs.default = "1"
 var.jobs.description = "Number of job processes to spawn during fuzzing."
 var.sanitizer.default = "address"
+
+[action.review-snapshots]
+managed = false
+cmd = ["cargo", "insta", "review", "--workspace"]
 
 [action.build-docs]
 cmd = ["cargo", "doc"]
@@ -36,8 +38,11 @@ pwd = "./benchmark"
 profiles = ["runtime", "compile-time"]
 
 [test.clippy]
-cmd = ["cargo", "clippy"]
+cmd = ["cargo", "clippy", "--all-targets", "--", "--deny=warnings"]
 tag = ["lint"]
+
+[test.snapshot-tests]
+cmd = ["cargo", "insta", "test", "-p", "snapshot-tests"]
 
 [test.cargo-test]
 cmd = ["cargo", "test"]
@@ -45,17 +50,16 @@ cmd = ["cargo", "test"]
 [test.miri-stress-tests]
 pwd = "stress-tests"
 cmd = ["cargo", "+nightly", "miri", "run", "--", "3"]
-tag = ["slow"]
+tag = ["slow", "miri"]
 
 [test.stress-tests]
 pwd = "stress-tests"
 cmd = ["cargo", "run", "--", "5000"]
-tag = ["slow"]
 
 [test.miri-tests]
 info = "Requires `cargo-nextest` and miri."
 cmd = ["cargo", "+nightly", "miri", "nextest", "run"]
-tag = ["slow"]
+tag = ["slow", "miri"]
 
 [test.miri-tests-32bit]
 info = "Requires `cargo-nextest` and miri."
@@ -68,9 +72,9 @@ cmd = [
     "--target",
     "i686-unknown-linux-gnu",
 ]
-tag = ["slow"]
+tag = ["slow", "miri"]
 
-[test.offical-toml-test-suite]
+[test.official-toml-test-suite]
 info = """
 Validate toml-spanner against https://github.com/toml-lang/toml-test decoder test suite
 Requires `toml-test` to be installed, see REPO for installation procedure.
@@ -80,3 +84,6 @@ sh = '''
 BIN=$(cargo --config "target.'cfg(unix)'.runner = 'echo'" run --release || exit 1)
 toml-test test -toml 1.1 "-decoder=$BIN"
 '''
+
+[test.typos]
+cmd = "typos"

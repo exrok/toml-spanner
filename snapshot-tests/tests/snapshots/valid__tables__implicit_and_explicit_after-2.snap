@@ -10,7 +10,7 @@ note[integer]: root_a_b_c_answer
 
 note[table]: root_a_b_c
   ┌─ implicit_and_explicit_after:2:1
-  │
+  │  
 2 │ ╭ [a.b.c]
 3 │ │ answer = 42
   │ ╰───────────^
@@ -29,19 +29,19 @@ note[integer]: root_a_better
 
 note[table]: root_a
   ┌─ implicit_and_explicit_after:5:1
-  │
+  │  
 5 │ ╭ [a]
 6 │ │ better = 43
   │ ╰───────────^
 
 note[table]: root
   ┌─ implicit_and_explicit_after:1:1
-  │
-1 │ ╭
+  │  
+1 │ ╭ 
 2 │ │ [a.b.c]
 3 │ │ answer = 42
-4 │ │
+4 │ │ 
 5 │ │ [a]
 6 │ │ better = 43
-7 │ │
+7 │ │ 
   │ ╰^

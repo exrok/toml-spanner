@@ -23,7 +23,7 @@ fn deser_strings() {
 
     // Str (borrowed)
     let val: &str = parse_val(r#"v = "borrowed""#, &arena).unwrap();
-    assert_eq!(&*val, "borrowed");
+    assert_eq!(val, "borrowed");
 
     // Cow<str>
     let val: std::borrow::Cow<'_, str> = parse_val(r#"v = "cow""#, &arena).unwrap();
@@ -106,12 +106,12 @@ fn deser_floats() {
     let arena = Arena::new();
 
     // f32
-    let val: f32 = parse_val("v = 3.14", &arena).unwrap();
-    assert!((val - 3.14_f32).abs() < 0.001);
+    let val: f32 = parse_val("v = 3.15", &arena).unwrap();
+    assert!((val - 3.15_f32).abs() < 0.001);
 
     // f64
-    let val: f64 = parse_val("v = 3.14", &arena).unwrap();
-    assert!((val - 3.14).abs() < f64::EPSILON);
+    let val: f64 = parse_val("v = 3.15", &arena).unwrap();
+    assert!((val - 3.15).abs() < f64::EPSILON);
 
     // Wrong type
     let err = parse_val::<f64>(r#"v = "not a float""#, &arena).unwrap_err();
