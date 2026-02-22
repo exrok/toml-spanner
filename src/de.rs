@@ -2,6 +2,7 @@
 #[path = "./de_tests.rs"]
 mod tests;
 
+use std::collections::BTreeMap;
 use std::num::NonZeroU64;
 
 use foldhash::HashMap;
@@ -657,6 +658,41 @@ where
             }
         }
         if had_error { Err(Failed) } else { Ok(result) }
+    }
+}
+
+impl<'de, K, V> Deserialize<'de> for BTreeMap<K, V>
+where
+    K: Ord + std::str::FromStr,
+    <K as std::str::FromStr>::Err: std::fmt::Display,
+    V: Deserialize<'de>,
+{
+    fn deserialize(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
+        let table = value.expect_table(ctx)?;
+        let mut map = BTreeMap::new();
+        let mut had_error = false;
+        for (key, item) in table {
+            let k = match key.name.parse::<K>() {
+                Ok(k) => k,
+                Err(err) => {
+                    ctx.push_error(Error {
+                        kind: ErrorKind::Custom(
+                            format!("invalid key `{}`: {err}", key.name).into(),
+                        ),
+                        span: key.span,
+                    });
+                    had_error = true;
+                    continue;
+                }
+            };
+            match V::deserialize(ctx, item) {
+                Ok(v) => {
+                    map.insert(k, v);
+                }
+                Err(_) => had_error = true,
+            }
+        }
+        if had_error { Err(Failed) } else { Ok(map) }
     }
 }
 

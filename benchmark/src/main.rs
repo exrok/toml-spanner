@@ -4,6 +4,7 @@ use std::io::Write as _;
 use std::path::Path;
 use std::process::Stdio;
 
+mod cargo;
 mod compile_bench;
 mod compile_examples;
 mod static_input;
@@ -126,9 +127,12 @@ impl Plotter {
         Plotter { s1, s2, s3 }
     }
 
-    fn plot_raw(&self, label: &str, data: &str, xrange_max: f64) -> String {
+    fn plot_raw(&self, label: &str, data: &str, xrange_max: f64, height: u32) -> String {
         let mut render = String::new();
-        render.push_str(self.s1);
+        let s1 = self
+            .s1
+            .replacen("size 780,400", &format!("size 780,{height}"), 1);
+        render.push_str(&s1);
         write!(render, "{label:?}").unwrap();
         render.push_str(self.s2);
         render.push_str(data);
@@ -155,6 +159,143 @@ impl Plotter {
     }
 }
 
+fn main_for_cargo() {
+    let lock_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("Cargo.lock");
+    let versions: Vec<(&str, String)> = ["toml-spanner", "toml", "toml-span"]
+        .into_iter()
+        .map(|name| (name, lockfile_version(&lock_path, name)))
+        .collect();
+
+    let mut bench = jsony_bench::Bencher::new();
+    bench.calibrate();
+
+    println!("===== Cargo.lock: parse + deserialize =====");
+
+    println!("toml-spanner:");
+    let lock_spanner = bench.func(|| {
+        let mut result = cargo::parse_lock_toml_spanner(static_input::ZED_CARGO_LOCK);
+        std::hint::black_box(&mut result);
+    });
+    println!("  {lock_spanner}");
+
+    println!("toml:");
+    let lock_toml = bench.func(|| {
+        let mut result = cargo::parse_lock_serde_toml(static_input::ZED_CARGO_LOCK);
+        std::hint::black_box(&mut result);
+    });
+    println!("  {lock_toml}");
+
+    println!("toml-span:");
+    let lock_span = bench.func(|| {
+        let mut result = cargo::parse_lock_toml_span(static_input::ZED_CARGO_LOCK);
+        std::hint::black_box(&mut result);
+    });
+    println!("  {lock_span}");
+
+    println!("\n===== Cargo.toml: parse + deserialize =====");
+
+    println!("toml-spanner:");
+    let manifest_spanner = bench.func(|| {
+        let mut result = cargo::parse_manifest_toml_spanner(static_input::ZED_CARGO_TOML);
+        std::hint::black_box(&mut result);
+    });
+    println!("  {manifest_spanner}");
+
+    println!("toml:");
+    let manifest_toml = bench.func(|| {
+        let mut result = cargo::parse_manifest_serde_toml(static_input::ZED_CARGO_TOML);
+        std::hint::black_box(&mut result);
+    });
+    println!("  {manifest_toml}");
+
+    println!("\n=== Versions ===");
+    for (name, version) in &versions {
+        println!("  {name} {version}");
+    }
+
+    let lock_spanner_nanos = f64::from(lock_spanner.nanos);
+    let lock_toml_nanos = f64::from(lock_toml.nanos);
+    let lock_span_nanos = f64::from(lock_span.nanos);
+    let manifest_spanner_nanos = f64::from(manifest_spanner.nanos);
+    let manifest_toml_nanos = f64::from(manifest_toml.nanos);
+
+    let rel_lock_toml = lock_toml_nanos / lock_spanner_nanos;
+    let rel_lock_span = lock_span_nanos / lock_spanner_nanos;
+    let rel_manifest_toml = manifest_toml_nanos / manifest_spanner_nanos;
+
+    let mut data = String::new();
+    writeln!(data, "\"{{/:Bold zed/Cargo.lock (272KB)}}\" 0 0").unwrap();
+    writeln!(data, "\"toml-spanner\" {:.2} 1", 1.0).unwrap();
+    writeln!(data, "\"toml\" {:.2} 2", rel_lock_toml).unwrap();
+    writeln!(data, "\"toml-span\" {:.2} 3", rel_lock_span).unwrap();
+    writeln!(data, "\"{{/:Bold zed/Cargo.toml (18KB)}}\" 0 0").unwrap();
+    writeln!(data, "\"toml-spanner\" {:.2} 1", 1.0).unwrap();
+    writeln!(data, "\"toml\" {:.2} 2", rel_manifest_toml).unwrap();
+
+    let max_rel = [rel_lock_toml, rel_lock_span, rel_manifest_toml]
+        .into_iter()
+        .fold(0.0_f64, f64::max);
+
+    let plotter = Plotter::new();
+    let svg = plotter.plot_raw(
+        "x times longer parse + deserialize time than toml-spanner (lower is better)",
+        &data,
+        max_rel + 1.5,
+        280,
+    );
+
+    let assets_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../assets");
+    std::fs::create_dir_all(&assets_dir).ok();
+    let svg_path = assets_dir.join("bench_cargo.svg");
+    std::fs::write(&svg_path, &svg).expect("Failed to write SVG");
+    eprintln!("Wrote SVG to {}", svg_path.display());
+
+    eprintln!("\n--- README Markdown ---\n");
+    let version_line: Vec<_> = versions
+        .iter()
+        .map(|(name, v)| format!("{name} {v}"))
+        .collect();
+    eprintln!("Versions: {}\n", version_line.join(", "));
+    eprintln!("![benchmark](assets/bench_cargo.svg)\n");
+    eprintln!("```");
+    eprintln!(
+        "{:<16} {:>9} {:>10} {:>10} {:>10}",
+        "", "time(μs)", "cycles(K)", "instr(K)", "branch(K)"
+    );
+
+    let sections: &[(&str, &[(&str, &Stat)])] = &[
+        (
+            "zed/Cargo.lock (parse + deserialize)",
+            &[
+                ("toml-spanner", &lock_spanner),
+                ("toml", &lock_toml),
+                ("toml-span", &lock_span),
+            ],
+        ),
+        (
+            "zed/Cargo.toml (parse + deserialize)",
+            &[
+                ("toml-spanner", &manifest_spanner),
+                ("toml", &manifest_toml),
+            ],
+        ),
+    ];
+    for (section_name, stats) in sections {
+        eprintln!("{section_name}");
+        for (lib_name, stat) in *stats {
+            let t = f64::from(stat.nanos) / 1000.0;
+            let c = f64::from(stat.cycles) / 1000.0;
+            let i = f64::from(stat.inst) / 1000.0;
+            let b = f64::from(stat.branch) / 1000.0;
+            eprintln!(
+                "  {:<14} {:>9.1} {:>10.0} {:>10.0} {:>10.0}",
+                lib_name, t, c, i, b
+            );
+        }
+    }
+    eprintln!("```");
+}
+
 fn main_for_profile() {
     let inputs = &[
         static_input::ZED_CARGO_TOML,
@@ -173,6 +314,10 @@ fn main_for_profile() {
 fn main() {
     if std::env::args().any(|a| a == "profile") {
         main_for_profile();
+        return;
+    }
+    if std::env::args().any(|a| a == "cargo") {
+        main_for_cargo();
         return;
     }
     if std::env::args().any(|a| a == "compile") {
@@ -214,7 +359,6 @@ fn main() {
     }
     println!();
 
-    // --- Graph generation ---
     let graph_benchmarks = [
         //        ("zed/Cargo.lock", "272KB"),
         ("zed/Cargo.toml", "18KB"),
@@ -278,6 +422,7 @@ fn main() {
         "x times longer parse time than toml-spanner (lower is better)",
         &data,
         max_rel + 1.5,
+        400,
     );
 
     let assets_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../assets");

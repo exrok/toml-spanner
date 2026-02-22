@@ -3,13 +3,22 @@ name = "benchmark"
 version = "0.1.0"
 edition = "2024"
 
-[profile.release]
-debug = 1
 
 [dependencies]
+jsony_bench = { git = "https://github.com/exrok/jsony" }
 toml-spanner.path = ".."
-jsony_bench.path = "/home/user/Projects/git/jsony/jsony_bench"
 oorandom = "11.1.5"
-toml = { version = "1" }
+toml = { version = "1", features = ["serde", "parse", "display"] }
 toml-span = { version = "0.7" }
 serde = { version = "1", features = ["derive"] }
+thiserror = "2"
+url = "2"
+semver = { version = "1", features = ["serde"] }
+serde-untagged = "0.1.9"
+unicode-ident = "1"
+serde-value = "0.7.0"
+mimalloc = "0.1.48"
+
+
+[features]
+cargo-bench = []

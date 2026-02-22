@@ -118,6 +118,29 @@ improvements), the total runtime improvement is less, but it is highly dependent
 and target data types. Switching devsm from `toml-span` to `toml-spanner` saw a total 8x reduction
 in runtime measured from the actual application when including both parsing and deserialization.
 
+### Deserialization and Parsing
+
+Usually, you don't just parse TOML, `toml-spanner` provides helpers to make deserialization easier.
+The following benchmarks have taken the exact data structures and deserialization code (originally
+using toml and serde), and added support for `toml-spanner` and `toml-span` based parsing and
+deserialization. (I haven't added `toml-span` support for Cargo.toml due to its complexity.)
+
+Note: These benchmarks deserialize to the exact same original data structures from Cargo's
+source code.
+
+Crate Versions: `toml-spanner = 0.4.0`, `toml = 1.0.3+spec-1.1.0`, `toml-span = 0.7.0`
+
+```
+                  time(μs)  cycles(K)   instr(K)  branch(K)
+zed/Cargo.lock (parse + deserialize)
+  toml-spanner      1125.3       5279      16704       3665
+  toml              2954.9      14017      36172       7577
+  toml-span         5985.0      28274      74898      15515
+zed/Cargo.toml (parse + deserialize)
+  toml-spanner       111.6        527       1608        332
+  toml               332.1       1569       3731        727
+```
+
 ### Compile Time
 
 Extra `cargo build --release` time for binaries using the respective crates (lower is better):
@@ -190,6 +213,8 @@ Code coverage:
 ```bash
 cargo +nightly llvm-cov --branch --show-missing-lines -- -q
 ```
+
+Note: See the `devsm.toml` file in the root for typical commands that are run during development.
 
 ## Differences from `toml`
 
