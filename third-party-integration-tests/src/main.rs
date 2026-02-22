@@ -1,4 +1,3 @@
-use jiff::civil::Date;
 use toml_spanner::{Deserialize, Error as TomlError, Span as TomlSpan};
 
 fn extract_date(
@@ -109,7 +108,7 @@ fn to_jiff_timestamp(item: &toml_spanner::Item<'_>) -> Result<jiff::Timestamp, T
 
 #[derive(Debug)]
 pub struct TimeConfig {
-    pub date: Date,
+    pub date: jiff::civil::Date,
     pub datetime: jiff::civil::DateTime,
     pub timestamp: jiff::Timestamp,
 }

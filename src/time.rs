@@ -55,21 +55,18 @@ pub struct Date {
 /// ```
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TimeOffset {
-    /// UTC offset of zero, written as `Z` (or `z`) in the source.
+    /// UTC offset `Z`.
     Z,
-    /// A fixed offset from UTC, stored as a signed number of minutes.
-    ///
-    /// Positive values are east of UTC (e.g. `+05:30` = 330 minutes),
-    /// negative values are west (e.g. `-08:00` = -480 minutes).
+    /// Fixed offset from UTC in minutes (e.g. `+05:30` = 330, `-08:00` = -480).
     Custom {
-        /// Signed offset in minutes from UTC.
+        /// Minutes from UTC (positive = east, negative = west).
         minutes: i16,
     },
 }
 
-/// A time-of-day with optional sub-second precision.
+/// Represents the time of day portion of a TOML datetime value.
 ///
-/// Represents the time portion of a TOML datetime value. Field ranges are
+/// Field ranges are
 /// validated during parsing:
 ///
 /// - `hour`: 0–23
@@ -194,7 +191,6 @@ impl Time {
 /// <summary>Toggle Jiff Conversions Examples</summary>
 ///
 /// ```ignore
-/// use jiff::civil::Date;
 /// use toml_spanner::{Deserialize, Error as TomlError, Span as TomlSpan};
 ///
 /// fn extract_date(
@@ -305,7 +301,7 @@ impl Time {
 ///
 /// #[derive(Debug)]
 /// pub struct TimeConfig {
-///     pub date: Date,
+///     pub date: jiff::civil::Date,
 ///     pub datetime: jiff::civil::DateTime,
 ///     pub timestamp: jiff::Timestamp,
 /// }

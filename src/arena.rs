@@ -29,11 +29,11 @@ static EMPTY_SLAB: SlabHeader = SlabHeader {
     size: 0,
 };
 
-/// A bump allocator used by the parser to store escaped strings.
+/// Bump allocator backing all data structures produced by the parser.
 ///
 /// Create an `Arena` before calling [`parse`](crate::parse) and pass it by
-/// reference. The arena must live at least as long as the parsed [`Table`](crate::Table)
-/// because parsed string values may borrow from it.
+/// reference. The arena must outlive the returned [`Root`](crate::Root)
+/// because parsed values borrow from it.
 ///
 /// All memory is freed when the arena is dropped.
 ///

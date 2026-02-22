@@ -1,10 +1,7 @@
-//! A high-performance TOML parser that preserves span information for every
-//! parsed value.
+//! A high-performance TOML parser that preserves span information for
+//! values and keys.
 //!
-//! Strings are zero-copy where possible, borrowing directly from the input;
-//! escape sequences are allocated into a caller-supplied [`Arena`].
-//!
-//! # Quick start
+//! # Parsing and Traversal
 //!
 //! Use [`parse`] with a TOML string and an [`Arena`] to get a [`Root`].
 //! ```

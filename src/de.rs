@@ -89,7 +89,7 @@ impl FixedBitset {
 }
 
 /// An iterator over table entries that were **not** consumed by
-/// [`TableHelper::required`] or [`TableHelper::optional`].
+/// [`TableHelper::required`], [`TableHelper::optional`] or similar methods.
 ///
 /// Obtained via [`TableHelper::into_remaining`].
 pub struct RemainingEntriesIter<'t, 'de> {
