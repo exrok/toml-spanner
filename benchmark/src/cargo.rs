@@ -70,3 +70,30 @@ pub fn parse_manifest_toml_spanner(
         Err(_) => Err(root.ctx.errors),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::static_input;
+
+    #[test]
+    fn lock_parsing_all_agree() {
+        let serde = parse_lock_serde_toml(static_input::ZED_CARGO_LOCK).unwrap();
+        let spanner = parse_lock_toml_spanner(static_input::ZED_CARGO_LOCK).unwrap();
+        let span = parse_lock_toml_span(static_input::ZED_CARGO_LOCK).unwrap();
+        let span_str = format!("{span:#?}");
+        let serde_str = format!("{serde:#?}");
+        let spanner_str = format!("{spanner:#?}");
+        assert_eq!(serde_str, spanner_str);
+        assert_eq!(serde_str, span_str);
+    }
+
+    #[test]
+    fn manifest_parsing_all_agree() {
+        let serde = parse_manifest_serde_toml(static_input::ZED_CARGO_TOML).unwrap();
+        let spanner = parse_manifest_toml_spanner(static_input::ZED_CARGO_TOML).unwrap();
+        let serde_str = format!("{serde:#?}");
+        let spanner_str = format!("{spanner:#?}");
+        assert_eq!(serde_str, spanner_str);
+    }
+}
