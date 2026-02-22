@@ -102,7 +102,6 @@ pub struct TomlLockfileSourceId {
 
 impl TomlLockfileSourceId {
     pub fn new(source: String) -> Result<Self, TomlLockfileSourceIdError> {
-        let source_str = source.clone();
         let (kind, url) = source
             .split_once('+')
             .ok_or_else(|| TomlLockfileSourceIdErrorKind::InvalidSource(source.clone()))?;
@@ -132,7 +131,7 @@ impl TomlLockfileSourceId {
         };
 
         Ok(Self {
-            source_str,
+            source_str: source,
             kind,
             url,
         })

@@ -125,21 +125,21 @@ The following benchmarks have taken the exact data structures and deserializatio
 using toml and serde), and added support for `toml-spanner` and `toml-span` based parsing and
 deserialization. (I haven't added `toml-span` support for Cargo.toml due to its complexity.)
 
-![bench_deserialize](https://github.com/user-attachments/assets/26c0c35a-d8dd-43a7-b625-39bf190ac096)
+![bench_deserialize](https://github.com/user-attachments/assets/529b84f2-71cf-4ad0-aaee-ccf57c4cecce)
 
-Crate Versions: `toml-spanner = 0.4.0`, `toml = 1.0.3+spec-1.1.0`, `toml-span = 0.7.0`
+Crate Versions: `toml-spanner = 0.4.1`, `toml = 1.0.3+spec-1.1.0`, `toml-span = 0.7.0`
 
 Commit `3ca292befbc3585084922c1592ea3d17e423f035` was used from `rust-lang/cargo` as reference.
 
 ```
                   time(μs)  cycles(K)   instr(K)  branch(K)
 zed/Cargo.lock
-  toml-spanner      1125.3       5279      16704       3665
-  toml              2954.9      14017      36172       7577
-  toml-span         5985.0      28274      74898      15515
+  toml-spanner      1023.5       4879      16137       3517
+  toml              2975.4      14152      36063       7554
+  toml-span         5806.3      27182      74738      15478
 zed/Cargo.toml
-  toml-spanner       111.6        527       1608        332
-  toml               332.1       1569       3731        727
+  toml-spanner        92.4        432       1411        286
+  toml               333.4       1567       3726        726
 ```
 
 ### Compile Time

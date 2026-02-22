@@ -1,11 +1,5 @@
-use std::collections::BTreeMap;
-
+use super::*;
 use toml_spanner::{Context, Failed, Item};
-
-use super::{
-    TomlLockfile, TomlLockfileDependency, TomlLockfileMetadata, TomlLockfilePackageId,
-    TomlLockfilePatch, TomlLockfileSourceId,
-};
 
 impl<'de> toml_spanner::Deserialize<'de> for TomlLockfileSourceId {
     fn deserialize(ctx: &mut Context<'de>, item: &Item<'de>) -> Result<Self, Failed> {
@@ -20,38 +14,29 @@ impl<'de> toml_spanner::Deserialize<'de> for TomlLockfilePackageId {
     }
 }
 
-impl<'de> toml_spanner::Deserialize<'de> for TomlLockfileDependency {
-    fn deserialize(ctx: &mut Context<'de>, item: &Item<'de>) -> Result<Self, Failed> {
-        let mut th = item.table_helper(ctx)?;
-        Ok(TomlLockfileDependency {
-            name: th.required("name")?,
-            version: th.required("version")?,
-            source: th.optional("source"),
-            checksum: th.optional("checksum"),
-            dependencies: th.optional("dependencies"),
-            replace: th.optional("replace"),
-        })
+toml_spanner::deserialize_table! {
+    struct TomlLockfileDependency {
+        required name: String,
+        required version: String,
+        optional source: TomlLockfileSourceId,
+        optional checksum: String,
+        optional dependencies: Vec<TomlLockfilePackageId>,
+        optional replace: TomlLockfilePackageId,
     }
 }
 
-impl<'de> toml_spanner::Deserialize<'de> for TomlLockfilePatch {
-    fn deserialize(ctx: &mut Context<'de>, item: &Item<'de>) -> Result<Self, Failed> {
-        let mut th = item.table_helper(ctx)?;
-        Ok(TomlLockfilePatch {
-            unused: th.optional("unused").unwrap_or_default(),
-        })
+toml_spanner::deserialize_table! {
+    struct TomlLockfilePatch {
+        default unused: Vec<TomlLockfileDependency>,
     }
 }
 
-impl<'de> toml_spanner::Deserialize<'de> for TomlLockfile {
-    fn deserialize(ctx: &mut Context<'de>, item: &Item<'de>) -> Result<Self, Failed> {
-        let mut th = item.table_helper(ctx)?;
-        Ok(TomlLockfile {
-            version: th.optional("version"),
-            package: th.optional("package"),
-            root: th.optional("root"),
-            metadata: th.optional("metadata"),
-            patch: th.optional("patch").unwrap_or_default(),
-        })
+toml_spanner::deserialize_table! {
+    struct TomlLockfile {
+        optional version: u32,
+        optional package: Vec<TomlLockfileDependency>,
+        optional root: TomlLockfileDependency,
+        optional metadata: TomlLockfileMetadata,
+        default patch: TomlLockfilePatch,
     }
 }
