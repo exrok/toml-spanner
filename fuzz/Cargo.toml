@@ -1,13 +1,15 @@
 [package]
-name = "benchmark-fuzz"
+name = "fuzz"
 version = "0.0.0"
 publish = false
 edition = "2024"
+default-run = "fuzz"
 
 [package.metadata]
 cargo-fuzz = true
 
 [dependencies]
+foldhash = "0.2.0"
 libfuzzer-sys = "0.4"
 toml = { version = "1", features = ["preserve_order"] }
 
@@ -45,6 +47,55 @@ bench = false
 [[bin]]
 name = "datetime"
 path = "fuzz_targets/datetime.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "emit"
+path = "fuzz_targets/emit.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "normalize"
+path = "fuzz_targets/normalize.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "reproject"
+path = "fuzz_targets/reproject.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "emit_reproject_identity"
+path = "fuzz_targets/emit_reproject_identity.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "emit_reproject_edit"
+path = "fuzz_targets/emit_reproject_edit.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "emit_reproject_reorder"
+path = "fuzz_targets/emit_reproject_reorder.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "emit_roundtrip"
+path = "fuzz_targets/emit_roundtrip.rs"
 test = false
 doc = false
 bench = false

@@ -3,12 +3,14 @@ source: snapshot-tests/tests/parser.rs
 expression: spans
 ---
 note[string]: root_foo
-  ┌─ many_blank:2:1
+  ┌─ many_blank:1:7
   │  
-2 │ ╭ 
+1 │   foo = """
+  │ ╭───────^
+2 │ │ 
 3 │ │ 
 4 │ │ """
-  │ ╰^
+  │ ╰───^
 
 note[table]: root
   ┌─ many_blank:1:1

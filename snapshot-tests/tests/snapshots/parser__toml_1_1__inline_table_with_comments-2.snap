@@ -3,10 +3,10 @@ source: snapshot-tests/tests/parser.rs
 expression: spans
 ---
 note[string]: root_tbl_key
-  ┌─ inline_table_with_comments:4:12
+  ┌─ inline_table_with_comments:4:11
   │
 4 │     key = "value",
-  │            ^^^^^
+  │           ^^^^^^^
 
 note[integer]: root_tbl_num
   ┌─ inline_table_with_comments:6:11

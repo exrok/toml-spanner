@@ -12,7 +12,7 @@ use crate::{
     MaybeItem, Span,
     arena::Arena,
     error::{Error, ErrorKind},
-    table::{InnerTable, Table},
+    table::{InnerTable, Table, TableIndex},
     time::DateTime,
     value::{self, Item, Key},
 };
@@ -448,7 +448,7 @@ impl<'de> Parser<'de> {
                 return Ok((
                     Key {
                         name: "",
-                        span: Span::new(start as u32, (start + 1) as u32),
+                        span: Span::new(start as u32, self.cursor as u32),
                     },
                     false,
                 ));
@@ -593,21 +593,9 @@ impl<'de> Parser<'de> {
                             extra += 1;
                         }
 
-                        let maybe_nl = self.bytes[start + 3];
-                        let start_off = if maybe_nl == b'\n' {
-                            4
-                        } else if maybe_nl == b'\r' {
-                            5
-                        } else {
-                            3
-                        };
-
-                        (
-                            Span::new((start + start_off) as u32, (self.cursor - 3) as u32),
-                            i + extra,
-                        )
+                        (Span::new(start as u32, self.cursor as u32), i + extra)
                     } else {
-                        (Span::new((start + 1) as u32, (self.cursor - 1) as u32), i)
+                        (Span::new(start as u32, self.cursor as u32), i)
                     };
 
                     let name = if let Some(mut s) = scratch {
@@ -818,7 +806,7 @@ impl<'de> Parser<'de> {
                 Some(b) if is_keylike_byte(b) => {
                     let after = self.read_keylike();
                     match self.float(start, end, s, Some(after), sign) {
-                        Ok(f) => Ok(Item::float(f, Span::new(start, self.cursor as u32))),
+                        Ok(f) => Ok(Item::float_spanned(f, Span::new(start, self.cursor as u32))),
                         Err(e) => Err(e),
                     }
                 }
@@ -840,7 +828,7 @@ impl<'de> Parser<'de> {
 
         if bytes.iter().any(|&b| b == b'e' || b == b'E') {
             return match self.float(start, end, s, None, sign) {
-                Ok(f) => Ok(Item::float(f, Span::new(start, self.cursor as u32))),
+                Ok(f) => Ok(Item::float_spanned(f, Span::new(start, self.cursor as u32))),
                 Err(e) => Err(e),
             };
         }
@@ -904,7 +892,7 @@ impl<'de> Parser<'de> {
             } else {
                 acc as i64
             };
-            return Ok(Item::integer(val, span));
+            return Ok(Item::integer_spanned(val, span));
         }
         self.error_span = span;
         self.error_kind = Some(ErrorKind::InvalidNumber);
@@ -947,7 +935,7 @@ impl<'de> Parser<'de> {
             if acc > i64::MAX as u64 {
                 break 'error;
             }
-            return Ok(Item::integer(acc as i64, span));
+            return Ok(Item::integer_spanned(acc as i64, span));
         }
         self.error_span = span;
         self.error_kind = Some(ErrorKind::InvalidNumber);
@@ -989,7 +977,7 @@ impl<'de> Parser<'de> {
             if acc > i64::MAX as u64 {
                 break 'error;
             }
-            return Ok(Item::integer(acc as i64, span));
+            return Ok(Item::integer_spanned(acc as i64, span));
         }
         self.error_span = span;
         self.error_kind = Some(ErrorKind::InvalidNumber);
@@ -1031,7 +1019,7 @@ impl<'de> Parser<'de> {
             if acc > i64::MAX as u64 {
                 break 'error;
             }
-            return Ok(Item::integer(acc as i64, span));
+            return Ok(Item::integer_spanned(acc as i64, span));
         }
         self.error_span = span;
         self.error_kind = Some(ErrorKind::InvalidNumber);
@@ -1121,7 +1109,7 @@ impl<'de> Parser<'de> {
             b'"' | b'\'' => {
                 self.cursor += 1;
                 return match self.read_string(self.cursor - 1, byte) {
-                    Ok((key, _)) => Ok(Item::string(key.name, key.span)),
+                    Ok((key, _)) => Ok(Item::string_spanned(key.name, key.span)),
                     Err(e) => Err(e),
                 };
             }
@@ -1140,7 +1128,7 @@ impl<'de> Parser<'de> {
             b'[' => {
                 let start = self.cursor as u32;
                 self.cursor += 1;
-                let mut arr = value::Array::new();
+                let mut arr = crate::array::InternalArray::new();
                 if let Err(err) = self.array_contents(&mut arr, depth_remaining - 1) {
                     return Err(err);
                 };
@@ -1199,7 +1187,7 @@ impl<'de> Parser<'de> {
         let end = self.cursor as u32;
         match key {
             "inf" => {
-                return Ok(Item::float(
+                return Ok(Item::float_spanned(
                     if sign != 0 {
                         f64::INFINITY
                     } else {
@@ -1209,7 +1197,7 @@ impl<'de> Parser<'de> {
                 ));
             }
             "nan" => {
-                return Ok(Item::float(
+                return Ok(Item::float_spanned(
                     if sign != 0 {
                         f64::NAN.copysign(1.0)
                     } else {
@@ -1306,7 +1294,7 @@ impl<'de> Parser<'de> {
 
     fn array_contents(
         &mut self,
-        out: &mut value::Array<'de>,
+        out: &mut crate::array::InternalArray<'de>,
         depth_remaining: i16,
     ) -> Result<(), ParseError> {
         if depth_remaining < 0 {
@@ -1390,6 +1378,16 @@ impl<'de> Parser<'de> {
                         first: existing_key.span,
                     },
                 ));
+            }
+            // Promote IMPLICIT -> DOTTED: an implicit table created by a section
+            // header intermediate (e.g. `b` in `[a.b.c]`) is now being touched
+            // by a dotted key in the body (e.g. `b.x = 1` inside `[a]`).
+            if value.is_implicit_table() {
+                // SAFETY: is_table() verified by the guard above.
+                let t = unsafe { value.as_table_mut_unchecked() };
+                t.set_dotted_flag();
+                t.set_span_start(key.span.start);
+                t.set_span_end(key.span.end);
             }
             // SAFETY: is_table() verified by the guard above.
             unsafe { Ok(value.as_inner_table_mut_unchecked()) }
@@ -1499,7 +1497,7 @@ impl<'de> Parser<'de> {
                     Some(header_end as usize),
                     ErrorKind::DuplicateTable {
                         name: String::from(key.name),
-                        first: existing.span(),
+                        first: existing.span_unchecked(),
                     },
                 ));
             }
@@ -1574,7 +1572,7 @@ impl<'de> Parser<'de> {
             let first_entry = Item::table_header(InnerTable::new(), entry_span);
             let array_span = Span::new(header_start, header_end);
             let array_val = Item::array_aot(
-                value::Array::with_single(first_entry, self.arena),
+                crate::array::InternalArray::with_single(first_entry, self.arena),
                 array_span,
             );
             let inserted = self.insert_value_known_to_be_unique(table, key, array_val);
@@ -1819,6 +1817,8 @@ impl<'de> Parser<'de> {
 /// [`Root::into_table()`] to extract the table for mutable access.
 pub struct Root<'de> {
     pub(crate) table: Table<'de>,
+    #[cfg(not(feature = "deserialization"))]
+    index: foldhash::HashMap<KeyRef<'de>, usize>,
     #[cfg(feature = "deserialization")]
     pub ctx: crate::de::Context<'de>,
 }
@@ -1838,6 +1838,22 @@ impl<'de> Root<'de> {
     /// Access the root table immutably.
     pub fn table(&self) -> &Table<'de> {
         &self.table
+    }
+
+    /// Returns the parser's hash index for O(1) key lookups in large tables.
+    ///
+    /// Used internally by [`reproject`](crate::reproject).
+    #[cfg(feature = "deserialization")]
+    pub(crate) fn table_index(&self) -> &TableIndex<'de> {
+        TableIndex::from_ref(&self.ctx.index)
+    }
+
+    /// Returns the parser's hash index for O(1) key lookups in large tables.
+    ///
+    /// Used internally by [`reproject`](crate::reproject).
+    #[cfg(not(feature = "deserialization"))]
+    pub(crate) fn table_index(&self) -> &TableIndex<'de> {
+        TableIndex::from_ref(&self.index)
     }
 }
 
@@ -1912,9 +1928,10 @@ impl std::fmt::Debug for Root<'_> {
 #[inline(never)]
 pub fn parse<'de>(document: &'de str, arena: &'de Arena) -> Result<Root<'de>, Error> {
     // Tag bits use the low 3 bits of start_and_tag, limiting span.start to
-    // 29 bits (512 MiB). The flag state uses the low 3 bits of end_and_flag,
-    // limiting span.end to 29 bits (512 MiB).
-    const MAX_SIZE: usize = (1u32 << 29) as usize;
+    // 28 bits (256 MiB). The flag state uses the low 3 bits of end_and_flag,
+    // and bit 31 is the variant discriminator, limiting span.end to 28 bits
+    // (256 MiB).
+    const MAX_SIZE: usize = (1u32 << 28) as usize;
 
     if document.len() >= MAX_SIZE {
         return Err(Error {
@@ -1923,7 +1940,7 @@ pub fn parse<'de>(document: &'de str, arena: &'de Arena) -> Result<Root<'de>, Er
         });
     }
 
-    let mut root_st = Table::new(Span::new(0, document.len() as u32));
+    let mut root_st = Table::new_spanned(Span::new(0, document.len() as u32));
     let mut parser = Parser::new(document, arena);
     match parser.parse_document(&mut root_st) {
         Ok(()) => {}
@@ -1934,6 +1951,8 @@ pub fn parse<'de>(document: &'de str, arena: &'de Arena) -> Result<Root<'de>, Er
     // todo don't do this
     Ok(Root {
         table: root_st,
+        #[cfg(not(feature = "deserialization"))]
+        index: parser.index,
         #[cfg(feature = "deserialization")]
         ctx: crate::de::Context {
             errors: Vec::new(),

@@ -8,7 +8,8 @@ edition = "2024"
 jsony_bench = { git = "https://github.com/exrok/jsony" }
 toml-spanner.path = ".."
 oorandom = "11.1.5"
-toml = { version = "1", features = ["serde", "parse", "display"] }
+toml = { version = "1", features = ["serde", "parse", "display", "fast_hash"] }
+toml_edit = "0.25"
 toml-span = { version = "0.7" }
 serde = { version = "1", features = ["derive"] }
 thiserror = "2"

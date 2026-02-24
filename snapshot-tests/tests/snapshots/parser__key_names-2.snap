@@ -63,16 +63,16 @@ note[integer]: root_"
    │        ^
 
 note[string]: root_character encoding
-   ┌─ key_names:11:25
+   ┌─ key_names:11:24
    │
 11 │ "character encoding" = "value"
-   │                         ^^^^^
+   │                        ^^^^^^^
 
 note[string]: root_ʎǝʞ
-   ┌─ key_names:12:10
+   ┌─ key_names:12:9
    │
 12 │ 'ʎǝʞ' = "value"
-   │          ^^^^^
+   │         ^^^^^^^
 
 note[integer]: root_key#name
    ┌─ key_names:13:14

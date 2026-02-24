@@ -1,5 +1,6 @@
 ---
 source: snapshot-tests/tests/parser.rs
+assertion_line: 53
 expression: spans
 ---
 note[bool]: root_fruit_apple_texture_smooth
@@ -16,10 +17,10 @@ note[table]: root_fruit_apple_texture
   │ ╰─────────────^
 
 note[string]: root_fruit_apple_color
-  ┌─ table_9_reverse_valid:5:16
+  ┌─ table_9_reverse_valid:5:15
   │
 5 │ apple.color = "red"
-  │                ^^^
+  │               ^^^^^
 
 note[bool]: root_fruit_apple_taste_sweet
   ┌─ table_9_reverse_valid:6:21
@@ -34,10 +35,10 @@ note[table]: root_fruit_apple_taste
   │       ^^^^^
 
 note[table]: root_fruit_apple
-  ┌─ table_9_reverse_valid:1:8
+  ┌─ table_9_reverse_valid:5:1
   │
-1 │ [fruit.apple.texture]  # you can add sub-tables
-  │        ^^^^^
+5 │ apple.color = "red"
+  │ ^^^^^
 
 note[table]: root_fruit
   ┌─ table_9_reverse_valid:4:1

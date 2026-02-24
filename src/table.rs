@@ -3,15 +3,25 @@
 mod tests;
 
 use crate::Span;
+use crate::parser::KeyRef;
 use crate::value::{
-    FLAG_HEADER, FLAG_MASK, FLAG_SHIFT, FLAG_TABLE, Item, Key, MaybeItem, NONE, TAG_MASK,
-    TAG_SHIFT, TAG_TABLE,
+    FLAG_DOTTED, FLAG_FROZEN, FLAG_HEADER, FLAG_TABLE, Item, ItemMetadata, Key, MaybeItem, NONE,
+    TAG_TABLE, TableStyle,
 };
 use std::mem::size_of;
 use std::ptr::NonNull;
 
 use crate::arena::Arena;
 
+#[repr(transparent)]
+pub struct TableIndex<'de>(foldhash::HashMap<KeyRef<'de>, usize>);
+
+impl<'de> TableIndex<'de> {
+    pub(crate) fn from_ref<'a>(map: &'a foldhash::HashMap<KeyRef<'de>, usize>) -> &'a Self {
+        // SAFETY: TableIndex is #[repr(transparent)] around the HashMap.
+        unsafe { &*(map as *const foldhash::HashMap<KeyRef<'de>, usize>).cast::<Self>() }
+    }
+}
 type TableEntry<'de> = (Key<'de>, Item<'de>);
 
 const MIN_CAP: u32 = 2;
@@ -67,7 +77,30 @@ impl<'de> InnerTable<'de> {
     pub fn is_empty(&self) -> bool {
         self.len == 0
     }
-
+    /// Looks up a key using the parser's hash index when the table is large
+    /// enough, falling back to a linear scan for small tables.
+    ///
+    /// Both the table and the index must originate from the same `parse` call
+    /// and neither must have been mutated since parsing.
+    pub(crate) fn get_entry_with_index(
+        &self,
+        key: &str,
+        index: &TableIndex<'_>,
+    ) -> Option<&TableEntry<'de>> {
+        if self.len() > crate::parser::INDEXED_TABLE_THRESHOLD {
+            // SAFETY: len > INDEXED_TABLE_THRESHOLD (> 6), so the table is non-empty.
+            let first_key_span = unsafe { self.first_key_span_start_unchecked() };
+            let i = *index.0.get(&KeyRef::new(key, first_key_span))?;
+            self.entries().get(i)
+        } else {
+            for entry in self.entries() {
+                if entry.0.name == key {
+                    return Some(entry);
+                }
+            }
+            None
+        }
+    }
     /// Linear scan for a key, returning both key and value references.
     pub fn get_entry(&self, name: &str) -> Option<(&Key<'de>, &Item<'de>)> {
         for entry in self.entries() {
@@ -134,7 +167,8 @@ impl<'de> InnerTable<'de> {
     }
 
     #[inline]
-    pub(crate) fn entries_mut(&mut self) -> &mut [TableEntry<'de>] {
+    // TODO make (crate)
+    pub fn entries_mut(&mut self) -> &mut [TableEntry<'de>] {
         // SAFETY: same as entries() — ptr is valid for len initialized entries.
         unsafe { std::slice::from_raw_parts_mut(self.ptr.as_ptr(), self.len as usize) }
     }
@@ -191,6 +225,63 @@ impl<'de> InnerTable<'de> {
             self.ptr = arena.alloc(new_size).cast();
         }
         self.cap = new_cap;
+    }
+
+    /// Shallow-clones this table into `arena`, recursively cloning nested
+    /// arrays and tables while sharing string and key data.
+    ///
+    /// Copies contiguous runs of scalar entries with a single `copy_nonoverlapping`,
+    /// only falling back to per-entry `clone_in` for aggregate (table/array) values.
+    pub(crate) fn clone_in(&self, arena: &'de Arena) -> Self {
+        let len = self.len as usize;
+        if len == 0 {
+            return Self::new();
+        }
+        let size = len * size_of::<TableEntry<'de>>();
+        let dst: NonNull<TableEntry<'de>> = arena.alloc(size).cast();
+        let src = self.ptr.as_ptr();
+        let dst_ptr = dst.as_ptr();
+
+        let mut run_start = 0;
+        for i in 0..len {
+            // SAFETY: i < len, so src.add(i) is within initialized entries.
+            if unsafe { !(*src.add(i)).1.is_scalar() } {
+                if run_start < i {
+                    // SAFETY: entries[run_start..i] have scalar values — Key is
+                    // Copy, scalar Items are bitwise-copyable. Source and
+                    // destination are disjoint arena regions.
+                    unsafe {
+                        std::ptr::copy_nonoverlapping(
+                            src.add(run_start),
+                            dst_ptr.add(run_start),
+                            i - run_start,
+                        );
+                    }
+                }
+                // SAFETY: the entry's value is an aggregate; deep-clone it.
+                // Key is Copy.
+                unsafe {
+                    let entry = &*src.add(i);
+                    dst_ptr.add(i).write((entry.0, entry.1.clone_in(arena)));
+                }
+                run_start = i + 1;
+            }
+        }
+        if run_start < len {
+            unsafe {
+                std::ptr::copy_nonoverlapping(
+                    src.add(run_start),
+                    dst_ptr.add(run_start),
+                    len - run_start,
+                );
+            }
+        }
+
+        Self {
+            len: self.len,
+            cap: self.len,
+            ptr: dst,
+        }
     }
 }
 
@@ -278,33 +369,42 @@ impl ExactSizeIterator for IntoIter<'_> {}
 #[repr(C)]
 pub struct Table<'de> {
     pub(crate) value: InnerTable<'de>,
-    /// Bits 2-0: tag, bits 31-3: span.start
-    start_and_tag: u32,
-    /// Bit 0: flag bit (parser-internal), bits 31-1: span.end
-    end_and_flag: u32,
+    pub(crate) meta: ItemMetadata,
 }
 
 impl<'de> Table<'de> {
-    /// Creates an empty table with the given span.
-    pub fn new(span: Span) -> Table<'de> {
+    /// Creates an empty table in format-hints mode (no source span).
+    pub fn new() -> Table<'de> {
         Table {
-            start_and_tag: span.start << TAG_SHIFT | TAG_TABLE,
-            end_and_flag: (span.end << FLAG_SHIFT) | FLAG_TABLE,
+            meta: ItemMetadata::hints(TAG_TABLE, FLAG_TABLE),
             value: InnerTable::new(),
         }
     }
-    /// Returns the byte-offset span of this table in the source document.
-    pub fn span(&self) -> Span {
-        Span {
-            start: self.start_and_tag >> TAG_SHIFT,
-            end: self.end_and_flag >> FLAG_SHIFT,
+
+    /// Creates an empty table in span mode (parser-produced).
+    pub(crate) fn new_spanned(span: Span) -> Table<'de> {
+        Table {
+            meta: ItemMetadata::spanned(TAG_TABLE, FLAG_TABLE, span.start, span.end),
+            value: InnerTable::new(),
         }
+    }
+
+    /// Returns the byte-offset span of this table in the source document.
+    /// Only valid on parser-produced tables (span mode).
+    pub fn span_unchecked(&self) -> Span {
+        self.meta.span_unchecked()
+    }
+
+    /// Returns the source span, or `None` if this table was constructed
+    /// programmatically (format-hints mode).
+    pub fn span(&self) -> Option<Span> {
+        self.meta.span()
     }
 }
 
 impl<'de> Default for Table<'de> {
     fn default() -> Self {
-        Self::new(Span::default())
+        Self::new()
     }
 }
 
@@ -364,6 +464,12 @@ impl<'de> Table<'de> {
     pub fn entries(&self) -> &[TableEntry<'de>] {
         self.value.entries()
     }
+    /// Returns a slice of all entries.
+    #[inline]
+    // todo rmeove
+    pub fn entries_mut(&mut self) -> &mut [TableEntry<'de>] {
+        self.value.entries_mut()
+    }
 
     /// Converts this `Table` into an [`Item`] with the same span and payload.
     pub fn as_item(&self) -> &Item<'de> {
@@ -376,8 +482,10 @@ impl<'de> Table<'de> {
 
     /// Converts this `Table` into an [`Item`] with the same span and payload.
     pub fn into_item(self) -> Item<'de> {
-        let span = self.span();
-        Item::table(self.value, span)
+        // SAFETY: Table and Item have the same repr(C) layout, size, and
+        // alignment (verified by const assertions below). Transmute preserves
+        // the kind flag that Item::table() would discard.
+        unsafe { std::mem::transmute(self) }
     }
 }
 
@@ -416,29 +524,89 @@ const _: () = assert!(std::mem::align_of::<Table<'_>>() == std::mem::align_of::<
 impl<'de> Table<'de> {
     #[inline]
     pub(crate) fn span_start(&self) -> u32 {
-        self.start_and_tag >> TAG_SHIFT
+        self.meta.span_start()
     }
 
     #[inline]
     pub(crate) fn set_span_start(&mut self, v: u32) {
-        self.start_and_tag = (v << TAG_SHIFT) | (self.start_and_tag & TAG_MASK);
+        self.meta.set_span_start(v);
     }
 
     #[inline]
     pub(crate) fn set_span_end(&mut self, v: u32) {
-        self.end_and_flag = (v << FLAG_SHIFT) | (self.end_and_flag & FLAG_MASK);
+        self.meta.set_span_end(v);
     }
 
     #[inline]
     pub(crate) fn extend_span_end(&mut self, new_end: u32) {
-        let old = self.end_and_flag;
-        let current = old >> FLAG_SHIFT;
-        self.end_and_flag = (current.max(new_end) << FLAG_SHIFT) | (old & FLAG_MASK);
+        self.meta.extend_span_end(new_end);
     }
 
     #[inline]
     pub(crate) fn set_header_flag(&mut self) {
-        self.end_and_flag = (self.end_and_flag & !FLAG_MASK) | FLAG_HEADER;
+        self.meta.set_flag(FLAG_HEADER);
+    }
+
+    #[inline]
+    pub(crate) fn set_dotted_flag(&mut self) {
+        self.meta.set_flag(FLAG_DOTTED);
+    }
+
+    /// Returns the kind of this table (implicit, dotted, header, or inline).
+    #[inline]
+    pub fn style(&self) -> TableStyle {
+        match self.meta.flag() {
+            FLAG_DOTTED => TableStyle::Dotted,
+            FLAG_HEADER => TableStyle::Header,
+            FLAG_FROZEN => TableStyle::Inline,
+            _ => TableStyle::Implicit,
+        }
+    }
+
+    /// Sets the kind of this table.
+    #[inline]
+    pub fn set_style(&mut self, kind: TableStyle) {
+        let flag = match kind {
+            TableStyle::Implicit => FLAG_TABLE,
+            TableStyle::Dotted => FLAG_DOTTED,
+            TableStyle::Header => FLAG_HEADER,
+            TableStyle::Inline => FLAG_FROZEN,
+        };
+        self.meta.set_flag(flag);
+    }
+
+    /// Disables source-position reordering for this table's immediate entries
+    /// during emission. Non-recursive: child tables are unaffected.
+    pub fn set_ignore_source_order(&mut self) {
+        self.meta.set_ignore_source_order();
+    }
+
+    /// Returns `true` if source-position reordering is disabled for this table.
+    #[must_use]
+    pub fn ignore_source_order(&self) -> bool {
+        self.meta.ignore_source_order()
+    }
+
+    /// Disables copying structural styles (TableStyle/ArrayStyle) from source
+    /// during reprojection for this table's immediate entries. Key spans and
+    /// reprojection indices are still copied. Non-recursive.
+    pub fn set_ignore_source_style(&mut self) {
+        self.meta.set_ignore_source_style();
+    }
+
+    /// Returns `true` if source-style copying is disabled for this table.
+    #[must_use]
+    pub fn ignore_source_style(&self) -> bool {
+        self.meta.ignore_source_style()
+    }
+
+    /// Shallow-clones this table into `arena`, recursively cloning nested
+    /// arrays and tables while sharing string and key data.
+    pub fn clone_in(&self, arena: &'de Arena) -> Table<'de> {
+        Table {
+            value: self.value.clone_in(arena),
+            meta: self.meta,
+        }
     }
 }
 

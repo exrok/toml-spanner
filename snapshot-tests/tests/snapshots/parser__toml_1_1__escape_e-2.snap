@@ -3,10 +3,10 @@ source: snapshot-tests/tests/parser.rs
 expression: spans
 ---
 note[string]: root_csi
-  ┌─ escape_e:1:8
+  ┌─ escape_e:1:7
   │
 1 │ csi = "\e["
-  │        ^^^
+  │       ^^^^^
 
 note[table]: root
   ┌─ escape_e:1:1

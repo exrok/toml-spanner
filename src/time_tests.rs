@@ -481,7 +481,11 @@ fn randomized_roundtrip_full_datetime() {
                 expected += "Z";
             }
             _ => {
-                let sign = if rng.rand_u32().is_multiple_of(2) { '+' } else { '-' };
+                let sign = if rng.rand_u32().is_multiple_of(2) {
+                    '+'
+                } else {
+                    '-'
+                };
                 let oh = (rng.rand_u32() % 24) as u8;
                 let om = (rng.rand_u32() % 60) as u8;
                 // +00:00 roundtrips as Z, so avoid that

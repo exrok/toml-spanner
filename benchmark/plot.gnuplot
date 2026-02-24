@@ -11,11 +11,12 @@ set border  lw 1 lc "grey"
 set style fill solid 1.0
 set lmargin 18
 
-# Define colors: index 1 = header (invisible), 2-4 = libraries
+# Define colors: index 1 = header (invisible), 2-5 = libraries
 set linetype 1 lc rgb '#0D1117'  # Background (invisible headers)
 set linetype 2 lc rgb '#92B2CA'  # Blue   - toml-spanner
 set linetype 3 lc rgb '#C0A7C7'  # Purple - toml
-set linetype 4 lc rgb '#D77C79'  # Red    - toml-span
+set linetype 4 lc rgb '#A8C99B'  # Green  - toml_edit
+set linetype 5 lc rgb '#D77C79'  # Red    - toml-span
 
 $Data << EOD
 __INSERT_DATA_HERE__

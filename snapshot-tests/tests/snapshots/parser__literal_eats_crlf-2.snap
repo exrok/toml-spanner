@@ -3,22 +3,22 @@ source: snapshot-tests/tests/parser.rs
 expression: spans
 ---
 note[string]: root_foo
-  ┌─ literal_eats_crlf:1:10
+  ┌─ literal_eats_crlf:1:7
   │  
 1 │   foo = """\
-  │ ╭──────────^
+  │ ╭───────^
 2 │ │ """
-  │ ╰^
+  │ ╰───^
 
 note[string]: root_bar
-  ┌─ literal_eats_crlf:3:10
+  ┌─ literal_eats_crlf:3:7
   │  
 3 │   bar = """\
-  │ ╭──────────^
+  │ ╭───────^
 4 │ │    
 5 │ │    
 6 │ │    a"""
-  │ ╰────^
+  │ ╰───────^
 
 note[table]: root
   ┌─ literal_eats_crlf:1:1

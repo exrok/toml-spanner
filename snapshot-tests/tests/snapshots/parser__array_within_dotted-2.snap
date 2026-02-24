@@ -3,10 +3,10 @@ source: snapshot-tests/tests/parser.rs
 expression: spans
 ---
 note[string]: root_fruit_apple_color
-  ┌─ array_within_dotted:2:16
+  ┌─ array_within_dotted:2:15
   │
 2 │ apple.color = "red"
-  │                ^^^
+  │               ^^^^^
 
 note[integer]: root_fruit_apple_seeds_0_size
   ┌─ array_within_dotted:5:8

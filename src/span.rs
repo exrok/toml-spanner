@@ -22,11 +22,177 @@ impl Span {
     pub fn new(start: u32, end: u32) -> Self {
         Self { start, end }
     }
+    pub fn range(self) -> std::ops::Range<usize> {
+        self.start as usize..self.end as usize
+    }
 
     /// Returns `true` if both start and end are zero.
     #[inline]
     pub fn is_empty(&self) -> bool {
         self.start == 0 && self.end == 0
+    }
+
+    /// Grows `end` forward over whitespace (space/tab).
+    ///
+    /// Returns the byte that terminated growth, or `None` on EOF.
+    pub fn whitespace_grow_end(&mut self, text: &[u8]) -> Option<u8> {
+        let mut pos = self.end as usize;
+        while pos < text.len() {
+            let b = text[pos];
+            if b == b' ' || b == b'\t' {
+                pos += 1;
+            } else {
+                self.end = pos as u32;
+                return Some(b);
+            }
+        }
+        self.end = pos as u32;
+        None
+    }
+
+    /// Grows `start` backward over whitespace (space/tab).
+    ///
+    /// Returns the byte that terminated growth, or `None` at start of text.
+    pub fn whitespace_grow_start(&mut self, text: &[u8]) -> Option<u8> {
+        let mut pos = self.start as usize;
+        while pos > 0 {
+            let b = text[pos - 1];
+            if b == b' ' || b == b'\t' {
+                pos -= 1;
+            } else {
+                self.start = pos as u32;
+                return Some(b);
+            }
+        }
+        self.start = 0;
+        None
+    }
+
+    /// Grows `end` forward over whitespace (space/tab/CR/LF) and comments.
+    ///
+    /// Returns the byte that terminated growth, or `None` on EOF.
+    pub fn whitespace_and_comments_grow_end(&mut self, text: &[u8]) -> Option<u8> {
+        let mut pos = self.end as usize;
+        while pos < text.len() {
+            match text[pos] {
+                b' ' | b'\t' | b'\r' | b'\n' => pos += 1,
+                b'#' => {
+                    while pos < text.len() && text[pos] != b'\n' {
+                        pos += 1;
+                    }
+                }
+                b => {
+                    self.end = pos as u32;
+                    return Some(b);
+                }
+            }
+        }
+        self.end = pos as u32;
+        None
+    }
+
+    /// Grows `start` backward over whitespace (space/tab/CR/LF) and
+    /// comment-only lines.
+    ///
+    /// Returns the byte that terminated growth, or `None` at start of text.
+    pub fn whitespace_and_comments_grow_start(&mut self, text: &[u8]) -> Option<u8> {
+        let mut pos = self.start as usize;
+        loop {
+            while pos > 0 && matches!(text[pos - 1], b' ' | b'\t' | b'\r' | b'\n') {
+                pos -= 1;
+            }
+            if pos == 0 {
+                self.start = 0;
+                return None;
+            }
+            // Check if we stopped inside a comment-only line (whitespace then #).
+            let line_start = text[..pos]
+                .iter()
+                .rposition(|&b| b == b'\n')
+                .map_or(0, |p| p + 1);
+            let line = &text[line_start..pos];
+            if let Some(hash_idx) = line.iter().position(|&b| b == b'#') {
+                if text[line_start..line_start + hash_idx]
+                    .iter()
+                    .all(|&b| b == b' ' || b == b'\t')
+                {
+                    pos = line_start;
+                    continue;
+                }
+            }
+            break;
+        }
+        self.start = pos as u32;
+        Some(text[pos - 1])
+    }
+
+    /// Grows a key span to cover the full header brackets.
+    ///
+    /// For `[a.b.c]` with a key span on `b`, produces the span of `[a.b.c]`.
+    /// Handles `[[aot]]` as well.
+    pub fn grow_key_to_header(&mut self, text: &[u8]) {
+        let mut start = self.start as usize;
+        while start > 0 && text[start - 1] != b'\n' {
+            start -= 1;
+        }
+        // Skip to the opening bracket (handles leading whitespace and BOM).
+        while text[start] != b'[' {
+            start += 1;
+        }
+        let end = find_header_end(text, start);
+        self.start = start as u32;
+        self.end = end as u32;
+    }
+
+    /// Extracts the header-line span from a HEADER table span.
+    ///
+    /// The HEADER span covers `[` through the last body value. This returns
+    /// just the `[key.path]` or `[[aot]]` portion.
+    pub fn extract_header_span(&self, text: &[u8]) -> Span {
+        let start = self.start as usize;
+        let end = find_header_end(text, start);
+        Span::new(self.start, end as u32)
+    }
+}
+
+/// Given the position of the opening `[` of a header, returns the position
+/// after the closing `]` (or `]]` for AOT). Handles quoted keys correctly.
+fn find_header_end(text: &[u8], start: usize) -> usize {
+    let mut pos = start;
+    debug_assert!(text[pos] == b'[');
+    pos += 1;
+    let is_aot = text[pos] == b'[';
+    if is_aot {
+        pos += 1;
+    }
+    loop {
+        match text[pos] {
+            b']' => {
+                pos += 1;
+                if is_aot {
+                    pos += 1;
+                }
+                return pos;
+            }
+            b'"' => {
+                pos += 1;
+                while text[pos] != b'"' {
+                    if text[pos] == b'\\' {
+                        pos += 1;
+                    }
+                    pos += 1;
+                }
+                pos += 1;
+            }
+            b'\'' => {
+                pos += 1;
+                while text[pos] != b'\'' {
+                    pos += 1;
+                }
+                pos += 1;
+            }
+            _ => pos += 1,
+        }
     }
 }
 
@@ -209,7 +375,7 @@ where
         ctx: &mut crate::de::Context<'de>,
         value: &crate::value::Item<'de>,
     ) -> Result<Self, crate::de::Failed> {
-        let span = value.span();
+        let span = value.span_unchecked();
         let inner = T::deserialize(ctx, value)?;
         Ok(Self { span, value: inner })
     }

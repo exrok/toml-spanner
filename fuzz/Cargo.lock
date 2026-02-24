@@ -9,15 +9,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c3d036a3c4ab069c7b410a2ce876bd74808d2d0888a82667669f8e783a898bf1"
 
 [[package]]
-name = "benchmark-fuzz"
-version = "0.0.0"
-dependencies = [
- "libfuzzer-sys",
- "toml",
- "toml-spanner",
-]
-
-[[package]]
 name = "cc"
 version = "1.2.56"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -52,6 +43,16 @@ name = "foldhash"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "77ce24cb58228fbb8aa041425bb1050850ac19177686ea6e0f41a70416f56fdb"
+
+[[package]]
+name = "fuzz"
+version = "0.0.0"
+dependencies = [
+ "foldhash",
+ "libfuzzer-sys",
+ "toml",
+ "toml-spanner",
+]
 
 [[package]]
 name = "getrandom"
@@ -197,6 +198,7 @@ name = "toml-spanner"
 version = "0.4.0"
 dependencies = [
  "foldhash",
+ "zmij",
 ]
 
 [[package]]
@@ -249,3 +251,9 @@ name = "wit-bindgen"
 version = "0.51.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d7249219f66ced02969388cf2bb044a09756a083d0fab1e566056b04d9fbcaa5"
+
+[[package]]
+name = "zmij"
+version = "1.0.21"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b8848ee67ecc8aedbaf3e4122217aff892639231befc6a1b58d29fff4c2cabaa"

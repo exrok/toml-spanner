@@ -12,7 +12,7 @@ fn key(name: &str) -> Key<'_> {
 }
 
 fn ival(i: i64) -> Item<'static> {
-    Item::integer(i, sp())
+    Item::integer_spanned(i, sp())
 }
 
 // == InnerTable tests ========================================================
@@ -176,7 +176,7 @@ fn inner_iterators() {
 // == Table wrapper tests =====================================================
 
 fn make_table<'a>(arena: &'a Arena) -> Table<'a> {
-    let mut table = Table::new(Span::new(0, 100));
+    let mut table = Table::new_spanned(Span::new(0, 100));
     table.insert(key("a"), ival(1), arena);
     table.insert(key("b"), ival(2), arena);
     table.insert(key("c"), ival(3), arena);
@@ -191,7 +191,7 @@ fn table_access_and_mutation() {
     // Basic properties
     assert_eq!(table.len(), 3);
     assert!(!table.is_empty());
-    assert_eq!(table.span(), Span::new(0, 100));
+    assert_eq!(table.span_unchecked(), Span::new(0, 100));
 
     // get
     assert_eq!(table["a"].as_i64(), Some(1));
@@ -243,41 +243,41 @@ fn table_iterators() {
 
 #[test]
 fn table_span_helpers() {
-    let mut table = Table::new(Span::new(10, 20));
+    let mut table = Table::new_spanned(Span::new(10, 20));
 
     // span_start / set_span_start
     assert_eq!(table.span_start(), 10);
     table.set_span_start(50);
     assert_eq!(table.span_start(), 50);
-    assert_eq!(table.span().start, 50);
+    assert_eq!(table.span_unchecked().start, 50);
 
     // set_span_end
     table.set_span_end(100);
-    assert_eq!(table.span().end, 100);
+    assert_eq!(table.span_unchecked().end, 100);
 
     // extend_span_end: only updates if new value is greater
     table.extend_span_end(90); // less than current 100, no change
-    assert_eq!(table.span().end, 100);
+    assert_eq!(table.span_unchecked().end, 100);
     table.extend_span_end(200); // greater, updates
-    assert_eq!(table.span().end, 200);
+    assert_eq!(table.span_unchecked().end, 200);
 
     // set_header_flag preserves span
-    let mut table = Table::new(Span::new(10, 20));
+    let mut table = Table::new_spanned(Span::new(10, 20));
     table.set_header_flag();
-    assert_eq!(table.span(), Span::new(10, 20));
+    assert_eq!(table.span_unchecked(), Span::new(10, 20));
 }
 
 #[test]
 fn default_and_debug() {
     let arena = Arena::new();
 
-    // Table::default - public type
+    // Table::default - public type (format-hints mode, no span)
     let table: Table<'_> = Table::default();
     assert_eq!(table.len(), 0);
-    assert!(table.span().is_empty());
+    assert!(table.span().is_none());
 
     // Table::Debug - public type
-    let mut table = Table::new(Span::new(0, 10));
+    let mut table = Table::new_spanned(Span::new(0, 10));
     table.insert(key("y"), ival(99), &arena);
     let debug = format!("{:?}", table);
     assert!(debug.contains("y") || debug.contains("99"));
@@ -310,33 +310,110 @@ fn index_operator() {
     // Nested table indexing
     let mut inner = InnerTable::new();
     inner.insert(key("x"), ival(42), &arena);
-    let mut outer = Table::new(Span::new(0, 50));
+    let mut outer = Table::new_spanned(Span::new(0, 50));
     outer.insert(key("nested"), Item::table(inner, Span::new(0, 20)), &arena);
     assert_eq!(outer["nested"]["x"].as_i64(), Some(42));
     assert!(outer["nested"]["y"].item().is_none());
 
     // Empty table always returns NONE
-    let empty = Table::new(Span::new(0, 0));
+    let empty = Table::new();
     assert!(empty["anything"].item().is_none());
 }
 
 #[test]
 fn as_item_and_into_item() {
     let arena = Arena::new();
-    let mut table = Table::new(Span::new(0, 50));
+    let mut table = Table::new_spanned(Span::new(0, 50));
     table.insert(key("x"), ival(42), &arena);
     table.insert(key("y"), ival(99), &arena);
 
     // as_item() returns a reference that preserves span and data
     let item_ref = table.as_item();
-    assert_eq!(item_ref.span(), Span::new(0, 50));
+    assert_eq!(item_ref.span_unchecked(), Span::new(0, 50));
     assert_eq!(item_ref.as_table().unwrap().len(), 2);
-    assert_eq!(item_ref.as_table().unwrap().get("x").unwrap().as_i64(), Some(42));
+    assert_eq!(
+        item_ref.as_table().unwrap().get("x").unwrap().as_i64(),
+        Some(42)
+    );
 
     // into_item() consumes the table and produces an owned Item
     let table2 = make_table(&arena);
     let item = table2.into_item();
-    assert_eq!(item.span(), Span::new(0, 100));
+    assert_eq!(item.span_unchecked(), Span::new(0, 100));
     assert_eq!(item.as_table().unwrap().len(), 3);
     assert_eq!(item.type_str(), "table");
+}
+
+#[test]
+fn clone_in_basic() {
+    let arena = Arena::new();
+    let table = make_table(&arena);
+
+    let cloned = table.clone_in(&arena);
+    assert_eq!(cloned.len(), 3);
+    assert_eq!(cloned.span_unchecked(), Span::new(0, 100));
+    assert_eq!(cloned["a"].as_i64(), Some(1));
+    assert_eq!(cloned["b"].as_i64(), Some(2));
+    assert_eq!(cloned["c"].as_i64(), Some(3));
+}
+
+#[test]
+fn clone_in_empty() {
+    let arena = Arena::new();
+    let table = Table::new_spanned(Span::new(5, 10));
+    let cloned = table.clone_in(&arena);
+    assert!(cloned.is_empty());
+    assert_eq!(cloned.span_unchecked(), Span::new(5, 10));
+}
+
+#[test]
+fn clone_in_preserves_kind() {
+    let arena = Arena::new();
+
+    let mut table = Table::new_spanned(Span::new(0, 10));
+    table.insert(key("k"), ival(1), &arena);
+
+    for kind in [
+        TableStyle::Implicit,
+        TableStyle::Dotted,
+        TableStyle::Header,
+        TableStyle::Inline,
+    ] {
+        table.set_style(kind);
+        let cloned = table.clone_in(&arena);
+        assert_eq!(cloned.style(), kind);
+        assert_eq!(cloned["k"].as_i64(), Some(1));
+    }
+}
+
+#[test]
+fn clone_in_nested_table() {
+    let arena = Arena::new();
+    let mut inner = InnerTable::new();
+    inner.insert(key("x"), ival(42), &arena);
+    let mut outer = Table::new_spanned(Span::new(0, 50));
+    outer.insert(key("nested"), Item::table(inner, Span::new(0, 20)), &arena);
+    outer.insert(key("flat"), ival(7), &arena);
+
+    let cloned = outer.clone_in(&arena);
+    assert_eq!(cloned.len(), 2);
+    assert_eq!(cloned["nested"]["x"].as_i64(), Some(42));
+    assert_eq!(cloned["flat"].as_i64(), Some(7));
+}
+
+#[test]
+fn clone_in_independent_of_source() {
+    let arena = Arena::new();
+    let mut table = make_table(&arena);
+
+    let cloned = table.clone_in(&arena);
+
+    // Mutate the original
+    if let Some(v) = table.get_mut("a") {
+        if let crate::value::ValueMut::Integer(i) = v.value_mut() {
+            *i = 999;
+        }
+    }
+    // Clone is unaffected
+    assert_eq!(cloned["a"].as_i64(), Some(1));
 }

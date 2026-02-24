@@ -3,10 +3,10 @@ source: snapshot-tests/tests/parser.rs
 expression: spans
 ---
 note[string]: root_tbl_key
-  ┌─ inline_table_newlines:3:12
+  ┌─ inline_table_newlines:3:11
   │
 3 │     key = "value",
-  │            ^^^^^
+  │           ^^^^^^^
 
 note[integer]: root_tbl_nested_inner
   ┌─ inline_table_newlines:5:17

@@ -3,22 +3,22 @@ source: snapshot-tests/tests/valid.rs
 expression: spans
 ---
 note[string]: root_the_test_string
-  ┌─ evil:6:16
+  ┌─ evil:6:15
   │
 6 │ test_string = "You'll hate me after this - #"          # " Annoying, isn't it?
-  │                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  │               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 note[string]: root_the_hard_test_array_0
-  ┌─ evil:9:21
+  ┌─ evil:9:20
   │
 9 │     test_array = [ "] ", " # "]      # ] There you go, parse this!
-  │                     ^^
+  │                    ^^^^
 
 note[string]: root_the_hard_test_array_1
-  ┌─ evil:9:27
+  ┌─ evil:9:26
   │
 9 │     test_array = [ "] ", " # "]      # ] There you go, parse this!
-  │                           ^^^
+  │                          ^^^^^
 
 note[array]: root_the_hard_test_array
   ┌─ evil:9:18
@@ -27,16 +27,16 @@ note[array]: root_the_hard_test_array
   │                  ^^^^^^^^^^^^^^
 
 note[string]: root_the_hard_test_array2_0
-   ┌─ evil:10:22
+   ┌─ evil:10:21
    │
 10 │     test_array2 = [ "Test #11 ]proved that", "Experiment #9 was a success" ]
-   │                      ^^^^^^^^^^^^^^^^^^^^^
+   │                     ^^^^^^^^^^^^^^^^^^^^^^^
 
 note[string]: root_the_hard_test_array2_1
-   ┌─ evil:10:47
+   ┌─ evil:10:46
    │
 10 │     test_array2 = [ "Test #11 ]proved that", "Experiment #9 was a success" ]
-   │                                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   │                                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 note[array]: root_the_hard_test_array2
    ┌─ evil:10:19
@@ -45,28 +45,28 @@ note[array]: root_the_hard_test_array2
    │                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 note[string]: root_the_hard_another_test_string
-   ┌─ evil:12:28
+   ┌─ evil:12:27
    │
 12 │     another_test_string = " Same thing, but with a string #"
-   │                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   │                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 note[string]: root_the_hard_harder_test_string
-   ┌─ evil:13:27
+   ┌─ evil:13:26
    │
 13 │     harder_test_string = " And when \"'s are in the string, along with # \""   # "and comments are there too"
-   │                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   │                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 note[string]: root_the_hard_bit#_what?
-   ┌─ evil:17:20
+   ┌─ evil:17:19
    │
 17 │         "what?" = "You don't think some user won't do that?"
-   │                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   │                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 note[string]: root_the_hard_bit#_multi_line_array_0
-   ┌─ evil:19:14
+   ┌─ evil:19:13
    │
 19 │             "]",
-   │              ^
+   │             ^^^
 
 note[array]: root_the_hard_bit#_multi_line_array
    ┌─ evil:18:28

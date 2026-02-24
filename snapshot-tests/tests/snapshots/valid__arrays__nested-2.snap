@@ -3,10 +3,10 @@ source: snapshot-tests/tests/valid.rs
 expression: spans
 ---
 note[string]: root_nest_0_0
-  ┌─ nested:1:11
+  ┌─ nested:1:10
   │
 1 │ nest = [["a"], ["b"]]
-  │           ^
+  │          ^^^
 
 note[array]: root_nest_0
   ┌─ nested:1:9
@@ -15,10 +15,10 @@ note[array]: root_nest_0
   │         ^^^^^
 
 note[string]: root_nest_1_0
-  ┌─ nested:1:18
+  ┌─ nested:1:17
   │
 1 │ nest = [["a"], ["b"]]
-  │                  ^
+  │                 ^^^
 
 note[array]: root_nest_1
   ┌─ nested:1:16
@@ -37,5 +37,3 @@ note[table]: root
   │
 1 │ nest = [["a"], ["b"]]
   │ ^^^^^^^^^^^^^^^^^^^^^
-
-

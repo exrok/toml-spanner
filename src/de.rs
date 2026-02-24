@@ -198,7 +198,7 @@ impl<'ctx, 't, 'de> TableHelper<'ctx, 't, 'de> {
         func(item).map_err(|err| {
             self.ctx.push_error(Error {
                 kind: ErrorKind::Custom(std::borrow::Cow::Owned(err.to_string())),
-                span: item.span(),
+                span: item.span_unchecked(),
             })
         })
     }
@@ -222,7 +222,7 @@ impl<'ctx, 't, 'de> TableHelper<'ctx, 't, 'de> {
             .map_err(|err| {
                 self.ctx.push_error(Error {
                     kind: ErrorKind::Custom(std::borrow::Cow::Owned(err.to_string())),
-                    span: item.span(),
+                    span: item.span_unchecked(),
                 })
             })
             .ok()
@@ -293,7 +293,7 @@ impl<'ctx, 't, 'de> TableHelper<'ctx, 't, 'de> {
     fn report_missing_field(&mut self, name: &'static str) -> Failed {
         self.ctx.errors.push(Error {
             kind: ErrorKind::MissingField(name),
-            span: self.table.span(),
+            span: self.table.span_unchecked(),
         });
         Failed
     }
@@ -383,7 +383,7 @@ impl<'ctx, 't, 'de> TableHelper<'ctx, 't, 'de> {
 
         self.ctx.errors.push(Error::from((
             ErrorKind::UnexpectedKeys { keys },
-            self.table.span(),
+            self.table.span_unchecked(),
         )));
         Err(Failed)
     }
@@ -412,7 +412,7 @@ impl<'de> Context<'de> {
                 expected: message,
                 found: found.type_str(),
             },
-            span: found.span(),
+            span: found.span_unchecked(),
         });
         Failed
     }
@@ -500,7 +500,7 @@ impl<'de, T: Deserialize<'de>, const N: usize> Deserialize<'de> for [T; N] {
                     res.len(),
                     N
                 ))),
-                span: value.span(),
+                span: value.span_unchecked(),
             })),
         }
     }
@@ -573,7 +573,7 @@ fn deser_integer_ctx(
     max: i64,
     name: &'static str,
 ) -> Result<i64, Failed> {
-    let span = value.span();
+    let span = value.span_unchecked();
     match value.as_i64() {
         Some(i) if i >= min && i <= max => Ok(i),
         Some(_) => Err(ctx.error_out_of_range(name, span)),

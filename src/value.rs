@@ -2,13 +2,13 @@
 #[cfg(test)]
 #[path = "./value_tests.rs"]
 mod tests;
+use crate::arena::Arena;
 use crate::{DateTime, Error, ErrorKind, Span, Table};
 use std::fmt;
 use std::mem::ManuallyDrop;
 
-/// A toml array
 pub use crate::array::Array;
-/// A toml table: flat list of key-value pairs in insertion order
+pub(crate) use crate::array::InternalArray;
 use crate::table::InnerTable;
 
 pub(crate) const TAG_MASK: u32 = 0x7;
@@ -18,9 +18,9 @@ pub(crate) const TAG_STRING: u32 = 0;
 pub(crate) const TAG_INTEGER: u32 = 1;
 pub(crate) const TAG_FLOAT: u32 = 2;
 pub(crate) const TAG_BOOLEAN: u32 = 3;
-pub(crate) const TAG_ARRAY: u32 = 4;
+pub(crate) const TAG_DATETIME: u32 = 4;
 pub(crate) const TAG_TABLE: u32 = 5;
-pub(crate) const TAG_DATETIME: u32 = 6;
+pub(crate) const TAG_ARRAY: u32 = 6;
 
 // Only set in maybe item
 pub(crate) const TAG_NONE: u32 = 7;
@@ -39,15 +39,230 @@ pub(crate) const FLAG_DOTTED: u32 = 5;
 pub(crate) const FLAG_HEADER: u32 = 6;
 pub(crate) const FLAG_FROZEN: u32 = 7;
 
+/// Bit 31 of `end_and_flag`: when set, the metadata is in format-hints mode
+/// (constructed programmatically); when clear, it is in span mode (from parser).
+pub(crate) const HINTS_BIT: u32 = 1 << 31;
+/// Bit 30 of `end_and_flag`: marks a full match during reprojection.
+pub(crate) const FULL_MATCH_BIT: u32 = 1 << 30;
+/// Bit 29 of `end_and_flag`: when set in format-hints mode, disables
+/// source-position reordering for this table's immediate entries.
+pub(crate) const IGNORE_SOURCE_ORDER_BIT: u32 = 1 << 29;
+/// Bit 28 of `end_and_flag`: when set in format-hints mode, disables
+/// copying structural styles from source during reprojection.
+pub(crate) const IGNORE_SOURCE_STYLE_BIT: u32 = 1 << 28;
+/// Value bits (above TAG_SHIFT) all set = "not projected".
+const NOT_PROJECTED: u32 = !(TAG_MASK); // 0xFFFF_FFF8
+
+/// Packed 8-byte metadata for `Item`, `Table`, and `Array`.
+///
+/// Two variants discriminated by bit 31 of `end_and_flag`:
+///
+/// **Span variant** (bit 31 = 0): items produced by the parser.
+/// - `start_and_tag`: bits 0-2 = tag, bits 3-30 = span start (28 bits, max 256 MiB)
+/// - `end_and_flag`: bits 0-2 = flag, bits 3-30 = span end (28 bits), bit 31 = 0
+///
+/// **Format hints variant** (bit 31 = 1): items constructed programmatically.
+/// - `start_and_tag`: bits 0-2 = tag, bits 3-31 = projected index (all 1's = not projected)
+/// - `end_and_flag`: bit 31 = 1, bits 0-2 = flag, bits 3-30 = format hint bits
+#[derive(Copy, Clone)]
+#[repr(C)]
+pub struct ItemMetadata {
+    pub(crate) start_and_tag: u32,
+    pub(crate) end_and_flag: u32,
+}
+
+impl ItemMetadata {
+    /// Creates metadata in span mode (parser-produced items).
+    #[inline]
+    pub(crate) fn spanned(tag: u32, flag: u32, start: u32, end: u32) -> Self {
+        Self {
+            start_and_tag: (start << TAG_SHIFT) | tag,
+            end_and_flag: (end << FLAG_SHIFT) | flag,
+        }
+    }
+
+    /// Creates metadata in format-hints mode (programmatically constructed items).
+    #[inline]
+    pub(crate) fn hints(tag: u32, flag: u32) -> Self {
+        Self {
+            start_and_tag: NOT_PROJECTED | tag,
+            end_and_flag: HINTS_BIT | flag,
+        }
+    }
+
+    #[inline]
+    pub(crate) fn tag(&self) -> u32 {
+        self.start_and_tag & TAG_MASK
+    }
+
+    #[inline]
+    pub(crate) fn flag(&self) -> u32 {
+        self.end_and_flag & FLAG_MASK
+    }
+
+    #[inline]
+    pub(crate) fn set_flag(&mut self, flag: u32) {
+        self.end_and_flag = (self.end_and_flag & !FLAG_MASK) | flag;
+    }
+
+    /// Returns `true` if this metadata carries a source span (parser-produced).
+    #[inline]
+    pub(crate) fn is_span_mode(&self) -> bool {
+        self.end_and_flag & HINTS_BIT == 0
+    }
+
+    /// Returns the source span, or `None` if in format-hints mode.
+    #[inline]
+    pub fn span(&self) -> Option<Span> {
+        if self.is_span_mode() {
+            Some(self.span_unchecked())
+        } else {
+            None
+        }
+    }
+
+    /// Returns the source span without checking the variant.
+    /// Valid only during deserialization on parser-produced items.
+    /// In span mode, bit 31 is always 0, so all bits above FLAG_SHIFT are span data.
+    #[inline]
+    pub(crate) fn span_unchecked(&self) -> Span {
+        debug_assert!(self.is_span_mode());
+        Span::new(
+            self.start_and_tag >> TAG_SHIFT,
+            self.end_and_flag >> FLAG_SHIFT,
+        )
+    }
+
+    #[inline]
+    pub(crate) fn span_start(&self) -> u32 {
+        debug_assert!(self.is_span_mode());
+        self.start_and_tag >> TAG_SHIFT
+    }
+
+    #[inline]
+    pub(crate) fn set_span_start(&mut self, v: u32) {
+        debug_assert!(self.is_span_mode());
+        self.start_and_tag = (v << TAG_SHIFT) | (self.start_and_tag & TAG_MASK);
+    }
+
+    #[inline]
+    pub(crate) fn set_span_end(&mut self, v: u32) {
+        debug_assert!(self.is_span_mode());
+        self.end_and_flag = (v << FLAG_SHIFT) | (self.end_and_flag & FLAG_MASK);
+    }
+
+    #[inline]
+    pub(crate) fn extend_span_end(&mut self, new_end: u32) {
+        debug_assert!(self.is_span_mode());
+        let old = self.end_and_flag;
+        let current = old >> FLAG_SHIFT;
+        self.end_and_flag = (current.max(new_end) << FLAG_SHIFT) | (old & FLAG_MASK);
+    }
+
+    /// Returns the projected index (bits 3-31 of `start_and_tag`).
+    #[inline]
+    pub(crate) fn projected_index(&self) -> u32 {
+        self.start_and_tag >> TAG_SHIFT
+    }
+
+    /// Branchless mask: span mode -> FLAG_MASK (clears stale span data),
+    /// hints mode -> 0xFFFFFFFF (preserves existing hint bits).
+    #[inline]
+    fn hints_preserve_mask(&self) -> u32 {
+        ((self.end_and_flag as i32) >> 31) as u32 | FLAG_MASK
+    }
+
+    /// Stores a reprojected index, preserving user-set hint bits when
+    /// already in hints mode. Returns `false` if the index doesn't fit.
+    #[inline]
+    pub(crate) fn set_reprojected_index(&mut self, index: usize) -> bool {
+        if index <= (u32::MAX >> TAG_SHIFT) as usize {
+            self.start_and_tag = (self.start_and_tag & TAG_MASK) | ((index as u32) << TAG_SHIFT);
+            self.end_and_flag = (self.end_and_flag & self.hints_preserve_mask()) | HINTS_BIT;
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Marks as not projected, preserving user-set hint bits when already
+    /// in hints mode and clearing full-match.
+    #[inline]
+    pub(crate) fn set_reprojected_to_none(&mut self) {
+        self.start_and_tag |= NOT_PROJECTED;
+        self.end_and_flag =
+            (self.end_and_flag & (self.hints_preserve_mask() & !FULL_MATCH_BIT)) | HINTS_BIT;
+    }
+
+    #[inline]
+    pub(crate) fn set_reprojected_full_match(&mut self) {
+        self.end_and_flag |= FULL_MATCH_BIT;
+    }
+
+    #[inline]
+    pub(crate) fn is_reprojected_full_match(&self) -> bool {
+        self.end_and_flag & FULL_MATCH_BIT != 0
+    }
+
+    /// Disables source-position reordering for this table's entries.
+    #[inline]
+    pub(crate) fn set_ignore_source_order(&mut self) {
+        self.end_and_flag |= HINTS_BIT | IGNORE_SOURCE_ORDER_BIT;
+    }
+
+    /// Returns `true` if source-position reordering is disabled.
+    /// Gates on `HINTS_BIT` so stale span-end bits cannot false-positive.
+    #[inline]
+    pub(crate) fn ignore_source_order(&self) -> bool {
+        self.end_and_flag & (HINTS_BIT | IGNORE_SOURCE_ORDER_BIT)
+            == (HINTS_BIT | IGNORE_SOURCE_ORDER_BIT)
+    }
+
+    /// Disables copying structural styles from source during reprojection.
+    #[inline]
+    pub(crate) fn set_ignore_source_style(&mut self) {
+        self.end_and_flag |= HINTS_BIT | IGNORE_SOURCE_STYLE_BIT;
+    }
+
+    /// Returns `true` if source-style copying is disabled for this table.
+    #[inline]
+    pub(crate) fn ignore_source_style(&self) -> bool {
+        self.end_and_flag & (HINTS_BIT | IGNORE_SOURCE_STYLE_BIT)
+            == (HINTS_BIT | IGNORE_SOURCE_STYLE_BIT)
+    }
+}
+
+/// The kind of a TOML table, distinguishing how it was defined in the source.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TableStyle {
+    /// Structural parent with no explicit header (`FLAG_TABLE`).
+    Implicit,
+    /// Created by dotted keys, e.g. `a.b.c = 1` (`FLAG_DOTTED`).
+    Dotted,
+    /// Explicit `[section]` header (`FLAG_HEADER`).
+    Header,
+    /// Inline `{ }` table (`FLAG_FROZEN`).
+    Inline,
+}
+
+/// The kind of a TOML array, distinguishing inline arrays from arrays of tables.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ArrayStyle {
+    /// Inline `[1, 2, 3]` array (`FLAG_ARRAY`).
+    Inline,
+    /// Array of tables `[[section]]` (`FLAG_AOT`).
+    Header,
+}
+
 #[repr(C, align(8))]
 union Payload<'de> {
     string: &'de str,
     integer: i64,
     float: f64,
     boolean: bool,
-    array: ManuallyDrop<Array<'de>>,
+    array: ManuallyDrop<InternalArray<'de>>,
     table: ManuallyDrop<InnerTable<'de>>,
-    moment: DateTime,
+    datetime: DateTime,
 }
 
 /// A parsed TOML value with span information.
@@ -85,25 +300,78 @@ union Payload<'de> {
 #[repr(C)]
 pub struct Item<'de> {
     payload: Payload<'de>,
-    start_and_tag: u32,
-    end_and_flag: u32,
+    pub(crate) meta: ItemMetadata,
 }
 
 const _: () = assert!(std::mem::size_of::<Item<'_>>() == 24);
 const _: () = assert!(std::mem::align_of::<Item<'_>>() == 8);
 
+impl<'de> From<i64> for Item<'de> {
+    fn from(value: i64) -> Self {
+        Self::raw_hints(TAG_INTEGER, FLAG_NONE, Payload { integer: value })
+    }
+}
+impl<'de> From<&'de str> for Item<'de> {
+    fn from(value: &'de str) -> Self {
+        Self::raw_hints(TAG_STRING, FLAG_NONE, Payload { string: value })
+    }
+}
+
+impl<'de> From<f64> for Item<'de> {
+    fn from(value: f64) -> Self {
+        Self::raw_hints(TAG_FLOAT, FLAG_NONE, Payload { float: value })
+    }
+}
+
+impl<'de> From<bool> for Item<'de> {
+    fn from(value: bool) -> Self {
+        Self::raw_hints(TAG_BOOLEAN, FLAG_NONE, Payload { boolean: value })
+    }
+}
+
 impl<'de> Item<'de> {
+    /// Access projected item from source computed in reprojection.
+    pub(crate) fn projected<'a>(&self, inputs: &[&'a Item<'a>]) -> Option<&'a Item<'a>> {
+        let index = self.meta.projected_index();
+        inputs.get(index as usize).copied()
+    }
+    pub(crate) fn set_reprojected_to_none(&mut self) {
+        self.meta.set_reprojected_to_none();
+    }
+    pub(crate) fn set_reprojected_index(&mut self, index: usize) -> bool {
+        self.meta.set_reprojected_index(index)
+    }
+    /// Marks this item as a full match during reprojection.
+    pub(crate) fn set_reprojected_full_match(&mut self) {
+        self.meta.set_reprojected_full_match();
+    }
+    /// Returns whether this item was marked as a full match during reprojection.
+    pub(crate) fn is_reprojected_full_match(&self) -> bool {
+        self.meta.is_reprojected_full_match()
+    }
     #[inline]
     fn raw(tag: u32, flag: u32, start: u32, end: u32, payload: Payload<'de>) -> Self {
         Self {
-            start_and_tag: (start << TAG_SHIFT) | tag,
-            end_and_flag: (end << FLAG_SHIFT) | flag,
+            meta: ItemMetadata::spanned(tag, flag, start, end),
             payload,
         }
     }
 
     #[inline]
-    pub(crate) fn string(s: &'de str, span: Span) -> Self {
+    fn raw_hints(tag: u32, flag: u32, payload: Payload<'de>) -> Self {
+        Self {
+            meta: ItemMetadata::hints(tag, flag),
+            payload,
+        }
+    }
+
+    #[inline]
+    pub fn string(s: &'de str) -> Self {
+        Self::raw_hints(TAG_STRING, FLAG_NONE, Payload { string: s })
+    }
+
+    #[inline]
+    pub(crate) fn string_spanned(s: &'de str, span: Span) -> Self {
         Self::raw(
             TAG_STRING,
             FLAG_NONE,
@@ -114,7 +382,7 @@ impl<'de> Item<'de> {
     }
 
     #[inline]
-    pub(crate) fn integer(i: i64, span: Span) -> Self {
+    pub(crate) fn integer_spanned(i: i64, span: Span) -> Self {
         Self::raw(
             TAG_INTEGER,
             FLAG_NONE,
@@ -125,7 +393,7 @@ impl<'de> Item<'de> {
     }
 
     #[inline]
-    pub(crate) fn float(f: f64, span: Span) -> Self {
+    pub(crate) fn float_spanned(f: f64, span: Span) -> Self {
         Self::raw(
             TAG_FLOAT,
             FLAG_NONE,
@@ -147,7 +415,7 @@ impl<'de> Item<'de> {
     }
 
     #[inline]
-    pub(crate) fn array(a: Array<'de>, span: Span) -> Self {
+    pub(crate) fn array(a: InternalArray<'de>, span: Span) -> Self {
         Self::raw(
             TAG_ARRAY,
             FLAG_ARRAY,
@@ -174,7 +442,7 @@ impl<'de> Item<'de> {
 
     /// Creates an array-of-tables value.
     #[inline]
-    pub(crate) fn array_aot(a: Array<'de>, span: Span) -> Self {
+    pub(crate) fn array_aot(a: InternalArray<'de>, span: Span) -> Self {
         Self::raw(
             TAG_ARRAY,
             FLAG_AOT,
@@ -235,14 +503,14 @@ impl<'de> Item<'de> {
             FLAG_NONE,
             span.start,
             span.end,
-            Payload { moment: m },
+            Payload { datetime: m },
         )
     }
 }
 /// Discriminant for the TOML value types stored in an [`Item`].
 ///
 /// Obtained via [`Item::kind`].
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
 #[allow(unused)]
 pub enum Kind {
@@ -250,9 +518,9 @@ pub enum Kind {
     Integer = 1,
     Float = 2,
     Boolean = 3,
-    Array = 4,
+    DateTime = 4,
     Table = 5,
-    DateTime = 6,
+    Array = 6,
 }
 
 impl std::fmt::Debug for Kind {
@@ -285,28 +553,46 @@ impl Kind {
 impl<'de> Item<'de> {
     #[inline]
     pub fn kind(&self) -> Kind {
-        debug_assert!((self.start_and_tag & TAG_MASK) as u8 <= Kind::DateTime as u8);
+        debug_assert!((self.meta.start_and_tag & TAG_MASK) as u8 <= Kind::Array as u8);
         // SAFETY: tag bits 0-2 are always in 0..=6 (set only by pub(crate)
         // constructors). All values are valid Kind discriminants.
-        unsafe { std::mem::transmute::<u8, Kind>(self.start_and_tag as u8 & 0x7) }
+        unsafe { std::mem::transmute::<u8, Kind>(self.meta.start_and_tag as u8 & 0x7) }
     }
     #[inline]
     pub(crate) fn tag(&self) -> u32 {
-        self.start_and_tag & TAG_MASK
+        self.meta.tag()
+    }
+
+    /// Returns `true` for leaf values (string, integer, float, boolean,
+    /// datetime) that contain no arena-allocated children.
+    #[inline]
+    pub(crate) fn is_scalar(&self) -> bool {
+        self.tag() < TAG_TABLE
     }
 
     #[inline]
-    pub(crate) fn flag(&self) -> u32 {
-        self.end_and_flag & FLAG_MASK
+    pub fn flag(&self) -> u32 {
+        self.meta.flag()
+    }
+
+    #[inline]
+    #[cfg(test)]
+    pub(crate) fn set_flag(&mut self, flag: u32) {
+        self.meta.set_flag(flag);
     }
 
     /// Returns the byte-offset span of this value in the source document.
+    /// Only valid on parser-produced items (span mode).
     #[inline]
-    pub fn span(&self) -> Span {
-        Span::new(
-            self.start_and_tag >> TAG_SHIFT,
-            self.end_and_flag >> FLAG_SHIFT,
-        )
+    pub fn span_unchecked(&self) -> Span {
+        self.meta.span_unchecked()
+    }
+
+    /// Returns the source span, or `None` if this item was constructed
+    /// programmatically (format-hints mode).
+    #[inline]
+    pub fn span(&self) -> Option<Span> {
+        self.meta.span()
     }
 
     /// Returns the TOML type name (e.g. `"string"`, `"integer"`, `"table"`).
@@ -353,21 +639,39 @@ impl<'de> Item<'de> {
         self.flag() == FLAG_DOTTED
     }
 
+    /// Returns `true` if this is an implicit intermediate table — a plain
+    /// table that is neither a `[header]` section, a dotted-key intermediate,
+    /// nor a frozen inline `{ }` table.  These entries act as structural
+    /// parents for header sections and have no text of their own.
+    #[inline]
+    pub(crate) fn is_implicit_table(&self) -> bool {
+        self.flag() == FLAG_TABLE
+    }
+
+    /// Returns `true` if this item is emitted as a subsection rather than
+    /// as part of the body: `[header]` tables, implicit tables, and
+    /// `[[array-of-tables]]`.
+    #[inline]
+    pub(crate) fn is_subsection(&self) -> bool {
+        self.has_header_bit() || self.is_implicit_table() || self.is_aot()
+    }
+
     /// Splits this array item into disjoint borrows of the span field and array payload.
     ///
     /// # Safety
     ///
     /// The caller must ensure `self.is_array()` is true.
     #[inline]
-    pub(crate) unsafe fn split_array_end_flag(&mut self) -> (&mut u32, &mut Array<'de>) {
+    pub(crate) unsafe fn split_array_end_flag(&mut self) -> (&mut u32, &mut InternalArray<'de>) {
         debug_assert!(self.is_array());
         let ptr = self as *mut Item<'de>;
-        // SAFETY: end_and_flag and payload.array are at disjoint offsets within
+        // SAFETY: meta.end_and_flag and payload.array are at disjoint offsets within
         // the repr(C) layout. addr_of_mut! creates derived pointers without
         // intermediate references, avoiding aliasing violations.
         unsafe {
-            let end_flag = &mut *std::ptr::addr_of_mut!((*ptr).end_and_flag);
-            let array = &mut *std::ptr::addr_of_mut!((*ptr).payload.array).cast::<Array<'de>>();
+            let end_flag = &mut *std::ptr::addr_of_mut!((*ptr).meta.end_and_flag);
+            let array =
+                &mut *std::ptr::addr_of_mut!((*ptr).payload.array).cast::<InternalArray<'de>>();
             (end_flag, array)
         }
     }
@@ -430,7 +734,6 @@ pub enum ValueMut<'a, 'de> {
 
 impl<'de> Item<'de> {
     /// Returns a borrowed view for pattern matching.
-    #[inline(never)]
     pub fn value(&self) -> Value<'_, 'de> {
         // SAFETY: kind() returns the discriminant set at construction. Each
         // match arm reads the union field that was written for that discriminant.
@@ -440,15 +743,14 @@ impl<'de> Item<'de> {
                 Kind::Integer => Value::Integer(&self.payload.integer),
                 Kind::Float => Value::Float(&self.payload.float),
                 Kind::Boolean => Value::Boolean(&self.payload.boolean),
-                Kind::Array => Value::Array(&self.payload.array),
+                Kind::Array => Value::Array(self.as_array_unchecked()),
                 Kind::Table => Value::Table(self.as_table_unchecked()),
-                Kind::DateTime => Value::DateTime(&self.payload.moment),
+                Kind::DateTime => Value::DateTime(&self.payload.datetime),
             }
         }
     }
 
     /// Returns a mutable view for pattern matching.
-    #[inline(never)]
     pub fn value_mut(&mut self) -> ValueMut<'_, 'de> {
         // SAFETY: kind() returns the discriminant set at construction. Each
         // match arm accesses the union field that was written for that discriminant.
@@ -458,9 +760,9 @@ impl<'de> Item<'de> {
                 Kind::Integer => ValueMut::Integer(&mut self.payload.integer),
                 Kind::Float => ValueMut::Float(&mut self.payload.float),
                 Kind::Boolean => ValueMut::Boolean(&mut self.payload.boolean),
-                Kind::Array => ValueMut::Array(&mut self.payload.array),
+                Kind::Array => ValueMut::Array(self.as_array_mut_unchecked()),
                 Kind::Table => ValueMut::Table(self.as_table_mut_unchecked()),
-                Kind::DateTime => ValueMut::DateTime(&self.payload.moment),
+                Kind::DateTime => ValueMut::DateTime(&self.payload.datetime),
             }
         }
     }
@@ -517,8 +819,8 @@ impl<'de> Item<'de> {
     #[inline]
     pub fn as_array(&self) -> Option<&Array<'de>> {
         if self.tag() == TAG_ARRAY {
-            // SAFETY: tag check guarantees the payload is an array.
-            Some(unsafe { &self.payload.array })
+            // SAFETY: tag check guarantees this item is an array variant.
+            Some(unsafe { self.as_array_unchecked() })
         } else {
             None
         }
@@ -540,7 +842,7 @@ impl<'de> Item<'de> {
     pub fn as_datetime(&self) -> Option<&DateTime> {
         if self.tag() == TAG_DATETIME {
             // SAFETY: tag check guarantees the payload is a moment.
-            Some(unsafe { &self.payload.moment })
+            Some(unsafe { &self.payload.datetime })
         } else {
             None
         }
@@ -550,8 +852,8 @@ impl<'de> Item<'de> {
     #[inline]
     pub fn as_array_mut(&mut self) -> Option<&mut Array<'de>> {
         if self.tag() == TAG_ARRAY {
-            // SAFETY: tag check guarantees the payload is an array.
-            Some(unsafe { &mut self.payload.array })
+            // SAFETY: tag check guarantees this item is an array variant.
+            Some(unsafe { self.as_array_mut_unchecked() })
         } else {
             None
         }
@@ -566,6 +868,30 @@ impl<'de> Item<'de> {
         } else {
             None
         }
+    }
+
+    /// Reinterprets this [`Item`] as an [`Array`] (shared reference).
+    ///
+    /// # Safety
+    ///
+    /// The caller must ensure `self.tag() == TAG_ARRAY`.
+    #[inline]
+    pub(crate) unsafe fn as_array_unchecked(&self) -> &Array<'de> {
+        debug_assert!(self.tag() == TAG_ARRAY);
+        // SAFETY: Both types are `#[repr(C)]` with identical layout when the
+        // payload is an array.
+        unsafe { &*(self as *const Item<'de>).cast::<Array<'de>>() }
+    }
+
+    /// Reinterprets this [`Item`] as an [`Array`] (mutable reference).
+    ///
+    /// # Safety
+    ///
+    /// The caller must ensure `self.tag() == TAG_ARRAY`.
+    #[inline]
+    pub(crate) unsafe fn as_array_mut_unchecked(&mut self) -> &mut Array<'de> {
+        debug_assert!(self.tag() == TAG_ARRAY);
+        unsafe { &mut *(self as *mut Item<'de>).cast::<Array<'de>>() }
     }
 
     /// Returns a mutable table pointer (parser-internal).
@@ -608,6 +934,35 @@ impl<'de> Item<'de> {
     pub fn has_key(&self, key: &str) -> bool {
         self.as_table().is_some_and(|t| t.contains_key(key))
     }
+
+    /// Shallow-clones this item into `arena`, recursively cloning nested
+    /// arrays and tables while sharing string and key data.
+    pub fn clone_in(&self, arena: &'de Arena) -> Item<'de> {
+        if self.is_scalar() {
+            // SAFETY: Scalar items (string, integer, float, boolean, datetime)
+            // contain no arena-allocated pointers. Bitwise copy is correct.
+            // Item is non-Drop.
+            unsafe { std::ptr::read(self) }
+        } else if self.tag() == TAG_ARRAY {
+            // SAFETY: tag == TAG_ARRAY guarantees the payload is an array.
+            let cloned = unsafe { self.payload.array.clone_in(arena) };
+            Item {
+                payload: Payload {
+                    array: ManuallyDrop::new(cloned),
+                },
+                meta: self.meta,
+            }
+        } else {
+            // SAFETY: !is_scalar() && tag != TAG_ARRAY → tag == TAG_TABLE.
+            let cloned = unsafe { self.payload.table.clone_in(arena) };
+            Item {
+                payload: Payload {
+                    table: ManuallyDrop::new(cloned),
+                },
+                meta: self.meta,
+            }
+        }
+    }
 }
 
 impl<'de> Item<'de> {
@@ -619,7 +974,7 @@ impl<'de> Item<'de> {
                 expected,
                 found: self.type_str(),
             },
-            span: self.span(),
+            span: self.span_unchecked(),
         }
     }
 
@@ -639,7 +994,7 @@ impl<'de> Item<'de> {
             Ok(v) => Ok(v),
             Err(err) => Err(Error {
                 kind: ErrorKind::Custom(format!("failed to parse string: {err}").into()),
-                span: self.span(),
+                span: self.span_unchecked(),
             }),
         }
     }
@@ -733,7 +1088,14 @@ pub struct Key<'de> {
     /// The byte-offset span of the key in the source document.
     pub span: Span,
 }
+
 impl<'de> Key<'de> {
+    pub fn anon(value: &'de str) -> Self {
+        Self {
+            name: value,
+            span: Span::default(),
+        }
+    }
     /// Returns the key name as a string slice.
     pub fn as_str(&self) -> &'de str {
         self.name
@@ -780,6 +1142,61 @@ impl PartialEq for Key<'_> {
 }
 
 impl Eq for Key<'_> {}
+
+impl<'de> PartialEq for Item<'de> {
+    fn eq(&self, other: &Self) -> bool {
+        let a = self;
+        let b = other;
+        if a.kind() != b.kind() {
+            return false;
+        }
+        // SAFETY: kind check above guarantees both payloads hold the same union
+        // variant. Each arm reads only the field that corresponds to that variant.
+        // Righting this way generates the minimal LLVM lines and the fastest impl
+        unsafe {
+            match a.kind() {
+                Kind::String => a.payload.string == b.payload.string,
+                Kind::Integer => a.payload.integer == b.payload.integer,
+                Kind::Float => {
+                    let af = a.payload.float;
+                    let bf = b.payload.float;
+                    if af.is_nan() && bf.is_nan() {
+                        af.is_sign_negative() == bf.is_sign_negative()
+                    } else {
+                        af.to_bits() == bf.to_bits()
+                    }
+                }
+                Kind::Boolean => a.payload.boolean == b.payload.boolean,
+                Kind::DateTime => {
+                    let da = &a.payload.datetime;
+                    let db = &b.payload.datetime;
+                    da.date() == db.date() && da.time() == db.time() && da.offset() == db.offset()
+                }
+                Kind::Array => a.payload.array.as_slice() == a.payload.array.as_slice(),
+                Kind::Table => {
+                    let tab_a = a.as_table_unchecked();
+                    let tab_b = b.as_table_unchecked();
+                    if tab_a.len() != tab_b.len() {
+                        return false;
+                    }
+                    for (key, val_a) in tab_a {
+                        let Some(val_b) = tab_b.get(key.name) else {
+                            return false;
+                        };
+                        if !items_equal(val_a, val_b) {
+                            return false;
+                        }
+                    }
+                    true
+                }
+            }
+        }
+    }
+}
+/// Compares two [`Item`] values for semantic equality, ignoring spans.
+pub fn items_equal(a: &Item<'_>, b: &Item<'_>) -> bool {
+    a == b
+}
 
 impl<'de> std::ops::Index<&str> for Item<'de> {
     type Output = MaybeItem<'de>;
@@ -875,8 +1292,7 @@ impl<'de> std::ops::Index<usize> for MaybeItem<'de> {
 #[repr(C)]
 pub struct MaybeItem<'de> {
     payload: Payload<'de>,
-    start_and_tag: u32,
-    end_and_flag: u32,
+    meta: ItemMetadata,
 }
 
 // SAFETY: MaybeItem is only constructed as either (a) the static NONE sentinel
@@ -889,21 +1305,23 @@ unsafe impl Sync for MaybeItem<'_> {}
 
 pub(crate) static NONE: MaybeItem<'static> = MaybeItem {
     payload: Payload { integer: 0 },
-    start_and_tag: TAG_NONE,
-    end_and_flag: FLAG_NONE,
+    meta: ItemMetadata {
+        start_and_tag: TAG_NONE,
+        end_and_flag: FLAG_NONE,
+    },
 };
 
 impl<'de> MaybeItem<'de> {
     /// Views an [`Item`] reference as a `MaybeItem`.
     pub fn from_ref<'a>(item: &'a Item<'de>) -> &'a Self {
         // SAFETY: Item and MaybeItem are both #[repr(C)] with identical field
-        // layout (Payload, u32, u32). Size and alignment equality is verified
+        // layout (Payload, ItemMetadata). Size and alignment equality is verified
         // by const assertions.
         unsafe { &*(item as *const Item<'de>).cast::<MaybeItem<'de>>() }
     }
     #[inline]
     pub(crate) fn tag(&self) -> u32 {
-        self.start_and_tag & TAG_MASK
+        self.meta.tag()
     }
     /// Returns the underlying [`Item`], or [`None`] if this is a missing value.
     pub fn item(&self) -> Option<&Item<'de>> {
@@ -961,8 +1379,10 @@ impl<'de> MaybeItem<'de> {
     #[inline]
     pub fn as_array(&self) -> Option<&Array<'de>> {
         if self.tag() == TAG_ARRAY {
-            // SAFETY: tag check guarantees the payload is an array.
-            Some(unsafe { &self.payload.array })
+            // SAFETY: tag == TAG_ARRAY guarantees the payload is an array.
+            // MaybeItem and Array have identical repr(C) layout (verified by
+            // const size/align assertions on Item and Array).
+            Some(unsafe { &*(self as *const Self).cast::<Array<'de>>() })
         } else {
             None
         }
@@ -986,7 +1406,7 @@ impl<'de> MaybeItem<'de> {
     pub fn as_datetime(&self) -> Option<&DateTime> {
         if self.tag() == TAG_DATETIME {
             // SAFETY: tag check guarantees the payload is a moment.
-            Some(unsafe { &self.payload.moment })
+            Some(unsafe { &self.payload.datetime })
         } else {
             None
         }
@@ -995,7 +1415,7 @@ impl<'de> MaybeItem<'de> {
     /// Returns the source span, or [`None`] if this is a missing value.
     pub fn span(&self) -> Option<Span> {
         if let Some(item) = self.item() {
-            Some(item.span())
+            Some(item.span_unchecked())
         } else {
             None
         }

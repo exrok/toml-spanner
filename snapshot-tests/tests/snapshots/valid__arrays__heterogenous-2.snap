@@ -21,16 +21,16 @@ note[array]: root_mixed_0
   │          ^^^^^^
 
 note[string]: root_mixed_1_0
-  ┌─ heterogenous:1:20
+  ┌─ heterogenous:1:19
   │
 1 │ mixed = [[1, 2], ["a", "b"], [1.1, 2.1]]
-  │                    ^
+  │                   ^^^
 
 note[string]: root_mixed_1_1
-  ┌─ heterogenous:1:25
+  ┌─ heterogenous:1:24
   │
 1 │ mixed = [[1, 2], ["a", "b"], [1.1, 2.1]]
-  │                         ^
+  │                        ^^^
 
 note[array]: root_mixed_1
   ┌─ heterogenous:1:18
@@ -67,5 +67,3 @@ note[table]: root
   │
 1 │ mixed = [[1, 2], ["a", "b"], [1.1, 2.1]]
   │ ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-

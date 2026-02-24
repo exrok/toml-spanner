@@ -3,10 +3,10 @@ source: snapshot-tests/tests/valid.rs
 expression: spans
 ---
 note[string]: root_albums_songs_0_name
-  ┌─ implicit_array:2:9
+  ┌─ implicit_array:2:8
   │
 2 │ name = "Glory Days"
-  │         ^^^^^^^^^^
+  │        ^^^^^^^^^^^^
 
 note[table]: root_albums_songs_0
   ┌─ implicit_array:1:1

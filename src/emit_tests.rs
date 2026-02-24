@@ -1,0 +1,781 @@
+use crate::emit::emit;
+use crate::value::{Item, Value};
+use crate::{Arena, Array, ArrayStyle, Key, Table, TableStyle, parse};
+
+macro_rules! item {
+    ($s:literal in $arena: ident) => { Item::from($s) };
+    ($($kind:ident @)? { $( $key:ident: $p1:tt $(@ $p2:tt)? ),* $(,)? } in $arena: ident) => {{
+        #[allow(unused_mut)]
+        let mut t = Table::default();
+        $( t.insert(Key::anon(stringify!($key)), item!($p1 $(@ $p2)? in $arena), &$arena); )*
+        $(t.set_style(TableStyle::$kind);)?
+        t.into_item()
+    }};
+    ($($kind:ident @)? [ $( $p1:tt $(@ $p2:tt)? ),* $(,)? ] in $arena: ident) => {{
+        #[allow(unused_mut)]
+        let mut arr = Array::default();
+        $( arr.push(item!($p1 $(@ $p2)? in $arena), &$arena); )*
+        $(arr.set_style(ArrayStyle::$kind);)?
+        arr.into_item()
+    }};
+}
+
+macro_rules! table {
+    (in $arena:ident; $( $key:ident:  $p1:tt $(@ $p2:tt)?),+ $(,)? ) => {{
+        let mut t = Table::default();
+        $( t.insert(Key::anon(stringify!($key)), item!($p1 $(@ $p2)? in $arena), &$arena); )+
+        t
+    }};
+}
+
+#[track_caller]
+fn run_emit(input: &str) -> String {
+    let arena = Arena::new();
+    let root = parse(input, &arena).unwrap();
+
+    let normalized = root
+        .table()
+        .try_as_normalized()
+        .expect("parsed table should be valid for emission");
+    let mut output = Vec::new();
+    emit(normalized, &mut output);
+    let output_str = String::from_utf8(output).unwrap();
+
+    // Round-trip: parse the emitted output and verify structural equivalence
+    let root2 = parse(&output_str, &arena).unwrap_or_else(|e| {
+        panic!(
+            "emitted output failed to parse!\ninput:\n{input}\nemitted:\n{output_str}\nerror: {e:?}"
+        );
+    });
+
+    assert_items_equal_with_flags(
+        root.table().as_item(),
+        root2.table().as_item(),
+        &mut Vec::new(),
+        input,
+        &output_str,
+    );
+
+    // Idempotency: emitting the re-parsed output should produce identical bytes
+    let normalized2 = root2
+        .table()
+        .try_as_normalized()
+        .expect("round-tripped table should be valid for emission");
+    let mut output2 = Vec::new();
+    emit(normalized2, &mut output2);
+    let output_str2 = String::from_utf8(output2).unwrap();
+    assert_eq!(
+        output_str, output_str2,
+        "emit is not idempotent!\ninput:\n{input}\nfirst emit:\n{output_str}\nsecond emit:\n{output_str2}"
+    );
+
+    output_str
+}
+
+#[track_caller]
+fn assert_items_equal_with_flags(
+    a: &Item<'_>,
+    b: &Item<'_>,
+    path: &mut Vec<String>,
+    input: &str,
+    emitted: &str,
+) {
+    let path_str = if path.is_empty() {
+        "<root>".to_string()
+    } else {
+        path.join(".")
+    };
+
+    assert_eq!(
+        a.kind() as u8,
+        b.kind() as u8,
+        "kind mismatch at {path_str}\ninput:\n{input}\nemitted:\n{emitted}"
+    );
+
+    assert_eq!(
+        a.flag(),
+        b.flag(),
+        "flag mismatch at {path_str}: original={} emitted={}\ninput:\n{input}\nemitted:\n{emitted}",
+        flag_name(a.flag()),
+        flag_name(b.flag()),
+    );
+
+    match a.value() {
+        Value::String(s) => assert_eq!(
+            b.as_str(),
+            Some(*s),
+            "string mismatch at {path_str}\ninput:\n{input}\nemitted:\n{emitted}"
+        ),
+        Value::Integer(i) => assert_eq!(
+            b.as_i64(),
+            Some(*i),
+            "integer mismatch at {path_str}\ninput:\n{input}\nemitted:\n{emitted}"
+        ),
+        Value::Float(f) => {
+            let bf = b.as_f64().unwrap();
+            assert_eq!(
+                f.to_bits(),
+                bf.to_bits(),
+                "float mismatch at {path_str}\ninput:\n{input}\nemitted:\n{emitted}"
+            );
+        }
+        Value::Boolean(v) => assert_eq!(
+            b.as_bool(),
+            Some(*v),
+            "boolean mismatch at {path_str}\ninput:\n{input}\nemitted:\n{emitted}"
+        ),
+        Value::DateTime(dt_a) => {
+            let dt_b = b.as_datetime().unwrap();
+            assert_eq!(
+                dt_a.date(),
+                dt_b.date(),
+                "datetime date mismatch at {path_str}\ninput:\n{input}\nemitted:\n{emitted}"
+            );
+            assert_eq!(
+                dt_a.time(),
+                dt_b.time(),
+                "datetime time mismatch at {path_str}\ninput:\n{input}\nemitted:\n{emitted}"
+            );
+            assert_eq!(
+                dt_a.offset(),
+                dt_b.offset(),
+                "datetime offset mismatch at {path_str}\ninput:\n{input}\nemitted:\n{emitted}"
+            );
+        }
+        Value::Array(arr_a) => {
+            let arr_b = b.as_array().unwrap();
+            assert_eq!(
+                arr_a.len(),
+                arr_b.len(),
+                "array length mismatch at {path_str}\ninput:\n{input}\nemitted:\n{emitted}"
+            );
+            for i in 0..arr_a.len() {
+                path.push(format!("[{i}]"));
+                assert_items_equal_with_flags(
+                    &arr_a.as_slice()[i],
+                    &arr_b.as_slice()[i],
+                    path,
+                    input,
+                    emitted,
+                );
+                path.pop();
+            }
+        }
+        Value::Table(tab_a) => {
+            let tab_b = b.as_table().unwrap();
+            assert_eq!(
+                tab_a.len(),
+                tab_b.len(),
+                "table length mismatch at {path_str}: original keys={:?} emitted keys={:?}\ninput:\n{input}\nemitted:\n{emitted}",
+                tab_a
+                    .entries()
+                    .iter()
+                    .map(|(k, _)| k.name)
+                    .collect::<Vec<_>>(),
+                tab_b
+                    .entries()
+                    .iter()
+                    .map(|(k, _)| k.name)
+                    .collect::<Vec<_>>(),
+            );
+            for (key, val_a) in tab_a {
+                path.push(key.name.to_string());
+                let val_b = tab_b.get(key.name).unwrap_or_else(|| {
+                    panic!("key {path_str}.{} missing in emitted output\ninput:\n{input}\nemitted:\n{emitted}", key.name);
+                });
+                assert_items_equal_with_flags(val_a, val_b, path, input, emitted);
+                path.pop();
+            }
+        }
+    }
+}
+
+fn flag_name(flag: u32) -> &'static str {
+    match flag {
+        0 => "NONE",
+        2 => "ARRAY",
+        3 => "AOT",
+        4 => "IMPLICIT",
+        5 => "DOTTED",
+        6 => "HEADER",
+        7 => "FROZEN",
+        _ => "UNKNOWN",
+    }
+}
+
+#[test]
+fn empty_document() {
+    let result = run_emit("");
+    assert_eq!(result, "");
+}
+
+#[test]
+fn simple_string() {
+    let result = run_emit(r#"name = "hello""#);
+    assert_eq!(result, "name = \"hello\"");
+}
+
+#[test]
+fn simple_integer() {
+    let result = run_emit("x = 42");
+    assert_eq!(result, "x = 42");
+}
+
+#[test]
+fn simple_float() {
+    let result = run_emit("pi = 3.14");
+    assert_eq!(result, "pi = 3.14");
+}
+
+#[test]
+fn simple_boolean() {
+    let result = run_emit("flag = true");
+    assert_eq!(result, "flag = true");
+}
+
+#[test]
+fn multiple_scalars() {
+    let result = run_emit("a = 1\nb = 2\nc = 3");
+    assert_eq!(result, "a = 1\nb = 2\nc = 3");
+}
+
+#[test]
+fn inline_array() {
+    let result = run_emit("colors = [\"red\", \"green\", \"blue\"]");
+    assert_eq!(result, "colors = [\"red\", \"green\", \"blue\"]");
+}
+
+#[test]
+fn empty_array() {
+    let result = run_emit("a = []");
+    assert_eq!(result, "a = []");
+}
+
+#[test]
+fn nested_array() {
+    let result = run_emit("a = [[1, 2], [3, 4]]");
+    assert_eq!(result, "a = [[1, 2], [3, 4]]");
+}
+
+#[test]
+fn inline_table() {
+    let result = run_emit("point = {x = 1, y = 2}");
+    assert_eq!(result, "point = { x = 1, y = 2 }");
+}
+
+#[test]
+fn empty_inline_table() {
+    let result = run_emit("t = {}");
+    assert_eq!(result, "t = {}");
+}
+
+#[test]
+fn nested_inline_table() {
+    let result = run_emit("a = {b = {c = 1}}");
+    assert_eq!(result, "a = { b = { c = 1 } }");
+}
+
+#[test]
+fn inline_table_with_dotted_keys() {
+    let result = run_emit("t = {a.b = 1, a.c = 2}");
+    assert_eq!(result, "t = { a.b = 1, a.c = 2 }");
+}
+
+#[test]
+fn simple_header() {
+    let result = run_emit("[server]\nhost = \"localhost\"\nport = 8080");
+    assert_eq!(result, "\n[server]\nhost = \"localhost\"\nport = 8080");
+}
+
+#[test]
+fn multiple_headers() {
+    let result = run_emit("[a]\nx = 1\n\n[b]\ny = 2");
+    assert_eq!(result, "\n[a]\nx = 1\n\n[b]\ny = 2");
+}
+
+#[test]
+fn nested_headers() {
+    let result = run_emit("[a]\nx = 1\n\n[a.b]\ny = 2");
+    assert_eq!(result, "\n[a]\nx = 1\n\n[a.b]\ny = 2");
+}
+
+#[test]
+fn root_values_with_headers() {
+    let result = run_emit("name = \"test\"\n\n[server]\nport = 8080");
+    assert_eq!(result, "name = \"test\"\n\n[server]\nport = 8080");
+}
+
+#[test]
+fn dotted_key_simple() {
+    let result = run_emit("a.b = 1");
+    assert_eq!(result, "a.b = 1");
+}
+
+#[test]
+fn dotted_key_deep() {
+    let result = run_emit("a.b.c.d = 1");
+    assert_eq!(result, "a.b.c.d = 1");
+}
+
+#[test]
+fn dotted_key_multiple_leaves() {
+    let result = run_emit("a.b = 1\na.c = 2");
+    assert_eq!(result, "a.b = 1\na.c = 2");
+}
+
+#[test]
+fn implicit_intermediate() {
+    let result = run_emit("[a.b.c]\nx = 1");
+    assert_eq!(result, "\n[a.b.c]\nx = 1");
+}
+
+#[test]
+fn simple_aot() {
+    let result = run_emit("[[fruit]]\nname = \"apple\"\n\n[[fruit]]\nname = \"banana\"");
+    assert_eq!(
+        result,
+        "\n[[fruit]]\nname = \"apple\"\n\n[[fruit]]\nname = \"banana\""
+    );
+}
+
+#[test]
+fn aot_with_sub_headers() {
+    let input = "[[fruit]]\nname = \"apple\"\n\n[fruit.physical]\ncolor = \"red\"\n\n[[fruit]]\nname = \"banana\"";
+    let result = run_emit(input);
+    assert_eq!(
+        result,
+        "\n[[fruit]]\nname = \"apple\"\n\n[fruit.physical]\ncolor = \"red\"\n\n[[fruit]]\nname = \"banana\""
+    );
+}
+
+#[test]
+fn dotted_with_sub_header() {
+    // The key edge case: dotted table with a header child
+    let input = "[fruit.apple.texture]\nsmooth = true\n\n[fruit]\napple.color = \"red\"\napple.taste.sweet = true";
+    let result = run_emit(input);
+    // fruit=HEADER, apple=DOTTED, texture=HEADER, taste=DOTTED
+    // Body of [fruit]: apple.color, apple.taste.sweet
+    // Section: [fruit.apple.texture]
+    assert_eq!(
+        result,
+        "\n[fruit]\napple.color = \"red\"\napple.taste.sweet = true\n\n[fruit.apple.texture]\nsmooth = true"
+    );
+}
+
+#[test]
+fn header_promoted_from_implicit() {
+    let input = "[a.b]\nval = 1\n\n[a]\nval = 2";
+    let result = run_emit(input);
+    // a=HEADER (promoted), a.b=HEADER
+    assert_eq!(result, "\n[a]\nval = 2\n\n[a.b]\nval = 1");
+}
+
+#[test]
+fn dotted_promoted_from_implicit() {
+    let input = "[a.b.c]\nx = 1\n\n[a]\nb.d = 1";
+    let result = run_emit(input);
+    // a=HEADER, b=DOTTED (promoted by dotted key), c=HEADER
+    assert_eq!(result, "\n[a]\nb.d = 1\n\n[a.b.c]\nx = 1");
+}
+
+#[test]
+fn dotted_body_with_header_section() {
+    let input = "[a]\nb.c = 1\n\n[a.b.d]\nval = 2";
+    let result = run_emit(input);
+    // a=HEADER, b=DOTTED, c=scalar, d=HEADER
+    assert_eq!(result, "\n[a]\nb.c = 1\n\n[a.b.d]\nval = 2");
+}
+
+#[test]
+fn cross_section_implicit_dotted() {
+    let input = "[zA.4.4]\n\n[zA]\n3.28 = 12";
+    let result = run_emit(input);
+    assert_eq!(result, "\n[zA]\n3.28 = 12\n\n[zA.4.4]");
+}
+
+#[test]
+fn string_with_escapes() {
+    let result = run_emit(r#"s = "hello\nworld""#);
+    assert_eq!(result, "s = \"hello\\nworld\"");
+}
+
+#[test]
+fn string_with_quotes() {
+    let result = run_emit(r#"s = "say \"hello\"""#);
+    assert_eq!(result, "s = \"say \\\"hello\\\"\"");
+}
+
+#[test]
+fn quoted_key() {
+    let result = run_emit("\"hello world\" = 1");
+    assert_eq!(result, "\"hello world\" = 1");
+}
+
+#[test]
+fn bare_key_with_dashes() {
+    let result = run_emit("my-key = 1");
+    assert_eq!(result, "my-key = 1");
+}
+
+#[test]
+fn empty_key() {
+    let result = run_emit("\"\" = 1");
+    assert_eq!(result, "\"\" = 1");
+}
+
+#[test]
+fn float_nan() {
+    let result = run_emit("x = nan");
+    assert_eq!(result, "x = nan");
+}
+
+#[test]
+fn float_inf() {
+    let result = run_emit("x = inf");
+    assert_eq!(result, "x = inf");
+}
+
+#[test]
+fn float_neg_inf() {
+    let result = run_emit("x = -inf");
+    assert_eq!(result, "x = -inf");
+}
+
+#[test]
+fn datetime() {
+    let result = run_emit("dt = 2024-01-15T10:30:00Z");
+    assert!(result.starts_with("dt = 2024-01-15"));
+}
+
+#[test]
+fn full_document() {
+    let input = r#"title = "TOML Example"
+
+[owner]
+name = "Tom"
+
+[database]
+server = "192.168.1.1"
+ports = [8001, 8001, 8002]
+enabled = true
+
+[[servers]]
+name = "alpha"
+ip = "10.0.0.1"
+
+[[servers]]
+name = "beta"
+ip = "10.0.0.2"
+"#;
+    run_emit(input);
+}
+
+#[test]
+fn array_of_inline_tables() {
+    let result = run_emit("items = [{name = \"a\", val = 1}, {name = \"b\", val = 2}]");
+    assert_eq!(
+        result,
+        "items = [{ name = \"a\", val = 1 }, { name = \"b\", val = 2 }]"
+    );
+}
+
+#[test]
+fn deeply_nested_headers() {
+    let input = "[a.b.c.d]\nx = 1";
+    let result = run_emit(input);
+    assert_eq!(result, "\n[a.b.c.d]\nx = 1");
+}
+
+#[test]
+fn empty_header_section() {
+    let input = "[a]\n\n[b]\nval = 1";
+    let result = run_emit(input);
+    assert_eq!(result, "\n[a]\n\n[b]\nval = 1");
+}
+
+#[test]
+fn header_with_quoted_key() {
+    let input = "[\"hello world\"]\nval = 1";
+    let result = run_emit(input);
+    assert_eq!(result, "\n[\"hello world\"]\nval = 1");
+}
+
+#[test]
+fn literal_string_roundtrip() {
+    // Literal strings in the input become basic strings in emit output,
+    // but the value must be preserved
+    let result = run_emit("s = 'hello'");
+    assert_eq!(result, "s = \"hello\"");
+}
+
+#[test]
+fn super_table_stays_header() {
+    let result = run_emit("[a]\n[a.b]\nc = 1\nd=2");
+    assert_eq!(result, "\n[a]\n\n[a.b]\nc = 1\nd = 2");
+}
+
+#[test]
+fn order_main() {
+    let result = run_emit("a.b = 0\n\n[a.c]\nd = 1");
+    assert_eq!(result, "a.b = 0\n\n[a.c]\nd = 1");
+}
+
+#[test]
+fn constructed_implicit_rejects() {
+    // into_item() produces FLAG_TABLE (implicit), so scalars inside
+    // would be silently lost — try_as_normalized must reject this.
+    let arena = Arena::new();
+    let table = table! { in arena; a: { x: 0, y: 1 }, b: "y" };
+    assert!(table.try_as_normalized().is_none());
+}
+
+#[test]
+fn normalize_implicit_promoted_to_header() {
+    // into_item produces FLAG_TABLE (implicit) — without normalize, emit rejects.
+    let arena = Arena::new();
+    let mut table = table! { in arena; a: { x: 1, y: 2 }, b: "hi" };
+    let s = emit_normalized(&mut table);
+    assert!(s.contains("[a]"), "expected header section: {s}");
+    assert!(s.contains("x = 1"), "expected x: {s}");
+    assert!(s.contains("b = \"hi\""), "expected b: {s}");
+}
+
+// Removed: normalize_scalar_with_table_flag
+// Setting a table flag on a scalar violates the tag/flag invariant and
+// causes UB (as_table reinterprets scalar memory as a table).
+
+#[test]
+fn normalize_aot_with_non_table_elements() {
+    use crate::value::{FLAG_AOT, FLAG_ARRAY};
+
+    // Manually create an AOT-flagged array with non-table elements.
+    let arena = Arena::new();
+    let mut table = table! { in arena; arr: [1, 2] };
+    table.get_mut("arr").unwrap().set_flag(FLAG_AOT);
+
+    let normalized = table.normalize();
+
+    // Should have been downgraded to inline array.
+    let arr_item = normalized.get("arr").unwrap();
+    assert_eq!(arr_item.flag(), FLAG_ARRAY);
+
+    let s = emit_table(normalized);
+    assert_eq!(s, "arr = [1, 2]");
+}
+
+#[test]
+fn normalize_nested_implicit_chain() {
+    // root -> a (implicit) -> b (implicit) -> val = 1
+    // b must be promoted to header; a can stay implicit or be promoted
+    let arena = Arena::new();
+    let mut root = table! { in arena; a: { b: { val: 1 } } };
+    let s = emit_normalized(&mut root);
+    assert!(s.contains("val = 1"), "expected val: {s}");
+}
+
+#[test]
+fn normalize_frozen_children_fixed() {
+    use crate::value::FLAG_FROZEN;
+
+    // HEADER flag inside frozen context must be fixed to FROZEN.
+    let arena = Arena::new();
+    let mut root = table! { in arena; t: Inline @ { sub: Header @ { x: 1 } } };
+
+    let normalized = root.normalize();
+
+    // The inner table should now be FROZEN, not HEADER.
+    let t = normalized.get("t").unwrap();
+    let sub = t.as_table().unwrap().get("sub").unwrap();
+    assert_eq!(sub.flag(), FLAG_FROZEN);
+
+    let s = emit_table(normalized);
+    assert_eq!(s, "t = { sub = { x = 1 } }");
+}
+
+#[test]
+fn normalize_dotted_in_implicit_promoted() {
+    // root -> a (implicit) -> b (dotted) -> c = 1
+    // Either a or a.b must become a header so c is reachable.
+    let arena = Arena::new();
+    let mut root = table! { in arena; a: { b: Dotted @ { c: 1 } } };
+    let s = emit_normalized(&mut root);
+    assert!(s.contains("c = 1"), "expected c: {s}");
+}
+
+#[test]
+fn normalize_valid_constructed_tree_unchanged() {
+    let arena = Arena::new();
+    let mut root = table! {
+        in arena;
+        name: "test",
+        server: Header @ { host: "localhost", port: 8080 }
+    };
+
+    fn collect_flags_deep(table: &Table<'_>, out: &mut Vec<(String, u32)>, prefix: &str) {
+        for (k, v) in table {
+            let path = if prefix.is_empty() {
+                k.name.to_string()
+            } else {
+                format!("{prefix}.{}", k.name)
+            };
+            out.push((path.clone(), v.flag()));
+            if let Some(sub) = v.as_table() {
+                collect_flags_deep(sub, out, &path);
+            }
+        }
+    }
+
+    let mut before = Vec::new();
+    collect_flags_deep(&root, &mut before, "");
+
+    let normalized = root.normalize();
+
+    let mut after = Vec::new();
+    collect_flags_deep(normalized.table(), &mut after, "");
+
+    assert_eq!(before, after);
+
+    let s = emit_table(normalized);
+    assert!(s.contains("name = \"test\""), "{s}");
+    assert!(s.contains("[server]"), "{s}");
+}
+
+/// Normalize a table, then verify emit → parse roundtrip and idempotency.
+#[track_caller]
+fn check_normalize(root: &mut Table<'_>) {
+    let normalized = root.normalize();
+
+    let mut buf1 = Vec::new();
+    emit(normalized, &mut buf1);
+    let emitted = String::from_utf8(buf1.clone()).expect("emit must produce valid UTF-8");
+
+    let arena = Arena::new();
+    let root2 = parse(&emitted, &arena)
+        .unwrap_or_else(|e| panic!("parse failed!\nemitted:\n{emitted}\nerror: {e:?}"));
+
+    assert_items_equal_with_flags(
+        normalized.table().as_item(),
+        root2.table().as_item(),
+        &mut Vec::new(),
+        "(constructed tree)",
+        &emitted,
+    );
+
+    let normalized2 = root2
+        .table()
+        .try_as_normalized()
+        .expect("round-tripped table should be valid for emission");
+    let mut buf2 = Vec::new();
+    emit(normalized2, &mut buf2);
+    assert_eq!(
+        buf1,
+        buf2,
+        "emit not idempotent!\nfirst:\n{emitted}\nsecond:\n{}",
+        String::from_utf8_lossy(&buf2),
+    );
+}
+
+#[track_caller]
+fn emit_table(table: &crate::emit::NormalizedTable<'_>) -> String {
+    let mut buf = Vec::new();
+    emit(table, &mut buf);
+    String::from_utf8(buf).unwrap()
+}
+
+#[track_caller]
+fn emit_normalized(table: &mut Table<'_>) -> String {
+    emit_table(table.normalize())
+}
+
+#[test]
+fn normalize_reg_empty_table_promoted_to_header() {
+    // Empty implicit table must become HEADER so it
+    // survives emit→parse roundtrip as `[x]`.
+    let arena = Arena::new();
+    check_normalize(&mut table! {
+        in arena;
+        x: Implicit @ {},
+        a: ""
+    });
+}
+
+#[test]
+fn normalize_reg_nested_array_flags() {
+    let arena = Arena::new();
+    check_normalize(&mut table! {
+        in arena;
+        d: [[], ""]
+    });
+}
+
+#[test]
+fn normalize_reg_table_in_inline_array_must_be_frozen() {
+    // Table element of an inline array must be FROZEN, not DOTTED.
+    // DOTTED has no meaning for a positional array element.
+    let arena = Arena::new();
+    check_normalize(&mut table! {
+        in arena;
+        z: [Dotted @ {}]
+    });
+}
+
+#[test]
+fn normalize_reg_empty_dotted_in_frozen_context() {
+    // An empty DOTTED table inside a frozen/inline table emits nothing
+    // via the dotted-key path. Must be promoted to FROZEN → `y = {}`.
+    let arena = Arena::new();
+    check_normalize(&mut table! {
+        in arena;
+        a: [Inline @ { y: Dotted @ {}, x: 1 }]
+    });
+}
+
+#[test]
+fn normalize_reg_dotted_children_all_promoted() {
+    // A DOTTED table whose only child is an empty DOTTED table (promoted
+    // to HEADER) ends up with no body items. Must become IMPLICIT to
+    // match what the parser produces.
+    let arena = Arena::new();
+    check_normalize(&mut table! {
+        in arena;
+        d: Dotted @ { d: Dotted @ {} },
+        x: ""
+    });
+}
+
+#[test]
+fn normalize_reg_aot_elements_are_header() {
+    // Each AOT element emits as `[[section]]` and parses back as HEADER.
+    let arena = Arena::new();
+    check_normalize(&mut table! {
+        in arena;
+        d: Header @ [Implicit @ {}]
+    });
+}
+
+#[test]
+fn normalize_reg_empty_aot_in_implicit_table() {
+    // Empty AOT gets downgraded to inline array (body item), so the
+    // parent implicit table must be promoted to HEADER.
+    let arena = Arena::new();
+    check_normalize(&mut table! {
+        in arena;
+        d: Implicit @ { a: Header @ [] }
+    });
+}
+
+#[test]
+fn normalize_reg_promoted_header_before_dotted_sibling() {
+    // An empty DOTTED table (promoted to HEADER) that precedes a
+    // DOTTED sibling with body items causes non-idempotent emit:
+    // the HEADER entry emits as a subsection after all body items,
+    // so re-parse moves it to the end of the parent's entry list.
+    let arena = Arena::new();
+    check_normalize(&mut table! {
+        in arena;
+        c: {
+            x: Dotted @ {},
+            y: Dotted @ { a: Dotted @ {}, v: "" }
+        }
+    });
+}

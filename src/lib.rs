@@ -36,7 +36,7 @@
 //!      Value::DateTime(date_time) => {},
 //! }
 //! // Get byte offset of where item was defined in the source.
-//! let Span{start, end} = item.span();
+//! let Span{start, end} = item.span_unchecked();
 //! ```
 //!
 //! ## Deserialization
@@ -134,6 +134,7 @@ mod arena;
 mod array;
 #[cfg(feature = "deserialization")]
 mod de;
+mod emit;
 mod error;
 mod parser;
 mod span;
@@ -145,12 +146,17 @@ pub use arena::Arena;
 pub use array::Array;
 #[cfg(feature = "deserialization")]
 pub use de::{Context, Deserialize, Failed, TableHelper};
+pub use emit::{EmitConfig, NormalizedTable, emit, emit_with_config, reproject};
 pub use error::{Error, ErrorKind};
 pub use parser::{Root, parse};
 pub use span::{Span, Spanned};
 pub use table::Table;
 pub use time::{Date, DateTime, Time, TimeOffset};
-pub use value::{Item, Key, Kind, MaybeItem, Value, ValueMut};
+pub use value::items_equal;
+pub use value::{ArrayStyle, Item, Key, Kind, MaybeItem, TableStyle, Value, ValueMut};
 
 #[cfg(feature = "serde")]
 pub mod impl_serde;
+
+// Temporary module for testing and debugging during development
+pub mod dev;

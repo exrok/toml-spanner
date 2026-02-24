@@ -3,22 +3,22 @@ source: snapshot-tests/tests/parser.rs
 expression: spans
 ---
 note[string]: root_fruit_0_name
-  ┌─ fruit:2:9
+  ┌─ fruit:2:8
   │
 2 │ name = "apple"
-  │         ^^^^^
+  │        ^^^^^^^
 
 note[string]: root_fruit_0_physical_color
-  ┌─ fruit:5:10
+  ┌─ fruit:5:9
   │
 5 │ color = "red"
-  │          ^^^
+  │         ^^^^^
 
 note[string]: root_fruit_0_physical_shape
-  ┌─ fruit:6:10
+  ┌─ fruit:6:9
   │
 6 │ shape = "round"
-  │          ^^^^^
+  │         ^^^^^^^
 
 note[table]: root_fruit_0_physical
   ┌─ fruit:4:1
@@ -29,10 +29,10 @@ note[table]: root_fruit_0_physical
   │ ╰───────────────^
 
 note[string]: root_fruit_0_variety_0_name
-  ┌─ fruit:9:9
+  ┌─ fruit:9:8
   │
 9 │ name = "red delicious"
-  │         ^^^^^^^^^^^^^
+  │        ^^^^^^^^^^^^^^^
 
 note[table]: root_fruit_0_variety_0
   ┌─ fruit:8:1
@@ -42,10 +42,10 @@ note[table]: root_fruit_0_variety_0
   │ ╰──────────────────────^
 
 note[string]: root_fruit_0_variety_1_name
-   ┌─ fruit:12:9
+   ┌─ fruit:12:8
    │
 12 │ name = "granny smith"
-   │         ^^^^^^^^^^^^
+   │        ^^^^^^^^^^^^^^
 
 note[table]: root_fruit_0_variety_1
    ┌─ fruit:11:1
@@ -72,16 +72,16 @@ note[table]: root_fruit_0
   │ ╰──────────────^
 
 note[string]: root_fruit_1_name
-   ┌─ fruit:15:9
+   ┌─ fruit:15:8
    │
 15 │ name = "banana"
-   │         ^^^^^^
+   │        ^^^^^^^^
 
 note[string]: root_fruit_1_variety_0_name
-   ┌─ fruit:18:9
+   ┌─ fruit:18:8
    │
 18 │ name = "plantain"
-   │         ^^^^^^^^
+   │        ^^^^^^^^^^
 
 note[table]: root_fruit_1_variety_0
    ┌─ fruit:17:1

@@ -20,9 +20,7 @@ impl TestCtx {
 
     fn parse_err(&self, input: &str) -> crate::Error {
         match crate::parser::parse(input, &self.arena) {
-            Ok(_) => panic!(
-                "For input `{input}` expected error but parsed successfully"
-            ),
+            Ok(_) => panic!("For input `{input}` expected error but parsed successfully"),
             Err(err) => err,
         }
     }
@@ -344,14 +342,14 @@ fn quoted_keys_and_spans() {
     // span for integer value
     let input = "key = 42";
     let v = ctx.parse_ok(input);
-    let span = v.get("key").unwrap().span();
+    let span = v.get("key").unwrap().span_unchecked();
     assert_eq!(&input[span.start as usize..span.end as usize], "42");
 
-    // span for string value
+    // span for string value (includes quotes)
     let input = "key = \"hello\"";
     let v = ctx.parse_ok(input);
-    let span = v.get("key").unwrap().span();
-    assert_eq!(&input[span.start as usize..span.end as usize], "hello");
+    let span = v.get("key").unwrap().span_unchecked();
+    assert_eq!(&input[span.start as usize..span.end as usize], "\"hello\"");
 }
 
 #[test]
@@ -1569,74 +1567,74 @@ fn integer_base_max_boundary() {
 fn literal_string_span() {
     let ctx = TestCtx::new();
 
-    // Span of a single-quoted (literal) string value should cover just the content.
+    // Span of a single-quoted (literal) string value includes the quotes.
     let input = "key = 'hello'";
     let v = ctx.parse_ok(input);
-    let span = v.get("key").unwrap().span();
+    let span = v.get("key").unwrap().span_unchecked();
     assert_eq!(
         &input[span.start as usize..span.end as usize],
-        "hello",
+        "'hello'",
         "literal string span"
     );
 
-    // Empty literal string: span covers the opening delimiter
+    // Empty literal string: span covers both quotes
     let input = "key = ''";
     let v = ctx.parse_ok(input);
-    let span = v.get("key").unwrap().span();
+    let span = v.get("key").unwrap().span_unchecked();
     assert_eq!(span.start, 6, "empty literal string span start");
-    assert_eq!(span.end, 7, "empty literal string span end");
+    assert_eq!(span.end, 8, "empty literal string span end");
 }
 
 #[test]
 fn multiline_string_spans() {
     let ctx = TestCtx::new();
 
-    // Multiline basic string span should cover the content (after opening newline trim).
+    // Multiline basic string span includes the triple-quote delimiters.
     let input = "key = \"\"\"\nhello\nworld\"\"\"";
     let v = ctx.parse_ok(input);
-    let span = v.get("key").unwrap().span();
+    let span = v.get("key").unwrap().span_unchecked();
     assert_eq!(
         &input[span.start as usize..span.end as usize],
-        "hello\nworld",
+        "\"\"\"\nhello\nworld\"\"\"",
         "multiline basic string span"
     );
 
     // Multiline basic string with CRLF opening
     let input = "key = \"\"\"\r\nhello\"\"\"";
     let v = ctx.parse_ok(input);
-    let span = v.get("key").unwrap().span();
+    let span = v.get("key").unwrap().span_unchecked();
     assert_eq!(
         &input[span.start as usize..span.end as usize],
-        "hello",
+        "\"\"\"\r\nhello\"\"\"",
         "multiline basic string span with CRLF opening"
     );
 
     // Multiline basic string without leading newline
     let input = "key = \"\"\"hello\"\"\"";
     let v = ctx.parse_ok(input);
-    let span = v.get("key").unwrap().span();
+    let span = v.get("key").unwrap().span_unchecked();
     assert_eq!(
         &input[span.start as usize..span.end as usize],
-        "hello",
+        "\"\"\"hello\"\"\"",
         "multiline basic string span without leading newline"
     );
 
     // Multiline literal string span
     let input = "key = '''\nhello\nworld'''";
     let v = ctx.parse_ok(input);
-    let span = v.get("key").unwrap().span();
+    let span = v.get("key").unwrap().span_unchecked();
     assert_eq!(
         &input[span.start as usize..span.end as usize],
-        "hello\nworld",
+        "'''\nhello\nworld'''",
         "multiline literal string span"
     );
 
-    // Empty string: span covers the opening delimiter
+    // Empty string: span covers both quotes
     let input = "key = \"\"";
     let v = ctx.parse_ok(input);
-    let span = v.get("key").unwrap().span();
+    let span = v.get("key").unwrap().span_unchecked();
     assert_eq!(span.start, 6, "empty basic string span start");
-    assert_eq!(span.end, 7, "empty basic string span end");
+    assert_eq!(span.end, 8, "empty basic string span end");
 }
 
 #[test]
@@ -1792,15 +1790,15 @@ fn octal_digit_validation() {
     assert!(matches!(e.kind, ErrorKind::InvalidNumber), "octal digit 9");
 }
 
-#[test]
-#[ignore] // requires 512+ MiB allocation
-fn file_too_large() {
-    let ctx = TestCtx::new();
-    let size = (1u32 << 29) as usize + 1;
-    let big = " ".repeat(size);
-    let e = ctx.parse_err(&big);
-    assert!(matches!(e.kind, ErrorKind::FileTooLarge));
-}
+// #[test]
+// #[ignore] // requires 512+ MiB allocation
+// fn file_too_large() {
+//     let ctx = TestCtx::new();
+//     let size = (1u32 << 29) as usize + 1;
+//     let big = " ".repeat(size);
+//     let e = ctx.parse_err(&big);
+//     assert!(matches!(e.kind, ErrorKind::FileTooLarge));
+// }
 
 #[test]
 fn invalid_true_false_literals() {

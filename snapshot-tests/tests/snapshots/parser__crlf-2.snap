@@ -3,22 +3,22 @@ source: snapshot-tests/tests/parser.rs
 expression: spans
 ---
 note[string]: root_project_name
-  ┌─ crlf:3:9
+  ┌─ crlf:3:8
   │
 3 │ name = "splay"
-  │         ^^^^^
+  │        ^^^^^^^
 
 note[string]: root_project_version
-  ┌─ crlf:4:12
+  ┌─ crlf:4:11
   │
 4 │ version = "0.1.0"
-  │            ^^^^^
+  │           ^^^^^^^
 
 note[string]: root_project_authors_0
-  ┌─ crlf:5:13
+  ┌─ crlf:5:12
   │
 5 │ authors = ["alex@crichton.co"]
-  │             ^^^^^^^^^^^^^^^^
+  │            ^^^^^^^^^^^^^^^^^^
 
 note[array]: root_project_authors
   ┌─ crlf:5:11
@@ -37,27 +37,27 @@ note[table]: root_project
   │ ╰──────────────────────────────^
 
 note[string]: root_lib_0_path
-  ┌─ crlf:9:9
+  ┌─ crlf:9:8
   │
 9 │ path = "lib.rs"
-  │         ^^^^^^
+  │        ^^^^^^^^
 
 note[string]: root_lib_0_name
-   ┌─ crlf:10:9
+   ┌─ crlf:10:8
    │
 10 │ name = "splay"
-   │         ^^^^^
+   │        ^^^^^^^
 
 note[string]: root_lib_0_description
-   ┌─ crlf:11:18
+   ┌─ crlf:11:15
    │  
 11 │   description = """A Rust implementation of a TAR file reader and writer. This library does not
-   │ ╭──────────────────^
+   │ ╭───────────────^
 12 │ │ currently handle compression, but it is abstract over all I/O readers and
 13 │ │ writers. Additionally, great lengths are taken to ensure that the entire
 14 │ │ contents are never required to be entirely resident in memory all at once.
 15 │ │ """
-   │ ╰^
+   │ ╰───^
 
 note[table]: root_lib_0
    ┌─ crlf:7:1

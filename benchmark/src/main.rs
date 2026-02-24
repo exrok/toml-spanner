@@ -109,6 +109,31 @@ fn bench_end2end_config_toml<'a>(
     results
 }
 
+fn bench_end2end_config_toml_edit<'a>(
+    bench: &mut Bencher,
+    configs: &[(&'a str, &str)],
+) -> Vec<(&'a str, Stat)> {
+    let mut results = Vec::new();
+    for (name, source) in configs {
+        let stat = bench.func(|| {
+            let mut result = source.parse::<toml_edit::DocumentMut>();
+            std::hint::black_box(&mut result);
+        });
+        println!("{name}: {stat}");
+        results.push((*name, stat));
+    }
+    let mut rng = oorandom::Rand32::new(0xdeadbeaf);
+    let stat = bench.bench_with_generator(
+        || configs[rng.rand_range(0..configs.len() as u32) as usize].1,
+        |source| {
+            let mut result = source.parse::<toml_edit::DocumentMut>();
+            std::hint::black_box(&mut result);
+        },
+    );
+    println!("mixed: {stat}");
+    results
+}
+
 struct Plotter {
     s1: &'static str,
     s2: &'static str,
@@ -296,6 +321,330 @@ fn main_for_cargo() {
     eprintln!("```");
 }
 
+fn bench_clone_in<'a>(bench: &mut Bencher, configs: &[(&'a str, &str)]) -> Vec<(&'a str, Stat)> {
+    // Pre-parse all configs into their own arenas.
+    let arenas: Vec<_> = configs.iter().map(|_| toml_spanner::Arena::new()).collect();
+    let parsed: Vec<_> = configs
+        .iter()
+        .zip(arenas.iter())
+        .map(|((_, source), arena)| toml_spanner::parse(source, arena).unwrap())
+        .collect();
+
+    let mut results = Vec::new();
+    for (i, (name, _)) in configs.iter().enumerate() {
+        let table = parsed[i].table();
+        let stat = bench.func(|| {
+            let arena = toml_spanner::Arena::new();
+            let mut cloned = table.clone_in(&arena);
+            std::hint::black_box(&mut cloned);
+        });
+        println!("{name}: {stat}");
+        results.push((*name, stat));
+    }
+
+    let tables: Vec<_> = parsed.iter().map(|r| r.table()).collect();
+    let mut rng = oorandom::Rand32::new(0xdeadbeaf);
+    let stat = bench.bench_with_generator(
+        || tables[rng.rand_range(0..tables.len() as u32) as usize],
+        |table| {
+            let arena = toml_spanner::Arena::new();
+            let mut cloned = table.clone_in(&arena);
+            std::hint::black_box(&mut cloned);
+        },
+    );
+    println!("mixed: {stat}");
+    results
+}
+
+fn main_for_clone() {
+    let mut bench = jsony_bench::Bencher::new();
+    bench.calibrate();
+
+    let configs: &[(&str, &str)] = &[
+        ("zed/Cargo.lock", static_input::ZED_CARGO_LOCK),
+        ("zed/Cargo.toml", static_input::ZED_CARGO_TOML),
+        ("extask.toml", static_input::EXTASK_TOML),
+        ("devsm.toml", static_input::DEVSM_TOML),
+        ("random", static_input::RANDOM_TOML),
+    ];
+
+    println!("===== parse (baseline) =====");
+    let parse_stats = bench_end2end_config_toml_parser(&mut bench, configs);
+
+    println!("\n===== clone_in =====");
+    let clone_stats = bench_clone_in(&mut bench, configs);
+
+    println!("\n=== clone_in vs parse ===");
+    println!(
+        "{:<20} {:>9} {:>9} {:>9} {:>9} {:>6}",
+        "", "parse(μs)", "cycles(K)", "clone(μs)", "cycles(K)", "ratio"
+    );
+    for ((name, parse_stat), (_, clone_stat)) in parse_stats.iter().zip(clone_stats.iter()) {
+        let pt = f64::from(parse_stat.nanos) / 1000.0;
+        let pc = f64::from(parse_stat.cycles) / 1000.0;
+        let ct = f64::from(clone_stat.nanos) / 1000.0;
+        let cc = f64::from(clone_stat.cycles) / 1000.0;
+        let ratio = ct / pt;
+        println!(
+            "{:<20} {:>9.1} {:>9.0} {:>9.1} {:>9.0} {:>5.1}%",
+            name,
+            pt,
+            pc,
+            ct,
+            cc,
+            ratio * 100.0
+        );
+    }
+}
+
+fn bench_emit_toml_spanner<'a>(
+    bench: &mut Bencher,
+    configs: &[(&'a str, &str)],
+) -> Vec<(&'a str, Stat)> {
+    let arenas: Vec<_> = configs.iter().map(|_| toml_spanner::Arena::new()).collect();
+    let mut tables: Vec<_> = configs
+        .iter()
+        .zip(arenas.iter())
+        .map(|((_, source), arena)| toml_spanner::parse(source, arena).unwrap().into_table())
+        .collect();
+    for table in &mut tables {
+        table.normalize();
+    }
+
+    let mut results = Vec::new();
+    for (i, (name, _)) in configs.iter().enumerate() {
+        let normalized = tables[i].try_as_normalized().unwrap();
+        let stat = bench.func(|| {
+            let mut buf = Vec::new();
+            toml_spanner::emit(normalized, &mut buf);
+            std::hint::black_box(&mut buf);
+        });
+        println!("{name}: {stat}");
+        results.push((*name, stat));
+    }
+
+    let normalized: Vec<_> = tables
+        .iter()
+        .map(|r| r.try_as_normalized().unwrap())
+        .collect();
+    let mut rng = oorandom::Rand32::new(0xdeadbeaf);
+    let stat = bench.bench_with_generator(
+        || normalized[rng.rand_range(0..normalized.len() as u32) as usize],
+        |normalized| {
+            let mut buf = Vec::new();
+            toml_spanner::emit(normalized, &mut buf);
+            std::hint::black_box(&mut buf);
+        },
+    );
+    println!("mixed: {stat}");
+    results
+}
+
+fn bench_emit_reprojected<'a>(
+    bench: &mut Bencher,
+    configs: &[(&'a str, &str)],
+) -> Vec<(&'a str, Stat)> {
+    // For each config: parse source, parse dest (identity), reproject, normalize.
+    // Then benchmark just the emit_with_config call.
+    struct Prepared<'de> {
+        source: &'de str,
+        items: Vec<&'de toml_spanner::Item<'de>>,
+        normalized: &'de toml_spanner::NormalizedTable<'de>,
+    }
+
+    let src_arenas: Vec<_> = configs.iter().map(|_| toml_spanner::Arena::new()).collect();
+    let src_roots: Vec<_> = configs
+        .iter()
+        .zip(src_arenas.iter())
+        .map(|((_, source), arena)| toml_spanner::parse(source, arena).unwrap())
+        .collect();
+
+    let dest_arenas: Vec<_> = configs.iter().map(|_| toml_spanner::Arena::new()).collect();
+    let mut dest_tables: Vec<_> = configs
+        .iter()
+        .zip(dest_arenas.iter())
+        .map(|((_, source), arena)| toml_spanner::parse(source, arena).unwrap().into_table())
+        .collect();
+
+    let mut prepared: Vec<Prepared<'_>> = Vec::new();
+    for (i, (_, source)) in configs.iter().enumerate() {
+        let mut items = Vec::new();
+        toml_spanner::reproject(&src_roots[i], &mut dest_tables[i], &mut items);
+        let normalized = dest_tables[i].normalize();
+        // SAFETY: normalized borrows dest_tables[i] which lives as long as dest_arenas.
+        // We never move or mutate dest_tables again after this point.
+        let normalized: &'static toml_spanner::NormalizedTable<'static> =
+            unsafe { std::mem::transmute(normalized) };
+        let items: Vec<&'static toml_spanner::Item<'static>> =
+            unsafe { std::mem::transmute(items) };
+        prepared.push(Prepared {
+            source,
+            items,
+            normalized,
+        });
+    }
+
+    let mut results = Vec::new();
+    for (i, (name, _)) in configs.iter().enumerate() {
+        let p = &prepared[i];
+        let config = toml_spanner::EmitConfig {
+            projected_source_text: p.source,
+            projected_source_items: &p.items,
+            reprojected_order: true,
+        };
+        let stat = bench.func(|| {
+            let mut buf = Vec::new();
+            toml_spanner::emit_with_config(p.normalized, &config, &mut buf);
+            std::hint::black_box(&mut buf);
+        });
+        println!("{name}: {stat}");
+        results.push((*name, stat));
+    }
+
+    let configs_for_gen: Vec<_> = prepared
+        .iter()
+        .map(|p| {
+            (
+                p.normalized,
+                toml_spanner::EmitConfig {
+                    projected_source_text: p.source,
+                    projected_source_items: &p.items,
+                    reprojected_order: true,
+                },
+            )
+        })
+        .collect();
+    let mut rng = oorandom::Rand32::new(0xdeadbeaf);
+    let stat = bench.bench_with_generator(
+        || &configs_for_gen[rng.rand_range(0..configs_for_gen.len() as u32) as usize],
+        |(normalized, config)| {
+            let mut buf = Vec::new();
+            toml_spanner::emit_with_config(normalized, config, &mut buf);
+            std::hint::black_box(&mut buf);
+        },
+    );
+    println!("mixed: {stat}");
+    results
+}
+
+fn bench_emit_toml<'a>(bench: &mut Bencher, configs: &[(&'a str, &str)]) -> Vec<(&'a str, Stat)> {
+    let parsed: Vec<_> = configs
+        .iter()
+        .map(|(_, source)| source.parse::<toml::Table>().unwrap())
+        .collect();
+
+    let mut results = Vec::new();
+    for (i, (name, _)) in configs.iter().enumerate() {
+        let table = &parsed[i];
+        let stat = bench.func(|| {
+            let mut result = toml::to_string(table);
+            std::hint::black_box(&mut result);
+        });
+        println!("{name}: {stat}");
+        results.push((*name, stat));
+    }
+
+    let mut rng = oorandom::Rand32::new(0xdeadbeaf);
+    let stat = bench.bench_with_generator(
+        || &parsed[rng.rand_range(0..parsed.len() as u32) as usize],
+        |table| {
+            let mut result = toml::to_string(table);
+            std::hint::black_box(&mut result);
+        },
+    );
+    println!("mixed: {stat}");
+    results
+}
+
+fn bench_emit_toml_edit<'a>(
+    bench: &mut Bencher,
+    configs: &[(&'a str, &str)],
+) -> Vec<(&'a str, Stat)> {
+    let parsed: Vec<_> = configs
+        .iter()
+        .map(|(_, source)| source.parse::<toml_edit::DocumentMut>().unwrap())
+        .collect();
+
+    let mut results = Vec::new();
+    for (i, (name, _)) in configs.iter().enumerate() {
+        let doc = &parsed[i];
+        let stat = bench.func(|| {
+            let mut result = doc.to_string();
+            std::hint::black_box(&mut result);
+        });
+        println!("{name}: {stat}");
+        results.push((*name, stat));
+    }
+
+    let mut rng = oorandom::Rand32::new(0xdeadbeaf);
+    let stat = bench.bench_with_generator(
+        || &parsed[rng.rand_range(0..parsed.len() as u32) as usize],
+        |doc| {
+            let mut result = doc.to_string();
+            std::hint::black_box(&mut result);
+        },
+    );
+    println!("mixed: {stat}");
+    results
+}
+
+fn main_for_emit() {
+    let mut bench = jsony_bench::Bencher::new();
+    bench.calibrate();
+
+    let configs: &[(&str, &str)] = &[
+        ("zed/Cargo.lock", static_input::ZED_CARGO_LOCK),
+        ("zed/Cargo.toml", static_input::ZED_CARGO_TOML),
+        ("extask.toml", static_input::EXTASK_TOML),
+        ("devsm.toml", static_input::DEVSM_TOML),
+        ("random", static_input::RANDOM_TOML),
+    ];
+
+    println!("===== toml-spanner emit =====");
+    let spanner_stats = bench_emit_toml_spanner(&mut bench, configs);
+
+    println!("\n===== toml-spanner emit (reprojected) =====");
+    let reproj_stats = bench_emit_reprojected(&mut bench, configs);
+
+    println!("\n===== toml to_string =====");
+    let toml_stats = bench_emit_toml(&mut bench, configs);
+
+    println!("\n===== toml_edit to_string =====");
+    let toml_edit_stats = bench_emit_toml_edit(&mut bench, configs);
+
+    println!("\n=== emit comparison ===");
+    println!(
+        "{:<20} {:>9} {:>9} {:>9} {:>9} {:>9} {:>9} {:>11} {:>9}",
+        "",
+        "emit(μs)",
+        "cyc(K)",
+        "reproj(μs)",
+        "cyc(K)",
+        "toml(μs)",
+        "cyc(K)",
+        "toml_ed(μs)",
+        "cyc(K)"
+    );
+    for i in 0..spanner_stats.len() {
+        let (name, ref ss) = spanner_stats[i];
+        let (_, ref rs) = reproj_stats[i];
+        let (_, ref ts) = toml_stats[i];
+        let (_, ref es) = toml_edit_stats[i];
+        let st = f64::from(ss.nanos) / 1000.0;
+        let sc = f64::from(ss.cycles) / 1000.0;
+        let rt = f64::from(rs.nanos) / 1000.0;
+        let rc = f64::from(rs.cycles) / 1000.0;
+        let tt = f64::from(ts.nanos) / 1000.0;
+        let tc = f64::from(ts.cycles) / 1000.0;
+        let et = f64::from(es.nanos) / 1000.0;
+        let ec = f64::from(es.cycles) / 1000.0;
+        println!(
+            "{:<20} {:>9.1} {:>9.0} {:>9.1} {:>9.0} {:>9.1} {:>9.0} {:>11.1} {:>9.0}",
+            name, st, sc, rt, rc, tt, tc, et, ec
+        );
+    }
+}
+
 fn main_for_profile() {
     let inputs = &[
         static_input::ZED_CARGO_TOML,
@@ -320,6 +669,14 @@ fn main() {
         main_for_cargo();
         return;
     }
+    if std::env::args().any(|a| a == "clone") {
+        main_for_clone();
+        return;
+    }
+    if std::env::args().any(|a| a == "emit") {
+        main_for_emit();
+        return;
+    }
     if std::env::args().any(|a| a == "compile") {
         let all = std::env::args().any(|a| a == "--all");
         let dev = std::env::args().any(|a| a == "--dev");
@@ -329,7 +686,7 @@ fn main() {
     }
 
     let lock_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("Cargo.lock");
-    let versions: Vec<(&str, String)> = ["toml-spanner", "toml", "toml-span"]
+    let versions: Vec<(&str, String)> = ["toml-spanner", "toml", "toml_edit", "toml-span"]
         .into_iter()
         .map(|name| (name, lockfile_version(&lock_path, name)))
         .collect();
@@ -350,6 +707,9 @@ fn main() {
 
     println!("===== toml =======");
     let toml_stats = bench_end2end_config_toml(&mut bench, configs);
+
+    println!("===== toml_edit =======");
+    let toml_edit_stats = bench_end2end_config_toml_edit(&mut bench, configs);
 
     println!("===== toml_span =======");
     let span_stats = bench_end2end_config_toml_span(&mut bench, configs);
@@ -385,6 +745,14 @@ fn main() {
                 .1
                 .nanos,
         );
+        let toml_edit_nanos = f64::from(
+            toml_edit_stats
+                .iter()
+                .find(|(n, _)| *n == *bench_name)
+                .unwrap()
+                .1
+                .nanos,
+        );
         let span_nanos = f64::from(
             span_stats
                 .iter()
@@ -395,17 +763,20 @@ fn main() {
         );
 
         let rel_toml = toml_nanos / spanner_nanos;
+        let rel_toml_edit = toml_edit_nanos / spanner_nanos;
         let rel_span = span_nanos / spanner_nanos;
 
         // Header line:
         writeln!(data, "\"{{/:Bold {} ({})}}\" 0 0", bench_name, size).unwrap();
 
         rel_values.push(rel_toml);
+        rel_values.push(rel_toml_edit);
         rel_values.push(rel_span);
 
         writeln!(data, "\"toml-spanner\" {:.2} 1", 1.0).unwrap();
         writeln!(data, "\"toml\" {:.2} 2", rel_toml).unwrap();
-        writeln!(data, "\"toml-span\" {:.2} 3", rel_span).unwrap();
+        writeln!(data, "\"toml_edit\" {:.2} 3", rel_toml_edit).unwrap();
+        writeln!(data, "\"toml-span\" {:.2} 4", rel_span).unwrap();
     }
 
     let graph_benchmarks = [
@@ -447,6 +818,7 @@ fn main() {
     let all_stats: &[(&str, &[(&str, Stat)])] = &[
         ("toml-spanner", &spanner_stats),
         ("toml", &toml_stats),
+        ("toml_edit", &toml_edit_stats),
         ("toml-span", &span_stats),
     ];
     for (bench_name, _) in &graph_benchmarks {

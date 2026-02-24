@@ -11,27 +11,27 @@ fn constructors() {
     let arena = Arena::new();
 
     // String
-    let v = Item::string("hello", sp(0, 5));
+    let v = Item::string_spanned("hello", sp(0, 5));
     assert_eq!(v.tag(), TAG_STRING);
     assert_eq!(v.as_str(), Some("hello"));
-    assert_eq!(v.span(), sp(0, 5));
+    assert_eq!(v.span_unchecked(), sp(0, 5));
     assert_eq!(v.type_str(), "string");
 
     // Integer (positive and negative)
-    let v = Item::integer(42, sp(0, 2));
+    let v = Item::integer_spanned(42, sp(0, 2));
     assert_eq!(v.tag(), TAG_INTEGER);
     assert_eq!(v.as_i64(), Some(42));
-    assert_eq!(v.span(), sp(0, 2));
+    assert_eq!(v.span_unchecked(), sp(0, 2));
     assert_eq!(v.type_str(), "integer");
 
-    let v = Item::integer(-9999, sp(0, 5));
+    let v = Item::integer_spanned(-9999, sp(0, 5));
     assert_eq!(v.as_i64(), Some(-9999));
 
     // Float
-    let v = Item::float(3.15, sp(0, 4));
+    let v = Item::float_spanned(3.15, sp(0, 4));
     assert_eq!(v.tag(), TAG_FLOAT);
     assert_eq!(v.as_f64(), Some(3.15));
-    assert_eq!(v.span(), sp(0, 4));
+    assert_eq!(v.span_unchecked(), sp(0, 4));
     assert_eq!(v.type_str(), "float");
 
     // Boolean
@@ -43,9 +43,9 @@ fn constructors() {
     assert_eq!(t.type_str(), "boolean");
 
     // Array
-    let mut arr = Array::new();
-    arr.push(Item::integer(1, sp(0, 1)), &arena);
-    arr.push(Item::integer(2, sp(2, 3)), &arena);
+    let mut arr = InternalArray::new();
+    arr.push(Item::integer_spanned(1, sp(0, 1)), &arena);
+    arr.push(Item::integer_spanned(2, sp(2, 3)), &arena);
     let v = Item::array(arr, sp(0, 3));
     assert_eq!(v.tag(), TAG_ARRAY);
     assert_eq!(v.as_array().unwrap().len(), 2);
@@ -58,7 +58,7 @@ fn constructors() {
             name: "k",
             span: sp(0, 1),
         },
-        Item::integer(10, sp(2, 4)),
+        Item::integer_spanned(10, sp(2, 4)),
         &arena,
     );
     let v = Item::table(tab, sp(0, 4));
@@ -86,7 +86,7 @@ fn constructors() {
             name: ("x"),
             span: sp(0, 1),
         },
-        Item::integer(1, sp(0, 1)),
+        Item::integer_spanned(1, sp(0, 1)),
         &arena,
     );
     let v = Item::table(tab, sp(0, 1));
@@ -112,27 +112,27 @@ fn table_variant_flags() {
     assert!(v.as_table().is_some());
 
     // AOT (array of tables)
-    let v = Item::array_aot(Array::new(), sp(10, 20));
+    let v = Item::array_aot(InternalArray::new(), sp(10, 20));
     assert!(v.is_aot());
     assert_eq!(v.flag(), FLAG_AOT);
-    assert_eq!(v.span(), sp(10, 20));
+    assert_eq!(v.span_unchecked(), sp(10, 20));
 
     // Frozen
     let v = Item::table_frozen(InnerTable::new(), sp(5, 15));
     assert!(v.is_frozen());
     assert!(v.as_table().is_some());
-    assert_eq!(v.span(), sp(5, 15));
+    assert_eq!(v.span_unchecked(), sp(5, 15));
 }
 
 #[test]
 fn span_bit_packing() {
     // Roundtrip across all tags
     let tags_and_constructors: Vec<(u32, Item<'_>)> = vec![
-        (TAG_STRING, Item::string("x", sp(100, 200))),
-        (TAG_INTEGER, Item::integer(0, sp(100, 200))),
-        (TAG_FLOAT, Item::float(0.0, sp(100, 200))),
+        (TAG_STRING, Item::string_spanned("x", sp(100, 200))),
+        (TAG_INTEGER, Item::integer_spanned(0, sp(100, 200))),
+        (TAG_FLOAT, Item::float_spanned(0.0, sp(100, 200))),
         (TAG_BOOLEAN, Item::boolean(false, sp(100, 200))),
-        (TAG_ARRAY, Item::array(Array::new(), sp(100, 200))),
+        (TAG_ARRAY, Item::array(InternalArray::new(), sp(100, 200))),
         (TAG_TABLE, Item::table(InnerTable::new(), sp(100, 200))),
         (
             TAG_TABLE,
@@ -145,26 +145,26 @@ fn span_bit_packing() {
     ];
     for (expected_tag, v) in &tags_and_constructors {
         assert_eq!(v.tag(), *expected_tag);
-        assert_eq!(v.span(), sp(100, 200), "tag={expected_tag}");
+        assert_eq!(v.span_unchecked(), sp(100, 200), "tag={expected_tag}");
     }
 
-    // Large span values near the 29-bit limit
-    let max_start = (1u32 << 29) - 1;
-    let max_end = (1u32 << 29) - 1;
-    let v = Item::integer(0, sp(max_start, max_end));
-    assert_eq!(v.span().start, max_start);
-    assert_eq!(v.span().end, max_end);
+    // Large span values near the 28-bit limit
+    let max_start = (1u32 << 28) - 1;
+    let max_end = (1u32 << 28) - 1;
+    let v = Item::integer_spanned(0, sp(max_start, max_end));
+    assert_eq!(v.span_unchecked().start, max_start);
+    assert_eq!(v.span_unchecked().end, max_end);
 }
 
 #[test]
 fn value_and_type_checks() {
     // value() returns the correct variant for each type
     let vals: Vec<Item<'_>> = vec![
-        Item::string("s", sp(0, 1)),
-        Item::integer(1, sp(0, 1)),
-        Item::float(1.0, sp(0, 1)),
+        Item::string_spanned("s", sp(0, 1)),
+        Item::integer_spanned(1, sp(0, 1)),
+        Item::float_spanned(1.0, sp(0, 1)),
         Item::boolean(true, sp(0, 1)),
-        Item::array(Array::new(), sp(0, 1)),
+        Item::array(InternalArray::new(), sp(0, 1)),
         Item::table(InnerTable::new(), sp(0, 1)),
     ];
     let expected = ["string", "integer", "float", "boolean", "array", "table"];
@@ -182,13 +182,13 @@ fn value_and_type_checks() {
     }
 
     // Negative type checks: as_* returns None for wrong types
-    let v = Item::integer(42, sp(0, 2));
+    let v = Item::integer_spanned(42, sp(0, 2));
     assert!(v.as_str().is_none());
     assert!(v.as_bool().is_none());
     assert!(v.as_array().is_none());
     assert!(v.as_table().is_none());
 
-    let v = Item::string("s", sp(0, 1));
+    let v = Item::string_spanned("s", sp(0, 1));
     assert!(v.as_i64().is_none());
     assert!(v.as_f64().is_none());
     assert!(v.as_bool().is_none());
@@ -206,31 +206,35 @@ fn value_and_type_checks() {
 #[test]
 fn as_f64_converts_integers() {
     // Float value returned directly
-    let v = Item::float(3.15, sp(0, 4));
+    let v = Item::float_spanned(3.15, sp(0, 4));
     assert_eq!(v.as_f64(), Some(3.15));
 
     // Integer value converted to f64
-    let v = Item::integer(42, sp(0, 2));
+    let v = Item::integer_spanned(42, sp(0, 2));
     assert_eq!(v.as_f64(), Some(42.0));
 
-    let v = Item::integer(-100, sp(0, 4));
+    let v = Item::integer_spanned(-100, sp(0, 4));
     assert_eq!(v.as_f64(), Some(-100.0));
 
-    let v = Item::integer(0, sp(0, 1));
+    let v = Item::integer_spanned(0, sp(0, 1));
     assert_eq!(v.as_f64(), Some(0.0));
 
     // Non-numeric types still return None
-    assert!(Item::string("s", sp(0, 1)).as_f64().is_none());
+    assert!(Item::string_spanned("s", sp(0, 1)).as_f64().is_none());
     assert!(Item::boolean(true, sp(0, 4)).as_f64().is_none());
-    assert!(Item::array(Array::new(), sp(0, 2)).as_f64().is_none());
+    assert!(
+        Item::array(InternalArray::new(), sp(0, 2))
+            .as_f64()
+            .is_none()
+    );
     assert!(Item::table(InnerTable::new(), sp(0, 2)).as_f64().is_none());
 
     // MaybeItem also converts integers
-    let item = Item::integer(99, sp(0, 2));
+    let item = Item::integer_spanned(99, sp(0, 2));
     let maybe = MaybeItem::from_ref(&item);
     assert_eq!(maybe.as_f64(), Some(99.0));
 
-    let item = Item::float(2.5, sp(0, 3));
+    let item = Item::float_spanned(2.5, sp(0, 3));
     let maybe = MaybeItem::from_ref(&item);
     assert_eq!(maybe.as_f64(), Some(2.5));
 
@@ -243,7 +247,7 @@ fn value_mut_all_types() {
     let arena = Arena::new();
 
     // String
-    let mut v = Item::string("hello", sp(0, 5));
+    let mut v = Item::string_spanned("hello", sp(0, 5));
     if let ValueMut::String(s) = v.value_mut() {
         assert_eq!(&**s, "hello");
     } else {
@@ -251,14 +255,14 @@ fn value_mut_all_types() {
     }
 
     // Integer
-    let mut v = Item::integer(10, sp(0, 2));
+    let mut v = Item::integer_spanned(10, sp(0, 2));
     if let ValueMut::Integer(i) = v.value_mut() {
         *i = 99;
     }
     assert_eq!(v.as_i64(), Some(99));
 
     // Float
-    let mut v = Item::float(1.0, sp(0, 3));
+    let mut v = Item::float_spanned(1.0, sp(0, 3));
     if let ValueMut::Float(f) = v.value_mut() {
         *f = 2.5;
     }
@@ -272,9 +276,9 @@ fn value_mut_all_types() {
     assert_eq!(v.as_bool(), Some(true));
 
     // Array
-    let mut v = Item::array(Array::new(), sp(0, 2));
+    let mut v = Item::array(InternalArray::new(), sp(0, 2));
     if let ValueMut::Array(a) = v.value_mut() {
-        a.push(Item::integer(42, sp(0, 2)), &arena);
+        a.push(Item::integer_spanned(42, sp(0, 2)), &arena);
     }
     assert_eq!(v.as_array().unwrap().len(), 1);
 
@@ -286,7 +290,7 @@ fn value_mut_all_types() {
                 name: ("x"),
                 span: sp(0, 1),
             },
-            Item::integer(1, sp(0, 1)),
+            Item::integer_spanned(1, sp(0, 1)),
             &arena,
         );
     }
@@ -296,7 +300,7 @@ fn value_mut_all_types() {
 #[test]
 fn type_error_helpers() {
     // expected() produces correct error
-    let v = Item::integer(42, sp(0, 2));
+    let v = Item::integer_spanned(42, sp(0, 2));
     let err = v.expected("a string");
     assert!(matches!(
         err.kind,
@@ -319,12 +323,12 @@ fn expect_helpers() {
     };
 
     // expect_string success
-    let v = Item::string("hello", sp(0, 5));
+    let v = Item::string_spanned("hello", sp(0, 5));
     let s = v.expect_string(&mut ctx).unwrap();
     assert_eq!(s, "hello");
 
     // expect_string wrong type records error
-    let v = Item::integer(42, sp(0, 2));
+    let v = Item::integer_spanned(42, sp(0, 2));
     assert!(v.expect_string(&mut ctx).is_err());
     assert_eq!(ctx.errors.len(), 1);
     assert!(matches!(
@@ -336,14 +340,14 @@ fn expect_helpers() {
     ));
 
     // expect_array success
-    let mut arr = Array::new();
-    arr.push(Item::integer(1, sp(0, 1)), &arena);
+    let mut arr = InternalArray::new();
+    arr.push(Item::integer_spanned(1, sp(0, 1)), &arena);
     let v = Item::array(arr, sp(0, 5));
     let a = v.expect_array(&mut ctx).unwrap();
     assert_eq!(a.len(), 1);
 
     // expect_array type mismatch
-    let v = Item::integer(42, sp(0, 2));
+    let v = Item::integer_spanned(42, sp(0, 2));
     assert!(v.expect_array(&mut ctx).is_err());
     assert!(matches!(
         ctx.errors.last().unwrap().kind,
@@ -357,7 +361,7 @@ fn expect_helpers() {
             name: ("k"),
             span: sp(0, 1),
         },
-        Item::integer(1, sp(0, 1)),
+        Item::integer_spanned(1, sp(0, 1)),
         &arena,
     );
     let v = Item::table(tab, sp(0, 5));
@@ -365,7 +369,7 @@ fn expect_helpers() {
     assert_eq!(t.len(), 1);
 
     // expect_table type mismatch
-    let v = Item::integer(42, sp(0, 2));
+    let v = Item::integer_spanned(42, sp(0, 2));
     assert!(v.expect_table(&mut ctx).is_err());
     assert!(matches!(
         ctx.errors.last().unwrap().kind,
@@ -378,13 +382,13 @@ fn mut_accessors() {
     let arena = Arena::new();
 
     // as_array_mut on array
-    let mut v = Item::array(Array::new(), sp(0, 2));
+    let mut v = Item::array(InternalArray::new(), sp(0, 2));
     let a = v.as_array_mut().unwrap();
-    a.push(Item::integer(1, sp(0, 1)), &arena);
+    a.push(Item::integer_spanned(1, sp(0, 1)), &arena);
     assert_eq!(v.as_array().unwrap().len(), 1);
 
     // as_array_mut on non-array
-    let mut v = Item::integer(42, sp(0, 2));
+    let mut v = Item::integer_spanned(42, sp(0, 2));
     assert!(v.as_array_mut().is_none());
 
     // as_table_mut on table
@@ -395,30 +399,30 @@ fn mut_accessors() {
             name: ("k"),
             span: sp(0, 1),
         },
-        Item::integer(1, sp(0, 1)),
+        Item::integer_spanned(1, sp(0, 1)),
         &arena,
     );
     assert_eq!(v.as_table().unwrap().len(), 1);
 
     // as_table_mut on non-table
-    let mut v = Item::integer(42, sp(0, 2));
+    let mut v = Item::integer_spanned(42, sp(0, 2));
     assert!(v.as_table_mut().is_none());
 }
 
 #[test]
 fn parse_method() {
     // Success
-    let v = Item::string("42", sp(0, 2));
+    let v = Item::string_spanned("42", sp(0, 2));
     let parsed: i32 = v.parse::<i32>().unwrap();
     assert_eq!(parsed, 42);
 
     // Parse failure (invalid content)
-    let v = Item::string("not_a_number", sp(0, 12));
+    let v = Item::string_spanned("not_a_number", sp(0, 12));
     let err = v.parse::<i32>().unwrap_err();
     assert!(matches!(err.kind, crate::ErrorKind::Custom(..)));
 
     // Wrong type (not a string)
-    let v = Item::integer(42, sp(0, 2));
+    let v = Item::integer_spanned(42, sp(0, 2));
     let err = v.parse::<i32>().unwrap_err();
     assert!(matches!(err.kind, crate::ErrorKind::Wanted { .. }));
 }
@@ -430,11 +434,11 @@ fn spanned_table_set_span_preserves_flag() {
     unsafe { v.as_table_mut_unchecked() }.set_span_start(99);
     assert_eq!(v.tag(), TAG_TABLE);
     assert_eq!(v.flag(), FLAG_HEADER);
-    assert_eq!(v.span().start, 99);
+    assert_eq!(v.span_unchecked().start, 99);
 
     unsafe { v.as_table_mut_unchecked() }.set_span_end(200);
     assert_eq!(v.flag(), FLAG_HEADER);
-    assert_eq!(v.span().end, 200);
+    assert_eq!(v.span_unchecked().end, 200);
 }
 
 #[test]
@@ -486,21 +490,21 @@ fn key_basics() {
 #[test]
 fn item_debug_fmt() {
     // Test Debug formatting for all Item types
-    let v = Item::string("hello", sp(0, 5));
+    let v = Item::string_spanned("hello", sp(0, 5));
     assert_eq!(format!("{:?}", v), "\"hello\"");
 
-    let v = Item::integer(42, sp(0, 2));
+    let v = Item::integer_spanned(42, sp(0, 2));
     assert_eq!(format!("{:?}", v), "42");
 
-    let v = Item::float(3.15, sp(0, 4));
+    let v = Item::float_spanned(3.15, sp(0, 4));
     assert_eq!(format!("{:?}", v), "3.15");
 
     let v = Item::boolean(true, sp(0, 4));
     assert_eq!(format!("{:?}", v), "true");
 
     let arena = Arena::new();
-    let mut arr = Array::new();
-    arr.push(Item::integer(1, sp(0, 1)), &arena);
+    let mut arr = InternalArray::new();
+    arr.push(Item::integer_spanned(1, sp(0, 1)), &arena);
     let v = Item::array(arr, sp(0, 3));
     assert!(format!("{:?}", v).contains("1"));
 
@@ -520,7 +524,7 @@ fn item_index_operators() {
             name: ("name"),
             span: sp(0, 4),
         },
-        Item::string("alice", sp(5, 10)),
+        Item::string_spanned("alice", sp(5, 10)),
         &arena,
     );
     tab.insert(
@@ -528,7 +532,7 @@ fn item_index_operators() {
             name: ("age"),
             span: sp(11, 14),
         },
-        Item::integer(30, sp(15, 17)),
+        Item::integer_spanned(30, sp(15, 17)),
         &arena,
     );
     let item = Item::table(tab, sp(0, 17));
@@ -537,9 +541,9 @@ fn item_index_operators() {
     assert!(item["missing"].item().is_none());
 
     // Index array Item by usize
-    let mut arr = Array::new();
-    arr.push(Item::integer(10, sp(0, 2)), &arena);
-    arr.push(Item::string("two", sp(3, 6)), &arena);
+    let mut arr = InternalArray::new();
+    arr.push(Item::integer_spanned(10, sp(0, 2)), &arena);
+    arr.push(Item::string_spanned("two", sp(3, 6)), &arena);
     arr.push(Item::boolean(true, sp(7, 11)), &arena);
     let item = Item::array(arr, sp(0, 11));
     assert_eq!(item[0].as_i64(), Some(10));
@@ -549,15 +553,19 @@ fn item_index_operators() {
     assert!(item[100].item().is_none());
 
     // &str index on non-table types returns NONE
-    let int_item = Item::integer(42, sp(0, 2));
+    let int_item = Item::integer_spanned(42, sp(0, 2));
     assert!(int_item["anything"].item().is_none());
-    assert!(Item::string("s", sp(0, 1))["k"].item().is_none());
+    assert!(Item::string_spanned("s", sp(0, 1))["k"].item().is_none());
     assert!(Item::boolean(true, sp(0, 4))["k"].item().is_none());
-    assert!(Item::array(Array::new(), sp(0, 2))["k"].item().is_none());
+    assert!(
+        Item::array(InternalArray::new(), sp(0, 2))["k"]
+            .item()
+            .is_none()
+    );
 
     // usize index on non-array types returns NONE
     assert!(int_item[0].item().is_none());
-    assert!(Item::string("s", sp(0, 1))[0].item().is_none());
+    assert!(Item::string_spanned("s", sp(0, 1))[0].item().is_none());
     assert!(Item::table(InnerTable::new(), sp(0, 2))[0].item().is_none());
 }
 
@@ -566,9 +574,9 @@ fn maybe_item_chained_and_none_propagation() {
     let arena = Arena::new();
 
     // Build nested: { users: [{ name: "alice", scores: [100, 200] }] }
-    let mut scores = Array::new();
-    scores.push(Item::integer(100, sp(0, 3)), &arena);
-    scores.push(Item::integer(200, sp(4, 7)), &arena);
+    let mut scores = InternalArray::new();
+    scores.push(Item::integer_spanned(100, sp(0, 3)), &arena);
+    scores.push(Item::integer_spanned(200, sp(4, 7)), &arena);
 
     let mut user_tab = InnerTable::new();
     user_tab.insert(
@@ -576,7 +584,7 @@ fn maybe_item_chained_and_none_propagation() {
             name: ("name"),
             span: sp(0, 4),
         },
-        Item::string("alice", sp(5, 10)),
+        Item::string_spanned("alice", sp(5, 10)),
         &arena,
     );
     user_tab.insert(
@@ -588,7 +596,7 @@ fn maybe_item_chained_and_none_propagation() {
         &arena,
     );
 
-    let mut users = Array::new();
+    let mut users = InternalArray::new();
     users.push(Item::table(user_tab, sp(0, 25)), &arena);
 
     let mut root = InnerTable::new();
@@ -622,7 +630,7 @@ fn maybe_item_chained_and_none_propagation() {
     assert!(none.value().is_none());
 
     // NONE propagates through arbitrary chains
-    let item = Item::integer(42, sp(0, 2));
+    let item = Item::integer_spanned(42, sp(0, 2));
     assert!(item["a"]["b"]["c"].item().is_none());
     assert!(item["a"][0]["b"][1].item().is_none());
     assert!(item[0][1][2].item().is_none());
@@ -659,7 +667,7 @@ fn datetime_items() {
     assert!(matches!(dt_item.value(), Value::DateTime(_)));
 
     // value_mut() returns DateTime variant
-    let mut dt_item_owned = Item::moment(*dt_item.as_datetime().unwrap(), dt_item.span());
+    let mut dt_item_owned = Item::moment(*dt_item.as_datetime().unwrap(), dt_item.span_unchecked());
     assert!(matches!(dt_item_owned.value_mut(), ValueMut::DateTime(_)));
 
     // Debug for datetime Item
@@ -667,14 +675,14 @@ fn datetime_items() {
     assert!(debug.contains("2023"));
 
     // as_datetime returns None for non-datetime types
-    let int_item = Item::integer(42, sp(0, 2));
+    let int_item = Item::integer_spanned(42, sp(0, 2));
     assert!(int_item.as_datetime().is_none());
 
     // MaybeItem::as_datetime
     let maybe = MaybeItem::from_ref(dt_item);
     assert!(maybe.as_datetime().is_some());
 
-    let int_item = Item::integer(42, sp(0, 2));
+    let int_item = Item::integer_spanned(42, sp(0, 2));
     let maybe = MaybeItem::from_ref(&int_item);
     assert!(maybe.as_datetime().is_none());
 
@@ -703,19 +711,229 @@ fn kind_enum() {
     }
 
     // kind() returns correct Kind for each Item type
-    assert!(matches!(Item::string("s", sp(0, 1)).kind(), Kind::String));
-    assert!(matches!(Item::integer(1, sp(0, 1)).kind(), Kind::Integer));
-    assert!(matches!(Item::float(1.0, sp(0, 1)).kind(), Kind::Float));
+    assert!(matches!(
+        Item::string_spanned("s", sp(0, 1)).kind(),
+        Kind::String
+    ));
+    assert!(matches!(
+        Item::integer_spanned(1, sp(0, 1)).kind(),
+        Kind::Integer
+    ));
+    assert!(matches!(
+        Item::float_spanned(1.0, sp(0, 1)).kind(),
+        Kind::Float
+    ));
     assert!(matches!(
         Item::boolean(true, sp(0, 1)).kind(),
         Kind::Boolean
     ));
     assert!(matches!(
-        Item::array(Array::new(), sp(0, 1)).kind(),
+        Item::array(InternalArray::new(), sp(0, 1)).kind(),
         Kind::Array
     ));
     assert!(matches!(
         Item::table(InnerTable::new(), sp(0, 1)).kind(),
         Kind::Table
     ));
+}
+
+#[test]
+fn clone_in_scalars() {
+    let arena = Arena::new();
+
+    // String: shallow copy shares the str data
+    let orig = Item::string_spanned("hello", sp(1, 6));
+    let cloned = orig.clone_in(&arena);
+    assert_eq!(cloned.as_str(), Some("hello"));
+    assert_eq!(cloned.span_unchecked(), sp(1, 6));
+
+    // Integer
+    let orig = Item::integer_spanned(-42, sp(0, 3));
+    let cloned = orig.clone_in(&arena);
+    assert_eq!(cloned.as_i64(), Some(-42));
+    assert_eq!(cloned.span_unchecked(), sp(0, 3));
+
+    // Float
+    let orig = Item::float_spanned(3.14, sp(10, 14));
+    let cloned = orig.clone_in(&arena);
+    assert_eq!(cloned.as_f64(), Some(3.14));
+    assert_eq!(cloned.span_unchecked(), sp(10, 14));
+
+    // Boolean
+    let orig = Item::boolean(true, sp(0, 4));
+    let cloned = orig.clone_in(&arena);
+    assert_eq!(cloned.as_bool(), Some(true));
+    assert_eq!(cloned.span_unchecked(), sp(0, 4));
+}
+
+#[test]
+fn clone_in_datetime() {
+    let arena = Arena::new();
+    let input = "dt = 2023-06-15T12:30:45Z";
+    let root = crate::parser::parse(input, &arena).unwrap();
+    let dt_item = root.table().get("dt").unwrap();
+
+    let cloned = dt_item.clone_in(&arena);
+    assert_eq!(cloned.as_datetime().unwrap().date().unwrap().year, 2023);
+    assert_eq!(cloned.span_unchecked(), dt_item.span_unchecked());
+}
+
+#[test]
+fn clone_in_array() {
+    let arena = Arena::new();
+    let mut arr = InternalArray::new();
+    arr.push(Item::integer_spanned(1, sp(0, 1)), &arena);
+    arr.push(Item::string_spanned("two", sp(2, 5)), &arena);
+    arr.push(Item::boolean(false, sp(6, 11)), &arena);
+    let orig = Item::array(arr, sp(0, 11));
+
+    let cloned = orig.clone_in(&arena);
+    let ca = cloned.as_array().unwrap();
+    assert_eq!(ca.len(), 3);
+    assert_eq!(ca[0].as_i64(), Some(1));
+    assert_eq!(ca[1].as_str(), Some("two"));
+    assert_eq!(ca[2].as_bool(), Some(false));
+    assert_eq!(cloned.span_unchecked(), sp(0, 11));
+    assert_eq!(cloned.flag(), orig.flag());
+}
+
+#[test]
+fn clone_in_table() {
+    let arena = Arena::new();
+    let mut tab = InnerTable::new();
+    tab.insert(
+        Key {
+            name: "x",
+            span: sp(0, 1),
+        },
+        Item::integer_spanned(10, sp(2, 4)),
+        &arena,
+    );
+    tab.insert(
+        Key {
+            name: "y",
+            span: sp(5, 6),
+        },
+        Item::string_spanned("hi", sp(7, 9)),
+        &arena,
+    );
+    let orig = Item::table(tab, sp(0, 9));
+
+    let cloned = orig.clone_in(&arena);
+    let ct = cloned.as_table().unwrap();
+    assert_eq!(ct.len(), 2);
+    assert_eq!(ct.get("x").unwrap().as_i64(), Some(10));
+    assert_eq!(ct.get("y").unwrap().as_str(), Some("hi"));
+    assert_eq!(cloned.span_unchecked(), sp(0, 9));
+    assert_eq!(cloned.flag(), orig.flag());
+}
+
+#[test]
+fn clone_in_nested() {
+    let arena = Arena::new();
+
+    // Build { items: [{ name: "a", val: 1 }, { name: "b", val: 2 }] }
+    let mut t1 = InnerTable::new();
+    t1.insert(
+        Key {
+            name: "name",
+            span: sp(0, 4),
+        },
+        Item::string_spanned("a", sp(5, 6)),
+        &arena,
+    );
+    t1.insert(
+        Key {
+            name: "val",
+            span: sp(7, 10),
+        },
+        Item::integer_spanned(1, sp(11, 12)),
+        &arena,
+    );
+
+    let mut t2 = InnerTable::new();
+    t2.insert(
+        Key {
+            name: "name",
+            span: sp(13, 17),
+        },
+        Item::string_spanned("b", sp(18, 19)),
+        &arena,
+    );
+    t2.insert(
+        Key {
+            name: "val",
+            span: sp(20, 23),
+        },
+        Item::integer_spanned(2, sp(24, 25)),
+        &arena,
+    );
+
+    let mut arr = InternalArray::new();
+    arr.push(Item::table(t1, sp(0, 12)), &arena);
+    arr.push(Item::table(t2, sp(13, 25)), &arena);
+
+    let mut root = InnerTable::new();
+    root.insert(
+        Key {
+            name: "items",
+            span: sp(0, 5),
+        },
+        Item::array(arr, sp(6, 26)),
+        &arena,
+    );
+    let orig = Item::table(root, sp(0, 26));
+
+    let cloned = orig.clone_in(&arena);
+    assert_eq!(cloned["items"][0]["name"].as_str(), Some("a"));
+    assert_eq!(cloned["items"][0]["val"].as_i64(), Some(1));
+    assert_eq!(cloned["items"][1]["name"].as_str(), Some("b"));
+    assert_eq!(cloned["items"][1]["val"].as_i64(), Some(2));
+
+    // Mutating the clone doesn't affect the original
+    let ct = cloned.as_table().unwrap();
+    let items = ct.get("items").unwrap().as_array().unwrap();
+    let first = items.get(0).unwrap().as_table().unwrap();
+    assert_eq!(first.get("val").unwrap().as_i64(), Some(1));
+    assert_eq!(orig["items"][0]["val"].as_i64(), Some(1));
+}
+
+#[test]
+fn clone_in_preserves_flags() {
+    let arena = Arena::new();
+
+    // Header table
+    let orig = Item::table_header(InnerTable::new(), sp(0, 10));
+    let cloned = orig.clone_in(&arena);
+    assert_eq!(cloned.flag(), FLAG_HEADER);
+
+    // Dotted table
+    let orig = Item::table_dotted(InnerTable::new(), sp(0, 10));
+    let cloned = orig.clone_in(&arena);
+    assert_eq!(cloned.flag(), FLAG_DOTTED);
+
+    // Frozen (inline) table
+    let orig = Item::table_frozen(InnerTable::new(), sp(0, 10));
+    let cloned = orig.clone_in(&arena);
+    assert!(cloned.is_frozen());
+
+    // AOT array
+    let orig = Item::array_aot(InternalArray::new(), sp(0, 10));
+    let cloned = orig.clone_in(&arena);
+    assert!(cloned.is_aot());
+}
+
+#[test]
+fn clone_in_empty_containers() {
+    let arena = Arena::new();
+
+    let orig = Item::array(InternalArray::new(), sp(0, 2));
+    let cloned = orig.clone_in(&arena);
+    assert_eq!(cloned.as_array().unwrap().len(), 0);
+    assert_eq!(cloned.span_unchecked(), sp(0, 2));
+
+    let orig = Item::table(InnerTable::new(), sp(0, 2));
+    let cloned = orig.clone_in(&arena);
+    assert_eq!(cloned.as_table().unwrap().len(), 0);
+    assert_eq!(cloned.span_unchecked(), sp(0, 2));
 }

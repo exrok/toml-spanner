@@ -9,10 +9,10 @@ note[integer]: root_arrays-and-ints_0
   │                     ^
 
 note[string]: root_arrays-and-ints_1_0
-  ┌─ ints_and_arrays:1:26
+  ┌─ ints_and_arrays:1:25
   │
 1 │ arrays-and-ints =  [1, ["Arrays are not integers."]]
-  │                          ^^^^^^^^^^^^^^^^^^^^^^^^
+  │                         ^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 note[array]: root_arrays-and-ints_1
   ┌─ ints_and_arrays:1:24
@@ -31,5 +31,3 @@ note[table]: root
   │
 1 │ arrays-and-ints =  [1, ["Arrays are not integers."]]
   │ ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-
