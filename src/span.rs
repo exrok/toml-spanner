@@ -228,7 +228,7 @@ impl From<Span> for std::ops::Range<usize> {
 
 /// Wraps a value `T` with its source [`Span`].
 ///
-/// Use this as a field type in your [`Deserialize`](crate::Deserialize) structs
+/// Use this as a field type in your [`FromItem`](crate::FromItem) structs
 /// when you need to preserve span information alongside the deserialized value.
 ///
 /// # Examples
@@ -366,17 +366,17 @@ where
 }
 
 #[cfg(feature = "deserialization")]
-impl<'de, T> crate::de::Deserialize<'de> for Spanned<T>
+impl<'de, T> crate::de::FromItem<'de> for Spanned<T>
 where
-    T: crate::de::Deserialize<'de>,
+    T: crate::de::FromItem<'de>,
 {
     #[inline]
-    fn deserialize(
+    fn from_item(
         ctx: &mut crate::de::Context<'de>,
         value: &crate::value::Item<'de>,
     ) -> Result<Self, crate::de::Failed> {
         let span = value.span_unchecked();
-        let inner = T::deserialize(ctx, value)?;
+        let inner = T::from_item(ctx, value)?;
         Ok(Self { span, value: inner })
     }
 }

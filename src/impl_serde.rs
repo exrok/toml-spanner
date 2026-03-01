@@ -2,7 +2,7 @@
 //! [`Item`](crate::Item).
 //!
 //! Enabled by the `serde` feature flag. This provides [`serde::Serialize`]
-//! implementations only — deserialization uses the [`Deserialize`](crate::Deserialize)
+//! implementations only — deserialization uses the [`FromItem`](crate::FromItem)
 //! trait instead.
 
 use crate::Spanned;

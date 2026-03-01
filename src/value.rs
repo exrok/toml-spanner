@@ -329,6 +329,12 @@ impl<'de> From<bool> for Item<'de> {
     }
 }
 
+impl<'de> From<DateTime> for Item<'de> {
+    fn from(value: DateTime) -> Self {
+        Self::raw_hints(TAG_DATETIME, FLAG_NONE, Payload { datetime: value })
+    }
+}
+
 impl<'de> Item<'de> {
     /// Access projected item from source computed in reprojection.
     pub(crate) fn projected<'a>(&self, inputs: &[&'a Item<'a>]) -> Option<&'a Item<'a>> {
@@ -935,8 +941,8 @@ impl<'de> Item<'de> {
         self.as_table().is_some_and(|t| t.contains_key(key))
     }
 
-    /// Shallow-clones this item into `arena`, recursively cloning nested
-    /// arrays and tables while sharing string and key data.
+    /// Deep-clones this item into `arena`. Keys and strings are shared
+    /// with the source.
     pub fn clone_in(&self, arena: &'de Arena) -> Item<'de> {
         if self.is_scalar() {
             // SAFETY: Scalar items (string, integer, float, boolean, datetime)

@@ -1,0 +1,14 @@
+[package]
+name = "toml-spanner-macros"
+version = "0.1.0"
+edition = "2021"
+authors = ["Thomas Dagenais <exrok@i64.dev>"]
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/exrok/toml-spanner"
+description = "proc-macro crate for toml-spanner"
+rust-version = "1.84"
+
+[dependencies]
+
+[lib]
+proc-macro = true

@@ -42,7 +42,7 @@
 //! ## Deserialization
 //!
 //! Use [`Root::helper()`] to create a [`TableHelper`] for type-safe field extraction
-//! via the [`Deserialize`] trait. Errors are accumulated in the [`Root`]'s context
+//! via the [`FromItem`] trait. Errors are accumulated in the [`Root`]'s context
 //! rather than failing on the first error.
 //!
 //! ```
@@ -71,7 +71,7 @@
 //! <summary>Toggle More Extensive Example</summary>
 //!
 //! ```
-//! use toml_spanner::{Arena, Deserialize, Item, Context, Failed, TableHelper};
+//! use toml_spanner::{Arena, FromItem, Item, Context, Failed, TableHelper};
 //!
 //! #[derive(Debug)]
 //! struct Things {
@@ -80,8 +80,8 @@
 //!     color: Option<String>,
 //! }
 //!
-//! impl<'de> Deserialize<'de> for Things {
-//!     fn deserialize(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
+//! impl<'de> FromItem<'de> for Things {
+//!     fn from_item(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
 //!         let Some(table) = value.as_table() else {
 //!             return Err(ctx.error_expected_but_found("a table", value));
 //!         };
@@ -137,26 +137,79 @@ mod de;
 mod emit;
 mod error;
 mod parser;
+mod ser;
 mod span;
 mod table;
 mod time;
 mod value;
 
+use std::borrow::Cow;
+
 pub use arena::Arena;
 pub use array::Array;
 #[cfg(feature = "deserialization")]
-pub use de::{Context, Deserialize, Failed, TableHelper};
+pub use de::{Context, Failed, FromItem, TableHelper};
 pub use emit::{EmitConfig, NormalizedTable, emit, emit_with_config, reproject};
 pub use error::{Error, ErrorKind};
 pub use parser::{Root, parse};
+pub use ser::{ToContext, ToItem};
 pub use span::{Span, Spanned};
 pub use table::Table;
 pub use time::{Date, DateTime, Time, TimeOffset};
 pub use value::items_equal;
 pub use value::{ArrayStyle, Item, Key, Kind, MaybeItem, TableStyle, Value, ValueMut};
 
+#[cfg(feature = "derive")]
+pub use toml_spanner_macros::Toml;
+
 #[cfg(feature = "serde")]
 pub mod impl_serde;
 
 // Temporary module for testing and debugging during development
 pub mod dev;
+
+pub fn from_str<T: for<'a> FromItem<'a>>(document: &str) -> Result<T, Vec<Error>> {
+    let arena = Arena::new();
+    from_str_in(document, &arena)
+}
+
+pub fn from_str_in<'de, T: FromItem<'de>>(
+    document: &'de str,
+    arena: &'de Arena,
+) -> Result<T, Vec<Error>> {
+    match parse(document, arena) {
+        Ok(mut root) => {
+            let value = T::from_item(&mut root.ctx, root.table.as_item());
+            match value {
+                Ok(v) if root.ctx.errors.is_empty() => Ok(v),
+                _ => Err(root.ctx.errors),
+            }
+        }
+        Err(e) => Err(vec![e]),
+    }
+}
+
+pub fn to_string(value: &dyn ToItem) -> Result<String, Cow<'static, str>> {
+    let arena = Arena::new();
+    let mut context = ToContext {
+        arena: &arena,
+        error: None,
+    };
+    let mut item = match value.to_item(&mut context) {
+        Ok(item) => item,
+        Err(_) => {
+            return Err(context
+                .error
+                .unwrap_or_else(|| "Failed to convert into item".into()));
+        }
+    };
+    let Some(table) = item.as_table_mut() else {
+        return Err("Top-level item must be a table".into());
+    };
+    let mut buffer = Vec::new();
+    emit(table.normalize(), &mut buffer);
+    match String::from_utf8(buffer) {
+        Ok(s) => Ok(s),
+        Err(_) => Err("Failed to convert emitted bytes into a UTF-8 string".into()),
+    }
+}

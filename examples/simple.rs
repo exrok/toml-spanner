@@ -1,5 +1,5 @@
 #![allow(dead_code)]
-use toml_spanner::{Arena, Context, Deserialize, Failed, Item, Value};
+use toml_spanner::{Arena, Context, Failed, FromItem, Item, Value};
 
 const TOML_DOCUMENT: &str = r#"
 enabled = false
@@ -20,8 +20,8 @@ struct Config {
     number: u32,
 }
 
-impl<'de> Deserialize<'de> for Config {
-    fn deserialize(ctx: &mut Context<'de>, item: &Item<'de>) -> Result<Self, Failed> {
+impl<'de> FromItem<'de> for Config {
+    fn from_item(ctx: &mut Context<'de>, item: &Item<'de>) -> Result<Self, Failed> {
         let mut th = item.table_helper(ctx)?;
         let config = Config {
             enabled: th.optional("enabled").unwrap_or(false),

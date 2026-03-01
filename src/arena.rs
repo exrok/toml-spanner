@@ -221,6 +221,20 @@ impl Arena {
                 .set(NonNull::new_unchecked(base.as_ptr().add(new_size)));
         }
     }
+
+    /// Allocates a copy of `s` in the arena and returns a reference to it.
+    pub fn alloc_str(&self, s: &str) -> &str {
+        if s.is_empty() {
+            return "";
+        }
+        let dst = self.alloc(s.len());
+        // SAFETY: dst is a fresh arena allocation of s.len() bytes, disjoint
+        // from s. The resulting slice is valid UTF-8 because s is.
+        unsafe {
+            std::ptr::copy_nonoverlapping(s.as_ptr(), dst.as_ptr(), s.len());
+            std::str::from_utf8_unchecked(std::slice::from_raw_parts(dst.as_ptr(), s.len()))
+        }
+    }
 }
 
 impl Drop for Arena {

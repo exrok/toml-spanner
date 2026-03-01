@@ -1,0 +1,11 @@
+[package]
+name = "toml_macros_source"
+version = "0.0.0"
+edition = "2021"
+
+[dependencies]
+proc-macro2 = { version = "1.0.86", default-features = false }
+
+[features]
+default = ["debug"]
+debug = []

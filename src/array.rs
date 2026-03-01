@@ -173,11 +173,8 @@ impl<'de> InternalArray<'de> {
         self.cap = new_cap;
     }
 
-    /// Shallow-clones this array into `arena`, recursively cloning nested
-    /// arrays and tables while sharing string and key data.
-    ///
-    /// Copies contiguous runs of scalar items with a single `copy_nonoverlapping`,
-    /// only falling back to per-item `clone_in` for aggregate (table/array) elements.
+    /// Deep-clones this array into `arena`. Keys and strings are shared
+    /// with the source.
     pub(crate) fn clone_in(&self, arena: &'de Arena) -> Self {
         let len = self.len as usize;
         if len == 0 {
@@ -468,8 +465,8 @@ impl<'de> Array<'de> {
         self.meta.set_flag(flag);
     }
 
-    /// Shallow-clones this array into `arena`, recursively cloning nested
-    /// arrays and tables while sharing string and key data.
+    /// Deep-clones this array into `arena`. Keys and strings are shared
+    /// with the source.
     pub fn clone_in(&self, arena: &'de Arena) -> Array<'de> {
         Array {
             value: self.value.clone_in(arena),

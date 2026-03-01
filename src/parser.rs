@@ -1840,6 +1840,12 @@ impl<'de> Root<'de> {
         &self.table
     }
 
+    /// Access the root table immutably.
+    #[cfg(feature = "deserialization")]
+    pub fn split(&mut self) -> (&mut crate::de::Context<'de>, &Table<'de>) {
+        (&mut self.ctx, &self.table)
+    }
+
     /// Returns the parser's hash index for O(1) key lookups in large tables.
     ///
     /// Used internally by [`reproject`](crate::reproject).
@@ -1867,9 +1873,9 @@ impl<'de> Root<'de> {
     /// Deserialize the root table into a typed value.
     pub fn deserialize<T>(&mut self) -> Result<T, Failed>
     where
-        T: crate::de::Deserialize<'de>,
+        T: crate::de::FromItem<'de>,
     {
-        T::deserialize(&mut self.ctx, self.table.as_item())
+        T::from_item(&mut self.ctx, self.table.as_item())
     }
 
     /// Returns the accumulated deserialization errors.

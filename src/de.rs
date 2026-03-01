@@ -28,7 +28,7 @@ use crate::{
 /// # Examples
 ///
 /// ```
-/// use toml_spanner::{Arena, Deserialize, Item, Context, Failed, TableHelper};
+/// use toml_spanner::{Arena, FromItem, Item, Context, Failed, TableHelper};
 ///
 /// struct Config {
 ///     name: String,
@@ -36,8 +36,8 @@ use crate::{
 ///     debug: bool,
 /// }
 ///
-/// impl<'de> Deserialize<'de> for Config {
-///     fn deserialize(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
+/// impl<'de> FromItem<'de> for Config {
+///     fn from_item(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
 ///         let mut th = value.table_helper(ctx)?;
 ///         let name = th.required("name")?;
 ///         let port = th.required("port")?;
@@ -136,7 +136,7 @@ impl<'t, 'de> Iterator for RemainingEntriesIter<'t, 'de> {
 impl<'ctx, 't, 'de> TableHelper<'ctx, 't, 'de> {
     /// Creates a new helper for the given table.
     ///
-    /// Prefer [`Item::table_helper`] when implementing [`Deserialize`], or
+    /// Prefer [`Item::table_helper`] when implementing [`FromItem`], or
     /// [`Root::helper`](crate::Root::helper) for the root table.
     pub fn new(ctx: &'ctx mut Context<'de>, table: &'t Table<'de>) -> Self {
         let table_id = if table.len() > INDEXED_TABLE_THRESHOLD {
@@ -180,7 +180,7 @@ impl<'ctx, 't, 'de> TableHelper<'ctx, 't, 'de> {
     /// Looks up `name`, marks it as consumed, and passes the [`Item`] to
     /// `func`. This is useful for parsing string values via
     /// [`Item::parse`] or applying custom validation without implementing
-    /// [`Deserialize`].
+    /// [`FromItem`].
     ///
     /// # Errors
     ///
@@ -307,12 +307,12 @@ impl<'ctx, 't, 'de> TableHelper<'ctx, 't, 'de> {
     ///
     /// Returns [`Failed`] if the key is absent or if `T::deserialize` fails.
     /// In both cases the error is pushed onto the shared [`Context`].
-    pub fn required<T: Deserialize<'de>>(&mut self, name: &'static str) -> Result<T, Failed> {
+    pub fn required<T: FromItem<'de>>(&mut self, name: &'static str) -> Result<T, Failed> {
         let Some((_, val)) = self.optional_entry(name) else {
             return Err(self.report_missing_field(name));
         };
 
-        T::deserialize(self.ctx, val)
+        T::from_item(self.ctx, val)
     }
 
     /// Deserializes an optional field, returning [`None`] if the key is missing
@@ -320,13 +320,13 @@ impl<'ctx, 't, 'de> TableHelper<'ctx, 't, 'de> {
     ///
     /// The field is marked as consumed so [`expect_empty`](Self::expect_empty)
     /// will not flag it as unexpected.
-    pub fn optional<T: Deserialize<'de>>(&mut self, name: &str) -> Option<T> {
+    pub fn optional<T: FromItem<'de>>(&mut self, name: &str) -> Option<T> {
         let Some((_, val)) = self.optional_entry(name) else {
             return None;
         };
 
         #[allow(clippy::manual_ok_err)]
-        match T::deserialize(self.ctx, val) {
+        match T::from_item(self.ctx, val) {
             Ok(value) => Some(value),
             // Note: The parent will already have recorded the error
             Err(_) => None,
@@ -357,7 +357,7 @@ impl<'ctx, 't, 'de> TableHelper<'ctx, 't, 'de> {
     /// consumed by [`required`](Self::required) or
     /// [`optional`](Self::optional).
     ///
-    /// Call this as the last step in a [`Deserialize`] implementation to
+    /// Call this as the last step in a [`FromItem`] implementation to
     /// reject unknown keys.
     ///
     /// # Errors
@@ -393,7 +393,7 @@ impl<'ctx, 't, 'de> TableHelper<'ctx, 't, 'de> {
 ///
 /// A `Context` is created by [`parse`](crate::parse) and lives inside
 /// [`Root`](crate::Root). Pass it into [`TableHelper::new`] or
-/// [`Item::table_helper`] when implementing [`Deserialize`].
+/// [`Item::table_helper`] when implementing [`FromItem`].
 ///
 /// Multiple errors can be recorded during a single deserialization pass;
 /// inspect them afterwards via [`Root::errors`](crate::Root::errors).
@@ -449,7 +449,7 @@ impl<'de> Context<'de> {
 ///
 /// `Failed` carries no data — the actual error details live in
 /// [`Context::errors`](Context::errors). Return `Err(Failed)` from
-/// [`Deserialize::deserialize`] after calling one of the `Context::error_*`
+/// [`FromItem::from_item`] after calling one of the `Context::error_*`
 /// methods.
 #[derive(Debug)]
 pub struct Failed;
@@ -464,15 +464,15 @@ pub struct Failed;
 /// # Examples
 ///
 /// ```
-/// use toml_spanner::{Item, Context, Deserialize, Failed, TableHelper};
+/// use toml_spanner::{Item, Context, FromItem, Failed, TableHelper};
 ///
 /// struct Point {
 ///     x: f64,
 ///     y: f64,
 /// }
 ///
-/// impl<'de> Deserialize<'de> for Point {
-///     fn deserialize(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
+/// impl<'de> FromItem<'de> for Point {
+///     fn from_item(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
 ///         let mut th = value.table_helper(ctx)?;
 ///         let x = th.required("x")?;
 ///         let y = th.required("y")?;
@@ -481,17 +481,17 @@ pub struct Failed;
 ///     }
 /// }
 /// ```
-pub trait Deserialize<'de>: Sized {
+pub trait FromItem<'de>: Sized {
     /// Attempts to produce `Self` from a TOML [`Item`].
     ///
     /// On failure, records one or more errors in `ctx` and returns
     /// `Err(`[`Failed`]`)`.
-    fn deserialize(ctx: &mut Context<'de>, item: &Item<'de>) -> Result<Self, Failed>;
+    fn from_item(ctx: &mut Context<'de>, item: &Item<'de>) -> Result<Self, Failed>;
 }
 
-impl<'de, T: Deserialize<'de>, const N: usize> Deserialize<'de> for [T; N] {
-    fn deserialize(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
-        let boxed_slice = Box::<[T]>::deserialize(ctx, value)?;
+impl<'de, T: FromItem<'de>, const N: usize> FromItem<'de> for [T; N] {
+    fn from_item(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
+        let boxed_slice = Box::<[T]>::from_item(ctx, value)?;
         match <Box<[T; N]>>::try_from(boxed_slice) {
             Ok(array) => Ok(*array),
             Err(res) => Err(ctx.push_error(Error {
@@ -506,8 +506,8 @@ impl<'de, T: Deserialize<'de>, const N: usize> Deserialize<'de> for [T; N] {
     }
 }
 
-impl<'de> Deserialize<'de> for String {
-    fn deserialize(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
+impl<'de> FromItem<'de> for String {
+    fn from_item(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
         match value.as_str() {
             Some(s) => Ok(s.to_string()),
             None => Err(ctx.error_expected_but_found("a string", value)),
@@ -515,32 +515,32 @@ impl<'de> Deserialize<'de> for String {
     }
 }
 
-impl<'de, T: Deserialize<'de>> Deserialize<'de> for Box<T> {
-    fn deserialize(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
-        match T::deserialize(ctx, value) {
+impl<'de, T: FromItem<'de>> FromItem<'de> for Box<T> {
+    fn from_item(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
+        match T::from_item(ctx, value) {
             Ok(v) => Ok(Box::new(v)),
             Err(e) => Err(e),
         }
     }
 }
-impl<'de, T: Deserialize<'de>> Deserialize<'de> for Box<[T]> {
-    fn deserialize(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
-        match Vec::<T>::deserialize(ctx, value) {
+impl<'de, T: FromItem<'de>> FromItem<'de> for Box<[T]> {
+    fn from_item(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
+        match Vec::<T>::from_item(ctx, value) {
             Ok(vec) => Ok(vec.into_boxed_slice()),
             Err(e) => Err(e),
         }
     }
 }
-impl<'de> Deserialize<'de> for Box<str> {
-    fn deserialize(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
+impl<'de> FromItem<'de> for Box<str> {
+    fn from_item(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
         match value.value() {
             value::Value::String(&s) => Ok(s.into()),
             _ => Err(ctx.error_expected_but_found("a string", value)),
         }
     }
 }
-impl<'de> Deserialize<'de> for &'de str {
-    fn deserialize(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
+impl<'de> FromItem<'de> for &'de str {
+    fn from_item(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
         match value.value() {
             value::Value::String(s) => Ok(*s),
             _ => Err(ctx.error_expected_but_found("a string", value)),
@@ -548,8 +548,8 @@ impl<'de> Deserialize<'de> for &'de str {
     }
 }
 
-impl<'de> Deserialize<'de> for std::borrow::Cow<'de, str> {
-    fn deserialize(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
+impl<'de> FromItem<'de> for std::borrow::Cow<'de, str> {
+    fn from_item(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
         match value.value() {
             value::Value::String(s) => Ok(std::borrow::Cow::Borrowed(*s)),
             _ => Err(ctx.error_expected_but_found("a string", value)),
@@ -557,8 +557,8 @@ impl<'de> Deserialize<'de> for std::borrow::Cow<'de, str> {
     }
 }
 
-impl<'de> Deserialize<'de> for bool {
-    fn deserialize(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
+impl<'de> FromItem<'de> for bool {
+    fn from_item(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
         match value.as_bool() {
             Some(b) => Ok(b),
             None => Err(ctx.error_expected_but_found("a bool", value)),
@@ -583,8 +583,8 @@ fn deser_integer_ctx(
 
 macro_rules! integer_new {
     ($($num:ty),+) => {$(
-        impl<'de> Deserialize<'de> for $num {
-            fn deserialize(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
+        impl<'de> FromItem<'de> for $num {
+            fn from_item(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
                 match deser_integer_ctx(ctx, value, <$num>::MIN as i64, <$num>::MAX as i64, stringify!($num)) {
                     Ok(i) => Ok(i as $num),
                     Err(e) => Err(e),
@@ -596,14 +596,14 @@ macro_rules! integer_new {
 
 integer_new!(i8, i16, i32, isize, u8, u16, u32);
 
-impl<'de> Deserialize<'de> for i64 {
-    fn deserialize(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
+impl<'de> FromItem<'de> for i64 {
+    fn from_item(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
         deser_integer_ctx(ctx, value, i64::MIN, i64::MAX, "i64")
     }
 }
 
-impl<'de> Deserialize<'de> for u64 {
-    fn deserialize(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
+impl<'de> FromItem<'de> for u64 {
+    fn from_item(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
         match deser_integer_ctx(ctx, value, 0, i64::MAX, "u64") {
             Ok(i) => Ok(i as u64),
             Err(e) => Err(e),
@@ -611,8 +611,8 @@ impl<'de> Deserialize<'de> for u64 {
     }
 }
 
-impl<'de> Deserialize<'de> for usize {
-    fn deserialize(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
+impl<'de> FromItem<'de> for usize {
+    fn from_item(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
         const MAX: i64 = if usize::BITS < 64 {
             usize::MAX as i64
         } else {
@@ -625,8 +625,8 @@ impl<'de> Deserialize<'de> for usize {
     }
 }
 
-impl<'de> Deserialize<'de> for f32 {
-    fn deserialize(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
+impl<'de> FromItem<'de> for f32 {
+    fn from_item(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
         match value.as_f64() {
             Some(f) => Ok(f as f32),
             None => Err(ctx.error_expected_but_found("a float", value)),
@@ -634,8 +634,8 @@ impl<'de> Deserialize<'de> for f32 {
     }
 }
 
-impl<'de> Deserialize<'de> for f64 {
-    fn deserialize(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
+impl<'de> FromItem<'de> for f64 {
+    fn from_item(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
         match value.as_f64() {
             Some(f) => Ok(f),
             None => Err(ctx.error_expected_but_found("a float", value)),
@@ -643,16 +643,16 @@ impl<'de> Deserialize<'de> for f64 {
     }
 }
 
-impl<'de, T> Deserialize<'de> for Vec<T>
+impl<'de, T> FromItem<'de> for Vec<T>
 where
-    T: Deserialize<'de>,
+    T: FromItem<'de>,
 {
-    fn deserialize(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
+    fn from_item(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
         let arr = value.expect_array(ctx)?;
         let mut result = Vec::with_capacity(arr.len());
         let mut had_error = false;
         for item in arr {
-            match T::deserialize(ctx, item) {
+            match T::from_item(ctx, item) {
                 Ok(v) => result.push(v),
                 Err(_) => had_error = true,
             }
@@ -661,13 +661,13 @@ where
     }
 }
 
-impl<'de, K, V> Deserialize<'de> for BTreeMap<K, V>
+impl<'de, K, V> FromItem<'de> for BTreeMap<K, V>
 where
     K: Ord + std::str::FromStr,
     <K as std::str::FromStr>::Err: std::fmt::Display,
-    V: Deserialize<'de>,
+    V: FromItem<'de>,
 {
-    fn deserialize(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
+    fn from_item(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
         let table = value.expect_table(ctx)?;
         let mut map = BTreeMap::new();
         let mut had_error = false;
@@ -685,7 +685,7 @@ where
                     continue;
                 }
             };
-            match V::deserialize(ctx, item) {
+            match V::from_item(ctx, item) {
                 Ok(v) => {
                     map.insert(k, v);
                 }
@@ -738,7 +738,7 @@ impl<'de> Item<'de> {
 
     /// Creates a [`TableHelper`] for this item, returning an error if it is not a table.
     ///
-    /// This is the typical entry point for implementing [`Deserialize`].
+    /// This is the typical entry point for implementing [`FromItem`].
     pub fn table_helper<'ctx, 'item>(
         &'item self,
         ctx: &'ctx mut Context<'de>,
@@ -750,7 +750,7 @@ impl<'de> Item<'de> {
     }
 }
 
-/// Generates a [`Deserialize`] implementation for a struct using a
+/// Generates a [`FromItem`] implementation for a struct using a
 /// single-pass iterate-and-match approach.
 ///
 /// This is faster than [`TableHelper`] for tables with many fields because
@@ -824,8 +824,8 @@ macro_rules! deserialize_table {
             $($field_kind:ident $($toml_key:literal)? $field_name:ident : $field_type:ty $(= |$map_item:ident| $map_body:block)?),* $(,)?
         }
     ) => {
-        impl<'de> $crate::Deserialize<'de> for $struct_name {
-            fn deserialize(
+        impl<'de> $crate::FromItem<'de> for $struct_name {
+            fn from_item(
                 __ctx: &mut $crate::Context<'de>,
                 __item: &$crate::Item<'de>,
             ) -> Result<Self, $crate::Failed> {
@@ -854,8 +854,8 @@ macro_rules! deserialize_table {
             $($field_kind:ident $($toml_key:literal)? $field_name:ident : $field_type:ty $(= |$map_item:ident| $map_body:block)?),* $(,)?
         }
     ) => {
-        impl<'de> $crate::Deserialize<'de> for $struct_name {
-            fn deserialize(
+        impl<'de> $crate::FromItem<'de> for $struct_name {
+            fn from_item(
                 __ctx: &mut $crate::Context<'de>,
                 __item: &$crate::Item<'de>,
             ) -> Result<Self, $crate::Failed> {
@@ -894,8 +894,8 @@ macro_rules! deserialize_table {
         }
         flatten $flat_name:ident : $flat_type:ty = |$k:ident, $v:ident| $flat_body:expr $(,)?
     ) => {
-        impl<'de> $crate::Deserialize<'de> for $struct_name {
-            fn deserialize(
+        impl<'de> $crate::FromItem<'de> for $struct_name {
+            fn from_item(
                 __ctx: &mut $crate::Context<'de>,
                 __item: &$crate::Item<'de>,
             ) -> Result<Self, $crate::Failed> {
@@ -936,7 +936,7 @@ macro_rules! deserialize_table {
     }};
     (@deserialize $ctx:ident $value:ident $field_name:ident : $field_type:ty) => {{
         $field_name = Some(
-            <$field_type as $crate::Deserialize>::deserialize($ctx, $value)?
+            <$field_type as $crate::FromItem>::from_item($ctx, $value)?
         );
     }};
 

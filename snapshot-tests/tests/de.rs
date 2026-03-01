@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 
 use snapshot_tests::{invalid_de, valid_de};
-use toml_spanner::{Context, Deserialize, Failed, Item, Spanned, TableHelper};
+use toml_spanner::{Context, Failed, FromItem, Item, Spanned, TableHelper};
 
 #[derive(Debug)]
 struct Boop {
@@ -9,8 +9,8 @@ struct Boop {
     os: Option<u32>,
 }
 
-impl<'de> Deserialize<'de> for Boop {
-    fn deserialize(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
+impl<'de> FromItem<'de> for Boop {
+    fn from_item(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
         let mut th = value.table_helper(ctx)?;
         let s = th.required("s")?;
         let os = th.optional("os");
@@ -43,8 +43,8 @@ impl Package {
     }
 }
 
-impl<'de> Deserialize<'de> for Package {
-    fn deserialize(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
+impl<'de> FromItem<'de> for Package {
+    fn from_item(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
         if let Some(s) = value.as_str() {
             let (name, version) = Self::from_str(s);
             Ok(Self { name, version })
@@ -88,8 +88,8 @@ struct Array {
     packages: Vec<Package>,
 }
 
-impl<'de> Deserialize<'de> for Array {
-    fn deserialize(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
+impl<'de> FromItem<'de> for Array {
+    fn from_item(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
         let mut th = value.table_helper(ctx)?;
         let packages = th.required("packages")?;
         Ok(Self { packages })
@@ -115,11 +115,11 @@ pub struct PackageSpecOrExtended<T> {
     inner: Option<T>,
 }
 
-impl<'de, T> Deserialize<'de> for PackageSpecOrExtended<T>
+impl<'de, T> FromItem<'de> for PackageSpecOrExtended<T>
 where
     T: DeserializeTable<'de>,
 {
-    fn deserialize(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
+    fn from_item(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
         if let Some(s) = value.as_str() {
             let (name, version) = Package::from_str(s);
             return Ok(Self {
@@ -150,8 +150,8 @@ impl<'de> DeserializeTable<'de> for Reason {
     }
 }
 
-impl<'de> Deserialize<'de> for Reason {
-    fn deserialize(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
+impl<'de> FromItem<'de> for Reason {
+    fn from_item(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
         let mut th = value.table_helper(ctx)?;
         let reason = th.required("reason")?;
         th.expect_empty()?;
@@ -164,8 +164,8 @@ struct Flattened {
     flattened: Vec<PackageSpecOrExtended<Reason>>,
 }
 
-impl<'de> Deserialize<'de> for Flattened {
-    fn deserialize(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
+impl<'de> FromItem<'de> for Flattened {
+    fn from_item(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
         let mut th = value.table_helper(ctx)?;
         let flattened = th.required("flattened")?;
         Ok(Self { flattened })
@@ -179,8 +179,8 @@ struct Ohno {
     year: u8,
 }
 
-impl<'de> Deserialize<'de> for Ohno {
-    fn deserialize(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
+impl<'de> FromItem<'de> for Ohno {
+    fn from_item(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
         let mut th = value.table_helper(ctx)?;
         let year = th.required("year")?;
 

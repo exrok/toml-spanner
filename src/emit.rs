@@ -536,7 +536,11 @@ fn emit_body_entry(
             out.extend_from_slice(&emit.src[line_start..line_start + ws_len]);
         }
         if let Some(line_end) = try_emit_entry_from_source(key, item, dotted_prefix, emit, out) {
-            *cursor = if ahead { line_end } else { (*cursor).max(line_end) };
+            *cursor = if ahead {
+                line_end
+            } else {
+                (*cursor).max(line_end)
+            };
             return;
         }
         // Source emit failed — fall through to formatted output.

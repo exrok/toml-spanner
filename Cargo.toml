@@ -22,21 +22,24 @@ debug-assertions = true
 
 [workspace]
 resolver = "3"
-members = ["snapshot-tests"]
+members = ["snapshot-tests", "toml-spanner-macros"]
 exclude = [
     "third-party-integration-tests",
     "fuzz",
     "benchmark",
     "toml-test-harness",
     "stress-tests",
+    "toml-spanner-macros-source",
+    "macro-preprocessor",
 ]
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(fuzzing)'] }
 
 [features]
-default = ["deserialization"]
+default = ["deserialization", "derive"]
 deserialization = []
+derive = ["dep:toml-spanner-macros"]
 serde = ["dep:serde"]
 reporting = ["dep:codespan-reporting"]
 
@@ -44,7 +47,9 @@ reporting = ["dep:codespan-reporting"]
 codespan-reporting = { version = "0.13", optional = true }
 foldhash = "0.2.0"
 serde = { version = "1.0", optional = true }
+toml-spanner-macros = { path = "toml-spanner-macros", optional = true }
 zmij = "1.0.21"
 
 [dev-dependencies]
 oorandom = "11"
+toml-spanner-macros = { path = "toml-spanner-macros" }
