@@ -45,6 +45,14 @@ impl<'de> InnerTable<'de> {
         }
     }
 
+    pub(crate) fn with_capacity(cap: u32, arena: &'de Arena) -> Self {
+        let mut table = Self::new();
+        if cap > 0 {
+            table.grow_to(cap, arena);
+        }
+        table
+    }
+
     /// Inserts a key-value pair. Does **not** check for duplicates.
     pub fn insert(
         &mut self,
@@ -379,6 +387,17 @@ impl<'de> Table<'de> {
             meta: ItemMetadata::hints(TAG_TABLE, FLAG_TABLE),
             value: InnerTable::new(),
         }
+    }
+
+    /// Creates an empty table with pre-allocated capacity.
+    ///
+    /// Returns `None` if `cap` exceeds `u32::MAX`.
+    pub fn try_with_capacity(cap: usize, arena: &'de Arena) -> Option<Table<'de>> {
+        let cap: u32 = cap.try_into().ok()?;
+        Some(Table {
+            meta: ItemMetadata::hints(TAG_TABLE, FLAG_TABLE),
+            value: InnerTable::with_capacity(cap, arena),
+        })
     }
 
     /// Creates an empty table in span mode (parser-produced).

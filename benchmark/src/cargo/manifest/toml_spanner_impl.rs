@@ -38,7 +38,7 @@ fn push_custom_error(
 ) -> Failed {
     ctx.push_error(toml_spanner::Error {
         kind: toml_spanner::ErrorKind::Custom(err.to_string().into()),
-        span: item.span(),
+        span: item.span_unchecked(),
     })
 }
 
@@ -691,12 +691,12 @@ toml_spanner::deserialize_table! {
         optional "version" version: semver::Version = |item| {
             let s = item.as_str().ok_or_else(|| item.expected("a version string"))?;
             s.trim().parse::<semver::Version>()
-                .map_err(|err| toml_spanner::Error::custom(err, item.span()))
+                .map_err(|err| toml_spanner::Error::custom(err, item.span_unchecked()))
         },
         optional "rust-version" rust_version: RustVersion = |item| {
             let s = item.as_str().ok_or_else(|| item.expected("a rust version string"))?;
             s.parse::<RustVersion>()
-                .map_err(|err| toml_spanner::Error::custom(err, item.span()))
+                .map_err(|err| toml_spanner::Error::custom(err, item.span_unchecked()))
         },
     }
 }

@@ -342,6 +342,17 @@ impl<'de> Array<'de> {
         }
     }
 
+    /// Creates an empty array with pre-allocated capacity.
+    ///
+    /// Returns `None` if `cap` exceeds `u32::MAX`.
+    pub fn try_with_capacity(cap: usize, arena: &'de Arena) -> Option<Self> {
+        let cap: u32 = cap.try_into().ok()?;
+        Some(Self {
+            meta: ItemMetadata::hints(TAG_ARRAY, FLAG_ARRAY),
+            value: InternalArray::with_capacity(cap, arena),
+        })
+    }
+
     /// Creates an empty array in span mode (parser-produced).
     #[cfg(test)]
     pub(crate) fn new_spanned(span: Span) -> Self {

@@ -877,7 +877,7 @@ macro_rules! deserialize_table {
                 if !__unexpected.is_empty() {
                     __ctx.errors.push($crate::Error {
                         kind: $crate::ErrorKind::UnexpectedKeys { keys: __unexpected },
-                        span: __item.span(),
+                        span: __item.span_unchecked(),
                     });
                     return Err($crate::Failed);
                 }
@@ -945,7 +945,7 @@ macro_rules! deserialize_table {
         let $field_name = $field_name.ok_or_else(|| {
             $ctx.push_error($crate::Error::custom(
                 concat!("missing field `", stringify!($field_name), "`"),
-                $item.span(),
+                $item.span_unchecked(),
             ))
         })?;
     };
