@@ -211,8 +211,7 @@ impl<'de> toml_spanner::FromItem<'de> for TomlTrimPaths {
                 "none" => Ok(TomlTrimPaths::none()),
                 "all" => Ok(TomlTrimPaths::All),
                 _ => {
-                    let val =
-                        <TomlTrimPathsValue as toml_spanner::FromItem>::from_item(ctx, item)?;
+                    let val = <TomlTrimPathsValue as toml_spanner::FromItem>::from_item(ctx, item)?;
                     Ok(val.into())
                 }
             },
@@ -254,8 +253,7 @@ toml_spanner::deserialize_table! {
 
 impl<'de> toml_spanner::FromItem<'de> for TomlProfiles {
     fn from_item(ctx: &mut Context<'de>, item: &toml_spanner::Item<'de>) -> Result<Self, Failed> {
-        let map: BTreeMap<ProfileName, TomlProfile> =
-            toml_spanner::FromItem::from_item(ctx, item)?;
+        let map: BTreeMap<ProfileName, TomlProfile> = toml_spanner::FromItem::from_item(ctx, item)?;
         Ok(TomlProfiles(map))
     }
 }
@@ -328,9 +326,7 @@ impl<'de> toml_spanner::FromItem<'de> for InheritableLints {
                     }
                 }
             } else {
-                match <BTreeMap<String, TomlLint> as toml_spanner::FromItem>::from_item(
-                    ctx, val,
-                ) {
+                match <BTreeMap<String, TomlLint> as toml_spanner::FromItem>::from_item(ctx, val) {
                     Ok(tool_lints) => {
                         lints.insert(key.name.to_owned(), tool_lints);
                     }
@@ -377,8 +373,7 @@ impl<'de> toml_spanner::FromItem<'de> for InheritableSemverVersion {
                 Err(err) => Err(push_custom_error(ctx, item, err)),
             },
             toml_spanner::Value::Table(_) => {
-                let field =
-                    <TomlInheritedField as toml_spanner::FromItem>::from_item(ctx, item)?;
+                let field = <TomlInheritedField as toml_spanner::FromItem>::from_item(ctx, item)?;
                 Ok(InheritableField::Inherit(field))
             }
             _ => Err(ctx.error_expected_but_found("a version string or workspace table", item)),
@@ -391,8 +386,7 @@ impl<'de> toml_spanner::FromItem<'de> for InheritableString {
         match item.value() {
             toml_spanner::Value::String(&s) => Ok(InheritableField::Value(s.to_owned())),
             toml_spanner::Value::Table(_) => {
-                let field =
-                    <TomlInheritedField as toml_spanner::FromItem>::from_item(ctx, item)?;
+                let field = <TomlInheritedField as toml_spanner::FromItem>::from_item(ctx, item)?;
                 Ok(InheritableField::Inherit(field))
             }
             _ => Err(ctx.error_expected_but_found("a string or workspace table", item)),
@@ -408,8 +402,7 @@ impl<'de> toml_spanner::FromItem<'de> for InheritableRustVersion {
                 Err(err) => Err(push_custom_error(ctx, item, err)),
             },
             toml_spanner::Value::Table(_) => {
-                let field =
-                    <TomlInheritedField as toml_spanner::FromItem>::from_item(ctx, item)?;
+                let field = <TomlInheritedField as toml_spanner::FromItem>::from_item(ctx, item)?;
                 Ok(InheritableField::Inherit(field))
             }
             _ => Err(ctx.error_expected_but_found("a version string or workspace table", item)),
@@ -425,8 +418,7 @@ impl<'de> toml_spanner::FromItem<'de> for InheritableVecString {
                 Ok(InheritableField::Value(v))
             }
             toml_spanner::Value::Table(_) => {
-                let field =
-                    <TomlInheritedField as toml_spanner::FromItem>::from_item(ctx, item)?;
+                let field = <TomlInheritedField as toml_spanner::FromItem>::from_item(ctx, item)?;
                 Ok(InheritableField::Inherit(field))
             }
             _ => Err(ctx.error_expected_but_found("an array of strings or workspace table", item)),
@@ -442,8 +434,7 @@ impl<'de> toml_spanner::FromItem<'de> for InheritableStringOrBool {
                 Ok(InheritableField::Value(StringOrBool::String(s.to_owned())))
             }
             toml_spanner::Value::Table(_) => {
-                let field =
-                    <TomlInheritedField as toml_spanner::FromItem>::from_item(ctx, item)?;
+                let field = <TomlInheritedField as toml_spanner::FromItem>::from_item(ctx, item)?;
                 Ok(InheritableField::Inherit(field))
             }
             _ => Err(ctx.error_expected_but_found("a string, bool, or workspace table", item)),
@@ -462,8 +453,7 @@ impl<'de> toml_spanner::FromItem<'de> for InheritableVecStringOrBool {
                 Ok(InheritableField::Value(VecStringOrBool::VecString(v)))
             }
             toml_spanner::Value::Table(_) => {
-                let field =
-                    <TomlInheritedField as toml_spanner::FromItem>::from_item(ctx, item)?;
+                let field = <TomlInheritedField as toml_spanner::FromItem>::from_item(ctx, item)?;
                 Ok(InheritableField::Inherit(field))
             }
             _ => Err(ctx
@@ -559,8 +549,7 @@ impl<'de> toml_spanner::FromItem<'de> for InheritableDependency {
     fn from_item(ctx: &mut Context<'de>, item: &toml_spanner::Item<'de>) -> Result<Self, Failed> {
         // If it's a table with `workspace` key, try to parse as inherited
         if is_workspace_inherit(item) {
-            let dep =
-                <TomlInheritedDependency as toml_spanner::FromItem>::from_item(ctx, item)?;
+            let dep = <TomlInheritedDependency as toml_spanner::FromItem>::from_item(ctx, item)?;
             if dep.workspace {
                 return Ok(InheritableDependency::Inherit(dep));
             } else {

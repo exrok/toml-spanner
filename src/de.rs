@@ -442,6 +442,19 @@ impl<'de> Context<'de> {
         });
         Failed
     }
+
+    /// Records a missing-field error and returns [`Failed`].
+    ///
+    /// Used by generated `FromItem` implementations that iterate over table
+    /// entries instead of using [`TableHelper`].
+    #[cold]
+    pub fn report_missing_field(&mut self, name: &'static str, span: Span) -> Failed {
+        self.errors.push(Error {
+            kind: ErrorKind::MissingField(name),
+            span,
+        });
+        Failed
+    }
 }
 
 /// Sentinel indicating that a deserialization error has been recorded in the
@@ -487,6 +500,11 @@ pub trait FromItem<'de>: Sized {
     /// On failure, records one or more errors in `ctx` and returns
     /// `Err(`[`Failed`]`)`.
     fn from_item(ctx: &mut Context<'de>, item: &Item<'de>) -> Result<Self, Failed>;
+}
+
+pub trait FromFlattened {
+    type Partial;
+    fn init() -> Self::Partial;
 }
 
 impl<'de, T: FromItem<'de>, const N: usize> FromItem<'de> for [T; N] {

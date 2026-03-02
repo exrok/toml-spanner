@@ -254,18 +254,15 @@ fn is_option_type(field: &Field) -> bool {
 
 fn struct_from_item(out: &mut RustWriter, ctx: &Ctx, fields: &[Field]) {
     let start = out.buf.len();
+
+    // expect_table instead of table_helper — avoids bitset allocation
     splat!(out;
-        let mut __th = __item.table_helper(__ctx)?;
+        let __table = __item.expect_table(__ctx)?;
     );
+
+    // Declare field variables: skip fields get their default, others get Option slots
     for field in fields {
-        let name_lit = field_name_literal_toml(ctx, field, ctx.target.rename_all);
-        let is_skip = field.flags & Field::WITH_FROMITEM_SKIP != 0;
-        let is_default = field.flags & Field::WITH_FROMITEM_DEFAULT != 0;
-        let is_option = is_option_type(field);
-
-        let with_path = field.with(FROM_ITEM);
-
-        if is_skip {
+        if field.flags & Field::WITH_FROMITEM_SKIP != 0 {
             if let Some(default_kind) = field.default(FROM_ITEM) {
                 match default_kind {
                     DefaultKind::Custom(tokens) => {
@@ -278,69 +275,146 @@ fn struct_from_item(out: &mut RustWriter, ctx: &Ctx, fields: &[Field]) {
             } else {
                 splat!(out; let [#: field.name] = Default::default(););
             }
-        } else if let Some(with) = with_path {
-            if is_option || is_default {
-                if let Some(default_kind) = field.default(FROM_ITEM) {
-                    match default_kind {
-                        DefaultKind::Custom(tokens) => {
-                            splat!(out;
-                                let [#: field.name] = __th.optional_mapped([@name_lit.into()], [~with]::from_item)
-                                    .unwrap_or_else(|| [~tokens.as_slice()]);
-                            );
-                        }
-                        DefaultKind::Default => {
-                            splat!(out;
-                                let [#: field.name] = __th.optional_mapped([@name_lit.into()], [~with]::from_item)
-                                    .unwrap_or_default();
-                            );
-                        }
+        } else if is_option_type(field) {
+            splat!(out; let mut [#: field.name] : [~field.ty] = None;);
+        } else {
+            splat!(out; let mut [#: field.name] = None :: < [~field.ty] >;);
+        }
+    }
+
+    // Build match arms for key dispatch
+    let match_arms_start = out.buf.len();
+    for field in fields {
+        if field.flags & Field::WITH_FROMITEM_SKIP != 0 {
+            continue;
+        }
+
+        let name_lit = field_name_literal_toml(ctx, field, ctx.target.rename_all);
+        let is_default = field.flags & Field::WITH_FROMITEM_DEFAULT != 0;
+        let is_option = is_option_type(field);
+        let with_path = field.with(FROM_ITEM);
+        let is_required = !is_option && !is_default;
+
+        let arm_body_start = out.buf.len();
+
+        if let Some(with) = with_path {
+            // Custom deserializer: fn(&Item) -> Result<T, Error>
+            if is_required {
+                splat!(out;
+                    match [~with] :: from_item(__value) {
+                        Ok(__val) => { [#: field.name] = Some(__val); }
+                        Err(__err) => return Err(__ctx.push_error(
+                            [~&ctx.crate_path] :: Error :: custom(__err, __value.span_unchecked())
+                        )),
                     }
-                } else {
-                    splat!(out;
-                        let [#: field.name] = __th.optional_mapped([@name_lit.into()], [~with]::from_item)
-                            .unwrap_or_default();
-                    );
-                }
+                );
             } else {
                 splat!(out;
-                    let [#: field.name] = __th.required_mapped([@name_lit.into()], [~with]::from_item)?;
+                    match [~with] :: from_item(__value) {
+                        Ok(__val) => { [#: field.name] = Some(__val); }
+                        Err(__err) => { __ctx.push_error(
+                            [~&ctx.crate_path] :: Error :: custom(__err, __value.span_unchecked())
+                        ); }
+                    }
                 );
             }
-        } else if is_option {
-            // Option<T> fields: th.optional() already returns Option<T>
+        } else if is_required {
             splat!(out;
-                let [#: field.name] = __th.optional([@name_lit.into()]);
+                match [~&ctx.crate_path] :: FromItem :: from_item(__ctx, __value) {
+                    Ok(__val) => { [#: field.name] = Some(__val); }
+                    Err(__e) => return Err(__e),
+                }
             );
-        } else if is_default {
+        } else {
+            // Optional/default: error already recorded by from_item, just skip
+            splat!(out;
+                match [~&ctx.crate_path] :: FromItem :: from_item(__ctx, __value) {
+                    Ok(__val) => { [#: field.name] = Some(__val); }
+                    Err(_) => {}
+                }
+            );
+        }
+
+        let arm_body = out.split_off_stream(arm_body_start);
+        splat!(out;
+            [@name_lit.into()] =>
+                [@TokenTree::Group(Group::new(Delimiter::Brace, arm_body))]
+        );
+    }
+
+    // Wildcard arm: report unknown key immediately
+    splat!(out;
+        _ => {
+            return Err(__ctx.error_message_at(
+                [@TokenTree::Literal(Literal::string("unexpected key"))], __key.span
+            ));
+        }
+    );
+    let match_arms = out.split_off_stream(match_arms_start);
+
+    // Build for-loop body (the match statement)
+    let for_body_start = out.buf.len();
+    splat!(out;
+        match __key.name [@TokenTree::Group(Group::new(Delimiter::Brace, match_arms))]
+    );
+    let for_body = out.split_off_stream(for_body_start);
+
+    // Build for-loop pattern: (__key, __value)
+    let for_pat = {
+        let pat_stream = token_stream!(out; __key, __value);
+        TokenTree::Group(Group::new(Delimiter::Parenthesis, pat_stream))
+    };
+
+    // Emit the iterate-and-match loop
+    splat!(out;
+        for [@for_pat] in __table
+            [@TokenTree::Group(Group::new(Delimiter::Brace, for_body))]
+    );
+
+    // Unwrap required and default fields after the loop
+    for field in fields {
+        if field.flags & Field::WITH_FROMITEM_SKIP != 0 || is_option_type(field) {
+            continue;
+        }
+
+        let is_default = field.flags & Field::WITH_FROMITEM_DEFAULT != 0;
+
+        if is_default {
             if let Some(default_kind) = field.default(FROM_ITEM) {
                 match default_kind {
                     DefaultKind::Custom(tokens) => {
                         splat!(out;
-                            let [#: field.name] = __th.optional([@name_lit.into()])
-                                .unwrap_or_else(|| [~tokens.as_slice()]);
+                            let [#: field.name] = [#: field.name].unwrap_or_else(|| [~tokens.as_slice()]);
                         );
                     }
                     DefaultKind::Default => {
                         splat!(out;
-                            let [#: field.name] = __th.optional([@name_lit.into()])
-                                .unwrap_or_default();
+                            let [#: field.name] = [#: field.name].unwrap_or_default();
                         );
                     }
                 }
             } else {
                 splat!(out;
-                    let [#: field.name] = __th.optional([@name_lit.into()])
-                        .unwrap_or_default();
+                    let [#: field.name] = [#: field.name].unwrap_or_default();
                 );
             }
         } else {
+            // Required: take + missing-field error
+            let name_lit = field_name_literal_toml(ctx, field, ctx.target.rename_all);
+            let else_body_start = out.buf.len();
             splat!(out;
-                let [#: field.name] = __th.required([@name_lit.into()])?;
+                return Err(__ctx.report_missing_field([@name_lit.into()], __item.span_unchecked()));
+            );
+            let else_body = out.split_off_stream(else_body_start);
+            splat!(out;
+                let Some([#: field.name]) = [#: field.name].take() else
+                    [@TokenTree::Group(Group::new(Delimiter::Brace, else_body))]
+                ;
             );
         }
     }
+
     splat!(out;
-        __th.expect_empty()?;
         Ok(Self {
             [for field in fields { splat!(out; [#: field.name],); }]
         })

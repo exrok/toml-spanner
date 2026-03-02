@@ -382,9 +382,3 @@ fn enum_adjacent_roundtrip() {
     let restored: Wrapper = toml_spanner::from_str(&toml_str).unwrap();
     assert_eq!(w, restored);
 }
-
-#[derive(Toml)]
-#[toml(ToItem)]
-struct Foo<'a> {
-    bar: &'a str,
-}

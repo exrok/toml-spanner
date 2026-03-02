@@ -128,7 +128,7 @@ fn main() {
     util::print_pretty(codegen::derive(tokens! {
 
     #[derive(Toml)]
-    #[toml(ToItem)]
+    #[toml(FromItem)]
     struct Foo<'a> {
         bar: &'a str,
     }
