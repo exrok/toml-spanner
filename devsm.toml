@@ -40,6 +40,24 @@ cmd = [
 pwd = "./benchmark"
 profiles = ["runtime", "compile-time"]
 
+[action.build-macros]
+pwd = "./macro-preprocessor/"
+cmd = [
+    "cargo",
+    "run",
+    "../toml-spanner-macros-source",
+    "../toml-spanner-macros",
+]
+cache.key = [
+    { modified = "./macro-preprocessor/" },
+    { modified = "./toml-spanner-macros-source/" },
+]
+
+[action.macro-main]
+pwd = "./toml-spanner-macros-source"
+cmd = ["cargo", "run"]
+
+
 [test.clippy]
 cmd = ["cargo", "clippy", "--all-targets", "--", "--deny=warnings"]
 tag = ["lint"]
@@ -48,7 +66,8 @@ tag = ["lint"]
 cmd = ["cargo", "insta", "test", "-p", "snapshot-tests"]
 
 [test.cargo-test]
-cmd = ["cargo", "test"]
+cmd = ["cargo", "test", "-q"]
+require = ["build-macros"]
 
 [test.miri-stress-tests]
 pwd = "stress-tests"
@@ -82,13 +101,14 @@ tag = ["slow", "miri"]
 
 [test.official-toml-test-suite]
 info = """
-Validate toml-spanner against https://github.com/toml-lang/toml-test decoder test suite
+Validate toml-spanner against https://github.com/toml-lang/toml-test decoder and encoder test suite
 Requires `toml-test` to be installed, see REPO for installation procedure.
 """
 pwd = "toml-test-harness"
 sh = '''
-BIN=$(cargo --config "target.'cfg(unix)'.runner = 'echo'" run --release || exit 1)
-toml-test test -toml 1.1 "-decoder=$BIN"
+DECODER=$(cargo --config "target.'cfg(unix)'.runner = 'echo'" run --bin decoder --release || exit 1)
+ENCODER=$(cargo --config "target.'cfg(unix)'.runner = 'echo'" run --bin encoder --release || exit 1)
+toml-test test -toml 1.1 "-decoder=$DECODER" "-encoder=$ENCODER"
 '''
 
 [test.typos]

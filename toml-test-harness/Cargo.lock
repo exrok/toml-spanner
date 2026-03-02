@@ -28,12 +28,17 @@ checksum = "92ecc6618181def0457392ccd0ee51198e065e016d1d527a7ac1b6dc7c1f09d2"
 [[package]]
 name = "jsony"
 version = "0.1.8"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b985872d20345f740f012ccffd65144759b12ffb6c01acf485e30e24c449ef06"
 dependencies = [
  "itoa",
+ "jsony_macros",
  "ryu",
 ]
+
+[[package]]
+name = "jsony_macros"
+version = "0.1.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c18667b5fc4ed9586b42797ecfeb32f8d235ff7aec32e12f79797e3b79c316f4"
 
 [[package]]
 name = "proc-macro2"
@@ -115,8 +120,13 @@ version = "0.4.0"
 dependencies = [
  "codespan-reporting",
  "foldhash",
+ "toml-spanner-macros",
  "zmij",
 ]
+
+[[package]]
+name = "toml-spanner-macros"
+version = "0.1.0"
 
 [[package]]
 name = "toml-test-harness"
