@@ -2,8 +2,9 @@
 #[path = "./de_tests.rs"]
 mod tests;
 
-use std::collections::BTreeMap;
+use std::hash::BuildHasher;
 use std::num::NonZeroU64;
+use std::{collections::BTreeMap, hash::Hash};
 
 use foldhash::HashMap;
 
@@ -502,9 +503,92 @@ pub trait FromItem<'de>: Sized {
     fn from_item(ctx: &mut Context<'de>, item: &Item<'de>) -> Result<Self, Failed>;
 }
 
-pub trait FromFlattened {
+pub trait FromFlattened<'de>: Sized {
     type Partial;
     fn init() -> Self::Partial;
+    fn insert(
+        ctx: &mut Context<'de>,
+        key: &Key<'de>,
+        item: &Item<'de>,
+        partial: &mut Self::Partial,
+    ) -> Result<(), Failed>;
+    fn finish(ctx: &mut Context<'de>, partial: Self::Partial) -> Result<Self, Failed>;
+}
+
+impl<'de, K, V, H> FromFlattened<'de> for std::collections::HashMap<K, V, H>
+where
+    K: Hash + Eq + std::str::FromStr,
+    <K as std::str::FromStr>::Err: std::fmt::Display,
+    V: FromItem<'de>,
+    H: Default + BuildHasher,
+{
+    type Partial = Self;
+    fn init() -> Self {
+        std::collections::HashMap::default()
+    }
+    fn insert(
+        ctx: &mut Context<'de>,
+        key: &Key<'de>,
+        item: &Item<'de>,
+        partial: &mut Self::Partial,
+    ) -> Result<(), Failed> {
+        let k = match key.name.parse::<K>() {
+            Ok(k) => k,
+            Err(err) => {
+                ctx.push_error(Error {
+                    kind: ErrorKind::Custom(format!("invalid key `{}`: {err}", key.name).into()),
+                    span: key.span,
+                });
+                return Err(Failed);
+            }
+        };
+        let v = match V::from_item(ctx, item) {
+            Ok(v) => v,
+            Err(_) => return Err(Failed),
+        };
+        partial.insert(k, v);
+        Ok(())
+    }
+    fn finish(_ctx: &mut Context<'de>, partial: Self::Partial) -> Result<Self, Failed> {
+        Ok(partial)
+    }
+}
+impl<'de, K, V> FromFlattened<'de> for BTreeMap<K, V>
+where
+    K: Ord + std::str::FromStr,
+    <K as std::str::FromStr>::Err: std::fmt::Display,
+    V: FromItem<'de>,
+{
+    type Partial = Self;
+    fn init() -> Self {
+        BTreeMap::new()
+    }
+    fn insert(
+        ctx: &mut Context<'de>,
+        key: &Key<'de>,
+        item: &Item<'de>,
+        partial: &mut Self::Partial,
+    ) -> Result<(), Failed> {
+        let k = match key.name.parse::<K>() {
+            Ok(k) => k,
+            Err(err) => {
+                ctx.push_error(Error {
+                    kind: ErrorKind::Custom(format!("invalid key `{}`: {err}", key.name).into()),
+                    span: key.span,
+                });
+                return Err(Failed);
+            }
+        };
+        let v = match V::from_item(ctx, item) {
+            Ok(v) => v,
+            Err(_) => return Err(Failed),
+        };
+        partial.insert(k, v);
+        Ok(())
+    }
+    fn finish(_ctx: &mut Context<'de>, partial: Self::Partial) -> Result<Self, Failed> {
+        Ok(partial)
+    }
 }
 
 impl<'de, T: FromItem<'de>, const N: usize> FromItem<'de> for [T; N] {

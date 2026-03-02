@@ -148,11 +148,11 @@ use std::borrow::Cow;
 pub use arena::Arena;
 pub use array::Array;
 #[cfg(feature = "deserialization")]
-pub use de::{Context, Failed, FromItem, TableHelper};
+pub use de::{Context, Failed, FromFlattened, FromItem, TableHelper};
 pub use emit::{EmitConfig, NormalizedTable, emit, emit_with_config, reproject};
 pub use error::{Error, ErrorKind};
 pub use parser::{Root, parse};
-pub use ser::{ToContext, ToItem};
+pub use ser::{ToContext, ToFlattened, ToItem};
 pub use span::{Span, Spanned};
 pub use table::Table;
 pub use time::{Date, DateTime, Time, TimeOffset};

@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use toml_spanner::{Arena, FromItem};
 use toml_spanner_macros::Toml;
 
@@ -381,4 +382,65 @@ fn enum_adjacent_roundtrip() {
     let toml_str = toml_spanner::to_string(&w).unwrap();
     let restored: Wrapper = toml_spanner::from_str(&toml_str).unwrap();
     assert_eq!(w, restored);
+}
+
+// ── Flatten tests ────────────────────────────────────────────
+
+#[derive(Toml, Debug, PartialEq)]
+#[toml(FromItem, ToItem)]
+struct WithFlatten {
+    name: String,
+    #[toml(flatten)]
+    extras: BTreeMap<String, String>,
+}
+
+#[test]
+fn flatten_from_item() {
+    let input = r#"
+        name = "test"
+        foo = "bar"
+        baz = "qux"
+    "#;
+    let v: WithFlatten = toml_spanner::from_str(input).unwrap();
+    assert_eq!(v.name, "test");
+    assert_eq!(v.extras.len(), 2);
+    assert_eq!(v.extras["foo"], "bar");
+    assert_eq!(v.extras["baz"], "qux");
+}
+
+#[test]
+fn flatten_to_item() {
+    let mut extras = BTreeMap::new();
+    extras.insert("alpha".to_string(), "one".to_string());
+    extras.insert("beta".to_string(), "two".to_string());
+    let v = WithFlatten {
+        name: "hello".to_string(),
+        extras,
+    };
+    let toml_str = toml_spanner::to_string(&v).unwrap();
+    assert!(toml_str.contains("name = \"hello\""), "got: {toml_str}");
+    assert!(toml_str.contains("alpha = \"one\""), "got: {toml_str}");
+    assert!(toml_str.contains("beta = \"two\""), "got: {toml_str}");
+}
+
+#[test]
+fn flatten_roundtrip() {
+    let mut extras = BTreeMap::new();
+    extras.insert("x".to_string(), "1".to_string());
+    extras.insert("y".to_string(), "2".to_string());
+    let original = WithFlatten {
+        name: "rt".to_string(),
+        extras,
+    };
+    let toml_str = toml_spanner::to_string(&original).unwrap();
+    let restored: WithFlatten = toml_spanner::from_str(&toml_str).unwrap();
+    assert_eq!(original, restored);
+}
+
+#[test]
+fn flatten_empty_extras() {
+    let input = r#"name = "only""#;
+    let v: WithFlatten = toml_spanner::from_str(input).unwrap();
+    assert_eq!(v.name, "only");
+    assert!(v.extras.is_empty());
 }

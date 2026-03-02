@@ -69,44 +69,6 @@ impl<K: ToItem> ToItem for BTreeSet<K> {
     }
 }
 
-impl<K: AsRef<str>, V: ToItem> ToItem for BTreeMap<K, V> {
-    fn to_item<'a>(&'a self, ctx: &mut ToContext<'a>) -> Result<Item<'a>, Failed> {
-        let Some(mut table) = Table::try_with_capacity(self.len(), &ctx.arena) else {
-            return ctx.report_error("Length of table exceeded maximum capacity");
-        };
-        for (k, v) in self {
-            table.insert(
-                Key::anon(k.as_ref()),
-                match v.to_item(ctx) {
-                    Ok(it) => it,
-                    Err(_) => return Err(Failed),
-                },
-                ctx.arena,
-            );
-        }
-        Ok(table.into_item())
-    }
-}
-
-impl<K: AsRef<str>, V: ToItem, H> ToItem for HashMap<K, V, H> {
-    fn to_item<'a>(&'a self, ctx: &mut ToContext<'a>) -> Result<Item<'a>, Failed> {
-        let Some(mut table) = Table::try_with_capacity(self.len(), &ctx.arena) else {
-            return ctx.report_error("Length of table exceeded maximum capacity");
-        };
-        for (k, v) in self {
-            table.insert(
-                Key::anon(k.as_ref()),
-                match v.to_item(ctx) {
-                    Ok(it) => it,
-                    Err(_) => return Err(Failed),
-                },
-                ctx.arena,
-            );
-        }
-        Ok(table.into_item())
-    }
-}
-
 impl<K: ToItem, H> ToItem for std::collections::HashSet<K, H> {
     fn to_item<'a>(&'a self, ctx: &mut ToContext<'a>) -> Result<Item<'a>, Failed> {
         let Some(mut array) = Array::try_with_capacity(self.len(), ctx.arena) else {
@@ -283,3 +245,75 @@ macro_rules! direct_upcast_integers {
 }
 
 direct_upcast_integers!(u8, i8, i16, u16, i32, u32, i64);
+
+pub trait ToFlattened {
+    fn to_flattened<'a>(
+        &'a self,
+        ctx: &mut ToContext<'a>,
+        table: &mut Table<'a>,
+    ) -> Result<(), Failed>;
+}
+
+impl<K: AsRef<str>, V: ToItem> ToFlattened for BTreeMap<K, V> {
+    fn to_flattened<'a>(
+        &'a self,
+        ctx: &mut ToContext<'a>,
+        table: &mut Table<'a>,
+    ) -> Result<(), Failed> {
+        for (k, v) in self {
+            table.insert(
+                Key::anon(k.as_ref()),
+                match v.to_item(ctx) {
+                    Ok(it) => it,
+                    Err(_) => return Err(Failed),
+                },
+                ctx.arena,
+            );
+        }
+        Ok(())
+    }
+}
+
+impl<K: AsRef<str>, V: ToItem, H> ToFlattened for HashMap<K, V, H> {
+    fn to_flattened<'a>(
+        &'a self,
+        ctx: &mut ToContext<'a>,
+        table: &mut Table<'a>,
+    ) -> Result<(), Failed> {
+        for (k, v) in self {
+            table.insert(
+                Key::anon(k.as_ref()),
+                match v.to_item(ctx) {
+                    Ok(it) => it,
+                    Err(_) => return Err(Failed),
+                },
+                ctx.arena,
+            );
+        }
+        Ok(())
+    }
+}
+
+impl<K: AsRef<str>, V: ToItem> ToItem for BTreeMap<K, V> {
+    fn to_item<'a>(&'a self, ctx: &mut ToContext<'a>) -> Result<Item<'a>, Failed> {
+        let Some(mut table) = Table::try_with_capacity(self.len(), &ctx.arena) else {
+            return ctx.report_error("Length of table exceeded maximum capacity");
+        };
+        if let Err(err) = self.to_flattened(ctx, &mut table) {
+            return Err(err);
+        }
+        Ok(table.into_item())
+    }
+}
+
+impl<K: AsRef<str>, V: ToItem, H> ToItem for HashMap<K, V, H> {
+    fn to_item<'a>(&'a self, ctx: &mut ToContext<'a>) -> Result<Item<'a>, Failed> {
+        let Some(mut table) = Table::try_with_capacity(self.len(), &ctx.arena) else {
+            return ctx.report_error("Length of table exceeded maximum capacity");
+        };
+        if let Err(err) = self.to_flattened(ctx, &mut table) {
+            return Err(err);
+        }
+        Ok(table.into_item())
+    }
+}

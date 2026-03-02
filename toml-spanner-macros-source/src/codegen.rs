@@ -101,6 +101,7 @@ macro_rules! append_tok {
     (|| $d:tt) => { $d.tt_punct_joint('|');$d.tt_punct_alone('|') };
     (% $d:tt) => { $d.tt_punct_joint(':') };
     (== $d:tt) => {$d.tt_punct_joint('='); $d.tt_punct_alone('=') };
+    (!= $d:tt) => {$d.tt_punct_joint('!'); $d.tt_punct_alone('=') };
     (:: $d:tt) => {$d.tt_punct_joint(':'); $d.tt_punct_alone(':') };
     (-> $d:tt) => {$d.tt_punct_joint('-'); $d.tt_punct_alone('>') };
     (=> $d:tt) => {$d.tt_punct_joint('='); $d.tt_punct_alone('>') };
@@ -231,9 +232,11 @@ fn impl_from_item(output: &mut RustWriter, ctx: &Ctx, inner: TokenStream) {
             [?(!ctx.generics.is_empty()), [fmt_generics(output, ctx.generics, DEF)]] >
          [~&ctx.crate_path]::FromItem<#[#: &ctx.lifetime]> for [#: &target.name][?(any_generics) <
             [fmt_generics(output, &target.generics, USE)]
-        >]  [?(!target.where_clauses.is_empty() || !target.generic_field_types.is_empty())
+        >]  [?(!target.where_clauses.is_empty() || !target.generic_field_types.is_empty() || !target.generic_flatten_field_types.is_empty())
              where [for (ty in &target.generic_field_types) {
                 [~ty]: [~&ctx.crate_path]::FromItem<#[#: &ctx.lifetime]>,
+            }] [for (ty in &target.generic_flatten_field_types) {
+                [~ty]: [~&ctx.crate_path]::FromFlattened<#[#: &ctx.lifetime]>,
             }] [~&target.where_clauses] ]
         {
             fn from_item(
@@ -253,6 +256,17 @@ fn is_option_type(field: &Field) -> bool {
 }
 
 fn struct_from_item(out: &mut RustWriter, ctx: &Ctx, fields: &[Field]) {
+    // Detect flatten field (at most one)
+    let mut flatten_field: Option<&Field> = None;
+    for field in fields {
+        if field.flags & Field::WITH_FLATTEN != 0 {
+            if flatten_field.is_some() {
+                throw!("Only one #[toml(flatten)] field is allowed per struct")
+            }
+            flatten_field = Some(field);
+        }
+    }
+
     let start = out.buf.len();
 
     // expect_table instead of table_helper — avoids bitset allocation
@@ -262,6 +276,13 @@ fn struct_from_item(out: &mut RustWriter, ctx: &Ctx, fields: &[Field]) {
 
     // Declare field variables: skip fields get their default, others get Option slots
     for field in fields {
+        if field.flags & Field::WITH_FLATTEN != 0 {
+            // Flatten field: init partial accumulator
+            splat!(out;
+                let mut __flatten_partial = < [~field.ty] as [~&ctx.crate_path]::FromFlattened<#[#: &ctx.lifetime]> >::init();
+            );
+            continue;
+        }
         if field.flags & Field::WITH_FROMITEM_SKIP != 0 {
             if let Some(default_kind) = field.default(FROM_ITEM) {
                 match default_kind {
@@ -285,7 +306,7 @@ fn struct_from_item(out: &mut RustWriter, ctx: &Ctx, fields: &[Field]) {
     // Build match arms for key dispatch
     let match_arms_start = out.buf.len();
     for field in fields {
-        if field.flags & Field::WITH_FROMITEM_SKIP != 0 {
+        if field.flags & (Field::WITH_FROMITEM_SKIP | Field::WITH_FLATTEN) != 0 {
             continue;
         }
 
@@ -342,14 +363,24 @@ fn struct_from_item(out: &mut RustWriter, ctx: &Ctx, fields: &[Field]) {
         );
     }
 
-    // Wildcard arm: report unknown key immediately
-    splat!(out;
-        _ => {
-            return Err(__ctx.error_message_at(
-                [@TokenTree::Literal(Literal::string("unexpected key"))], __key.span
-            ));
-        }
-    );
+    // Wildcard arm
+    if let Some(ff) = flatten_field {
+        splat!(out;
+            _ => {
+                let _ = < [~ff.ty] as [~&ctx.crate_path]::FromFlattened<#[#: &ctx.lifetime]> >::insert(
+                    __ctx, __key, __value, &mut __flatten_partial
+                );
+            }
+        );
+    } else {
+        splat!(out;
+            _ => {
+                return Err(__ctx.error_message_at(
+                    [@TokenTree::Literal(Literal::string("unexpected key"))], __key.span
+                ));
+            }
+        );
+    }
     let match_arms = out.split_off_stream(match_arms_start);
 
     // Build for-loop body (the match statement)
@@ -371,9 +402,20 @@ fn struct_from_item(out: &mut RustWriter, ctx: &Ctx, fields: &[Field]) {
             [@TokenTree::Group(Group::new(Delimiter::Brace, for_body))]
     );
 
+    // Finish flatten partial after the loop
+    if let Some(ff) = flatten_field {
+        splat!(out;
+            let [#: ff.name] = < [~ff.ty] as [~&ctx.crate_path]::FromFlattened<#[#: &ctx.lifetime]> >::finish(
+                __ctx, __flatten_partial
+            )?;
+        );
+    }
+
     // Unwrap required and default fields after the loop
     for field in fields {
-        if field.flags & Field::WITH_FROMITEM_SKIP != 0 || is_option_type(field) {
+        if field.flags & (Field::WITH_FROMITEM_SKIP | Field::WITH_FLATTEN) != 0
+            || is_option_type(field)
+        {
             continue;
         }
 
@@ -433,9 +475,11 @@ fn impl_to_item(output: &mut RustWriter, ctx: &Ctx, inner: TokenStream) {
         impl [?(!target.generics.is_empty()) < [fmt_generics(output, &target.generics, DEF)] >]
          [~&ctx.crate_path]::ToItem for [#: &target.name][?(any_generics) <
             [fmt_generics(output, &target.generics, USE)]
-        >]  [?(!target.where_clauses.is_empty() || !target.generic_field_types.is_empty())
+        >]  [?(!target.where_clauses.is_empty() || !target.generic_field_types.is_empty() || !target.generic_flatten_field_types.is_empty())
              where [for (ty in &target.generic_field_types) {
                 [~ty]: [~&ctx.crate_path]::ToItem,
+            }] [for (ty in &target.generic_flatten_field_types) {
+                [~ty]: [~&ctx.crate_path]::ToFlattened,
             }] [~&target.where_clauses] ]
         {
             fn to_item<# [#lf]>(& # [#lf] self, __ctx: &mut [~&ctx.crate_path]::ToContext<# [#lf]>)
@@ -446,9 +490,12 @@ fn impl_to_item(output: &mut RustWriter, ctx: &Ctx, inner: TokenStream) {
 }
 
 fn struct_to_item(out: &mut RustWriter, ctx: &Ctx, fields: &[Field]) {
+    let mut flatten_field: Option<&Field> = None;
     let mut non_skip_count = 0usize;
     for field in fields {
-        if field.flags & Field::WITH_TO_ITEM_SKIP == 0 {
+        if field.flags & Field::WITH_FLATTEN != 0 {
+            flatten_field = Some(field);
+        } else if field.flags & Field::WITH_TO_ITEM_SKIP == 0 {
             non_skip_count += 1;
         }
     }
@@ -462,7 +509,7 @@ fn struct_to_item(out: &mut RustWriter, ctx: &Ctx, fields: &[Field]) {
         };
     );
     for field in fields {
-        if field.flags & Field::WITH_TO_ITEM_SKIP != 0 {
+        if field.flags & (Field::WITH_TO_ITEM_SKIP | Field::WITH_FLATTEN) != 0 {
             continue;
         }
         let name_lit = field_name_literal_toml(ctx, field, ctx.target.rename_all);
@@ -514,6 +561,12 @@ fn struct_to_item(out: &mut RustWriter, ctx: &Ctx, fields: &[Field]) {
                     [@TokenTree::Group(Group::new(Delimiter::Brace, emit_body))]
             );
         }
+    }
+    // Emit flatten field serialization
+    if let Some(ff) = flatten_field {
+        splat!(out;
+            [~&ctx.crate_path]::ToFlattened::to_flattened(&self.[#: ff.name], __ctx, &mut __table)?;
+        );
     }
     splat!(out;
         Ok(__table.into_item())
@@ -616,22 +669,37 @@ fn variant_field_name_literal(ctx: &Ctx, field: &Field, variant: &EnumVariant) -
     }
 }
 
-/// Emit field deserialization from a table helper for a struct variant.
-/// Generates `let field_name = ...;` statements reading from `th`.
-fn emit_variant_fields_from_th(
+/// Emit field deserialization from a table for a struct variant.
+/// Assumes `__subtable` is in scope (a `&Table` to iterate).
+/// Generates variable declarations, for-loop with match, and unwrapping.
+/// Does NOT emit the final `Ok(Self::Variant { ... })`.
+fn emit_variant_fields_from_table(
     out: &mut RustWriter,
     ctx: &Ctx,
     variant: &EnumVariant,
     fields: &[Field],
+    skip_keys: &[Literal],
 ) {
+    // Detect flatten field (at most one)
+    let mut flatten_field: Option<&Field> = None;
     for field in fields {
-        let name_lit = variant_field_name_literal(ctx, field, variant);
-        let is_skip = field.flags & Field::WITH_FROMITEM_SKIP != 0;
-        let is_default = field.flags & Field::WITH_FROMITEM_DEFAULT != 0;
-        let is_option = is_option_type(field);
-        let with_path = field.with(FROM_ITEM);
+        if field.flags & Field::WITH_FLATTEN != 0 {
+            if flatten_field.is_some() {
+                throw!("Only one #[toml(flatten)] field is allowed per variant")
+            }
+            flatten_field = Some(field);
+        }
+    }
 
-        if is_skip {
+    // Declare field variables
+    for field in fields {
+        if field.flags & Field::WITH_FLATTEN != 0 {
+            splat!(out;
+                let mut __flatten_partial = < [~field.ty] as [~&ctx.crate_path]::FromFlattened<#[#: &ctx.lifetime]> >::init();
+            );
+            continue;
+        }
+        if field.flags & Field::WITH_FROMITEM_SKIP != 0 {
             if let Some(default_kind) = field.default(FROM_ITEM) {
                 match default_kind {
                     DefaultKind::Custom(tokens) => {
@@ -644,63 +712,166 @@ fn emit_variant_fields_from_th(
             } else {
                 splat!(out; let [#: field.name] = Default::default(););
             }
-        } else if let Some(with) = with_path {
-            if is_option || is_default {
-                if let Some(default_kind) = field.default(FROM_ITEM) {
-                    match default_kind {
-                        DefaultKind::Custom(tokens) => {
-                            splat!(out;
-                                let [#: field.name] = th.optional_mapped([@name_lit.into()], [~with]::from_item)
-                                    .unwrap_or_else(|| [~tokens.as_slice()]);
-                            );
-                        }
-                        DefaultKind::Default => {
-                            splat!(out;
-                                let [#: field.name] = th.optional_mapped([@name_lit.into()], [~with]::from_item)
-                                    .unwrap_or_default();
-                            );
-                        }
+        } else if is_option_type(field) {
+            splat!(out; let mut [#: field.name] : [~field.ty] = None;);
+        } else {
+            splat!(out; let mut [#: field.name] = None :: < [~field.ty] >;);
+        }
+    }
+
+    // Build match arms
+    let match_arms_start = out.buf.len();
+
+    // Skip key arms (e.g. tag key in internal tagging)
+    for skip_key in skip_keys {
+        splat!(out;
+            [@skip_key.clone().into()] => {}
+        );
+    }
+
+    // Field arms
+    for field in fields {
+        if field.flags & (Field::WITH_FROMITEM_SKIP | Field::WITH_FLATTEN) != 0 {
+            continue;
+        }
+
+        let name_lit = variant_field_name_literal(ctx, field, variant);
+        let is_default = field.flags & Field::WITH_FROMITEM_DEFAULT != 0;
+        let is_option = is_option_type(field);
+        let with_path = field.with(FROM_ITEM);
+        let is_required = !is_option && !is_default;
+
+        let arm_body_start = out.buf.len();
+
+        if let Some(with) = with_path {
+            if is_required {
+                splat!(out;
+                    match [~with] :: from_item(__value) {
+                        Ok(__val) => { [#: field.name] = Some(__val); }
+                        Err(__err) => return Err(__ctx.push_error(
+                            [~&ctx.crate_path] :: Error :: custom(__err, __value.span_unchecked())
+                        )),
                     }
-                } else {
-                    splat!(out;
-                        let [#: field.name] = th.optional_mapped([@name_lit.into()], [~with]::from_item)
-                            .unwrap_or_default();
-                    );
-                }
+                );
             } else {
                 splat!(out;
-                    let [#: field.name] = th.required_mapped([@name_lit.into()], [~with]::from_item)?;
+                    match [~with] :: from_item(__value) {
+                        Ok(__val) => { [#: field.name] = Some(__val); }
+                        Err(__err) => { __ctx.push_error(
+                            [~&ctx.crate_path] :: Error :: custom(__err, __value.span_unchecked())
+                        ); }
+                    }
                 );
             }
-        } else if is_option {
+        } else if is_required {
             splat!(out;
-                let [#: field.name] = th.optional([@name_lit.into()]);
+                match [~&ctx.crate_path] :: FromItem :: from_item(__ctx, __value) {
+                    Ok(__val) => { [#: field.name] = Some(__val); }
+                    Err(__e) => return Err(__e),
+                }
             );
-        } else if is_default {
+        } else {
+            splat!(out;
+                match [~&ctx.crate_path] :: FromItem :: from_item(__ctx, __value) {
+                    Ok(__val) => { [#: field.name] = Some(__val); }
+                    Err(_) => {}
+                }
+            );
+        }
+
+        let arm_body = out.split_off_stream(arm_body_start);
+        splat!(out;
+            [@name_lit.into()] =>
+                [@TokenTree::Group(Group::new(Delimiter::Brace, arm_body))]
+        );
+    }
+
+    // Wildcard arm
+    if let Some(ff) = flatten_field {
+        splat!(out;
+            _ => {
+                let _ = < [~ff.ty] as [~&ctx.crate_path]::FromFlattened<#[#: &ctx.lifetime]> >::insert(
+                    __ctx, __key, __value, &mut __flatten_partial
+                );
+            }
+        );
+    } else {
+        splat!(out;
+            _ => {
+                return Err(__ctx.error_message_at(
+                    [@TokenTree::Literal(Literal::string("unexpected key"))], __key.span
+                ));
+            }
+        );
+    }
+    let match_arms = out.split_off_stream(match_arms_start);
+
+    // Build for-loop body
+    let for_body_start = out.buf.len();
+    splat!(out;
+        match __key.name [@TokenTree::Group(Group::new(Delimiter::Brace, match_arms))]
+    );
+    let for_body = out.split_off_stream(for_body_start);
+
+    let for_pat = {
+        let pat_stream = token_stream!(out; __key, __value);
+        TokenTree::Group(Group::new(Delimiter::Parenthesis, pat_stream))
+    };
+
+    splat!(out;
+        for [@for_pat] in __subtable
+            [@TokenTree::Group(Group::new(Delimiter::Brace, for_body))]
+    );
+
+    // Finish flatten partial
+    if let Some(ff) = flatten_field {
+        splat!(out;
+            let [#: ff.name] = < [~ff.ty] as [~&ctx.crate_path]::FromFlattened<#[#: &ctx.lifetime]> >::finish(
+                __ctx, __flatten_partial
+            )?;
+        );
+    }
+
+    // Unwrap required and default fields
+    for field in fields {
+        if field.flags & (Field::WITH_FROMITEM_SKIP | Field::WITH_FLATTEN) != 0
+            || is_option_type(field)
+        {
+            continue;
+        }
+
+        let is_default = field.flags & Field::WITH_FROMITEM_DEFAULT != 0;
+
+        if is_default {
             if let Some(default_kind) = field.default(FROM_ITEM) {
                 match default_kind {
                     DefaultKind::Custom(tokens) => {
                         splat!(out;
-                            let [#: field.name] = th.optional([@name_lit.into()])
-                                .unwrap_or_else(|| [~tokens.as_slice()]);
+                            let [#: field.name] = [#: field.name].unwrap_or_else(|| [~tokens.as_slice()]);
                         );
                     }
                     DefaultKind::Default => {
                         splat!(out;
-                            let [#: field.name] = th.optional([@name_lit.into()])
-                                .unwrap_or_default();
+                            let [#: field.name] = [#: field.name].unwrap_or_default();
                         );
                     }
                 }
             } else {
                 splat!(out;
-                    let [#: field.name] = th.optional([@name_lit.into()])
-                        .unwrap_or_default();
+                    let [#: field.name] = [#: field.name].unwrap_or_default();
                 );
             }
         } else {
+            let name_lit = variant_field_name_literal(ctx, field, variant);
+            let else_body_start = out.buf.len();
             splat!(out;
-                let [#: field.name] = th.required([@name_lit.into()])?;
+                return Err(__ctx.report_missing_field([@name_lit.into()], __item.span_unchecked()));
+            );
+            let else_body = out.split_off_stream(else_body_start);
+            splat!(out;
+                let Some([#: field.name]) = [#: field.name].take() else
+                    [@TokenTree::Group(Group::new(Delimiter::Brace, else_body))]
+                ;
             );
         }
     }
@@ -717,7 +888,7 @@ fn emit_variant_fields_to_table(
     fields: &[Field],
 ) {
     for field in fields {
-        if field.flags & Field::WITH_TO_ITEM_SKIP != 0 {
+        if field.flags & (Field::WITH_TO_ITEM_SKIP | Field::WITH_FLATTEN) != 0 {
             continue;
         }
         let name_lit = variant_field_name_literal(ctx, field, variant);
@@ -764,6 +935,15 @@ fn emit_variant_fields_to_table(
             splat!(out;
                 if !([~skip_tokens])([#: field.name])
                     [@TokenTree::Group(Group::new(Delimiter::Brace, emit_body))]
+            );
+        }
+    }
+
+    // Emit flatten field serialization
+    for field in fields {
+        if field.flags & Field::WITH_FLATTEN != 0 {
+            splat!(out;
+                [~&ctx.crate_path]::ToFlattened::to_flattened([#: field.name], __ctx, &mut table)?;
             );
         }
     }
@@ -888,10 +1068,9 @@ fn enum_from_item_external(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVari
                 }
                 EnumKind::Struct => {
                     let arm_body_start = out.buf.len();
-                    splat!(out; let mut th = value.table_helper(__ctx)?;);
-                    emit_variant_fields_from_th(out, ctx, variant, variant.fields);
+                    splat!(out; let __subtable = value.expect_table(__ctx)?;);
+                    emit_variant_fields_from_table(out, ctx, variant, variant.fields, &[]);
                     splat!(out;
-                        th.expect_empty()?;
                         Ok(Self::[#: variant.name] {
                             [for field in variant.fields { splat!(out; [#: field.name],); }]
                         })
@@ -962,7 +1141,7 @@ fn enum_to_item_external(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVarian
                 let non_skip = variant
                     .fields
                     .iter()
-                    .filter(|f| f.flags & Field::WITH_TO_ITEM_SKIP == 0)
+                    .filter(|f| f.flags & (Field::WITH_TO_ITEM_SKIP | Field::WITH_FLATTEN) == 0)
                     .count();
 
                 // Build the arm body
@@ -1024,28 +1203,80 @@ fn enum_from_item_internal(
     }
 
     let start = out.buf.len();
+
+    // Two-pass approach: first find the tag, then dispatch to variant
     splat!(out;
-        let mut th = __item.table_helper(__ctx)?;
-        let tag: &str = th.required([@tag_lit.clone().into()])?;
+        let __table = __item.expect_table(__ctx)?;
     );
 
+    // First pass: find tag
+    let tag_loop_body_start = out.buf.len();
+    splat!(out;
+        if __key.name == [@tag_lit.clone().into()] {
+            __tag = Some([~&ctx.crate_path]::FromItem::from_item(__ctx, __value)?);
+            break;
+        }
+    );
+    let tag_loop_body = out.split_off_stream(tag_loop_body_start);
+    let tag_for_pat = {
+        let pat_stream = token_stream!(out; __key, __value);
+        TokenTree::Group(Group::new(Delimiter::Parenthesis, pat_stream))
+    };
+    splat!(out;
+        let mut __tag: Option<&str> = None;
+        for [@tag_for_pat] in __table
+            [@TokenTree::Group(Group::new(Delimiter::Brace, tag_loop_body))]
+    );
+
+    // Check tag was found
+    let missing_tag_else_start = out.buf.len();
+    splat!(out;
+        return Err(__ctx.report_missing_field([@tag_lit.clone().into()], __item.span_unchecked()));
+    );
+    let missing_tag_else = out.split_off_stream(missing_tag_else_start);
+    splat!(out;
+        let Some(__tag) = __tag else
+            [@TokenTree::Group(Group::new(Delimiter::Brace, missing_tag_else))]
+        ;
+    );
+
+    // Second pass: dispatch to variant
     let arms_start = out.buf.len();
     for variant in variants {
         let name_lit = variant_name_literal(ctx, variant);
         match variant.kind {
             EnumKind::None => {
+                // For unit variant, just verify no unexpected keys
+                let arm_body_start = out.buf.len();
+                let check_body_start = out.buf.len();
                 splat!(out;
-                    [@name_lit.into()] => {
-                        th.expect_empty()?;
-                        Ok(Self::[#: variant.name])
+                    if __key.name != [@tag_lit.clone().into()] {
+                        return Err(__ctx.error_message_at(
+                            [@TokenTree::Literal(Literal::string("unexpected key"))], __key.span
+                        ));
                     }
+                );
+                let check_body = out.split_off_stream(check_body_start);
+                let check_pat = {
+                    let pat_stream = token_stream!(out; __key, __value);
+                    TokenTree::Group(Group::new(Delimiter::Parenthesis, pat_stream))
+                };
+                splat!(out;
+                    for [@check_pat] in __table
+                        [@TokenTree::Group(Group::new(Delimiter::Brace, check_body))]
+                    Ok(Self::[#: variant.name])
+                );
+                let arm_body = out.split_off_stream(arm_body_start);
+                splat!(out;
+                    [@name_lit.into()] =>
+                        [@TokenTree::Group(Group::new(Delimiter::Brace, arm_body))]
                 );
             }
             EnumKind::Struct => {
                 let arm_body_start = out.buf.len();
-                emit_variant_fields_from_th(out, ctx, variant, variant.fields);
+                splat!(out; let __subtable = __table;);
+                emit_variant_fields_from_table(out, ctx, variant, variant.fields, &[tag_lit.clone()]);
                 splat!(out;
-                    th.expect_empty()?;
                     Ok(Self::[#: variant.name] {
                         [for field in variant.fields { splat!(out; [#: field.name],); }]
                     })
@@ -1065,7 +1296,7 @@ fn enum_from_item_internal(
     );
     let arms = out.split_off_stream(arms_start);
     splat!(out;
-        match tag [@TokenTree::Group(Group::new(Delimiter::Brace, arms))]
+        match __tag [@TokenTree::Group(Group::new(Delimiter::Brace, arms))]
     );
 
     let body = out.split_off_stream(start);
@@ -1106,7 +1337,7 @@ fn enum_to_item_internal(
                 let non_skip = variant
                     .fields
                     .iter()
-                    .filter(|f| f.flags & Field::WITH_TO_ITEM_SKIP == 0)
+                    .filter(|f| f.flags & (Field::WITH_TO_ITEM_SKIP | Field::WITH_FLATTEN) == 0)
                     .count();
 
                 let arm_body_start = out.buf.len();
@@ -1156,11 +1387,59 @@ fn enum_from_item_adjacent(
     content_lit: &Literal,
 ) {
     let start = out.buf.len();
+
+    // Extract tag and content via for-loop
     splat!(out;
-        let mut th = __item.table_helper(__ctx)?;
-        let tag: &str = th.required([@tag_lit.clone().into()])?;
+        let __table = __item.expect_table(__ctx)?;
+        let mut __tag: Option<&str> = None;
+        let mut __content: Option<& [~&ctx.crate_path]::Item<#[#: &ctx.lifetime]> > = None;
     );
 
+    // Build the extraction loop
+    let extract_arms_start = out.buf.len();
+    splat!(out;
+        [@tag_lit.clone().into()] => {
+            __tag = Some([~&ctx.crate_path]::FromItem::from_item(__ctx, __value)?);
+        }
+        [@content_lit.clone().into()] => {
+            __content = Some(__value);
+        }
+        _ => {
+            return Err(__ctx.error_message_at(
+                [@TokenTree::Literal(Literal::string("unexpected key"))], __key.span
+            ));
+        }
+    );
+    let extract_arms = out.split_off_stream(extract_arms_start);
+
+    let extract_body_start = out.buf.len();
+    splat!(out;
+        match __key.name [@TokenTree::Group(Group::new(Delimiter::Brace, extract_arms))]
+    );
+    let extract_body = out.split_off_stream(extract_body_start);
+
+    let extract_pat = {
+        let pat_stream = token_stream!(out; __key, __value);
+        TokenTree::Group(Group::new(Delimiter::Parenthesis, pat_stream))
+    };
+    splat!(out;
+        for [@extract_pat] in __table
+            [@TokenTree::Group(Group::new(Delimiter::Brace, extract_body))]
+    );
+
+    // Check tag was found
+    let missing_tag_else_start = out.buf.len();
+    splat!(out;
+        return Err(__ctx.report_missing_field([@tag_lit.clone().into()], __item.span_unchecked()));
+    );
+    let missing_tag_else = out.split_off_stream(missing_tag_else_start);
+    splat!(out;
+        let Some(__tag) = __tag else
+            [@TokenTree::Group(Group::new(Delimiter::Brace, missing_tag_else))]
+        ;
+    );
+
+    // Dispatch on tag
     let arms_start = out.buf.len();
     for variant in variants {
         let name_lit = variant_name_literal(ctx, variant);
@@ -1168,7 +1447,6 @@ fn enum_from_item_adjacent(
             EnumKind::None => {
                 splat!(out;
                     [@name_lit.into()] => {
-                        th.expect_empty()?;
                         Ok(Self::[#: variant.name])
                     }
                 );
@@ -1177,25 +1455,41 @@ fn enum_from_item_adjacent(
                 if variant.fields.len() != 1 {
                     throw!("Only single-field tuple variants are supported")
                 }
+                let arm_body_start = out.buf.len();
+                let missing_content_else_start = out.buf.len();
                 splat!(out;
-                    [@name_lit.into()] => {
-                        let content = th.required_item([@content_lit.clone().into()])?;
-                        th.expect_empty()?;
-                        Ok(Self::[#: variant.name](
-                            [~&ctx.crate_path]::FromItem::from_item(__ctx, content)?
-                        ))
-                    }
+                    return Err(__ctx.report_missing_field([@content_lit.clone().into()], __item.span_unchecked()));
+                );
+                let missing_content_else = out.split_off_stream(missing_content_else_start);
+                splat!(out;
+                    let Some(__content) = __content else
+                        [@TokenTree::Group(Group::new(Delimiter::Brace, missing_content_else))]
+                    ;
+                    Ok(Self::[#: variant.name](
+                        [~&ctx.crate_path]::FromItem::from_item(__ctx, __content)?
+                    ))
+                );
+                let arm_body = out.split_off_stream(arm_body_start);
+                splat!(out;
+                    [@name_lit.into()] =>
+                        [@TokenTree::Group(Group::new(Delimiter::Brace, arm_body))]
                 );
             }
             EnumKind::Struct => {
                 let arm_body_start = out.buf.len();
+                let missing_content_else_start = out.buf.len();
                 splat!(out;
-                    let content = th.required_item([@content_lit.clone().into()])?;
-                    let mut th = content.table_helper(__ctx)?;
+                    return Err(__ctx.report_missing_field([@content_lit.clone().into()], __item.span_unchecked()));
                 );
-                emit_variant_fields_from_th(out, ctx, variant, variant.fields);
+                let missing_content_else = out.split_off_stream(missing_content_else_start);
                 splat!(out;
-                    th.expect_empty()?;
+                    let Some(__content) = __content else
+                        [@TokenTree::Group(Group::new(Delimiter::Brace, missing_content_else))]
+                    ;
+                    let __subtable = __content.expect_table(__ctx)?;
+                );
+                emit_variant_fields_from_table(out, ctx, variant, variant.fields, &[]);
+                splat!(out;
                     Ok(Self::[#: variant.name] {
                         [for field in variant.fields { splat!(out; [#: field.name],); }]
                     })
@@ -1214,7 +1508,7 @@ fn enum_from_item_adjacent(
     );
     let arms = out.split_off_stream(arms_start);
     splat!(out;
-        match tag [@TokenTree::Group(Group::new(Delimiter::Brace, arms))]
+        match __tag [@TokenTree::Group(Group::new(Delimiter::Brace, arms))]
     );
 
     let body = out.split_off_stream(start);
@@ -1282,7 +1576,7 @@ fn enum_to_item_adjacent(
                 let non_skip = variant
                     .fields
                     .iter()
-                    .filter(|f| f.flags & Field::WITH_TO_ITEM_SKIP == 0)
+                    .filter(|f| f.flags & (Field::WITH_TO_ITEM_SKIP | Field::WITH_FLATTEN) == 0)
                     .count();
 
                 let arm_body_start = out.buf.len();
@@ -1377,6 +1671,7 @@ pub fn inner_derive(stream: TokenStream) -> TokenStream {
         name: Ident::new("a", Span::call_site()),
         generics: Vec::new(),
         generic_field_types: Vec::new(),
+        generic_flatten_field_types: Vec::new(),
         where_clauses: &[],
         path_override: None,
         from_item: false,

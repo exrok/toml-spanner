@@ -42,6 +42,7 @@ enum FieldAttrInner {
     Default(DefaultKind),
     Skip(Vec<TokenTree>),
     With(Vec<TokenTree>),
+    Flatten,
 }
 
 #[cfg_attr(feature = "debug", derive(Debug))]
@@ -89,6 +90,7 @@ pub struct DeriveTargetInner<'a> {
     pub where_clauses: &'a [TokenTree],
     pub path_override: Option<Literal>,
     pub generic_field_types: Vec<&'a [TokenTree]>,
+    pub generic_flatten_field_types: Vec<&'a [TokenTree]>,
     pub transparent_impl: bool,
     pub from_item: bool,
     pub to_item: bool,
@@ -155,6 +157,7 @@ impl<'a> Field<'a> {
     pub const WITH_FROMITEM_DEFAULT: u32 = 1u32 << 2;
     pub const WITH_FROMITEM_SKIP: u32 = 1u32 << 3;
     pub const WITH_TO_ITEM_SKIP: u32 = 1u32 << 4;
+    pub const WITH_FLATTEN: u32 = 1u32 << 5;
     #[allow(dead_code)]
     pub fn is(&self, flags: u32) -> bool {
         self.flags & flags != 0
@@ -609,6 +612,17 @@ fn parse_single_field_attr(
             });
             3u64 * TRAIT_COUNT
         }
+        "flatten" => {
+            if !value.is_empty() {
+                throw!("flatten doesn't take any arguments" @ ident.span())
+            }
+            attrs.attrs.push(FieldAttr {
+                enabled: trait_set,
+                span: ident.span(),
+                inner: FieldAttrInner::Flatten,
+            });
+            4u64 * TRAIT_COUNT
+        }
         _ => throw!("Unknown attr field" @ ident.span()),
     };
     let mask = (trait_set as u64) << offset;
@@ -740,7 +754,11 @@ pub fn scan_fields<'a>(target: &mut DeriveTargetInner<'a>, fields: &mut Vec<Fiel
                 }
                 if type_generic_names.iter().any(|x| ident == *x) {
                     field.flags |= Field::GENERIC;
-                    target.generic_field_types.push(field.ty);
+                    if field.flags & Field::WITH_FLATTEN != 0 {
+                        target.generic_flatten_field_types.push(field.ty);
+                    } else {
+                        target.generic_field_types.push(field.ty);
+                    }
                     break;
                 }
             }
@@ -946,6 +964,9 @@ fn flags_from_attr(attr: &Option<&mut FieldAttrs>) -> u32 {
                             f |= Field::WITH_TO_ITEM_SKIP;
                         }
                     }
+                }
+                FieldAttrInner::Flatten => {
+                    f |= Field::WITH_FLATTEN;
                 }
                 _ => (),
             }
