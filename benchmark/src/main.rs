@@ -356,6 +356,38 @@ fn bench_clone_in<'a>(bench: &mut Bencher, configs: &[(&'a str, &str)]) -> Vec<(
     results
 }
 
+fn bench_owned_item<'a>(bench: &mut Bencher, configs: &[(&'a str, &str)]) -> Vec<(&'a str, Stat)> {
+    let arenas: Vec<_> = configs.iter().map(|_| toml_spanner::Arena::new()).collect();
+    let parsed: Vec<_> = configs
+        .iter()
+        .zip(arenas.iter())
+        .map(|((_, source), arena)| toml_spanner::parse(source, arena).unwrap())
+        .collect();
+
+    let mut results = Vec::new();
+    for (i, (name, _)) in configs.iter().enumerate() {
+        let item = parsed[i].table().as_item();
+        let stat = bench.func(|| {
+            let mut owned = toml_spanner::OwnedItem::from(item);
+            std::hint::black_box(&mut owned);
+        });
+        println!("{name}: {stat}");
+        results.push((*name, stat));
+    }
+
+    let items: Vec<_> = parsed.iter().map(|r| r.table().as_item()).collect();
+    let mut rng = oorandom::Rand32::new(0xdeadbeaf);
+    let stat = bench.bench_with_generator(
+        || items[rng.rand_range(0..items.len() as u32) as usize],
+        |item| {
+            let mut owned = toml_spanner::OwnedItem::from(item);
+            std::hint::black_box(&mut owned);
+        },
+    );
+    println!("mixed: {stat}");
+    results
+}
+
 fn main_for_clone() {
     let mut bench = jsony_bench::Bencher::new();
     bench.calibrate();
@@ -374,25 +406,37 @@ fn main_for_clone() {
     println!("\n===== clone_in =====");
     let clone_stats = bench_clone_in(&mut bench, configs);
 
-    println!("\n=== clone_in vs parse ===");
+    println!("\n===== OwnedItem::from =====");
+    let owned_stats = bench_owned_item(&mut bench, configs);
+
+    println!("\n=== clone_in vs OwnedItem vs parse ===");
     println!(
-        "{:<20} {:>9} {:>9} {:>9} {:>9} {:>6}",
-        "", "parse(μs)", "cycles(K)", "clone(μs)", "cycles(K)", "ratio"
+        "{:<20} {:>9} {:>9} {:>9} {:>9} {:>6} {:>9} {:>9} {:>6}",
+        "",
+        "parse(μs)",
+        "cycles(K)",
+        "clone(μs)",
+        "cycles(K)",
+        "ratio",
+        "owned(μs)",
+        "cycles(K)",
+        "ratio"
     );
-    for ((name, parse_stat), (_, clone_stat)) in parse_stats.iter().zip(clone_stats.iter()) {
-        let pt = f64::from(parse_stat.nanos) / 1000.0;
-        let pc = f64::from(parse_stat.cycles) / 1000.0;
-        let ct = f64::from(clone_stat.nanos) / 1000.0;
-        let cc = f64::from(clone_stat.cycles) / 1000.0;
-        let ratio = ct / pt;
+    for i in 0..parse_stats.len() {
+        let (name, ref ps) = parse_stats[i];
+        let (_, ref cs) = clone_stats[i];
+        let (_, ref os) = owned_stats[i];
+        let pt = f64::from(ps.nanos) / 1000.0;
+        let pc = f64::from(ps.cycles) / 1000.0;
+        let ct = f64::from(cs.nanos) / 1000.0;
+        let cc = f64::from(cs.cycles) / 1000.0;
+        let ot = f64::from(os.nanos) / 1000.0;
+        let oc = f64::from(os.cycles) / 1000.0;
+        let clone_ratio = ct / pt;
+        let owned_ratio = ot / pt;
         println!(
-            "{:<20} {:>9.1} {:>9.0} {:>9.1} {:>9.0} {:>5.1}%",
-            name,
-            pt,
-            pc,
-            ct,
-            cc,
-            ratio * 100.0
+            "{:<20} {:>9.1} {:>9.0} {:>9.1} {:>9.0} {:>5.1}% {:>9.1} {:>9.0} {:>5.1}%",
+            name, pt, pc, ct, cc, clone_ratio * 100.0, ot, oc, owned_ratio * 100.0
         );
     }
 }

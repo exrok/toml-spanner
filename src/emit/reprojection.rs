@@ -2,11 +2,12 @@
 #[path = "reprojection_tests.rs"]
 mod tests;
 
-use crate::array::Array;
+use crate::Array;
+use crate::Table;
+use crate::item::table::TableIndex;
+use crate::item::{ArrayStyle, Item, Key, TableStyle, Value, ValueMut};
 use crate::parser::Root;
 use crate::span::Span;
-use crate::table::{Table, TableIndex};
-use crate::value::{ArrayStyle, Item, Key, TableStyle, Value, ValueMut};
 
 /// Reprojects structural kinds from a parsed source onto a destination table.
 ///

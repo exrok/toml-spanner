@@ -3,11 +3,11 @@
 mod tests;
 
 use crate::Span;
-use crate::parser::KeyRef;
-use crate::value::{
+use crate::item::{
     FLAG_DOTTED, FLAG_FROZEN, FLAG_HEADER, FLAG_TABLE, Item, ItemMetadata, Key, MaybeItem, NONE,
     TAG_TABLE, TableStyle,
 };
+use crate::parser::KeyRef;
 use std::mem::size_of;
 use std::ptr::NonNull;
 
@@ -29,9 +29,9 @@ const MIN_CAP: u32 = 2;
 /// A TOML table: a flat list of key-value pairs with linear lookup.
 #[repr(C, align(8))]
 pub(crate) struct InnerTable<'de> {
-    len: u32,
-    cap: u32,
-    ptr: NonNull<TableEntry<'de>>,
+    pub(super) len: u32,
+    pub(super) cap: u32,
+    pub(super) ptr: NonNull<TableEntry<'de>>,
 }
 
 impl<'de> InnerTable<'de> {

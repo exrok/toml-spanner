@@ -2,14 +2,18 @@
 #[cfg(test)]
 #[path = "./value_tests.rs"]
 mod tests;
+
+pub(crate) mod array;
+pub(crate) mod owned;
+pub(crate) mod table;
 use crate::arena::Arena;
 use crate::{DateTime, Error, ErrorKind, Span, Table};
 use std::fmt;
 use std::mem::ManuallyDrop;
 
-pub use crate::array::Array;
-pub(crate) use crate::array::InternalArray;
-use crate::table::InnerTable;
+pub use array::Array;
+pub(crate) use array::InternalArray;
+use table::InnerTable;
 
 pub(crate) const TAG_MASK: u32 = 0x7;
 pub(crate) const TAG_SHIFT: u32 = 3;
@@ -710,12 +714,12 @@ pub enum Value<'a, 'de> {
     Float(&'a f64),
     /// A boolean value.
     Boolean(&'a bool),
-    /// An array value.
-    Array(&'a Array<'de>),
-    /// A table value.
-    Table(&'a Table<'de>),
     /// A datetime value.
     DateTime(&'a DateTime),
+    /// A table value.
+    Table(&'a Table<'de>),
+    /// An array value.
+    Array(&'a Array<'de>),
 }
 
 /// Mutable view into an [`Item`] for pattern matching.
@@ -730,12 +734,12 @@ pub enum ValueMut<'a, 'de> {
     Float(&'a mut f64),
     /// A boolean value.
     Boolean(&'a mut bool),
-    /// An array value.
-    Array(&'a mut Array<'de>),
-    /// A table value.
-    Table(&'a mut Table<'de>),
     /// A datetime value (read-only; datetime fields are not mutable).
     DateTime(&'a DateTime),
+    /// A table value.
+    Table(&'a mut Table<'de>),
+    /// An array value.
+    Array(&'a mut Array<'de>),
 }
 
 impl<'de> Item<'de> {

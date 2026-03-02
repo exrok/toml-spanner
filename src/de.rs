@@ -11,7 +11,7 @@ use foldhash::HashMap;
 use crate::{
     Arena, Error, ErrorKind, Key, Span, Table,
     parser::{INDEXED_TABLE_THRESHOLD, KeyRef},
-    value::{self, Item},
+    item::{self, Item},
 };
 
 /// Guides deserialization of a [`Table`] by tracking which fields have been
@@ -636,7 +636,7 @@ impl<'de, T: FromItem<'de>> FromItem<'de> for Box<[T]> {
 impl<'de> FromItem<'de> for Box<str> {
     fn from_item(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
         match value.value() {
-            value::Value::String(&s) => Ok(s.into()),
+            item::Value::String(&s) => Ok(s.into()),
             _ => Err(ctx.error_expected_but_found("a string", value)),
         }
     }
@@ -644,7 +644,7 @@ impl<'de> FromItem<'de> for Box<str> {
 impl<'de> FromItem<'de> for &'de str {
     fn from_item(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
         match value.value() {
-            value::Value::String(s) => Ok(*s),
+            item::Value::String(s) => Ok(*s),
             _ => Err(ctx.error_expected_but_found("a string", value)),
         }
     }
@@ -653,7 +653,7 @@ impl<'de> FromItem<'de> for &'de str {
 impl<'de> FromItem<'de> for std::borrow::Cow<'de, str> {
     fn from_item(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
         match value.value() {
-            value::Value::String(s) => Ok(std::borrow::Cow::Borrowed(*s)),
+            item::Value::String(s) => Ok(std::borrow::Cow::Borrowed(*s)),
             _ => Err(ctx.error_expected_but_found("a string", value)),
         }
     }
@@ -810,14 +810,14 @@ impl<'de> Item<'de> {
         expected: &'static str,
     ) -> Result<&'de str, Failed> {
         match self.value() {
-            value::Value::String(s) => Ok(*s),
+            item::Value::String(s) => Ok(*s),
             _ => Err(ctx.error_expected_but_found(expected, self)),
         }
     }
     /// Returns a string, or records an error if this is not a string.
     pub fn expect_string(&self, ctx: &mut Context<'de>) -> Result<&'de str, Failed> {
         match self.value() {
-            value::Value::String(s) => Ok(*s),
+            item::Value::String(s) => Ok(*s),
             _ => Err(ctx.error_expected_but_found("a string", self)),
         }
     }

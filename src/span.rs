@@ -373,7 +373,7 @@ where
     #[inline]
     fn from_item(
         ctx: &mut crate::de::Context<'de>,
-        value: &crate::value::Item<'de>,
+        value: &crate::item::Item<'de>,
     ) -> Result<Self, crate::de::Failed> {
         let span = value.span_unchecked();
         let inner = T::from_item(ctx, value)?;

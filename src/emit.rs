@@ -8,11 +8,11 @@ mod tests;
 pub use normalization::NormalizedTable;
 pub use reprojection::reproject;
 
+use crate::Array;
+use crate::Table;
 use crate::arena::Arena;
-use crate::array::Array;
+use crate::item::{ArrayStyle, Item, Key, TableStyle, Value};
 use crate::span::Span;
-use crate::table::Table;
-use crate::value::{ArrayStyle, Item, Key, TableStyle, Value};
 use std::io::Write;
 use std::mem::MaybeUninit;
 

@@ -5,7 +5,7 @@ mod tests;
 use crate::MaybeItem;
 use crate::Span;
 use crate::arena::Arena;
-use crate::value::{ArrayStyle, FLAG_AOT, FLAG_ARRAY, Item, ItemMetadata, TAG_ARRAY};
+use crate::item::{ArrayStyle, FLAG_AOT, FLAG_ARRAY, Item, ItemMetadata, TAG_ARRAY};
 use std::mem::size_of;
 use std::ptr::NonNull;
 
@@ -13,9 +13,9 @@ const MIN_CAP: u32 = 4;
 
 #[repr(C, align(8))]
 pub(crate) struct InternalArray<'de> {
-    len: u32,
-    cap: u32,
-    ptr: NonNull<Item<'de>>,
+    pub(super) len: u32,
+    pub(super) cap: u32,
+    pub(super) ptr: NonNull<Item<'de>>,
 }
 
 impl<'de> Default for InternalArray<'de> {
@@ -298,7 +298,7 @@ impl<'de> std::ops::Index<usize> for InternalArray<'de> {
         if let Some(item) = self.get(index) {
             return MaybeItem::from_ref(item);
         }
-        &crate::value::NONE
+        &crate::item::NONE
     }
 }
 
@@ -495,7 +495,7 @@ impl<'de> std::ops::Index<usize> for Array<'de> {
         if let Some(item) = self.value.get(index) {
             return MaybeItem::from_ref(item);
         }
-        &crate::value::NONE
+        &crate::item::NONE
     }
 }
 

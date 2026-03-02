@@ -61,7 +61,7 @@ fn get_and_get_mut() {
 
     // get_mut: modify first element
     let v = a.get_mut(0).unwrap();
-    if let crate::value::ValueMut::Integer(i) = v.value_mut() {
+    if let crate::item::ValueMut::Integer(i) = v.value_mut() {
         *i = 99;
     }
     assert_eq!(a[0].as_i64(), Some(99));
@@ -78,7 +78,7 @@ fn get_and_get_mut() {
 
     // as_mut_slice: modify through slice
     let s = a.as_mut_slice();
-    if let crate::value::ValueMut::Integer(i) = s[1].value_mut() {
+    if let crate::item::ValueMut::Integer(i) = s[1].value_mut() {
         *i = 200;
     }
     assert_eq!(a[1].as_i64(), Some(200));
@@ -98,7 +98,7 @@ fn pop_and_last_mut() {
 
     // last_mut: modify tail
     let last = a.last_mut().unwrap();
-    if let crate::value::ValueMut::Integer(i) = last.value_mut() {
+    if let crate::item::ValueMut::Integer(i) = last.value_mut() {
         *i = 99;
     }
     assert_eq!(a[2].as_i64(), Some(99));
@@ -126,7 +126,7 @@ fn iterators() {
     assert_eq!(vals, vec![1, 2, 3]);
 
     for v in &mut a {
-        if let crate::value::ValueMut::Integer(i) = v.value_mut() {
+        if let crate::item::ValueMut::Integer(i) = v.value_mut() {
             *i += 10;
         }
     }
@@ -263,13 +263,13 @@ fn clone_in_preserves_kind() {
     let mut arr = Array::new_spanned(Span::new(0, 10));
     arr.push(ival(1), &arena);
 
-    arr.set_style(crate::value::ArrayStyle::Header);
+    arr.set_style(crate::item::ArrayStyle::Header);
     let cloned = arr.clone_in(&arena);
-    assert_eq!(cloned.style(), crate::value::ArrayStyle::Header);
+    assert_eq!(cloned.style(), crate::item::ArrayStyle::Header);
 
-    arr.set_style(crate::value::ArrayStyle::Inline);
+    arr.set_style(crate::item::ArrayStyle::Inline);
     let cloned = arr.clone_in(&arena);
-    assert_eq!(cloned.style(), crate::value::ArrayStyle::Inline);
+    assert_eq!(cloned.style(), crate::item::ArrayStyle::Inline);
 }
 
 #[test]
@@ -283,7 +283,7 @@ fn clone_in_independent_of_source() {
 
     // Mutate the original
     if let Some(v) = a.get_mut(0) {
-        if let crate::value::ValueMut::Integer(i) = v.value_mut() {
+        if let crate::item::ValueMut::Integer(i) = v.value_mut() {
             *i = 999;
         }
     }

@@ -1,7 +1,7 @@
 use super::*;
 use crate::Span;
 use crate::arena::Arena;
-use crate::value::Item;
+use crate::item::Item;
 
 fn sp() -> Span {
     Span::new(0, 0)
@@ -71,7 +71,7 @@ fn inner_get_and_mutate() {
 
     // get_mut: modify in place
     let v = t.get_mut("a").unwrap();
-    if let crate::value::ValueMut::Integer(i) = v.value_mut() {
+    if let crate::item::ValueMut::Integer(i) = v.value_mut() {
         *i = 99;
     }
     assert_eq!(t.get("a").unwrap().as_i64(), Some(99));
@@ -205,7 +205,7 @@ fn table_access_and_mutation() {
 
     // get_mut: modify in place
     let v = table.get_mut("a").unwrap();
-    if let crate::value::ValueMut::Integer(i) = v.value_mut() {
+    if let crate::item::ValueMut::Integer(i) = v.value_mut() {
         *i = 99;
     }
     assert_eq!(table["a"].as_i64(), Some(99));
@@ -229,7 +229,7 @@ fn table_iterators() {
     // Mutable iteration via &mut table
     let mut table = make_table(&arena);
     for (_, v) in &mut table {
-        if let crate::value::ValueMut::Integer(i) = v.value_mut() {
+        if let crate::item::ValueMut::Integer(i) = v.value_mut() {
             *i += 100;
         }
     }
@@ -410,7 +410,7 @@ fn clone_in_independent_of_source() {
 
     // Mutate the original
     if let Some(v) = table.get_mut("a") {
-        if let crate::value::ValueMut::Integer(i) = v.value_mut() {
+        if let crate::item::ValueMut::Integer(i) = v.value_mut() {
             *i = 999;
         }
     }

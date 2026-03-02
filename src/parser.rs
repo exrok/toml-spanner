@@ -12,9 +12,9 @@ use crate::{
     MaybeItem, Span,
     arena::Arena,
     error::{Error, ErrorKind},
-    table::{InnerTable, Table, TableIndex},
+    item::table::{InnerTable, Table, TableIndex},
+    item::{self, Item, Key},
     time::DateTime,
-    value::{self, Item, Key},
 };
 use std::char;
 use std::hash::{Hash, Hasher};
@@ -1116,7 +1116,7 @@ impl<'de> Parser<'de> {
             b'{' => {
                 let start = self.cursor as u32;
                 self.cursor += 1;
-                let mut table = crate::table::InnerTable::new();
+                let mut table = crate::item::table::InnerTable::new();
                 if let Err(err) = self.inline_table_contents(&mut table, depth_remaining - 1) {
                     return Err(err);
                 }
@@ -1128,7 +1128,7 @@ impl<'de> Parser<'de> {
             b'[' => {
                 let start = self.cursor as u32;
                 self.cursor += 1;
-                let mut arr = crate::array::InternalArray::new();
+                let mut arr = crate::item::array::InternalArray::new();
                 if let Err(err) = self.array_contents(&mut arr, depth_remaining - 1) {
                     return Err(err);
                 };
@@ -1220,7 +1220,7 @@ impl<'de> Parser<'de> {
 
     fn inline_table_contents(
         &mut self,
-        out: &mut crate::table::InnerTable<'de>,
+        out: &mut crate::item::table::InnerTable<'de>,
         depth_remaining: i16,
     ) -> Result<(), ParseError> {
         if depth_remaining < 0 {
@@ -1237,7 +1237,7 @@ impl<'de> Parser<'de> {
             return Ok(());
         }
         loop {
-            let mut table_ref: &mut crate::table::InnerTable<'de> = &mut *out;
+            let mut table_ref: &mut crate::item::table::InnerTable<'de> = &mut *out;
             let mut key = match self.read_table_key() {
                 Ok(k) => k,
                 Err(e) => return Err(e),
@@ -1294,7 +1294,7 @@ impl<'de> Parser<'de> {
 
     fn array_contents(
         &mut self,
-        out: &mut crate::array::InternalArray<'de>,
+        out: &mut crate::item::array::InternalArray<'de>,
         depth_remaining: i16,
     ) -> Result<(), ParseError> {
         if depth_remaining < 0 {
@@ -1456,7 +1456,7 @@ impl<'de> Parser<'de> {
         table: &'t mut InnerTable<'de>,
         key: Key<'de>,
         item: Item<'de>,
-    ) -> &'t mut value::Item<'de> {
+    ) -> &'t mut item::Item<'de> {
         let len = table.len();
         if len >= INDEXED_TABLE_THRESHOLD {
             // SAFETY: len >= INDEXED_TABLE_THRESHOLD (>= 6), so the table is non-empty.
@@ -1572,7 +1572,7 @@ impl<'de> Parser<'de> {
             let first_entry = Item::table_header(InnerTable::new(), entry_span);
             let array_span = Span::new(header_start, header_end);
             let array_val = Item::array_aot(
-                crate::array::InternalArray::with_single(first_entry, self.arena),
+                crate::item::array::InternalArray::with_single(first_entry, self.arena),
                 array_span,
             );
             let inserted = self.insert_value_known_to_be_unique(table, key, array_val);
@@ -1803,8 +1803,8 @@ impl<'de> Parser<'de> {
 
         if let Some(end_flag) = &mut ctx.array_end_span {
             let old = **end_flag;
-            let current = old >> value::FLAG_SHIFT;
-            **end_flag = (current.max(line_end) << value::FLAG_SHIFT) | (old & value::FLAG_MASK);
+            let current = old >> item::FLAG_SHIFT;
+            **end_flag = (current.max(line_end) << item::FLAG_SHIFT) | (old & item::FLAG_MASK);
         }
 
         Ok(())

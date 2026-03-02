@@ -1,5 +1,5 @@
 use crate::ErrorKind;
-use crate::table::Table;
+use crate::Table;
 
 struct TestCtx {
     arena: crate::arena::Arena,

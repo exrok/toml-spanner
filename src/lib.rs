@@ -131,33 +131,32 @@
 //! </details>
 
 mod arena;
-mod array;
 #[cfg(feature = "deserialization")]
 mod de;
 mod emit;
 mod error;
+mod item;
 mod parser;
 mod ser;
 mod span;
-mod table;
 mod time;
-mod value;
 
+pub use item::owned::{OwnedItem, OwnedTable};
 use std::borrow::Cow;
 
 pub use arena::Arena;
-pub use array::Array;
 #[cfg(feature = "deserialization")]
 pub use de::{Context, Failed, FromFlattened, FromItem, TableHelper};
 pub use emit::{EmitConfig, NormalizedTable, emit, emit_with_config, reproject};
 pub use error::{Error, ErrorKind};
+pub use item::array::Array;
+pub use item::items_equal;
+pub use item::table::Table;
+pub use item::{ArrayStyle, Item, Key, Kind, MaybeItem, TableStyle, Value, ValueMut};
 pub use parser::{Root, parse};
 pub use ser::{ToContext, ToFlattened, ToItem};
 pub use span::{Span, Spanned};
-pub use table::Table;
 pub use time::{Date, DateTime, Time, TimeOffset};
-pub use value::items_equal;
-pub use value::{ArrayStyle, Item, Key, Kind, MaybeItem, TableStyle, Value, ValueMut};
 
 #[cfg(feature = "derive")]
 pub use toml_spanner_macros::Toml;

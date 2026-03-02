@@ -1,10 +1,10 @@
 use super::reproject;
+use crate::Table;
 use crate::arena::Arena;
 use crate::emit::EmitConfig;
+use crate::item::items_equal;
+use crate::item::{ArrayStyle, Item, Key, TableStyle, Value};
 use crate::parser::parse;
-use crate::table::Table;
-use crate::value::items_equal;
-use crate::value::{ArrayStyle, Item, Key, TableStyle, Value};
 use crate::{Root, emit, emit_with_config};
 
 /// Recursively sets all table kinds to Implicit and all array kinds to Inline,

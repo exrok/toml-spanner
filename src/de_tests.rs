@@ -668,7 +668,7 @@ fn required_entry_and_optional_entry() {
 fn required_mapped_and_optional_mapped() {
     use std::net::Ipv4Addr;
 
-    fn parse_positive_int(item: &crate::value::Item<'_>) -> Result<u32, crate::Error> {
+    fn parse_positive_int(item: &crate::item::Item<'_>) -> Result<u32, crate::Error> {
         let val = item
             .as_i64()
             .ok_or_else(|| item.expected("a positive integer"))?;
@@ -679,7 +679,7 @@ fn required_mapped_and_optional_mapped() {
         }
     }
 
-    fn parse_uppercase(item: &crate::value::Item<'_>) -> Result<String, crate::Error> {
+    fn parse_uppercase(item: &crate::item::Item<'_>) -> Result<String, crate::Error> {
         let s = item.as_str().ok_or_else(|| item.expected("a string"))?;
         Ok(s.to_uppercase())
     }

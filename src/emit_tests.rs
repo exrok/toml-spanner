@@ -1,5 +1,5 @@
 use crate::emit::emit;
-use crate::value::{Item, Value};
+use crate::item::{Item, Value};
 use crate::{Arena, Array, ArrayStyle, Key, Table, TableStyle, parse};
 
 macro_rules! item {
@@ -546,7 +546,7 @@ fn normalize_implicit_promoted_to_header() {
 
 #[test]
 fn normalize_aot_with_non_table_elements() {
-    use crate::value::{FLAG_AOT, FLAG_ARRAY};
+    use crate::item::{FLAG_AOT, FLAG_ARRAY};
 
     // Manually create an AOT-flagged array with non-table elements.
     let arena = Arena::new();
@@ -575,7 +575,7 @@ fn normalize_nested_implicit_chain() {
 
 #[test]
 fn normalize_frozen_children_fixed() {
-    use crate::value::FLAG_FROZEN;
+    use crate::item::FLAG_FROZEN;
 
     // HEADER flag inside frozen context must be fixed to FROZEN.
     let arena = Arena::new();
