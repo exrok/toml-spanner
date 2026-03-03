@@ -22,6 +22,7 @@ dependencies = [
  "toml",
  "toml-span",
  "toml-spanner",
+ "toml-spanner-macros",
  "toml_edit",
  "unicode-ident",
  "url",

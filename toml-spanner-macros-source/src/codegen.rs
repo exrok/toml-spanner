@@ -1628,37 +1628,206 @@ fn enum_to_item_adjacent(
     impl_to_item(out, ctx, body);
 }
 
+// ── Untagged ─────────────────────────────────────────────────────
+
+fn enum_from_item_untagged(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVariant]) {
+    let start = out.buf.len();
+
+    let last_index = variants.len() - 1;
+    for (i, variant) in variants.iter().enumerate() {
+        let is_last = i == last_index;
+        let name_lit = variant_name_literal(ctx, variant);
+
+        match variant.kind {
+            EnumKind::None => {
+                // Unit variant: match as string equal to variant name
+                if is_last {
+                    splat!(out;
+                        if let Some(__s) = __item.as_str() {
+                            if __s == [@name_lit.into()] {
+                                return Ok(Self::[#: variant.name]);
+                            }
+                        }
+                        Err(__ctx.error_expected_but_found(
+                            [@TokenTree::Literal(Literal::string("a matching variant"))], __item))
+                    );
+                } else {
+                    splat!(out;
+                        if let Some(__s) = __item.as_str() {
+                            if __s == [@name_lit.into()] {
+                                return Ok(Self::[#: variant.name]);
+                            }
+                        }
+                    );
+                }
+            }
+            EnumKind::Tuple => {
+                if variant.fields.len() != 1 {
+                    throw!("Only single-field tuple variants are supported in untagged enums")
+                }
+                if is_last {
+                    // Last variant: let errors propagate
+                    splat!(out;
+                        return Ok(Self::[#: variant.name](
+                            [~&ctx.crate_path]::FromItem::from_item(__ctx, __item)?
+                        ));
+                    );
+                } else {
+                    // Non-final: save error count, try, truncate on failure
+                    splat!(out; {
+                        let __err_len = __ctx.errors.len();
+                        match [~&ctx.crate_path]::FromItem::from_item(__ctx, __item) {
+                            Ok(__val) => return Ok(Self::[#: variant.name](__val)),
+                            Err(_) => { __ctx.errors.truncate(__err_len); }
+                        }
+                    });
+                }
+            }
+            EnumKind::Struct => {
+                if is_last {
+                    // Last variant: let errors propagate
+                    splat!(out; let __subtable = __item.expect_table(__ctx)?;);
+                    emit_variant_fields_from_table(out, ctx, variant, variant.fields, &[]);
+                    splat!(out;
+                        return Ok(Self::[#: variant.name] {
+                            [for field in variant.fields { splat!(out; [#: field.name],); }]
+                        });
+                    );
+                } else {
+                    // Non-final: build closure body, wrap with error truncation
+                    let closure_body_start = out.buf.len();
+                    splat!(out; let __subtable = __item.expect_table(__ctx)?;);
+                    emit_variant_fields_from_table(out, ctx, variant, variant.fields, &[]);
+                    splat!(out;
+                        Ok(Self::[#: variant.name] {
+                            [for field in variant.fields { splat!(out; [#: field.name],); }]
+                        })
+                    );
+                    let closure_body = out.split_off_stream(closure_body_start);
+                    let closure_body_group = TokenTree::Group(Group::new(Delimiter::Brace, closure_body));
+
+                    splat!(out; {
+                        let __err_len = __ctx.errors.len();
+                        let __result: ::std::result::Result<Self, [~&ctx.crate_path]::Failed> =
+                            (|| [@closure_body_group]) ();
+                        match __result {
+                            Ok(__val) => return Ok(__val),
+                            Err(_) => { __ctx.errors.truncate(__err_len); }
+                        }
+                    });
+                }
+            }
+        }
+    }
+
+    let body = out.split_off_stream(start);
+    impl_from_item(out, ctx, body);
+}
+
+fn enum_to_item_untagged(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVariant]) {
+    let start = out.buf.len();
+
+    let arms_start = out.buf.len();
+    for variant in variants {
+        let name_lit = variant_name_literal(ctx, variant);
+        match variant.kind {
+            EnumKind::None => {
+                // Serialize as string
+                splat!(out;
+                    Self::[#: variant.name] =>
+                        Ok([~&ctx.crate_path]::Item::string([@name_lit.into()])),
+                );
+            }
+            EnumKind::Tuple => {
+                if variant.fields.len() != 1 {
+                    throw!("Only single-field tuple variants are supported in untagged enums")
+                }
+                splat!(out;
+                    Self::[#: variant.name](inner) =>
+                        [~&ctx.crate_path]::ToItem::to_item(inner, __ctx),
+                );
+            }
+            EnumKind::Struct => {
+                let non_skip = variant
+                    .fields
+                    .iter()
+                    .filter(|f| f.flags & (Field::WITH_TO_ITEM_SKIP | Field::WITH_FLATTEN) == 0)
+                    .count();
+
+                let arm_body_start = out.buf.len();
+                splat!(out;
+                    let Some(mut table) = [~&ctx.crate_path]::Table::try_with_capacity(
+                        [@TokenTree::Literal(Literal::usize_unsuffixed(non_skip))], __ctx.arena
+                    ) else {
+                        return __ctx.report_error(
+                            [@TokenTree::Literal(Literal::string("Table capacity exceeded maximum"))]);
+                    };
+                );
+                emit_variant_fields_to_table(out, ctx, variant, variant.fields);
+                splat!(out; Ok(table.into_item()));
+                let arm_body = out.split_off_stream(arm_body_start);
+
+                splat!(out;
+                    Self::[#: variant.name] {
+                        [for field in variant.fields { splat!(out; ref [#: field.name],); }]
+                    } =>
+                        [@TokenTree::Group(Group::new(Delimiter::Brace, arm_body))]
+                );
+            }
+        }
+    }
+    let arms = out.split_off_stream(arms_start);
+    splat!(out;
+        match self [@TokenTree::Group(Group::new(Delimiter::Brace, arms))]
+    );
+
+    let body = out.split_off_stream(start);
+    impl_to_item(out, ctx, body);
+}
+
 // ── Main dispatch ────────────────────────────────────────────────
 
 fn handle_enum(output: &mut RustWriter, target: &DeriveTargetInner, variants: &[EnumVariant]) {
     if target.content.is_some() && target.tag.is_none() {
         throw!("content attribute requires tag to also be set")
     }
+    if target.untagged && (target.tag.is_some() || target.content.is_some()) {
+        throw!("untagged cannot be combined with tag or content attributes")
+    }
 
     let ctx = Ctx::new(output, target);
 
-    let is_string_enum = target.tag.is_none()
+    let is_string_enum = !target.untagged
+        && target.tag.is_none()
         && target.enum_flags & ENUM_CONTAINS_UNIT_VARIANT != 0
         && target.enum_flags & (ENUM_CONTAINS_STRUCT_VARIANT | ENUM_CONTAINS_TUPLE_VARIANT) == 0;
 
     if target.from_item {
-        match (&target.tag, &target.content) {
-            (None, _) if is_string_enum => enum_from_item_string(output, &ctx, variants),
-            (None, _) => enum_from_item_external(output, &ctx, variants),
-            (Some(tag_lit), None) => enum_from_item_internal(output, &ctx, variants, tag_lit),
-            (Some(tag_lit), Some(content_lit)) => {
-                enum_from_item_adjacent(output, &ctx, variants, tag_lit, content_lit)
+        if target.untagged {
+            enum_from_item_untagged(output, &ctx, variants);
+        } else {
+            match (&target.tag, &target.content) {
+                (None, _) if is_string_enum => enum_from_item_string(output, &ctx, variants),
+                (None, _) => enum_from_item_external(output, &ctx, variants),
+                (Some(tag_lit), None) => enum_from_item_internal(output, &ctx, variants, tag_lit),
+                (Some(tag_lit), Some(content_lit)) => {
+                    enum_from_item_adjacent(output, &ctx, variants, tag_lit, content_lit)
+                }
             }
         }
     }
 
     if target.to_item {
-        match (&target.tag, &target.content) {
-            (None, _) if is_string_enum => enum_to_item_string(output, &ctx, variants),
-            (None, _) => enum_to_item_external(output, &ctx, variants),
-            (Some(tag_lit), None) => enum_to_item_internal(output, &ctx, variants, tag_lit),
-            (Some(tag_lit), Some(content_lit)) => {
-                enum_to_item_adjacent(output, &ctx, variants, tag_lit, content_lit)
+        if target.untagged {
+            enum_to_item_untagged(output, &ctx, variants);
+        } else {
+            match (&target.tag, &target.content) {
+                (None, _) if is_string_enum => enum_to_item_string(output, &ctx, variants),
+                (None, _) => enum_to_item_external(output, &ctx, variants),
+                (Some(tag_lit), None) => enum_to_item_internal(output, &ctx, variants, tag_lit),
+                (Some(tag_lit), Some(content_lit)) => {
+                    enum_to_item_adjacent(output, &ctx, variants, tag_lit, content_lit)
+                }
             }
         }
     }
@@ -1681,6 +1850,7 @@ pub fn inner_derive(stream: TokenStream) -> TokenStream {
         enum_flags: 0,
         tag: None,
         content: None,
+        untagged: false,
     };
     let (kind, body) = ast::extract_derive_target(&mut target, &outer_tokens);
 

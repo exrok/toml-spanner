@@ -10,8 +10,8 @@ use foldhash::HashMap;
 
 use crate::{
     Arena, Error, ErrorKind, Key, Span, Table,
-    parser::{INDEXED_TABLE_THRESHOLD, KeyRef},
     item::{self, Item},
+    parser::{INDEXED_TABLE_THRESHOLD, KeyRef},
 };
 
 /// Guides deserialization of a [`Table`] by tracking which fields have been

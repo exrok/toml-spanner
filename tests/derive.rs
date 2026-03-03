@@ -444,3 +444,136 @@ fn flatten_empty_extras() {
     assert_eq!(v.name, "only");
     assert!(v.extras.is_empty());
 }
+
+// ── Untagged enum tests ──────────────────────────────────────
+
+#[derive(Toml, Debug, PartialEq)]
+#[toml(FromItem, ToItem, untagged)]
+enum Untagged {
+    Num(i64),
+    Text(String),
+}
+
+#[test]
+fn untagged_tuple_int() {
+    let arena = Arena::new();
+    let input = r#"val = 42"#;
+    let mut root = toml_spanner::parse(input, &arena).unwrap();
+    let (ctx, doc) = root.split();
+    let mut th = doc.as_item().table_helper(ctx).unwrap();
+    let v: Untagged = th.required("val").unwrap();
+    assert_eq!(v, Untagged::Num(42));
+}
+
+#[test]
+fn untagged_tuple_string() {
+    let arena = Arena::new();
+    let input = r#"val = "hello""#;
+    let mut root = toml_spanner::parse(input, &arena).unwrap();
+    let (ctx, doc) = root.split();
+    let mut th = doc.as_item().table_helper(ctx).unwrap();
+    let v: Untagged = th.required("val").unwrap();
+    // i64 fails, then String succeeds
+    assert_eq!(v, Untagged::Text("hello".to_string()));
+}
+
+#[test]
+fn untagged_tuple_roundtrip() {
+    #[derive(Toml, Debug, PartialEq)]
+    #[toml(FromItem, ToItem)]
+    struct Wrapper {
+        val: Untagged,
+    }
+    let w = Wrapper {
+        val: Untagged::Num(99),
+    };
+    let toml_str = toml_spanner::to_string(&w).unwrap();
+    let restored: Wrapper = toml_spanner::from_str(&toml_str).unwrap();
+    assert_eq!(w, restored);
+
+    let w2 = Wrapper {
+        val: Untagged::Text("hi".to_string()),
+    };
+    let toml_str2 = toml_spanner::to_string(&w2).unwrap();
+    let restored2: Wrapper = toml_spanner::from_str(&toml_str2).unwrap();
+    assert_eq!(w2, restored2);
+}
+
+// Untagged with struct + tuple mix
+#[derive(Toml, Debug, PartialEq)]
+#[toml(FromItem, ToItem, untagged)]
+enum UntaggedMixed {
+    Structured { x: i32, y: i32 },
+    Simple(String),
+}
+
+#[test]
+fn untagged_struct_variant() {
+    let input = r#"
+        x = 10
+        y = 20
+    "#;
+    let v: UntaggedMixed = toml_spanner::from_str(input).unwrap();
+    assert_eq!(v, UntaggedMixed::Structured { x: 10, y: 20 });
+}
+
+#[test]
+fn untagged_fallback_to_later_variant() {
+    // A plain string can't be parsed as Structured, so falls through to Simple
+    let arena = Arena::new();
+    let input = r#"val = "just a string""#;
+    let mut root = toml_spanner::parse(input, &arena).unwrap();
+    let (ctx, doc) = root.split();
+    let mut th = doc.as_item().table_helper(ctx).unwrap();
+    let v: UntaggedMixed = th.required("val").unwrap();
+    assert_eq!(v, UntaggedMixed::Simple("just a string".to_string()));
+}
+
+#[test]
+fn untagged_mixed_roundtrip() {
+    #[derive(Toml, Debug, PartialEq)]
+    #[toml(FromItem, ToItem)]
+    struct Wrapper {
+        val: UntaggedMixed,
+    }
+    let w = Wrapper {
+        val: UntaggedMixed::Structured { x: 1, y: 2 },
+    };
+    let toml_str = toml_spanner::to_string(&w).unwrap();
+    let restored: Wrapper = toml_spanner::from_str(&toml_str).unwrap();
+    assert_eq!(w, restored);
+}
+
+// Untagged with unit variants
+#[derive(Toml, Debug, PartialEq)]
+#[toml(FromItem, ToItem, untagged)]
+enum UntaggedWithUnit {
+    Named(String),
+    Empty,
+}
+
+#[test]
+fn untagged_unit_variant() {
+    let arena = Arena::new();
+    let input = r#"val = "Empty""#;
+    let mut root = toml_spanner::parse(input, &arena).unwrap();
+    let (ctx, doc) = root.split();
+    let mut th = doc.as_item().table_helper(ctx).unwrap();
+    let v: UntaggedWithUnit = th.required("val").unwrap();
+    // "Empty" matches Named(String) first since it comes before the unit variant
+    assert_eq!(v, UntaggedWithUnit::Named("Empty".to_string()));
+}
+
+// Verify errors are properly cleaned up between attempts
+#[test]
+fn untagged_no_error_leakage() {
+    let arena = Arena::new();
+    let input = r#"val = "hello""#;
+    let mut root = toml_spanner::parse(input, &arena).unwrap();
+    let (ctx, doc) = root.split();
+    let mut th = doc.as_item().table_helper(ctx).unwrap();
+    let v: Untagged = th.required("val").unwrap();
+    assert_eq!(v, Untagged::Text("hello".to_string()));
+    // Num attempt failed but errors should have been truncated
+    assert!(root.errors().is_empty(), "errors should be empty but got: {:?}", root.errors());
+}

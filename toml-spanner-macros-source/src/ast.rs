@@ -99,6 +99,7 @@ pub struct DeriveTargetInner<'a> {
     pub enum_flags: EnumFlag,
     pub tag: Option<Literal>,
     pub content: Option<Literal>,
+    pub untagged: bool,
 }
 
 impl<'a> DeriveTargetInner<'a> {
@@ -317,6 +318,12 @@ fn parse_container_attr(
             };
             value = rest;
             target.rename_all_fields = RenameRule::from_literal(&rename);
+        }
+        "untagged" => {
+            if target.untagged {
+                throw!("Duplicate untagged attribute" @ attr.span())
+            }
+            target.untagged = true;
         }
         _ => throw!("Unknown attribute" @ attr.span()),
     }
