@@ -735,3 +735,30 @@ fn try_if_no_error_leakage() {
         root.errors()
     );
 }
+
+#[derive(Toml, Debug, PartialEq)]
+#[toml(FromItem, ToItem)]
+struct GenericWithDefault<P: Clone = String> {
+    value: P,
+}
+
+#[test]
+fn derive_generic_with_default_bound() {
+    let arena = Arena::new();
+    let input = r#"value = "hello""#;
+    let mut root = toml_spanner::parse(input, &arena).unwrap();
+    let (ctx, doc) = root.split();
+    let result: GenericWithDefault = GenericWithDefault::from_item(ctx, doc.as_item()).unwrap();
+    assert_eq!(result.value, "hello");
+}
+
+#[test]
+fn derive_generic_with_explicit_type() {
+    let arena = Arena::new();
+    let input = r#"value = 42"#;
+    let mut root = toml_spanner::parse(input, &arena).unwrap();
+    let (ctx, doc) = root.split();
+    let result: GenericWithDefault<i64> =
+        GenericWithDefault::from_item(ctx, doc.as_item()).unwrap();
+    assert_eq!(result.value, 42);
+}

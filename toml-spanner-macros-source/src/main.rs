@@ -128,9 +128,8 @@ fn main() {
     util::print_pretty(codegen::derive(tokens! {
 
     #[derive(Toml)]
-    #[toml(FromItem)]
-    struct Foo<'a> {
-        bar: &'a str,
+    pub struct Thingy<P: Clone = String> {
+        falue: P
     }
 
     }));

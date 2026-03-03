@@ -319,23 +319,18 @@ fn struct_from_item(out: &mut RustWriter, ctx: &Ctx, fields: &[Field]) {
         let arm_body_start = out.buf.len();
 
         if let Some(with) = with_path {
-            // Custom deserializer: fn(&Item) -> Result<T, Error>
             if is_required {
                 splat!(out;
-                    match [~with] :: from_item(__value) {
+                    match [~with] :: from_item(__ctx, __value) {
                         Ok(__val) => { [#: field.name] = Some(__val); }
-                        Err(__err) => return Err(__ctx.push_error(
-                            [~&ctx.crate_path] :: Error :: custom(__err, __value.span_unchecked())
-                        )),
+                        Err(__e) => return Err(__e),
                     }
                 );
             } else {
                 splat!(out;
-                    match [~with] :: from_item(__value) {
+                    match [~with] :: from_item(__ctx, __value) {
                         Ok(__val) => { [#: field.name] = Some(__val); }
-                        Err(__err) => { __ctx.push_error(
-                            [~&ctx.crate_path] :: Error :: custom(__err, __value.span_unchecked())
-                        ); }
+                        Err(_) => {}
                     }
                 );
             }
@@ -746,20 +741,16 @@ fn emit_variant_fields_from_table(
         if let Some(with) = with_path {
             if is_required {
                 splat!(out;
-                    match [~with] :: from_item(__value) {
+                    match [~with] :: from_item(__ctx, __value) {
                         Ok(__val) => { [#: field.name] = Some(__val); }
-                        Err(__err) => return Err(__ctx.push_error(
-                            [~&ctx.crate_path] :: Error :: custom(__err, __value.span_unchecked())
-                        )),
+                        Err(__e) => return Err(__e),
                     }
                 );
             } else {
                 splat!(out;
-                    match [~with] :: from_item(__value) {
+                    match [~with] :: from_item(__ctx, __value) {
                         Ok(__val) => { [#: field.name] = Some(__val); }
-                        Err(__err) => { __ctx.push_error(
-                            [~&ctx.crate_path] :: Error :: custom(__err, __value.span_unchecked())
-                        ); }
+                        Err(_) => {}
                     }
                 );
             }

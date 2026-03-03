@@ -1,3 +1,4 @@
+
 use crate::{case::RenameRule, util::Allocator, Error};
 use proc_macro::{Delimiter, Ident, Literal, Span, TokenStream, TokenTree};
 pub enum GenericKind {
@@ -454,11 +455,9 @@ pub fn extract_derive_target<'a>(
                     b'>' => {
                         depth -= 1;
                         if depth < 0 {
-                            generic.bounds = if keep {
-                                &from[..(from.len() - toks.len()) - 1]
-                            } else {
-                                &[]
-                            };
+                            if keep {
+                                generic.bounds = &from[..(from.len() - toks.len()) - 1];
+                            }
                             break 'parsing_generics;
                         }
                     }
@@ -466,11 +465,9 @@ pub fn extract_derive_target<'a>(
                 }
             }
         }
-        generic.bounds = if keep {
-            &from[..(from.len() - toks.len()) - 1]
-        } else {
-            &[]
-        };
+        if keep {
+            generic.bounds = &from[..(from.len() - toks.len()) - 1];
+        }
     }
     match match (toks).next() {
         Some(t) => t,
