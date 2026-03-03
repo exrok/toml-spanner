@@ -1634,22 +1634,33 @@ fn enum_from_item_untagged(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVari
     let start = out.buf.len();
 
     let last_index = variants.len() - 1;
+    // The last variant can propagate errors directly only if it has no hint
+    // (a hinted last variant could be skipped, so we need a trailing fallback)
+    let last_is_unhinted =
+        variants[last_index].try_if.is_none() && variants[last_index].final_if.is_none();
+
     for (i, variant) in variants.iter().enumerate() {
-        let is_last = i == last_index;
+        let has_hint = variant.try_if.is_some() || variant.final_if.is_some();
+        // is_last optimization: propagate errors directly for the last unhinted variant
+        let is_last = i == last_index && !has_hint;
+        // final_if always propagates errors (acts like is_last=true)
+        let propagate = is_last || variant.final_if.is_some();
         let name_lit = variant_name_literal(ctx, variant);
 
+        // Emit the inner deserialization code for this variant
+        let inner_start = out.buf.len();
         match variant.kind {
             EnumKind::None => {
                 // Unit variant: match as string equal to variant name
-                if is_last {
+                if propagate {
                     splat!(out;
                         if let Some(__s) = __item.as_str() {
                             if __s == [@name_lit.into()] {
                                 return Ok(Self::[#: variant.name]);
                             }
                         }
-                        Err(__ctx.error_expected_but_found(
-                            [@TokenTree::Literal(Literal::string("a matching variant"))], __item))
+                        return Err(__ctx.error_expected_but_found(
+                            [@TokenTree::Literal(Literal::string("a matching variant"))], __item));
                     );
                 } else {
                     splat!(out;
@@ -1665,15 +1676,16 @@ fn enum_from_item_untagged(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVari
                 if variant.fields.len() != 1 {
                     throw!("Only single-field tuple variants are supported in untagged enums")
                 }
-                if is_last {
-                    // Last variant: let errors propagate
+                if propagate {
+                    // Propagate errors via match
                     splat!(out;
-                        return Ok(Self::[#: variant.name](
-                            [~&ctx.crate_path]::FromItem::from_item(__ctx, __item)?
-                        ));
+                        match [~&ctx.crate_path]::FromItem::from_item(__ctx, __item) {
+                            Ok(__val) => return Ok(Self::[#: variant.name](__val)),
+                            Err(__e) => return Err(__e),
+                        }
                     );
                 } else {
-                    // Non-final: save error count, try, truncate on failure
+                    // Try with fallback: save error count, truncate on failure
                     splat!(out; {
                         let __err_len = __ctx.errors.len();
                         match [~&ctx.crate_path]::FromItem::from_item(__ctx, __item) {
@@ -1684,8 +1696,8 @@ fn enum_from_item_untagged(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVari
                 }
             }
             EnumKind::Struct => {
-                if is_last {
-                    // Last variant: let errors propagate
+                if propagate {
+                    // Propagate errors
                     splat!(out; let __subtable = __item.expect_table(__ctx)?;);
                     emit_variant_fields_from_table(out, ctx, variant, variant.fields, &[]);
                     splat!(out;
@@ -1694,7 +1706,7 @@ fn enum_from_item_untagged(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVari
                         });
                     );
                 } else {
-                    // Non-final: build closure body, wrap with error truncation
+                    // Try with fallback: closure + error truncation
                     let closure_body_start = out.buf.len();
                     splat!(out; let __subtable = __item.expect_table(__ctx)?;);
                     emit_variant_fields_from_table(out, ctx, variant, variant.fields, &[]);
@@ -1718,6 +1730,27 @@ fn enum_from_item_untagged(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVari
                 }
             }
         }
+
+        // If this variant has a hint, wrap the inner code in a predicate check
+        if let Some(predicate) = variant.try_if.as_deref().or(variant.final_if.as_deref()) {
+            let inner_code = out.split_off_stream(inner_start);
+            let inner_group = TokenTree::Group(Group::new(Delimiter::Brace, inner_code));
+            let pred_stream: TokenStream = predicate.iter().cloned().collect();
+            let pred_group = TokenTree::Group(Group::new(Delimiter::Parenthesis, pred_stream));
+            // Use a typed fn pointer to help the compiler infer closure parameter types
+            splat!(out; {
+                let __pred: fn(& mut [~&ctx.crate_path]::Context<#[#: &ctx.lifetime]>, & [~&ctx.crate_path]::Item<#[#: &ctx.lifetime]>) -> bool = [@pred_group];
+                if __pred(__ctx, __item) [@inner_group]
+            });
+        }
+    }
+
+    // Trailing fallback: needed when the last variant has a hint (could be skipped)
+    if !last_is_unhinted {
+        splat!(out;
+            Err(__ctx.error_expected_but_found(
+                [@TokenTree::Literal(Literal::string("a matching variant"))], __item))
+        );
     }
 
     let body = out.split_off_stream(start);
@@ -1793,6 +1826,14 @@ fn handle_enum(output: &mut RustWriter, target: &DeriveTargetInner, variants: &[
     }
     if target.untagged && (target.tag.is_some() || target.content.is_some()) {
         throw!("untagged cannot be combined with tag or content attributes")
+    }
+
+    if !target.untagged {
+        for variant in variants {
+            if variant.try_if.is_some() || variant.final_if.is_some() {
+                throw!("try_if/final_if can only be used on untagged enums" @ variant.name.span())
+            }
+        }
     }
 
     let ctx = Ctx::new(output, target);

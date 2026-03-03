@@ -1,4 +1,3 @@
-
 use crate::{case::RenameRule, util::Allocator, Error};
 use proc_macro::{Delimiter, Ident, Literal, Span, TokenStream, TokenTree};
 pub enum GenericKind {
@@ -152,6 +151,8 @@ pub struct EnumVariant<'a> {
     #[allow(dead_code)]
     pub attr: &'a FieldAttrs,
     pub rename_all: RenameRule,
+    pub try_if: Option<Vec<TokenTree>>,
+    pub final_if: Option<Vec<TokenTree>>,
 }
 pub enum EnumKind {
     Tuple,
@@ -683,6 +684,8 @@ struct VariantTemp<'a> {
     attr: &'a FieldAttrs,
     kind: EnumKind,
     rename_all: RenameRule,
+    try_if: Option<Vec<TokenTree>>,
+    final_if: Option<Vec<TokenTree>>,
 }
 pub fn scan_fields<'a>(target: &mut DeriveTargetInner<'a>, fields: &mut Vec<Field<'a>>) {
     let type_generic_names: Vec<_> = target
@@ -773,6 +776,8 @@ pub fn parse_enum<'a>(
             kind: var.kind,
             rename_all: var.rename_all,
             attr: var.attr,
+            try_if: var.try_if,
+            final_if: var.final_if,
         })
         .collect()
 }
@@ -785,6 +790,8 @@ fn parse_inner_enum_variants<'a>(
     let mut enums: Vec<VariantTemp<'a>> = Vec::new();
     let mut next_attr: Option<&'a mut FieldAttrs> = None;
     let mut next_rename_all = RenameRule::None;
+    let mut next_try_if: Option<Vec<TokenTree>> = None;
+    let mut next_final_if: Option<Vec<TokenTree>> = None;
     loop {
         let i = if let Some((i, tok)) = f.next() {
             let TokenTree::Punct(punct) = tok else {
@@ -797,11 +804,44 @@ fn parse_inner_enum_variants<'a>(
                 };
                 if let Some(attrs) = extract_toml_attr(group.stream()) {
                     parse_attrs(attrs, &mut |set, ident, buf| {
-                        if ident.to_string() == "rename_all" {
+                        let name = ident.to_string();
+                        if name == "rename_all" {
                             let Some(TokenTree::Literal(rename)) = buf.pop() else {
                                 Error::span_msg("Expected a literal", ident.span())
                             };
                             next_rename_all = RenameRule::from_literal(&rename);
+                            return;
+                        }
+                        if name == "try_if" {
+                            if next_try_if.is_some() {
+                                Error::span_msg("Duplicate try_if attribute", ident.span())
+                            }
+                            if next_final_if.is_some() {
+                                Error::span_msg(
+                                    "Cannot combine try_if and final_if on the same variant",
+                                    ident.span(),
+                                )
+                            }
+                            if buf.is_empty() {
+                                Error::span_msg("try_if requires a predicate", ident.span())
+                            }
+                            next_try_if = Some(std::mem::take(buf));
+                            return;
+                        }
+                        if name == "final_if" {
+                            if next_final_if.is_some() {
+                                Error::span_msg("Duplicate final_if attribute", ident.span())
+                            }
+                            if next_try_if.is_some() {
+                                Error::span_msg(
+                                    "Cannot combine try_if and final_if on the same variant",
+                                    ident.span(),
+                                )
+                            }
+                            if buf.is_empty() {
+                                Error::span_msg("final_if requires a predicate", ident.span())
+                            }
+                            next_final_if = Some(std::mem::take(buf));
                             return;
                         }
                         let attr = next_attr.get_or_insert_with(|| attr_buffer.alloc_default());
@@ -892,6 +932,8 @@ fn parse_inner_enum_variants<'a>(
             },
             kind,
             rename_all: std::mem::replace(&mut next_rename_all, RenameRule::None),
+            try_if: next_try_if.take(),
+            final_if: next_final_if.take(),
         });
         if f.len() == 0 {
             break;

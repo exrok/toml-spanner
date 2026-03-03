@@ -575,5 +575,163 @@ fn untagged_no_error_leakage() {
     let v: Untagged = th.required("val").unwrap();
     assert_eq!(v, Untagged::Text("hello".to_string()));
     // Num attempt failed but errors should have been truncated
-    assert!(root.errors().is_empty(), "errors should be empty but got: {:?}", root.errors());
+    assert!(
+        root.errors().is_empty(),
+        "errors should be empty but got: {:?}",
+        root.errors()
+    );
+}
+
+// ── Branch hint (try_if / final_if) tests ────────────────────
+
+#[derive(Toml, Debug, PartialEq)]
+#[toml(FromItem, untagged)]
+enum TryIfEnum {
+    #[toml(try_if = |_ctx, item| item.kind() == toml_spanner::Kind::Array)]
+    Arr(Vec<String>),
+    Text(String),
+}
+
+#[test]
+fn try_if_matches() {
+    let arena = Arena::new();
+    let input = r#"val = ["a", "b"]"#;
+    let mut root = toml_spanner::parse(input, &arena).unwrap();
+    let (ctx, doc) = root.split();
+    let mut th = doc.as_item().table_helper(ctx).unwrap();
+    let v: TryIfEnum = th.required("val").unwrap();
+    assert_eq!(v, TryIfEnum::Arr(vec!["a".to_string(), "b".to_string()]));
+}
+
+#[test]
+fn try_if_skips() {
+    let arena = Arena::new();
+    let input = r#"val = "hello""#;
+    let mut root = toml_spanner::parse(input, &arena).unwrap();
+    let (ctx, doc) = root.split();
+    let mut th = doc.as_item().table_helper(ctx).unwrap();
+    let v: TryIfEnum = th.required("val").unwrap();
+    // Predicate is false for strings, so Arr is skipped, falls through to Text
+    assert_eq!(v, TryIfEnum::Text("hello".to_string()));
+}
+
+#[derive(Toml, Debug, PartialEq)]
+#[toml(FromItem, untagged)]
+enum FinalIfEnum {
+    #[toml(final_if = |_ctx, item| item.kind() == toml_spanner::Kind::String)]
+    Text(String),
+    Num(i64),
+}
+
+#[test]
+fn final_if_matches() {
+    let arena = Arena::new();
+    let input = r#"val = "committed""#;
+    let mut root = toml_spanner::parse(input, &arena).unwrap();
+    let (ctx, doc) = root.split();
+    let mut th = doc.as_item().table_helper(ctx).unwrap();
+    let v: FinalIfEnum = th.required("val").unwrap();
+    assert_eq!(v, FinalIfEnum::Text("committed".to_string()));
+}
+
+#[test]
+fn final_if_skips_to_next() {
+    let arena = Arena::new();
+    let input = r#"val = 42"#;
+    let mut root = toml_spanner::parse(input, &arena).unwrap();
+    let (ctx, doc) = root.split();
+    let mut th = doc.as_item().table_helper(ctx).unwrap();
+    let v: FinalIfEnum = th.required("val").unwrap();
+    // Predicate false for integers, so Text is skipped, falls through to Num
+    assert_eq!(v, FinalIfEnum::Num(42));
+}
+
+#[derive(Toml, Debug, PartialEq)]
+#[toml(FromItem, untagged)]
+enum MixedHints {
+    #[toml(final_if = |_ctx, item| item.kind() == toml_spanner::Kind::Boolean)]
+    Flag(bool),
+    #[toml(try_if = |_ctx, item| item.kind() == toml_spanner::Kind::Integer)]
+    Num(i64),
+    Text(String),
+}
+
+#[test]
+fn mixed_hints_final_if() {
+    let arena = Arena::new();
+    let input = r#"val = true"#;
+    let mut root = toml_spanner::parse(input, &arena).unwrap();
+    let (ctx, doc) = root.split();
+    let mut th = doc.as_item().table_helper(ctx).unwrap();
+    let v: MixedHints = th.required("val").unwrap();
+    assert_eq!(v, MixedHints::Flag(true));
+}
+
+#[test]
+fn mixed_hints_try_if() {
+    let arena = Arena::new();
+    let input = r#"val = 99"#;
+    let mut root = toml_spanner::parse(input, &arena).unwrap();
+    let (ctx, doc) = root.split();
+    let mut th = doc.as_item().table_helper(ctx).unwrap();
+    let v: MixedHints = th.required("val").unwrap();
+    assert_eq!(v, MixedHints::Num(99));
+}
+
+#[test]
+fn mixed_hints_fallback_unhinted() {
+    let arena = Arena::new();
+    let input = r#"val = "hello""#;
+    let mut root = toml_spanner::parse(input, &arena).unwrap();
+    let (ctx, doc) = root.split();
+    let mut th = doc.as_item().table_helper(ctx).unwrap();
+    let v: MixedHints = th.required("val").unwrap();
+    assert_eq!(v, MixedHints::Text("hello".to_string()));
+}
+
+#[derive(Toml, Debug, PartialEq)]
+#[toml(FromItem, untagged)]
+enum AllHinted {
+    #[toml(final_if = |_ctx, item| item.kind() == toml_spanner::Kind::Boolean)]
+    Flag(bool),
+    #[toml(try_if = |_ctx, item| item.kind() == toml_spanner::Kind::Integer)]
+    Num(i64),
+}
+
+#[test]
+fn all_hinted_no_match_gives_error() {
+    let arena = Arena::new();
+    let input = r#"val = "nope""#;
+    let mut root = toml_spanner::parse(input, &arena).unwrap();
+    let (ctx, doc) = root.split();
+    let mut th = doc.as_item().table_helper(ctx).unwrap();
+    let result: Result<AllHinted, _> = th.required("val");
+    assert!(result.is_err(), "expected error when no variant matches");
+}
+
+#[test]
+fn try_if_no_error_leakage() {
+    // When try_if predicate matches but deserialization fails, errors are truncated
+    #[derive(Toml, Debug, PartialEq)]
+    #[toml(FromItem, untagged)]
+    enum TryIfLeak {
+        #[toml(try_if = |_ctx, item| item.kind() == toml_spanner::Kind::String)]
+        Num(i64),
+        Text(String),
+    }
+
+    let arena = Arena::new();
+    let input = r#"val = "not_a_number""#;
+    let mut root = toml_spanner::parse(input, &arena).unwrap();
+    let (ctx, doc) = root.split();
+    let mut th = doc.as_item().table_helper(ctx).unwrap();
+    let v: TryIfLeak = th.required("val").unwrap();
+    // try_if predicate matches (it's a string), but i64 deser fails →
+    // errors truncated, falls through to Text
+    assert_eq!(v, TryIfLeak::Text("not_a_number".to_string()));
+    assert!(
+        root.errors().is_empty(),
+        "errors should be empty but got: {:?}",
+        root.errors()
+    );
 }
