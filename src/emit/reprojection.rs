@@ -447,8 +447,6 @@ const HASH_SHIFT: u32 = 16;
 const MATCHED_BIT: u64 = 1 << 63;
 /// Hash mask: bits 62-16 (47 bits of hash, bit 63 reserved).
 const HASH_MASK: u64 = !INDEX_MASK & !MATCHED_BIT;
-/// Max src-side collision group size (limited by u32 bitset).
-const MAX_GROUP_SRC: usize = 32;
 /// Max collision-group cross-product before we skip matching.
 const COLLISION_CAP: usize = 256;
 
@@ -486,6 +484,21 @@ fn reproject_array<'de>(
         return reproject_array_positional(index, src, dest, items);
     }
 
+    let mut prefix = 0;
+
+    while let (Some(src_head), Some(dst_head)) = (src.get(prefix), dest.get_mut(prefix)) {
+        if indexed_eq(src_head, dst_head, index) {
+            reproject_item(index, src_head, dst_head, items);
+            prefix += 1;
+        } else {
+            break;
+        }
+    }
+    let src = &src.as_slice()[prefix..];
+    let dest = &mut dest.as_mut_slice()[prefix..];
+    let n = src.len();
+    let m = dest.len();
+
     let build = foldhash::quality::RandomState::default();
 
     // Pack (hash47, index16) into u64. Bit 63 reserved as matched flag.
@@ -508,7 +521,6 @@ fn reproject_array<'de>(
     // Merge-join on hash bits. Matched entries are tagged in-place:
     //   src_sorted:  MATCHED_BIT is set on consumed entries.
     //   dest_sorted: rewritten to MATCHED_BIT | (src_idx << 16) | dest_idx.
-    let dest_slice = dest.as_slice();
     let mut matched_count: usize = 0;
     let mut si = 0;
     let mut di = 0;
@@ -534,25 +546,44 @@ fn reproject_array<'de>(
             let group_n = si - si_start;
             let group_m = di - di_start;
 
-            // Cap group size: u32 bitset limits src side to 32, cross-product
-            // bounds total verification work.
-            if group_n > MAX_GROUP_SRC || group_n * group_m > COLLISION_CAP {
+            // Fast prefix: within a collision group entries are sorted by
+            // original index, so leading elements that are equal 1:1 can be
+            // matched linearly before the quadratic cross-product remainder.
+            let prefix_len = group_n.min(group_m);
+            let mut prefix_matched = 0;
+            for k in 0..prefix_len {
+                let src_idx = (src_sorted[si_start + k] & INDEX_MASK) as usize;
+                let dest_idx = (dest_sorted[di_start + k] & INDEX_MASK) as usize;
+                if indexed_eq(src.get(src_idx).unwrap(), &dest[dest_idx], index) {
+                    dest_sorted[di_start + k] =
+                        MATCHED_BIT | ((src_idx as u64) << HASH_SHIFT) | (dest_idx as u64);
+                    src_sorted[si_start + k] |= MATCHED_BIT;
+                    matched_count += 1;
+                    prefix_matched += 1;
+                } else {
+                    break;
+                }
+            }
+
+            let si_rem = si_start + prefix_matched;
+            let di_rem = di_start + prefix_matched;
+
+            if (si - si_rem) * (di - di_rem) > COLLISION_CAP {
                 continue;
             }
 
-            let mut used: u32 = 0;
-            for d in di_start..di {
+            for d in di_rem..di {
                 let dest_idx = (dest_sorted[d] & INDEX_MASK) as usize;
-                for (k, s) in (si_start..si).enumerate() {
-                    if used & (1 << k) != 0 {
+                for s in si_rem..si {
+                    let src_entry = &mut src_sorted[s];
+                    if (*src_entry as i64) < 0 {
                         continue;
                     }
-                    let src_idx = (src_sorted[s] & INDEX_MASK) as usize;
-                    if indexed_eq(src.get(src_idx).unwrap(), &dest_slice[dest_idx], index) {
+                    let src_idx = (*src_entry & INDEX_MASK) as usize;
+                    if indexed_eq(src.get(src_idx).unwrap(), &dest[dest_idx], index) {
                         dest_sorted[d] =
                             MATCHED_BIT | ((src_idx as u64) << HASH_SHIFT) | (dest_idx as u64);
-                        src_sorted[s] |= MATCHED_BIT;
-                        used |= 1 << k;
+                        *src_entry |= MATCHED_BIT;
                         matched_count += 1;
                         break;
                     }
@@ -580,28 +611,21 @@ fn reproject_array<'de>(
     }
     src_sorted[..fc].sort_unstable();
 
-    // Build the final src-index assignment for each dest element, then
-    // detect reordering across ALL assignments (content matches + fallbacks).
+    // Detect reordering across ALL assignments (content matches + fallbacks).
     // Array order is semantic, so any reordering must preserve dest order.
-    let mut assigned_src: Vec<u64> = Vec::with_capacity(m);
-    let mut fbi = 0usize;
-    for entry in dest_sorted.iter() {
-        if *entry & MATCHED_BIT != 0 {
-            assigned_src.push((*entry >> HASH_SHIFT) & INDEX_MASK);
-        } else if fbi < fc {
-            assigned_src.push(src_sorted[fbi]);
-            fbi += 1;
-        } else {
-            assigned_src.push(u64::MAX); // no src assigned
-        }
-    }
-
     let mut reordered = false;
     let mut prev_src = 0u64;
-    for &si in &assigned_src {
-        if si == u64::MAX {
+    let mut fbi = 0usize;
+    for entry in dest_sorted.iter() {
+        let si = if *entry & MATCHED_BIT != 0 {
+            (*entry >> HASH_SHIFT) & INDEX_MASK
+        } else if fbi < fc {
+            let s = src_sorted[fbi];
+            fbi += 1;
+            s
+        } else {
             continue;
-        }
+        };
         if si < prev_src {
             reordered = true;
             break;
@@ -610,30 +634,30 @@ fn reproject_array<'de>(
     }
 
     // Apply content matches and fallback.
-    let dest_mut = dest.as_mut_slice();
     // Reordered arrays are not fully matched: verbatim source copy would
     // restore source order, changing semantic meaning.
     let mut all_matched = matched_count == n && n == m && !reordered;
     let mut fi = 0;
     for (di, entry) in dest_sorted.iter().enumerate() {
+        let dest_entry = &mut dest[di];
         if *entry & MATCHED_BIT != 0 {
             let src_idx = ((*entry >> HASH_SHIFT) & INDEX_MASK) as usize;
-            if !reproject_item(index, src.get(src_idx).unwrap(), &mut dest_mut[di], items) {
+            if !reproject_item(index, src.get(src_idx).unwrap(), dest_entry, items) {
                 all_matched = false;
             }
         } else if fi < fc {
             // Fallback: pair with next unconsumed src for partial match.
             let src_idx = src_sorted[fi] as usize;
-            reproject_item(index, src.get(src_idx).unwrap(), &mut dest_mut[di], items);
+            reproject_item(index, src.get(src_idx).unwrap(), dest_entry, items);
             fi += 1;
             all_matched = false;
         } else {
-            clear_stale_item(&mut dest_mut[di]);
+            clear_stale_item(dest_entry);
             all_matched = false;
         }
 
         if reordered {
-            dest_mut[di].meta.set_ignore_source_order();
+            dest_entry.meta.set_ignore_source_order();
         }
     }
 

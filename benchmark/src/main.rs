@@ -436,7 +436,15 @@ fn main_for_clone() {
         let owned_ratio = ot / pt;
         println!(
             "{:<20} {:>9.1} {:>9.0} {:>9.1} {:>9.0} {:>5.1}% {:>9.1} {:>9.0} {:>5.1}%",
-            name, pt, pc, ct, cc, clone_ratio * 100.0, ot, oc, owned_ratio * 100.0
+            name,
+            pt,
+            pc,
+            ct,
+            cc,
+            clone_ratio * 100.0,
+            ot,
+            oc,
+            owned_ratio * 100.0
         );
     }
 }
@@ -488,14 +496,8 @@ fn bench_emit_reprojected<'a>(
     bench: &mut Bencher,
     configs: &[(&'a str, &str)],
 ) -> Vec<(&'a str, Stat)> {
-    // For each config: parse source, parse dest (identity), reproject, normalize.
-    // Then benchmark just the emit_with_config call.
-    struct Prepared<'de> {
-        source: &'de str,
-        items: Vec<&'de toml_spanner::Item<'de>>,
-        normalized: &'de toml_spanner::NormalizedTable<'de>,
-    }
-
+    // Benchmark the full pipeline: parse dest, reproject, normalize, emit.
+    // Pre-parse source roots only (they are read-only references).
     let src_arenas: Vec<_> = configs.iter().map(|_| toml_spanner::Arena::new()).collect();
     let src_roots: Vec<_> = configs
         .iter()
@@ -503,67 +505,48 @@ fn bench_emit_reprojected<'a>(
         .map(|((_, source), arena)| toml_spanner::parse(source, arena).unwrap())
         .collect();
 
-    let dest_arenas: Vec<_> = configs.iter().map(|_| toml_spanner::Arena::new()).collect();
-    let mut dest_tables: Vec<_> = configs
-        .iter()
-        .zip(dest_arenas.iter())
-        .map(|((_, source), arena)| toml_spanner::parse(source, arena).unwrap().into_table())
-        .collect();
-
-    let mut prepared: Vec<Prepared<'_>> = Vec::new();
-    for (i, (_, source)) in configs.iter().enumerate() {
-        let mut items = Vec::new();
-        toml_spanner::reproject(&src_roots[i], &mut dest_tables[i], &mut items);
-        let normalized = dest_tables[i].normalize();
-        // SAFETY: normalized borrows dest_tables[i] which lives as long as dest_arenas.
-        // We never move or mutate dest_tables again after this point.
-        let normalized: &'static toml_spanner::NormalizedTable<'static> =
-            unsafe { std::mem::transmute(normalized) };
-        let items: Vec<&'static toml_spanner::Item<'static>> =
-            unsafe { std::mem::transmute(items) };
-        prepared.push(Prepared {
-            source,
-            items,
-            normalized,
-        });
-    }
-
     let mut results = Vec::new();
-    for (i, (name, _)) in configs.iter().enumerate() {
-        let p = &prepared[i];
-        let config = toml_spanner::EmitConfig {
-            projected_source_text: p.source,
-            projected_source_items: &p.items,
-            reprojected_order: true,
-        };
+    for (i, (name, source)) in configs.iter().enumerate() {
+        let src_root = &src_roots[i];
         let stat = bench.func(|| {
+            let arena = toml_spanner::Arena::new();
+            let mut dest_table = toml_spanner::parse(source, &arena).unwrap().into_table();
+            let mut items = Vec::new();
+            toml_spanner::reproject(src_root, &mut dest_table, &mut items);
+            let normalized = dest_table.normalize();
+            let config = toml_spanner::EmitConfig {
+                projected_source_text: source,
+                projected_source_items: &items,
+                reprojected_order: true,
+            };
             let mut buf = Vec::new();
-            toml_spanner::emit_with_config(p.normalized, &config, &mut buf);
+            toml_spanner::emit_with_config(normalized, &config, &mut buf);
             std::hint::black_box(&mut buf);
         });
         println!("{name}: {stat}");
         results.push((*name, stat));
     }
 
-    let configs_for_gen: Vec<_> = prepared
-        .iter()
-        .map(|p| {
-            (
-                p.normalized,
-                toml_spanner::EmitConfig {
-                    projected_source_text: p.source,
-                    projected_source_items: &p.items,
-                    reprojected_order: true,
-                },
-            )
-        })
-        .collect();
+    let sources: Vec<_> = configs.iter().map(|(_, s)| *s).collect();
     let mut rng = oorandom::Rand32::new(0xdeadbeaf);
     let stat = bench.bench_with_generator(
-        || &configs_for_gen[rng.rand_range(0..configs_for_gen.len() as u32) as usize],
-        |(normalized, config)| {
+        || {
+            let idx = rng.rand_range(0..sources.len() as u32) as usize;
+            (sources[idx], &src_roots[idx])
+        },
+        |(source, src_root)| {
+            let arena = toml_spanner::Arena::new();
+            let mut dest_table = toml_spanner::parse(source, &arena).unwrap().into_table();
+            let mut items = Vec::new();
+            toml_spanner::reproject(src_root, &mut dest_table, &mut items);
+            let normalized = dest_table.normalize();
+            let config = toml_spanner::EmitConfig {
+                projected_source_text: source,
+                projected_source_items: &items,
+                reprojected_order: true,
+            };
             let mut buf = Vec::new();
-            toml_spanner::emit_with_config(normalized, config, &mut buf);
+            toml_spanner::emit_with_config(normalized, &config, &mut buf);
             std::hint::black_box(&mut buf);
         },
     );
