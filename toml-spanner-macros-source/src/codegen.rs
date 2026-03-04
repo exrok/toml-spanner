@@ -28,21 +28,16 @@ use StaticToken::Ident as StaticIdent;
 #[allow(unused)]
 use StaticToken::Punct as StaticPunct;
 
-#[allow(unused)]
-fn tt_append_blit(output: &mut RustWriter, chr: &str) {
-    output
-        .buf
-        .extend(chr.as_bytes().iter().map(|tok| match *tok {
-            1 => TokenTree::Ident(Ident::new("hello", Span::call_site())),
-            v => TokenTree::Punct(Punct::new(
-                ':',
-                if v & 0b1 == 0 {
-                    Spacing::Joint
-                } else {
-                    Spacing::Alone
-                },
-            )),
-        }));
+/// Best-effort extraction of the inner type from `Option<T>`.
+/// Returns `&ty[2..ty.len()-1]` when the tokens match `Option < ... >`,
+/// otherwise returns the full type unchanged.
+fn option_inner_ty<'a>(ty: &'a [TokenTree]) -> &'a [TokenTree] {
+    if let [TokenTree::Ident(id), _open, inner @ .., TokenTree::Punct(close)] = ty {
+        if id.to_string() == "Option" && close.as_char() == '>' {
+            return inner;
+        }
+    }
+    ty
 }
 
 #[rustfmt::skip]
@@ -299,7 +294,7 @@ fn struct_from_item(out: &mut RustWriter, ctx: &Ctx, fields: &[Field]) {
         } else if field.flags & Field::WITH_FROMITEM_OPTION != 0 {
             splat!(out; let mut [#: field.name] : [~field.ty] = None;);
         } else {
-            splat!(out; let mut [#: field.name] = None :: < [~field.ty] >;);
+            splat!(out; let mut [#: field.name] = None::< [~field.ty] >;);
         }
     }
 
@@ -330,14 +325,14 @@ fn struct_from_item(out: &mut RustWriter, ctx: &Ctx, fields: &[Field]) {
         if let Some(with) = with_path {
             if is_required {
                 splat!(out;
-                    match [~with] :: from_item(__ctx, __value) {
+                    match [~with]::from_item(__ctx, __value) {
                         Ok(__val) => { [#: field.name] = Some(__val); }
                         Err(__e) => return Err(__e),
                     }
                 );
             } else {
                 splat!(out;
-                    match [~with] :: from_item(__ctx, __value) {
+                    match [~with]::from_item(__ctx, __value) {
                         Ok(__val) => { [#: field.name] = Some(__val); }
                         Err(_) => {}
                     }
@@ -345,15 +340,20 @@ fn struct_from_item(out: &mut RustWriter, ctx: &Ctx, fields: &[Field]) {
             }
         } else if is_required {
             splat!(out;
-                match [~&ctx.crate_path] :: FromItem :: from_item(__ctx, __value) {
+                match < [~field.ty] as [~&ctx.crate_path]::FromItem<#[#: &ctx.lifetime]> >::from_item(__ctx, __value) {
                     Ok(__val) => { [#: field.name] = Some(__val); }
                     Err(__e) => return Err(__e),
                 }
             );
         } else {
             // Optional/default: error already recorded by from_item, just skip
+            let inner_ty = if is_option {
+                option_inner_ty(field.ty)
+            } else {
+                field.ty
+            };
             splat!(out;
-                match [~&ctx.crate_path] :: FromItem :: from_item(__ctx, __value) {
+                match < [~inner_ty] as [~&ctx.crate_path]::FromItem<#[#: &ctx.lifetime]> >::from_item(__ctx, __value) {
                     Ok(__val) => { [#: field.name] = Some(__val); }
                     Err(_) => {}
                 }
@@ -420,7 +420,9 @@ fn struct_from_item(out: &mut RustWriter, ctx: &Ctx, fields: &[Field]) {
 
     // Unwrap required and default fields after the loop
     for field in fields {
-        if field.flags & (Field::WITH_FROMITEM_SKIP | Field::WITH_FLATTEN | Field::WITH_FROMITEM_OPTION) != 0
+        if field.flags
+            & (Field::WITH_FROMITEM_SKIP | Field::WITH_FLATTEN | Field::WITH_FROMITEM_OPTION)
+            != 0
         {
             continue;
         }
@@ -719,9 +721,9 @@ fn emit_variant_fields_from_table(
                 splat!(out; let [#: field.name] = Default::default(););
             }
         } else if field.flags & Field::WITH_FROMITEM_OPTION != 0 {
-            splat!(out; let mut [#: field.name] : [~field.ty] = None;);
+            splat!(out; let mut [#: field.name]: [~field.ty] = None;);
         } else {
-            splat!(out; let mut [#: field.name] = None :: < [~field.ty] >;);
+            splat!(out; let mut [#: field.name] = None::<[~field.ty]>;);
         }
     }
 
@@ -761,14 +763,14 @@ fn emit_variant_fields_from_table(
         if let Some(with) = with_path {
             if is_required {
                 splat!(out;
-                    match [~with] :: from_item(__ctx, __value) {
+                    match [~with]::from_item(__ctx, __value) {
                         Ok(__val) => { [#: field.name] = Some(__val); }
                         Err(__e) => return Err(__e),
                     }
                 );
             } else {
                 splat!(out;
-                    match [~with] :: from_item(__ctx, __value) {
+                    match [~with]::from_item(__ctx, __value) {
                         Ok(__val) => { [#: field.name] = Some(__val); }
                         Err(_) => {}
                     }
@@ -776,14 +778,19 @@ fn emit_variant_fields_from_table(
             }
         } else if is_required {
             splat!(out;
-                match [~&ctx.crate_path] :: FromItem :: from_item(__ctx, __value) {
+                match < [~field.ty] as [~&ctx.crate_path]::FromItem<#[#: &ctx.lifetime]> >::from_item(__ctx, __value) {
                     Ok(__val) => { [#: field.name] = Some(__val); }
                     Err(__e) => return Err(__e),
                 }
             );
         } else {
+            let inner_ty = if is_option {
+                option_inner_ty(field.ty)
+            } else {
+                field.ty
+            };
             splat!(out;
-                match [~&ctx.crate_path] :: FromItem :: from_item(__ctx, __value) {
+                match < [~inner_ty] as [~&ctx.crate_path]::FromItem<#[#: &ctx.lifetime]> >::from_item(__ctx, __value) {
                     Ok(__val) => { [#: field.name] = Some(__val); }
                     Err(_) => {}
                 }
@@ -848,7 +855,9 @@ fn emit_variant_fields_from_table(
 
     // Unwrap required and default fields
     for field in fields {
-        if field.flags & (Field::WITH_FROMITEM_SKIP | Field::WITH_FLATTEN | Field::WITH_FROMITEM_OPTION) != 0
+        if field.flags
+            & (Field::WITH_FROMITEM_SKIP | Field::WITH_FLATTEN | Field::WITH_FROMITEM_OPTION)
+            != 0
         {
             continue;
         }
@@ -1288,7 +1297,13 @@ fn enum_from_item_internal(
             EnumKind::Struct => {
                 let arm_body_start = out.buf.len();
                 splat!(out; let __subtable = __table;);
-                emit_variant_fields_from_table(out, ctx, variant, variant.fields, &[tag_lit.clone()]);
+                emit_variant_fields_from_table(
+                    out,
+                    ctx,
+                    variant,
+                    variant.fields,
+                    &[tag_lit.clone()],
+                );
                 splat!(out;
                     Ok(Self::[#: variant.name] {
                         [for field in variant.fields { splat!(out; [#: field.name],); }]
@@ -1729,7 +1744,8 @@ fn enum_from_item_untagged(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVari
                         })
                     );
                     let closure_body = out.split_off_stream(closure_body_start);
-                    let closure_body_group = TokenTree::Group(Group::new(Delimiter::Brace, closure_body));
+                    let closure_body_group =
+                        TokenTree::Group(Group::new(Delimiter::Brace, closure_body));
 
                     splat!(out; {
                         let __err_len = __ctx.errors.len();
