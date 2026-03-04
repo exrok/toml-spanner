@@ -204,18 +204,29 @@ fn reproject_table<'de>(
                     last_array_kind = Some(kind);
                 }
 
+                // When the source is not a table but dest is: the source
+                // was a body entry, so demote subsection-style dest tables
+                // to body-level to preserve ordering. But if the dest is
+                // already body-level (Inline/Dotted), keep its style —
+                // it reflects user intent and the source has no structural
+                // opinion about the new container.
                 if src_entry.1.as_table().is_none() {
                     if let Some(dt) = entries[i].1.as_table_mut() {
-                        dt.set_style(if dt.is_empty() {
-                            TableStyle::Inline
-                        } else {
-                            TableStyle::Dotted
-                        });
+                        let dest_kind = dt.style();
+                        if dest_kind != TableStyle::Inline && dest_kind != TableStyle::Dotted {
+                            dt.set_style(if dt.is_empty() {
+                                TableStyle::Inline
+                            } else {
+                                TableStyle::Dotted
+                            });
+                        }
                     }
                 }
                 if src_entry.1.as_array().is_none() {
                     if let Some(da) = entries[i].1.as_array_mut() {
-                        da.set_style(ArrayStyle::Inline);
+                        if da.style() != ArrayStyle::Inline {
+                            da.set_style(ArrayStyle::Inline);
+                        }
                     }
                 }
 

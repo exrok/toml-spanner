@@ -1982,7 +1982,9 @@ fn assert_reproject_exact(source: &str, modified: &str, expected: &str) {
     let src_root = parse(source, &arena).unwrap();
 
     let mut dest_root = parse(modified, &arena).unwrap();
-    erase_kinds(&mut dest_root.table);
+    // Some tests are actually testing the dest style are being
+    // preserved as well, when they are new
+    // erase_kinds(&mut dest_root.table);
 
     let mut items = Vec::new();
     reproject(&src_root, &mut dest_root.table, &mut items);
@@ -2924,4 +2926,17 @@ a = [
 ]
 "#;
     assert_reproject_exact(source, modified, expected);
+}
+
+#[test]
+fn normalization_preserves_introduced_inline_array() {
+    let source = r#"
+a = 1
+b = 1
+"#;
+    let modified = r#"
+a = { x = 1 }
+b = 1
+"#;
+    assert_reproject_exact(source, modified, modified);
 }
