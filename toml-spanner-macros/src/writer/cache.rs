@@ -1,8 +1,8 @@
 use proc_macro::{Punct, Spacing};
 pub static BLIT_SRC: &[u8] =
-b"\n\t&\x1f\x05\x07\n\t[\x05\x07\x02I\x02\r\n\tG\x05\x070aq\t\x08h\n\t\x19\x05\x07\x02\rk\t\x08\n\tX\x05\x07\x0e\x02\n\t3\n\t2\n\t-\x05j\r\n\t+\x02p\\\x03k\x00M\x06\x01phA\x03\x05\x02\x02\n\t r\x01\x035\n\t8r\x01\x03H\x01\x03H\n\t\x05\x02\x01\n\taq\rc\x04\x02\x03l\x04\x02nm\x04\x02s\n\t[\n\tad\x04\x02pd\x03\x05\x02\x02\n\tbq\r_\rc\r\x08hAq\x00:\r_\x00>f_\x00D@\\\x02\x02\n\t\x1eq\rA\x00(\x0f\x10\x00?r\x01q\x00E\rk\x00Frpl\x00#r`\n\tTI\n\tT\r\n\t.\r0R\x05\x07\x08\x07Z\rq\t\x08h\n\t\x12\x05\x07h\\\n\tS\n\tW\rq\x00gnq\x00V\\\x00b\n\t]\n\t^\n\tR\x08Z\x00\x06\rq\x00g\rYpl\n\tT\n\t%\re\rq\x00g\r\n\tT\n\tRY\x0c\n\t.\n\t$\rq\r\x08h\\\\\x00Ur\x02\x02\n\taq\rk@Bi\x00b\r)\rq\x00g\r\rq\r\x08hip=\x03k\x00\x17\x06\x01f=\x04\x02oj\n\td\x04\x02mq\x00O\n\tX\n\tNfZnf=\x03k\x00/rpi\x03k\x00M\x06\x01p9\x03i\x009r\x019\x001r\x04\x03!\r4\x03\x089q\r4pB\x034\x00Mf!\x00D\x01i\x00bC\rq\x01oi\x00UrhJ\x01J\x00b\ri\x00Ur\rq\x00g\rJ\x00UrY_\x00D\x04\x03Q\x03l\x01\x15\x01phQ\t,\x05\x08\"\x02\x03H\x01I\x03Q`Y_\x00D\x11\x03pB\x03\\\x01fQ\x06\x01phQ\t,\x05\x08\"\x02\x03H\x01phK\t,\x05\x08\x02\x02\x03H\x01K\x03l\x03K`q\rK\x01pB\x03K\x00MY7\x04\x03no\x04\x02no\rmp6\x03q\x00;\x001r\x01fq\x00;\x00\'pB\x03k\x00Mp6\x03q\x00;\x001r\x01p\x1b\t\n\t3\n\t2\n\t-\x05j\r\n\t+\x02\x03r\x01f\x1bp\x1a\t0\x02\r\x08\x0e\x02\x14\x03\x01Y\x1a\x16\n\t\x18\x1dd\tr\x03";
-pub const IDENT_SIZE: usize = 96;
-pub static NAMES: [&str; 96] = [
+b"\n\t(\x1f\x05\x07\n\t\\\x05\x07\x02K\x02\r\n\tI\x05\x072bs\t\x08j\n\t\x19\x05\x07\x02\rm\t\x08\n\tZ\x05\x07\x0e\x02\n\t5\n\t4\n\t/\x05l\r\n\t-\x02r]\x03m\x00O\x06\x01rjB\x03\x05\x02\x02\n\t t\x01\x037\n\t:t\x01\x03J\x01\x03J\n\t\x05\x02\x01\x00!tpos\x00#\rd\x00G\n\tbs\re\x04\x02\x03n\x04\x02po\x04\x02u\n\t\\\n\tbf\x04\x02rf\x03\x05\x02\x02\n\tcs\rd\re\r\x08jBs\x00<hd\x00EA]\x02\x02\n\t\x1es\rB\x00*\x0c\x0b\x00@t\x01s\x00F\rm\x00Htrn\x00%ta\n\tVK\n\tV\r\n\t0\r2T\x05\x07\x08\x07[\rs\t\x08j\n\t\x12\x05\x07j]\n\tU\n\tY\rs\x00ips\x00X]\x00c\n\t^\n\t_\n\tT\x08[\x00\x06\rs\x00i\r`rn\n\tV\n\t\'\rg\rs\x00i\r\n\tV\n\tT`\x10\n\t0\n\t&\rs\r\x08j]]\x00Wt\x02\x02\n\tbs\rmACk\x00c\r+\rs\x00i\r\rs\r\x08jkr?\x03m\x00\x17\x06\x01h?\x04\x02ql\n\tf\x04\x02os\x00Q\n\tZ\n\tPh[ph?\x03m\x001trk\x03m\x00O\x06\x01r;\x03k\x00;t\x01;\x003t\x04\x03\"\r6\x03\x08;s\r6rC\x036\x00Oh\"\x00E\x01k\x00cD\rs\x01qk\x00WtjL\x01L\x00c\rk\x00Wt\rs\x00i\rL\x00Wt`d\x00E\x04\x03S\x03n\x01\x15\x01rjS\t.\x05\x08$\x02\x03J\x01K\x03Sa`d\x00E\x11\x03rC\x03]\x01hS\x06\x01rjS\t.\x05\x08$\x02\x03J\x01rjM\t.\x05\x08\x02\x02\x03J\x01M\x03n\x03Mas\rM\x01rC\x03M\x00O`9\x04\x03pq\x04\x02pq\ror8\x03s\x00=\x003t\x01hs\x00=\x00)rC\x03m\x00Or8\x03s\x00=\x003t\x01r\x1b\t\n\t5\n\t4\n\t/\x05l\r\n\t-\x02\x03t\x01h\x1br\x1a\t2\x02\r\x08\x0e\x02\x14\x03\x01`\x1a\x16\n\t\x18\x1df\tt\x03";
+pub const IDENT_SIZE: usize = 98;
+pub static NAMES: [&str; 98] = [
     "ToContext",
     "allow",
     "bool",
@@ -18,7 +18,9 @@ pub static NAMES: [&str; 96] = [
     "finish",
     "impl",
     "init",
+    "is_some",
     "key",
+    "report_duplicate_field",
     "str",
     "take",
     "to_flattened",
@@ -47,7 +49,6 @@ pub static NAMES: [&str; 96] = [
     "errors",
     "ref",
     "s",
-    "span",
     "unwrap_or_default",
     "in",
     "__flatten_partial",
@@ -55,6 +56,7 @@ pub static NAMES: [&str; 96] = [
     "inner",
     "name",
     "report_missing_field",
+    "span",
     "span_unchecked",
     "FromFlattened",
     "None",
@@ -74,16 +76,16 @@ pub static NAMES: [&str; 96] = [
     "report_error",
     "try_with_capacity",
     "Item",
-    "if",
     "self",
     "FromItem",
     "__table",
     "Key",
     "anon",
-    "__key",
+    "if",
     "else",
     "from_item",
     "insert",
+    "__key",
     "__value",
     "_",
     "__val",
@@ -114,12 +116,12 @@ pub fn punct_cache_initial_state() -> [Punct; PUNCT_SIZE] {
         Punct::new('&', Spacing::Alone),
         Punct::new(':', Spacing::Alone),
         Punct::new(':', Spacing::Joint),
-        Punct::new('#', Spacing::Joint),
-        Punct::new('!', Spacing::Alone),
+        Punct::new('|', Spacing::Alone),
+        Punct::new('|', Spacing::Joint),
         Punct::new(',', Spacing::Alone),
         Punct::new('-', Spacing::Joint),
-        Punct::new('|', Spacing::Joint),
-        Punct::new('|', Spacing::Alone),
+        Punct::new('#', Spacing::Joint),
+        Punct::new('!', Spacing::Alone),
         Punct::new('!', Spacing::Joint),
     ]
 }

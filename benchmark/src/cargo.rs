@@ -91,7 +91,18 @@ mod tests {
     #[test]
     fn manifest_parsing_all_agree() {
         let serde = parse_manifest_serde_toml(static_input::ZED_CARGO_TOML).unwrap();
-        let spanner = parse_manifest_toml_spanner(static_input::ZED_CARGO_TOML).unwrap();
+        let spanner = match parse_manifest_toml_spanner(static_input::ZED_CARGO_TOML) {
+            Ok(v) => v,
+            Err(errs) => {
+                for err in errs {
+                    eprintln!(
+                        "Error: {err}, {}",
+                        &static_input::ZED_CARGO_TOML[err.span.range()]
+                    );
+                }
+                panic!()
+            }
+        };
         let serde_str = format!("{serde:#?}");
         let spanner_str = format!("{spanner:#?}");
         assert_eq!(serde_str, spanner_str);

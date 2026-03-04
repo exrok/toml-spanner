@@ -32,6 +32,7 @@ enum FieldAttrInner {
     Skip(Vec<TokenTree>),
     With(Vec<TokenTree>),
     Flatten,
+    Alias(Literal),
 }
 pub struct FieldAttrs {
     attrs: Vec<FieldAttr>,
@@ -50,6 +51,25 @@ impl FieldAttrs {
             }
         }
         None
+    }
+    pub fn has_aliases(&self, for_trait: TraitSet) -> bool {
+        self.attrs.iter().any(|attr| {
+            attr.enabled & for_trait != 0
+                && match attr.inner {
+                    FieldAttrInner::Alias(_) => true,
+                    _ => false,
+                }
+        })
+    }
+    pub fn aliases(&self, for_trait: TraitSet) -> impl Iterator<Item = &Literal> + '_ {
+        self.attrs.iter().filter_map(move |attr| {
+            if attr.enabled & for_trait != 0 {
+                if let FieldAttrInner::Alias(lit) = &attr.inner {
+                    return Some(lit);
+                }
+            }
+            None
+        })
     }
 }
 #[allow(clippy::derivable_impls)]
@@ -136,6 +156,7 @@ impl<'a> Field<'a> {
     pub const WITH_FROMITEM_SKIP: u32 = 1u32 << 3;
     pub const WITH_TO_ITEM_SKIP: u32 = 1u32 << 4;
     pub const WITH_FLATTEN: u32 = 1u32 << 5;
+    pub const WITH_FROMITEM_OPTION: u32 = 1u32 << 6;
     #[allow(dead_code)]
     pub fn is(&self, flags: u32) -> bool {
         self.flags & flags != 0
@@ -502,6 +523,7 @@ pub fn extract_derive_target<'a>(
     }
 }
 const TRAIT_COUNT: u64 = 2;
+const OPTION_AUTO_DETECTED: u64 = 1u64 << 32;
 fn parse_single_field_attr(
     attrs: &mut FieldAttrs,
     mut trait_set: TraitSet,
@@ -580,6 +602,28 @@ fn parse_single_field_attr(
                 inner: FieldAttrInner::Flatten,
             });
             4u64 * TRAIT_COUNT
+        }
+        "required" => {
+            if !value.is_empty() {
+                Error::span_msg("required doesn't take any arguments", ident.span())
+            }
+            trait_set &= FROM_ITEM;
+            1u64 * TRAIT_COUNT
+        }
+        "alias" => {
+            let Some(TokenTree::Literal(alias)) = value.pop() else {
+                Error::span_msg("Expected a literal", ident.span())
+            };
+            if !value.is_empty() {
+                Error::span_msg("Expected a single literal", ident.span())
+            }
+            trait_set &= FROM_ITEM;
+            attrs.attrs.push(FieldAttr {
+                enabled: trait_set,
+                span: ident.span(),
+                inner: FieldAttrInner::Alias(alias),
+            });
+            return;
         }
         _ => Error::span_msg("Unknown attr field", ident.span()),
     };
@@ -941,6 +985,9 @@ fn parse_inner_enum_variants<'a>(
 fn flags_from_attr(attr: &Option<&mut FieldAttrs>) -> u32 {
     let mut f = 0;
     if let Some(attr) = attr {
+        if attr.flags & OPTION_AUTO_DETECTED != 0 {
+            f |= Field::WITH_FROMITEM_OPTION;
+        }
         for attr in &attr.attrs {
             match &attr.inner {
                 FieldAttrInner::Default(..) => {
@@ -1077,6 +1124,7 @@ pub fn parse_struct_fields<'a>(
                 let attr = next_attr.get_or_insert_with(|| attr_buf.alloc_default());
                 let oo_mask_item = (FROM_ITEM as u64) << (1u64 * TRAIT_COUNT);
                 if attr.flags & oo_mask_item == 0 {
+                    attr.flags |= OPTION_AUTO_DETECTED;
                     attr.attrs.push(FieldAttr {
                         enabled: FROM_ITEM,
                         span: ident.span(),

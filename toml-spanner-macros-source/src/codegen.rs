@@ -296,7 +296,7 @@ fn struct_from_item(out: &mut RustWriter, ctx: &Ctx, fields: &[Field]) {
             } else {
                 splat!(out; let [#: field.name] = Default::default(););
             }
-        } else if is_option_type(field) {
+        } else if field.flags & Field::WITH_FROMITEM_OPTION != 0 {
             splat!(out; let mut [#: field.name] : [~field.ty] = None;);
         } else {
             splat!(out; let mut [#: field.name] = None :: < [~field.ty] >;);
@@ -312,11 +312,20 @@ fn struct_from_item(out: &mut RustWriter, ctx: &Ctx, fields: &[Field]) {
 
         let name_lit = field_name_literal_toml(ctx, field, ctx.target.rename_all);
         let is_default = field.flags & Field::WITH_FROMITEM_DEFAULT != 0;
-        let is_option = is_option_type(field);
+        let is_option = field.flags & Field::WITH_FROMITEM_OPTION != 0;
         let with_path = field.with(FROM_ITEM);
         let is_required = !is_option && !is_default;
+        let has_aliases = field.attr.has_aliases(FROM_ITEM);
 
         let arm_body_start = out.buf.len();
+
+        if has_aliases {
+            splat!(out;
+                if [#: field.name].is_some() {
+                    return Err(__ctx.report_duplicate_field([@name_lit.clone().into()], __key.span));
+                }
+            );
+        }
 
         if let Some(with) = with_path {
             if is_required {
@@ -352,9 +361,12 @@ fn struct_from_item(out: &mut RustWriter, ctx: &Ctx, fields: &[Field]) {
         }
 
         let arm_body = out.split_off_stream(arm_body_start);
+        splat!(out; [@name_lit.into()]);
+        for alias in field.attr.aliases(FROM_ITEM) {
+            splat!(out; | [@alias.clone().into()]);
+        }
         splat!(out;
-            [@name_lit.into()] =>
-                [@TokenTree::Group(Group::new(Delimiter::Brace, arm_body))]
+            => [@TokenTree::Group(Group::new(Delimiter::Brace, arm_body))]
         );
     }
 
@@ -408,8 +420,7 @@ fn struct_from_item(out: &mut RustWriter, ctx: &Ctx, fields: &[Field]) {
 
     // Unwrap required and default fields after the loop
     for field in fields {
-        if field.flags & (Field::WITH_FROMITEM_SKIP | Field::WITH_FLATTEN) != 0
-            || is_option_type(field)
+        if field.flags & (Field::WITH_FROMITEM_SKIP | Field::WITH_FLATTEN | Field::WITH_FROMITEM_OPTION) != 0
         {
             continue;
         }
@@ -707,7 +718,7 @@ fn emit_variant_fields_from_table(
             } else {
                 splat!(out; let [#: field.name] = Default::default(););
             }
-        } else if is_option_type(field) {
+        } else if field.flags & Field::WITH_FROMITEM_OPTION != 0 {
             splat!(out; let mut [#: field.name] : [~field.ty] = None;);
         } else {
             splat!(out; let mut [#: field.name] = None :: < [~field.ty] >;);
@@ -732,11 +743,20 @@ fn emit_variant_fields_from_table(
 
         let name_lit = variant_field_name_literal(ctx, field, variant);
         let is_default = field.flags & Field::WITH_FROMITEM_DEFAULT != 0;
-        let is_option = is_option_type(field);
+        let is_option = field.flags & Field::WITH_FROMITEM_OPTION != 0;
         let with_path = field.with(FROM_ITEM);
         let is_required = !is_option && !is_default;
+        let has_aliases = field.attr.has_aliases(FROM_ITEM);
 
         let arm_body_start = out.buf.len();
+
+        if has_aliases {
+            splat!(out;
+                if [#: field.name].is_some() {
+                    return Err(__ctx.report_duplicate_field([@name_lit.clone().into()], __key.span));
+                }
+            );
+        }
 
         if let Some(with) = with_path {
             if is_required {
@@ -771,9 +791,12 @@ fn emit_variant_fields_from_table(
         }
 
         let arm_body = out.split_off_stream(arm_body_start);
+        splat!(out; [@name_lit.into()]);
+        for alias in field.attr.aliases(FROM_ITEM) {
+            splat!(out; | [@alias.clone().into()]);
+        }
         splat!(out;
-            [@name_lit.into()] =>
-                [@TokenTree::Group(Group::new(Delimiter::Brace, arm_body))]
+            => [@TokenTree::Group(Group::new(Delimiter::Brace, arm_body))]
         );
     }
 
@@ -825,8 +848,7 @@ fn emit_variant_fields_from_table(
 
     // Unwrap required and default fields
     for field in fields {
-        if field.flags & (Field::WITH_FROMITEM_SKIP | Field::WITH_FLATTEN) != 0
-            || is_option_type(field)
+        if field.flags & (Field::WITH_FROMITEM_SKIP | Field::WITH_FLATTEN | Field::WITH_FROMITEM_OPTION) != 0
         {
             continue;
         }

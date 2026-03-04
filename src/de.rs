@@ -456,6 +456,19 @@ impl<'de> Context<'de> {
         });
         Failed
     }
+
+    /// Records a duplicate-field error and returns [`Failed`].
+    ///
+    /// Used by generated `FromItem` implementations when a field with aliases
+    /// is set more than once (e.g. both the primary key and an alias appear).
+    #[cold]
+    pub fn report_duplicate_field(&mut self, name: &'static str, span: Span) -> Failed {
+        self.errors.push(Error {
+            kind: ErrorKind::DuplicateField(name),
+            span,
+        });
+        Failed
+    }
 }
 
 /// Sentinel indicating that a deserialization error has been recorded in the
@@ -614,6 +627,12 @@ impl<'de> FromItem<'de> for String {
             Some(s) => Ok(s.to_string()),
             None => Err(ctx.error_expected_but_found("a string", value)),
         }
+    }
+}
+
+impl<'de, T: FromItem<'de>> FromItem<'de> for Option<T> {
+    fn from_item(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
+        T::from_item(ctx, value).map(Some)
     }
 }
 

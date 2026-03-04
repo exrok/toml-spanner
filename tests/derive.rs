@@ -156,8 +156,6 @@ fn derive_option_roundtrip() {
     assert_eq!(without, restored);
 }
 
-// ── Enum tests ───────────────────────────────────────────────
-
 // String enum (all-unit, external tag)
 #[derive(Toml, Debug, PartialEq)]
 #[toml(FromItem, ToItem)]
@@ -384,8 +382,6 @@ fn enum_adjacent_roundtrip() {
     assert_eq!(w, restored);
 }
 
-// ── Flatten tests ────────────────────────────────────────────
-
 #[derive(Toml, Debug, PartialEq)]
 #[toml(FromItem, ToItem)]
 struct WithFlatten {
@@ -444,8 +440,6 @@ fn flatten_empty_extras() {
     assert_eq!(v.name, "only");
     assert!(v.extras.is_empty());
 }
-
-// ── Untagged enum tests ──────────────────────────────────────
 
 #[derive(Toml, Debug, PartialEq)]
 #[toml(FromItem, ToItem, untagged)]
@@ -581,8 +575,6 @@ fn untagged_no_error_leakage() {
         root.errors()
     );
 }
-
-// ── Branch hint (try_if / final_if) tests ────────────────────
 
 #[derive(Toml, Debug, PartialEq)]
 #[toml(FromItem, untagged)]
@@ -761,4 +753,166 @@ fn derive_generic_with_explicit_type() {
     let result: GenericWithDefault<i64> =
         GenericWithDefault::from_item(ctx, doc.as_item()).unwrap();
     assert_eq!(result.value, 42);
+}
+
+// Option<T> with #[toml(required)]: missing field is an error
+#[derive(Toml, Debug, PartialEq)]
+#[toml(FromItem)]
+struct RequiredOption {
+    #[toml(required)]
+    val: Option<u32>,
+}
+
+#[test]
+fn required_option_present() {
+    let v: RequiredOption = toml_spanner::from_str("val = 42").unwrap();
+    assert_eq!(v.val, Some(42));
+}
+
+#[test]
+fn required_option_absent() {
+    let result: Result<RequiredOption, _> = toml_spanner::from_str("");
+    assert!(
+        result.is_err(),
+        "missing required Option field should error"
+    );
+}
+
+// Option<T> with #[toml(default)]: missing field uses Default (None)
+#[derive(Toml, Debug, PartialEq)]
+#[toml(FromItem)]
+struct DefaultOption {
+    #[toml(default)]
+    val: Option<u32>,
+}
+
+#[test]
+fn default_option_present() {
+    let v: DefaultOption = toml_spanner::from_str("val = 7").unwrap();
+    assert_eq!(v.val, Some(7));
+}
+
+#[test]
+fn default_option_absent() {
+    let v: DefaultOption = toml_spanner::from_str("").unwrap();
+    assert_eq!(v.val, None);
+}
+
+// Option<T> with #[toml(default = Some(99))]: missing field uses custom default
+#[derive(Toml, Debug, PartialEq)]
+#[toml(FromItem)]
+struct DefaultOptionCustom {
+    #[toml(default = Some(99))]
+    val: Option<u32>,
+}
+
+#[test]
+fn default_option_custom_present() {
+    let v: DefaultOptionCustom = toml_spanner::from_str("val = 7").unwrap();
+    assert_eq!(v.val, Some(7));
+}
+
+#[test]
+fn default_option_custom_absent() {
+    let v: DefaultOptionCustom = toml_spanner::from_str("").unwrap();
+    assert_eq!(v.val, Some(99));
+}
+
+// Plain Option<T> (auto-detected) still works as before
+#[derive(Toml, Debug, PartialEq)]
+#[toml(FromItem)]
+struct PlainOption {
+    val: Option<u32>,
+}
+
+#[test]
+fn plain_option_present() {
+    let v: PlainOption = toml_spanner::from_str("val = 5").unwrap();
+    assert_eq!(v.val, Some(5));
+}
+
+#[test]
+fn plain_option_absent() {
+    let v: PlainOption = toml_spanner::from_str("").unwrap();
+    assert_eq!(v.val, None);
+}
+
+#[derive(Toml, Debug, PartialEq)]
+#[toml(FromItem)]
+struct WithAlias {
+    #[toml(alias = "server_name")]
+    name: String,
+    port: u16,
+}
+
+#[test]
+fn alias_primary_key() {
+    let v: WithAlias = toml_spanner::from_str("name = \"app\"\nport = 80").unwrap();
+    assert_eq!(v.name, "app");
+    assert_eq!(v.port, 80);
+}
+
+#[test]
+fn alias_alternate_key() {
+    let v: WithAlias = toml_spanner::from_str("server_name = \"app\"\nport = 80").unwrap();
+    assert_eq!(v.name, "app");
+    assert_eq!(v.port, 80);
+}
+
+#[test]
+fn alias_duplicate_error() {
+    let result: Result<WithAlias, _> =
+        toml_spanner::from_str("name = \"a\"\nserver_name = \"b\"\nport = 80");
+    assert!(result.is_err(), "should error on duplicate field via alias");
+}
+
+#[derive(Toml, Debug, PartialEq)]
+#[toml(FromItem)]
+struct MultiAlias {
+    #[toml(alias = "colour", alias = "clr")]
+    color: String,
+}
+
+#[test]
+fn multi_alias_first() {
+    let v: MultiAlias = toml_spanner::from_str("colour = \"red\"").unwrap();
+    assert_eq!(v.color, "red");
+}
+
+#[test]
+fn multi_alias_second() {
+    let v: MultiAlias = toml_spanner::from_str("clr = \"blue\"").unwrap();
+    assert_eq!(v.color, "blue");
+}
+
+#[test]
+fn multi_alias_primary() {
+    let v: MultiAlias = toml_spanner::from_str("color = \"green\"").unwrap();
+    assert_eq!(v.color, "green");
+}
+
+#[test]
+fn multi_alias_duplicate_error() {
+    let result: Result<MultiAlias, _> =
+        toml_spanner::from_str("color = \"red\"\ncolour = \"blue\"");
+    assert!(result.is_err(), "should error on duplicate via alias");
+}
+
+#[derive(Toml, Debug, PartialEq)]
+#[toml(FromItem)]
+struct AliasOptional {
+    #[toml(alias = "nm")]
+    name: Option<String>,
+}
+
+#[test]
+fn alias_optional_via_alias() {
+    let v: AliasOptional = toml_spanner::from_str("nm = \"hi\"").unwrap();
+    assert_eq!(v.name, Some("hi".to_string()));
+}
+
+#[test]
+fn alias_optional_absent() {
+    let v: AliasOptional = toml_spanner::from_str("").unwrap();
+    assert_eq!(v.name, None);
 }

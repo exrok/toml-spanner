@@ -137,6 +137,9 @@ pub enum ErrorKind {
     /// A required field is missing from a table
     MissingField(&'static str),
 
+    /// A field was set more than once (e.g. via primary key and alias)
+    DuplicateField(&'static str),
+
     /// A field in the table is deprecated and the new key should be used instead
     Deprecated {
         /// The deprecated key name
@@ -177,6 +180,7 @@ impl Display for ErrorKind {
             Self::OutOfRange(_) => "out-of-range",
             Self::Wanted { .. } => "wanted",
             Self::MissingField(..) => "missing-field",
+            Self::DuplicateField(..) => "duplicate-field",
             Self::Deprecated { .. } => "deprecated",
             Self::UnexpectedValue { .. } => "unexpected-value",
         };
@@ -297,6 +301,11 @@ impl Display for Error {
                 rtry!(f.write_str(field));
                 f.write_str("' in table")
             }
+            ErrorKind::DuplicateField(field) => {
+                rtry!(f.write_str("duplicate field '"));
+                rtry!(f.write_str(field));
+                f.write_str("'")
+            }
             ErrorKind::Deprecated { old, new } => {
                 rtry!(f.write_str("field '"));
                 rtry!(f.write_str(old));
@@ -391,6 +400,11 @@ impl Error {
                 .with_message(format!("missing field '{field}'"))
                 .with_labels(vec![
                     Label::primary(fid, self.span).with_message("table with missing field"),
+                ]),
+            ErrorKind::DuplicateField(field) => diag
+                .with_message(format!("duplicate field '{field}'"))
+                .with_labels(vec![
+                    Label::primary(fid, self.span).with_message("duplicate field"),
                 ]),
             ErrorKind::Deprecated { new, .. } => diag
                 .with_message(format!(

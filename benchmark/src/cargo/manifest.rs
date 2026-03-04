@@ -16,6 +16,7 @@ use serde::de::{self, IntoDeserializer as _, Unexpected};
 use serde::ser;
 use serde::{Deserialize, Serialize};
 use serde_untagged::UntaggedEnumVisitor;
+use toml_spanner::Toml;
 
 use super::package_id_spec::PackageIdSpec;
 use super::restricted_names;
@@ -25,8 +26,9 @@ pub use super::restricted_names::NameValidationError;
 mod toml_spanner_impl;
 
 /// This type is used to deserialize `Cargo.toml` files.
-#[derive(Default, Clone, Debug, Deserialize, Serialize)]
+#[derive(Default, Clone, Debug, Deserialize, Serialize, Toml)]
 #[serde(rename_all = "kebab-case")]
+#[toml(rename_all = "kebab-case")]
 pub struct TomlManifest {
     pub cargo_features: Option<Vec<String>>,
 
@@ -43,9 +45,11 @@ pub struct TomlManifest {
     pub dependencies: Option<BTreeMap<PackageName, InheritableDependency>>,
     pub dev_dependencies: Option<BTreeMap<PackageName, InheritableDependency>>,
     #[serde(rename = "dev_dependencies")]
+    #[toml(rename = "dev_dependencies")]
     pub dev_dependencies2: Option<BTreeMap<PackageName, InheritableDependency>>,
     pub build_dependencies: Option<BTreeMap<PackageName, InheritableDependency>>,
     #[serde(rename = "build_dependencies")]
+    #[toml(rename = "build_dependencies")]
     pub build_dependencies2: Option<BTreeMap<PackageName, InheritableDependency>>,
     pub target: Option<BTreeMap<String, TomlPlatform>>,
     pub lints: Option<InheritableLints>,
@@ -59,6 +63,7 @@ pub struct TomlManifest {
     /// Report unused keys (see also nested `_unused_keys`)
     /// Note: this is populated by the caller, rather than automatically
     #[serde(skip)]
+    #[toml(skip)]
     pub _unused_keys: BTreeSet<String>,
 }
 
@@ -114,14 +119,55 @@ impl TomlManifest {
     }
 }
 
-#[derive(Debug, Default, Deserialize, Serialize, Clone)]
+mod via_parse {
+    use std::{any::type_name, fmt::Display, str::FromStr};
+
+    use toml_spanner::{Context, Error, Failed};
+
+    pub fn from_item<T: FromStr>(
+        ctx: &mut Context<'_>,
+        item: &toml_spanner::Item<'_>,
+    ) -> Result<T, Failed>
+    where
+        T::Err: Display,
+    {
+        let s = item.as_str().ok_or_else(|| {
+            ctx.push_error(Error::custom(
+                format!("expected a string, got `{}`", item.kind()),
+                item.span_unchecked(),
+            ))
+        })?;
+        s.parse::<T>().map_err(|e| {
+            ctx.push_error(Error::custom(
+                format!("Failed to parse {}: {}", type_name::<T>(), e),
+                item.span_unchecked(),
+            ))
+        })
+    }
+}
+mod toml_value {
+    use toml_spanner::{Context, Failed};
+
+    use crate::cargo::manifest::item_to_toml_value;
+
+    pub fn from_item(
+        _ctx: &mut Context<'_>,
+        item: &toml_spanner::Item<'_>,
+    ) -> Result<toml::Value, Failed> {
+        Ok(item_to_toml_value(item))
+    }
+}
+
+#[derive(Debug, Default, Deserialize, Serialize, Toml, Clone)]
 #[serde(rename_all = "kebab-case")]
+#[toml(rename_all = "kebab-case")]
 pub struct TomlWorkspace {
     pub members: Option<Vec<String>>,
     pub exclude: Option<Vec<String>>,
     pub default_members: Option<Vec<String>>,
     pub resolver: Option<String>,
 
+    #[toml(with=toml_value)]
     pub metadata: Option<toml::Value>,
 
     // Properties that can be inherited by members.
@@ -131,9 +177,11 @@ pub struct TomlWorkspace {
 }
 
 /// A group of fields that are inheritable by members of the workspace
-#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+#[derive(Clone, Debug, Default, Deserialize, Toml, Serialize)]
 #[serde(rename_all = "kebab-case")]
+#[toml(rename_all = "kebab-case")]
 pub struct InheritablePackage {
+    #[toml(with = via_parse)]
     pub version: Option<semver::Version>,
     pub authors: Option<Vec<String>>,
     pub description: Option<String>,
@@ -150,6 +198,7 @@ pub struct InheritablePackage {
     pub badges: Option<BTreeMap<String, BTreeMap<String, String>>>,
     pub exclude: Option<Vec<String>>,
     pub include: Option<Vec<String>>,
+    #[toml(with = via_parse)]
     pub rust_version: Option<RustVersion>,
 }
 
@@ -637,10 +686,17 @@ impl From<WorkspaceValue> for bool {
     }
 }
 
-#[derive(Serialize, Clone, Debug)]
+/// Check if a table item has a `workspace = true` key.
+fn is_not_workspace(_: &mut Context<'_>, item: &toml_spanner::Item<'_>) -> bool {
+    !(item["workspace"].as_bool() == Some(true))
+}
+
+#[derive(Serialize, Clone, Debug, Toml)]
 #[serde(untagged)]
+#[toml(untagged)]
 pub enum InheritableDependency {
     /// The type that is used when not inheriting from a workspace.
+    #[toml(final_if = is_not_workspace)]
     Value(TomlDependency),
     /// The type when inheriting from a workspace.
     Inherit(TomlInheritedDependency),

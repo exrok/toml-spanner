@@ -6,7 +6,7 @@ use toml_spanner::{Context, Failed};
 use super::*;
 
 /// Convert a `toml_spanner::Item` into a `toml::Value`.
-fn item_to_toml_value(item: &toml_spanner::Item<'_>) -> toml::Value {
+pub(crate) fn item_to_toml_value(item: &toml_spanner::Item<'_>) -> toml::Value {
     match item.value() {
         toml_spanner::Value::String(&s) => toml::Value::String(s.to_owned()),
         toml_spanner::Value::Integer(&i) => toml::Value::Integer(i),
@@ -545,30 +545,6 @@ toml_spanner::deserialize_table! {
     }
 }
 
-impl<'de> toml_spanner::FromItem<'de> for InheritableDependency {
-    fn from_item(ctx: &mut Context<'de>, item: &toml_spanner::Item<'de>) -> Result<Self, Failed> {
-        // If it's a table with `workspace` key, try to parse as inherited
-        if is_workspace_inherit(item) {
-            let dep = <TomlInheritedDependency as toml_spanner::FromItem>::from_item(ctx, item)?;
-            if dep.workspace {
-                return Ok(InheritableDependency::Inherit(dep));
-            } else {
-                return Err(push_custom_error(ctx, item, "`workspace` cannot be false"));
-            }
-        }
-        // Check for workspace = false case
-        if let Some(table) = item.as_table() {
-            if let Some(ws) = table.get("workspace") {
-                if ws.as_bool() == Some(false) {
-                    return Err(push_custom_error(ctx, item, "`workspace` cannot be false"));
-                }
-            }
-        }
-        let dep = <TomlDependency as toml_spanner::FromItem>::from_item(ctx, item)?;
-        Ok(InheritableDependency::Value(dep))
-    }
-}
-
 toml_spanner::deserialize_table! {
     #[deny_unknown_fields]
     struct TomlTarget {
@@ -660,77 +636,77 @@ toml_spanner::deserialize_table! {
     }
 }
 
-toml_spanner::deserialize_table! {
-    struct InheritablePackage {
-        optional authors: Vec<String>,
-        optional description: String,
-        optional homepage: String,
-        optional documentation: String,
-        optional readme: StringOrBool,
-        optional keywords: Vec<String>,
-        optional categories: Vec<String>,
-        optional license: String,
-        optional "license-file" license_file: String,
-        optional repository: String,
-        optional publish: VecStringOrBool,
-        optional edition: String,
-        optional badges: BTreeMap<String, BTreeMap<String, String>>,
-        optional exclude: Vec<String>,
-        optional include: Vec<String>,
-        optional "version" version: semver::Version = |item| {
-            let s = item.as_str().ok_or_else(|| item.expected("a version string"))?;
-            s.trim().parse::<semver::Version>()
-                .map_err(|err| toml_spanner::Error::custom(err, item.span_unchecked()))
-        },
-        optional "rust-version" rust_version: RustVersion = |item| {
-            let s = item.as_str().ok_or_else(|| item.expected("a rust version string"))?;
-            s.parse::<RustVersion>()
-                .map_err(|err| toml_spanner::Error::custom(err, item.span_unchecked()))
-        },
-    }
-}
+// toml_spanner::deserialize_table! {
+//     struct InheritablePackage {
+//         optional authors: Vec<String>,
+//         optional description: String,
+//         optional homepage: String,
+//         optional documentation: String,
+//         optional readme: StringOrBool,
+//         optional keywords: Vec<String>,
+//         optional categories: Vec<String>,
+//         optional license: String,
+//         optional "license-file" license_file: String,
+//         optional repository: String,
+//         optional publish: VecStringOrBool,
+//         optional edition: String,
+//         optional badges: BTreeMap<String, BTreeMap<String, String>>,
+//         optional exclude: Vec<String>,
+//         optional include: Vec<String>,
+//         optional "version" version: semver::Version = |item| {
+//             let s = item.as_str().ok_or_else(|| item.expected("a version string"))?;
+//             s.trim().parse::<semver::Version>()
+//                 .map_err(|err| toml_spanner::Error::custom(err, item.span_unchecked()))
+//         },
+//         optional "rust-version" rust_version: RustVersion = |item| {
+//             let s = item.as_str().ok_or_else(|| item.expected("a rust version string"))?;
+//             s.parse::<RustVersion>()
+//                 .map_err(|err| toml_spanner::Error::custom(err, item.span_unchecked()))
+//         },
+//     }
+// }
 
-toml_spanner::deserialize_table! {
-    struct TomlWorkspace {
-        optional members: Vec<String>,
-        optional exclude: Vec<String>,
-        optional "default-members" default_members: Vec<String>,
-        optional resolver: String,
-        optional package: InheritablePackage,
-        optional dependencies: BTreeMap<PackageName, TomlDependency>,
-        optional lints: TomlLints,
-        optional metadata: toml::Value = |item| {
-            Ok(item_to_toml_value(item))
-        },
-    }
-}
+// toml_spanner::deserialize_table! {
+//     struct TomlWorkspace {
+//         optional members: Vec<String>,
+//         optional exclude: Vec<String>,
+//         optional "default-members" default_members: Vec<String>,
+//         optional resolver: String,
+//         optional package: InheritablePackage,
+//         optional dependencies: BTreeMap<PackageName, TomlDependency>,
+//         optional lints: TomlLints,
+//         optional metadata: toml::Value = |item| {
+//             Ok(item_to_toml_value(item))
+//         },
+//     }
+// }
 
-toml_spanner::deserialize_table! {
-    struct TomlManifest {
-        optional "cargo-features" cargo_features: Vec<String>,
-        optional package: Box<TomlPackage>,
-        optional project: Box<TomlPackage>,
-        optional badges: BTreeMap<String, BTreeMap<String, String>>,
-        optional features: BTreeMap<FeatureName, Vec<String>>,
-        optional lib: TomlLibTarget,
-        optional bin: Vec<TomlBinTarget>,
-        optional example: Vec<TomlExampleTarget>,
-        optional test: Vec<TomlTestTarget>,
-        optional bench: Vec<TomlTestTarget>,
-        optional dependencies: BTreeMap<PackageName, InheritableDependency>,
-        optional "dev-dependencies" dev_dependencies: BTreeMap<PackageName, InheritableDependency>,
-        optional "dev_dependencies" dev_dependencies2: BTreeMap<PackageName, InheritableDependency>,
-        optional "build-dependencies" build_dependencies: BTreeMap<PackageName, InheritableDependency>,
-        optional "build_dependencies" build_dependencies2: BTreeMap<PackageName, InheritableDependency>,
-        optional target: BTreeMap<String, TomlPlatform>,
-        optional lints: InheritableLints,
-        optional hints: Hints,
-        optional workspace: TomlWorkspace,
-        optional profile: TomlProfiles,
-        optional patch: BTreeMap<String, BTreeMap<PackageName, TomlDependency>>,
-        optional replace: BTreeMap<String, TomlDependency>,
-    }
-    flatten _unused_keys: BTreeSet<String> = |key, _value| {
-        _unused_keys.insert(key.name.to_owned());
-    }
-}
+// toml_spanner::deserialize_table! {
+//     struct TomlManifest {
+//         optional "cargo-features" cargo_features: Vec<String>,
+//         optional package: Box<TomlPackage>,
+//         optional project: Box<TomlPackage>,
+//         optional badges: BTreeMap<String, BTreeMap<String, String>>,
+//         optional features: BTreeMap<FeatureName, Vec<String>>,
+//         optional lib: TomlLibTarget,
+//         optional bin: Vec<TomlBinTarget>,
+//         optional example: Vec<TomlExampleTarget>,
+//         optional test: Vec<TomlTestTarget>,
+//         optional bench: Vec<TomlTestTarget>,
+//         optional dependencies: BTreeMap<PackageName, InheritableDependency>,
+//         optional "dev-dependencies" dev_dependencies: BTreeMap<PackageName, InheritableDependency>,
+//         optional "dev_dependencies" dev_dependencies2: BTreeMap<PackageName, InheritableDependency>,
+//         optional "build-dependencies" build_dependencies: BTreeMap<PackageName, InheritableDependency>,
+//         optional "build_dependencies" build_dependencies2: BTreeMap<PackageName, InheritableDependency>,
+//         optional target: BTreeMap<String, TomlPlatform>,
+//         optional lints: InheritableLints,
+//         optional hints: Hints,
+//         optional workspace: TomlWorkspace,
+//         optional profile: TomlProfiles,
+//         optional patch: BTreeMap<String, BTreeMap<PackageName, TomlDependency>>,
+//         optional replace: BTreeMap<String, TomlDependency>,
+//     }
+//     flatten _unused_keys: BTreeSet<String> = |key, _value| {
+//         _unused_keys.insert(key.name.to_owned());
+//     }
+// }
