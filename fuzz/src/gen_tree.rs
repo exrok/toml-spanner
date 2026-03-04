@@ -1,24 +1,24 @@
 use crate::{Gen, pick_unique_idx};
 use toml_spanner::dev;
-use toml_spanner::{Arena, Array, ArrayKind, Item, Key, Table, TableKind, Value};
+use toml_spanner::{Arena, Array, ArrayStyle, Item, Key, Table, TableStyle, Value};
 
 pub const KEYS: [&str; 8] = ["a", "b", "c", "d", "e", "x", "y", "z"];
 pub const N_KEYS: usize = KEYS.len();
 const STRINGS: [&str; 5] = ["", "a", "b", "hello", "world"];
 
-pub fn random_table_kind(g: &mut Gen<'_>) -> TableKind {
+pub fn random_table_kind(g: &mut Gen<'_>) -> TableStyle {
     match g.next() % 4 {
-        0 => TableKind::Implicit,
-        1 => TableKind::Dotted,
-        2 => TableKind::Header,
-        _ => TableKind::Inline,
+        0 => TableStyle::Implicit,
+        1 => TableStyle::Dotted,
+        2 => TableStyle::Header,
+        _ => TableStyle::Inline,
     }
 }
 
-pub fn random_array_kind(g: &mut Gen<'_>) -> ArrayKind {
+pub fn random_array_kind(g: &mut Gen<'_>) -> ArrayStyle {
     match g.next() % 2 {
-        0 => ArrayKind::Inline,
-        _ => ArrayKind::Header,
+        0 => ArrayStyle::Inline,
+        _ => ArrayStyle::Header,
     }
 }
 
@@ -52,7 +52,7 @@ pub fn gen_table_item<'de>(g: &mut Gen<'_>, arena: &'de Arena, depth: u8) -> Ite
         let child = gen_item(g, arena, depth + 1);
         table.insert(Key::anon(KEYS[ki]), child, arena);
     }
-    table.set_kind(random_table_kind(g));
+    table.set_style(random_table_kind(g));
     table.into_item()
 }
 
@@ -63,7 +63,7 @@ pub fn gen_array_item<'de>(g: &mut Gen<'_>, arena: &'de Arena, depth: u8) -> Ite
         let elem = gen_item(g, arena, depth + 1);
         arr.push(elem, arena);
     }
-    arr.set_kind(random_array_kind(g));
+    arr.set_style(random_array_kind(g));
     arr.into_item()
 }
 
@@ -290,13 +290,13 @@ pub fn erase_kinds_table(table: &mut Table<'_>) {
 
 pub fn erase_kinds_item(item: &mut Item<'_>) {
     if let Some(t) = item.as_table_mut() {
-        match t.kind() {
-            TableKind::Dotted | TableKind::Inline => {}
-            _ => t.set_kind(TableKind::Implicit),
+        match t.style() {
+            TableStyle::Dotted | TableStyle::Inline => {}
+            _ => t.set_style(TableStyle::Implicit),
         }
         erase_kinds_table(t);
     } else if let Some(a) = item.as_array_mut() {
-        a.set_kind(ArrayKind::Inline);
+        a.set_style(ArrayStyle::Inline);
         for elem in a.as_mut_slice() {
             erase_kinds_item(elem);
         }

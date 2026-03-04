@@ -7,7 +7,7 @@ use crate::case::RenameRule;
 use crate::util::MemoryPool;
 use crate::writer::RustWriter;
 use crate::Error;
-use proc_macro::{Delimiter, Group, Ident, Literal, Punct, Spacing, Span, TokenStream, TokenTree};
+use proc_macro::{Delimiter, Group, Ident, Literal, Span, TokenStream, TokenTree};
 
 #[allow(unused)]
 enum StaticToken {

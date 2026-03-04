@@ -2763,3 +2763,165 @@ eta = "0.1"
         panic!("TOML didn't match expected result after serialization:");
     }
 }
+
+#[test]
+fn array_removal() {
+    let source = r#"
+[a]
+c = 1
+[[a.b]]
+id = 1 # First entry
+[[a.b]]
+id = 2 # Item to be removed
+[[a.b]]
+id = 3 # Last Item to be kep
+"#;
+    let modified = r#"
+[a]
+c = 1
+[[a.b]]
+id = 1 # First entry
+[[a.b]]
+id = 3 # Last Item to be kep
+"#;
+    assert_reproject_exact(source, modified, modified);
+}
+
+#[test]
+fn array_reordering() {
+    let source = r#"
+[a]
+c = 1
+[[a.b]]
+id = 1 # First entry
+values = [1,2,3]
+[[a.b]]
+id = 2 # Item to be removed
+[[a.b]]
+id = 3 # Last Item to be kep
+"#;
+    let modified = r#"
+[a]
+c = 1
+[[a.b]]
+id = 2 # Item to be removed
+[[a.b]]
+id = 1 # First entry
+values = [1,2,3]
+[[a.b]]
+id = 3 # Last Item to be kep
+"#;
+    assert_reproject_exact(source, modified, modified);
+}
+
+#[test]
+fn partial_array_reordering_and_modification() {
+    let source = r#"
+[a]
+c = 1
+[[a.b]]
+id = 1 # First entry
+values = [1,2,3]
+[[a.b]]
+id = 2 # Item to be removed
+[[a.b]]
+id = 3 # Last Item to be kep
+"#;
+    let modified = r#"
+[a]
+c = 1
+[[a.b]]
+id = 2 # Item to be removed
+[[a.b]]
+id = 1 # First entry
+values = [1,2]
+[[a.b]]
+id = 3 # Last Item to be kep
+"#;
+    let expected = r#"
+[a]
+c = 1
+[[a.b]]
+id = 2 # Item to be removed
+[[a.b]]
+id = 1 # First entry
+values = [1, 2]
+[[a.b]]
+id = 3 # Last Item to be kep
+"#;
+    assert_reproject_exact(source, modified, expected);
+}
+
+#[test]
+fn reordered_array_preserves_outer_comments() {
+    let source = r#"
+[a]
+c = 1
+
+# Preserve this
+[[a.b]]
+id = 1 # First entry
+
+# Preserve this too
+[[a.b]]
+id = 2 # Item to be removed
+"#;
+    let modified = r#"
+[a]
+c = 1
+
+# Preserve this too
+[[a.b]]
+id = 2 # Item to be removed
+
+# Preserve this
+[[a.b]]
+id = 1 # First entry
+"#;
+    assert_reproject_exact(source, modified, modified);
+}
+
+#[test]
+fn reordered_inline_array_preserves_comments_scalars() {
+    let source = r#"
+a = [
+    1, # Alpha
+    2, # Beta
+    3, # Canary
+]
+"#;
+    let modified = r#"
+a = [
+    2, # Beta
+    1, # Alpha
+    3, # Canary
+]
+"#;
+    assert_reproject_exact(source, modified, modified);
+}
+
+#[test]
+fn reordered_inline_array_preserves_comments_complex() {
+    let source = r#"
+a = [
+    { b.c = 4 }, # Alpha
+    { x = 1, y = 2 }, # Beta
+    [1, 2, 3], # Canary
+]
+"#;
+    let modified = r#"
+a = [
+    [1, 2, 3], # Canary
+    { y = 2, x = 1 }, # Beta
+    { b.c = 4 }, # Alpha
+]
+"#;
+    let expected = r#"
+a = [
+    [1, 2, 3], # Canary
+    { x = 1, y = 2 }, # Beta
+    { b.c = 4 }, # Alpha
+]
+"#;
+    assert_reproject_exact(source, modified, expected);
+}

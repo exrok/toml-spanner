@@ -2,12 +2,12 @@
 #[path = "reprojection_tests.rs"]
 mod tests;
 
-use crate::Array;
-use crate::Table;
 use crate::item::table::TableIndex;
 use crate::item::{ArrayStyle, Item, Key, TableStyle, Value, ValueMut};
 use crate::parser::Root;
 use crate::span::Span;
+use crate::{Array, Table};
+use std::hash::{BuildHasher, Hasher};
 
 /// Reprojects structural kinds from a parsed source onto a destination table.
 ///
@@ -322,9 +322,315 @@ fn clear_stale_spans(table: &mut Table<'_>) {
     }
 }
 
-/// Returns `true` when `src.len() == dest.len()` and every element's
-/// `reproject_item` returned `true`.
+/// Side-effect-free recursive value comparison for aligning array elements.
+/// Table comparison is order-independent (looks up by key name).
+fn indexed_eq(a: &Item<'_>, b: &Item<'_>, index: &TableIndex<'_>) -> bool {
+    match (a.value(), b.value()) {
+        (Value::String(a), Value::String(b)) => *a == *b,
+        (Value::Integer(a), Value::Integer(b)) => *a == *b,
+        (Value::Float(a), Value::Float(b)) => a.to_bits() == b.to_bits(),
+        (Value::Boolean(a), Value::Boolean(b)) => *a == *b,
+        (Value::DateTime(a), Value::DateTime(b)) => {
+            a.date() == b.date() && a.time() == b.time() && a.offset() == b.offset()
+        }
+        (Value::Table(st), Value::Table(dt)) => {
+            if st.len() != dt.len() {
+                return false;
+            }
+            for (key, val) in st.entries() {
+                let Some((_, dv)) = dt.value.get_entry_with_index(key.name, index) else {
+                    return false;
+                };
+                if !indexed_eq(val, dv, index) {
+                    return false;
+                }
+            }
+            true
+        }
+        (Value::Array(sa), Value::Array(da)) => {
+            if sa.len() != da.len() {
+                return false;
+            }
+            for (s, d) in sa.iter().zip(da.iter()) {
+                if !indexed_eq(s, d, index) {
+                    return false;
+                }
+            }
+            true
+        }
+        _ => false,
+    }
+}
+
+/// Hashes an item's content into `h`. Tables use order-independent XOR
+/// bucketing so that key ordering doesn't affect the hash.
+fn hash_item(item: &Item<'_>, h: &mut impl Hasher, build: &impl BuildHasher) {
+    match item.value() {
+        Value::String(s) => {
+            h.write_u8(0);
+            h.write_u64(s.len() as u64);
+            h.write(s.as_bytes());
+        }
+        Value::Integer(i) => {
+            h.write_u8(1);
+            h.write_i64(*i);
+        }
+        Value::Float(f) => {
+            h.write_u8(2);
+            h.write_u64(f.to_bits());
+        }
+        Value::Boolean(b) => {
+            h.write_u8(3);
+            h.write_u8(*b as u8);
+        }
+        Value::DateTime(d) => {
+            h.write_u8(4);
+            if let Some(date) = d.date() {
+                h.write_u16(date.year);
+                h.write_u8(date.month);
+                h.write_u8(date.day);
+            }
+            if let Some(time) = d.time() {
+                h.write_u8(time.hour);
+                h.write_u8(time.minute);
+                h.write_u8(time.second);
+                h.write_u32(time.nanosecond);
+            }
+            if let Some(offset) = d.offset() {
+                match offset {
+                    crate::TimeOffset::Z => h.write_i16(i16::MAX),
+                    crate::TimeOffset::Custom { minutes } => h.write_i16(minutes),
+                }
+            }
+        }
+        Value::Table(t) => {
+            h.write_u8(5);
+            // Order-independent: XOR entry hashes into 8 buckets keyed by key hash.
+            let mut buckets = [0u64; 8];
+            for (key, val) in t.entries() {
+                let mut kh = build.build_hasher();
+                kh.write(key.name.as_bytes());
+                let key_hash = kh.finish();
+
+                hash_item(val, &mut kh, build);
+                let val_hash = kh.finish();
+
+                buckets[(key_hash as usize) & 7] ^= val_hash;
+            }
+            for b in &buckets {
+                h.write_u64(*b);
+            }
+        }
+        Value::Array(a) => {
+            h.write_u8(6);
+            for elem in a.iter() {
+                hash_item(elem, h, build);
+            }
+        }
+    }
+}
+
+const INDEX_MASK: u64 = 0xFFFF;
+const HASH_SHIFT: u32 = 16;
+/// Bit 63: reserved flag to mark consumed src / matched dest entries.
+const MATCHED_BIT: u64 = 1 << 63;
+/// Hash mask: bits 62-16 (47 bits of hash, bit 63 reserved).
+const HASH_MASK: u64 = !INDEX_MASK & !MATCHED_BIT;
+/// Max src-side collision group size (limited by u32 bitset).
+const MAX_GROUP_SRC: usize = 32;
+/// Max collision-group cross-product before we skip matching.
+const COLLISION_CAP: usize = 256;
+
+/// Content-based array matching using hash + sort + merge-join.
+///
+/// Hashes each element with random state, packs `(hash47, index16)` into
+/// u64 (bit 63 reserved as matched flag), sorts both arrays, then
+/// merge-joins to find content matches. Match results are written directly
+/// into the sorting buffer — no separate match map or used-set needed.
+///
+/// Collision groups use a `u32` bitset (capped at 32 src entries) to track
+/// consumed elements within each group.
+///
+/// Returns `true` when every dest element fully matched a src element.
 fn reproject_array<'de>(
+    index: &TableIndex<'_>,
+    src: &'de Array<'de>,
+    dest: &mut Array<'_>,
+    items: &mut Vec<&'de Item<'de>>,
+) -> bool {
+    let n = src.len();
+    let m = dest.len();
+
+    if n == 0 || m == 0 {
+        if m > 0 {
+            for dest_item in dest.as_mut_slice() {
+                clear_stale_item(dest_item);
+            }
+        }
+        return n == 0 && m == 0;
+    }
+
+    // Fall back to positional for arrays exceeding u16 index space.
+    if n > u16::MAX as usize || m > u16::MAX as usize {
+        return reproject_array_positional(index, src, dest, items);
+    }
+
+    let build = foldhash::quality::RandomState::default();
+
+    // Pack (hash47, index16) into u64. Bit 63 reserved as matched flag.
+    let mut buf: Vec<u64> = Vec::with_capacity(n + m);
+    for (i, item) in src.iter().enumerate() {
+        let mut h = build.build_hasher();
+        hash_item(item, &mut h, &build);
+        buf.push(((h.finish() << HASH_SHIFT) & !MATCHED_BIT) | (i as u64));
+    }
+    for (i, item) in dest.iter().enumerate() {
+        let mut h = build.build_hasher();
+        hash_item(item, &mut h, &build);
+        buf.push(((h.finish() << HASH_SHIFT) & !MATCHED_BIT) | (i as u64));
+    }
+
+    let (src_sorted, dest_sorted) = buf.split_at_mut(n);
+    src_sorted.sort_unstable();
+    dest_sorted.sort_unstable();
+
+    // Merge-join on hash bits. Matched entries are tagged in-place:
+    //   src_sorted:  MATCHED_BIT is set on consumed entries.
+    //   dest_sorted: rewritten to MATCHED_BIT | (src_idx << 16) | dest_idx.
+    let dest_slice = dest.as_slice();
+    let mut matched_count: usize = 0;
+    let mut si = 0;
+    let mut di = 0;
+    while si < n && di < m {
+        let sh = src_sorted[si] & HASH_MASK;
+        let dh = dest_sorted[di] & HASH_MASK;
+        if sh < dh {
+            si += 1;
+        } else if sh > dh {
+            di += 1;
+        } else {
+            // Collect the collision group with this hash.
+            let group_hash = sh;
+            let si_start = si;
+            let di_start = di;
+            while si < n && (src_sorted[si] & HASH_MASK) == group_hash {
+                si += 1;
+            }
+            while di < m && (dest_sorted[di] & HASH_MASK) == group_hash {
+                di += 1;
+            }
+
+            let group_n = si - si_start;
+            let group_m = di - di_start;
+
+            // Cap group size: u32 bitset limits src side to 32, cross-product
+            // bounds total verification work.
+            if group_n > MAX_GROUP_SRC || group_n * group_m > COLLISION_CAP {
+                continue;
+            }
+
+            let mut used: u32 = 0;
+            for d in di_start..di {
+                let dest_idx = (dest_sorted[d] & INDEX_MASK) as usize;
+                for (k, s) in (si_start..si).enumerate() {
+                    if used & (1 << k) != 0 {
+                        continue;
+                    }
+                    let src_idx = (src_sorted[s] & INDEX_MASK) as usize;
+                    if indexed_eq(src.get(src_idx).unwrap(), &dest_slice[dest_idx], index) {
+                        dest_sorted[d] =
+                            MATCHED_BIT | ((src_idx as u64) << HASH_SHIFT) | (dest_idx as u64);
+                        src_sorted[s] |= MATCHED_BIT;
+                        used |= 1 << k;
+                        matched_count += 1;
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    // Restore dest_sorted to original dest order via cycle sort (O(m)).
+    for i in 0..m {
+        while (dest_sorted[i] & INDEX_MASK) as usize != i {
+            let target = (dest_sorted[i] & INDEX_MASK) as usize;
+            dest_sorted.swap(i, target);
+        }
+    }
+
+    // Build fallback list: compact unconsumed src indices, sort by index.
+    // Reuses the src_sorted buffer in-place.
+    let mut fc = 0;
+    for i in 0..n {
+        if src_sorted[i] & MATCHED_BIT == 0 {
+            src_sorted[fc] = src_sorted[i] & INDEX_MASK;
+            fc += 1;
+        }
+    }
+    src_sorted[..fc].sort_unstable();
+
+    // Build the final src-index assignment for each dest element, then
+    // detect reordering across ALL assignments (content matches + fallbacks).
+    // Array order is semantic, so any reordering must preserve dest order.
+    let mut assigned_src: Vec<u64> = Vec::with_capacity(m);
+    let mut fbi = 0usize;
+    for entry in dest_sorted.iter() {
+        if *entry & MATCHED_BIT != 0 {
+            assigned_src.push((*entry >> HASH_SHIFT) & INDEX_MASK);
+        } else if fbi < fc {
+            assigned_src.push(src_sorted[fbi]);
+            fbi += 1;
+        } else {
+            assigned_src.push(u64::MAX); // no src assigned
+        }
+    }
+
+    let mut reordered = false;
+    let mut prev_src = 0u64;
+    for &si in &assigned_src {
+        if si == u64::MAX {
+            continue;
+        }
+        if si < prev_src {
+            reordered = true;
+            break;
+        }
+        prev_src = si + 1;
+    }
+
+    // Apply content matches and fallback.
+    let dest_mut = dest.as_mut_slice();
+    // Reordered arrays are not fully matched: verbatim source copy would
+    // restore source order, changing semantic meaning.
+    let mut all_matched = matched_count == n && n == m && !reordered;
+    let mut fi = 0;
+    for (di, entry) in dest_sorted.iter().enumerate() {
+        if *entry & MATCHED_BIT != 0 {
+            let src_idx = ((*entry >> HASH_SHIFT) & INDEX_MASK) as usize;
+            if !reproject_item(index, src.get(src_idx).unwrap(), &mut dest_mut[di], items) {
+                all_matched = false;
+            }
+        } else if fi < fc {
+            // Fallback: pair with next unconsumed src for partial match.
+            let src_idx = src_sorted[fi] as usize;
+            reproject_item(index, src.get(src_idx).unwrap(), &mut dest_mut[di], items);
+            fi += 1;
+            all_matched = false;
+        } else {
+            clear_stale_item(&mut dest_mut[di]);
+            all_matched = false;
+        }
+
+        if reordered {
+            dest_mut[di].meta.set_ignore_source_order();
+        }
+    }
+
+    all_matched
+}
+
+/// Simple positional fallback for arrays exceeding u16 index space.
+fn reproject_array_positional<'de>(
     index: &TableIndex<'_>,
     src: &'de Array<'de>,
     dest: &mut Array<'_>,

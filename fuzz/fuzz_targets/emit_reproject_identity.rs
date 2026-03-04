@@ -4,9 +4,9 @@ use libfuzzer_sys::{Corpus, fuzz_target};
 use toml_spanner::{Item, Table, Value};
 
 fn clear_flags_table(table: &mut Table<'_>) {
-    match table.kind() {
-        toml_spanner::TableKind::Dotted | toml_spanner::TableKind::Inline => {}
-        _ => table.set_kind(toml_spanner::TableKind::Implicit),
+    match table.style() {
+        toml_spanner::TableStyle::Dotted | toml_spanner::TableStyle::Inline => {}
+        _ => table.set_style(toml_spanner::TableStyle::Implicit),
     }
     for (_, item) in table {
         clear_flags(item);
@@ -16,7 +16,7 @@ fn clear_flags_table(table: &mut Table<'_>) {
 fn clear_flags(item: &mut Item<'_>) {
     match item.value_mut() {
         toml_spanner::ValueMut::Array(array) => {
-            array.set_kind(toml_spanner::ArrayKind::Inline);
+            array.set_style(toml_spanner::ArrayStyle::Inline);
             for item in array {
                 clear_flags(item);
             }

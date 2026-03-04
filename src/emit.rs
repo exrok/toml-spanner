@@ -118,6 +118,14 @@ enum EmitOp<'a, 'b, 'de> {
     AotElement(&'a Table<'de>, &'a Item<'de>, &'b Prefix<'b, 'de>),
 }
 
+fn is_reordered_aot(op: &EmitOp<'_, '_, '_>) -> bool {
+    if let EmitOp::AotElement(_, entry, _) = op {
+        entry.meta.ignore_source_order()
+    } else {
+        false
+    }
+}
+
 /// A segment of emit output with its source-derived sort position.
 struct Segment<'a, 'b, 'de> {
     /// Source position for sorting (or `last_projected` for unprojected items).
@@ -208,12 +216,18 @@ fn emit_ordered<'a, 'b, 'de: 'b>(
                 }
                 *cursor = target;
             } else if is_header {
-                // Source position already passed: add separator for headers.
-                out.push(b'\n');
+                // Source position already passed: add separator for headers,
+                // unless this is a reordered AOT element (already adjacent).
+                if !is_reordered_aot(&seg.op) {
+                    out.push(b'\n');
+                }
             }
         } else if is_header {
-            // Unprojected header: add separator.
-            out.push(b'\n');
+            // Unprojected header: add separator,
+            // unless this is a reordered AOT element (already adjacent).
+            if !is_reordered_aot(&seg.op) {
+                out.push(b'\n');
+            }
         }
 
         match &seg.op {
@@ -224,7 +238,12 @@ fn emit_ordered<'a, 'b, 'de: 'b>(
                 emit_header_body(sub_table, item, node, emit, out, cursor);
             }
             EmitOp::AotElement(sub_table, arr_entry, node) => {
+                let pre_cursor = *cursor;
                 emit_aot_element(sub_table, arr_entry, node, emit, out, cursor);
+                // Prevent cursor from going backwards when elements are
+                // reordered — stops trailing emit_gap from re-emitting
+                // already-covered source content.
+                *cursor = (*cursor).max(pre_cursor);
             }
         }
     }
@@ -341,7 +360,11 @@ fn collect_segments<'a, 'b, 'de: 'b>(
                 let Some(sub_table) = arr_entry.as_table() else {
                     continue;
                 };
-                let elem_sort = projected_span(arr_entry, emit).map(|s| s.start);
+                let elem_sort = if arr_entry.meta.ignore_source_order() {
+                    None
+                } else {
+                    projected_span(arr_entry, emit).map(|s| s.start)
+                };
                 let elem_source_start = elem_sort.unwrap_or(u32::MAX);
                 let sp = pack_sort_pos(elem_sort, last_projected);
 
@@ -472,6 +495,15 @@ fn emit_aot_element<'a, 'b, 'de: 'b>(
     if let Some(src_span) = projected_span(entry, emit) {
         let hdr_start = src_span.start as usize;
         if hdr_start < emit.src.len() && emit.src[hdr_start] == b'[' {
+            // For reordered AOT elements, emit the comment prefix
+            // (comments/blanks before the header in source) so that
+            // comments move with the element they precede.
+            if entry.meta.ignore_source_order() {
+                let (pstart, pend) = find_comment_prefix(emit.src, hdr_start);
+                if pstart != pend {
+                    out.extend_from_slice(&emit.src[pstart..pend]);
+                }
+            }
             let hdr_line_end = line_end_of(emit.src, hdr_start);
             let hdr_slice = &emit.src[hdr_start..hdr_line_end];
             out.extend_from_slice(hdr_slice);
@@ -683,6 +715,35 @@ fn line_start_of(src: &[u8], pos: usize) -> usize {
         i -= 1;
     }
     i
+}
+
+/// Scans backwards from a header position to find preceding comment lines
+/// and blank lines that belong to this element. Returns the byte range
+/// `(prefix_start, header_line_start)`. Empty when there are no preceding
+/// comment/blank lines.
+fn find_comment_prefix(src: &[u8], header_pos: usize) -> (usize, usize) {
+    let header_line_start = line_start_of(src, header_pos);
+    let mut prefix_start = header_line_start;
+    let mut cursor = header_line_start;
+    while cursor > 0 {
+        let prev_line_start = line_start_of(src, cursor - 1);
+        let line = &src[prev_line_start..cursor];
+        let mut first_non_ws = None;
+        for &b in line {
+            if b != b' ' && b != b'\t' {
+                first_non_ws = Some(b);
+                break;
+            }
+        }
+        match first_non_ws {
+            Some(b'#') | Some(b'\n') | Some(b'\r') | None => {
+                prefix_start = prev_line_start;
+                cursor = prev_line_start;
+            }
+            _ => break,
+        }
+    }
+    (prefix_start, header_line_start)
 }
 
 fn contains_byte(slice: &[u8], needle: u8) -> bool {

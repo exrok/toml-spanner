@@ -1,7 +1,7 @@
 #![no_main]
 
 use libfuzzer_sys::{Corpus, fuzz_target};
-use toml_spanner::{ArrayKind, Item, Table, TableKind};
+use toml_spanner::{ArrayStyle, Item, Table, TableStyle};
 
 fuzz_target!(|data: &[u8]| -> Corpus {
     let Ok(text) = std::str::from_utf8(data) else {
@@ -63,13 +63,13 @@ fn erase_kinds_table(table: &mut Table<'_>) {
 
 fn erase_kinds_item(item: &mut Item<'_>) {
     if let Some(t) = item.as_table_mut() {
-        match t.kind() {
-            TableKind::Dotted | TableKind::Inline => {}
-            _ => t.set_kind(TableKind::Implicit),
+        match t.style() {
+            TableStyle::Dotted | TableStyle::Inline => {}
+            _ => t.set_style(TableStyle::Implicit),
         }
         erase_kinds_table(t);
     } else if let Some(a) = item.as_array_mut() {
-        a.set_kind(ArrayKind::Inline);
+        a.set_style(ArrayStyle::Inline);
         for elem in a.as_mut_slice() {
             erase_kinds_item(elem);
         }
