@@ -120,7 +120,7 @@ enum EmitOp<'a, 'b, 'de> {
 
 fn is_reordered_aot(op: &EmitOp<'_, '_, '_>) -> bool {
     if let EmitOp::AotElement(_, entry, _) = op {
-        entry.meta.ignore_source_order()
+        entry.meta.array_reordered()
     } else {
         false
     }
@@ -360,7 +360,7 @@ fn collect_segments<'a, 'b, 'de: 'b>(
                 let Some(sub_table) = arr_entry.as_table() else {
                     continue;
                 };
-                let elem_sort = if arr_entry.meta.ignore_source_order() {
+                let elem_sort = if arr_entry.meta.array_reordered() {
                     None
                 } else {
                     projected_span(arr_entry, emit).map(|s| s.start)
@@ -498,7 +498,7 @@ fn emit_aot_element<'a, 'b, 'de: 'b>(
             // For reordered AOT elements, emit the comment prefix
             // (comments/blanks before the header in source) so that
             // comments move with the element they precede.
-            if entry.meta.ignore_source_order() {
+            if entry.meta.array_reordered() {
                 let (pstart, pend) = find_comment_prefix(emit.src, hdr_start);
                 if pstart != pend {
                     out.extend_from_slice(&emit.src[pstart..pend]);

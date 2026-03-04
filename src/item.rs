@@ -54,6 +54,11 @@ pub(crate) const IGNORE_SOURCE_ORDER_BIT: u32 = 1 << 29;
 /// Bit 28 of `end_and_flag`: when set in format-hints mode, disables
 /// copying structural styles from source during reprojection.
 pub(crate) const IGNORE_SOURCE_STYLE_BIT: u32 = 1 << 28;
+/// Bit 27 of `end_and_flag`: marks an array element as reordered during
+/// reprojection. Prevents the emitter from sorting this element back to
+/// its original source position in the parent array, without affecting
+/// source-ordering of the element's own children.
+pub(crate) const ARRAY_REORDERED_BIT: u32 = 1 << 27;
 /// Value bits (above TAG_SHIFT) all set = "not projected".
 const NOT_PROJECTED: u32 = !(TAG_MASK); // 0xFFFF_FFF8
 
@@ -220,6 +225,18 @@ impl ItemMetadata {
     pub(crate) fn ignore_source_order(&self) -> bool {
         self.end_and_flag & (HINTS_BIT | IGNORE_SOURCE_ORDER_BIT)
             == (HINTS_BIT | IGNORE_SOURCE_ORDER_BIT)
+    }
+
+    /// Marks an array element as reordered during reprojection.
+    #[inline]
+    pub(crate) fn set_array_reordered(&mut self) {
+        self.end_and_flag |= HINTS_BIT | ARRAY_REORDERED_BIT;
+    }
+
+    /// Returns `true` if this element was reordered during array reprojection.
+    #[inline]
+    pub(crate) fn array_reordered(&self) -> bool {
+        self.end_and_flag & (HINTS_BIT | ARRAY_REORDERED_BIT) == (HINTS_BIT | ARRAY_REORDERED_BIT)
     }
 
     /// Disables copying structural styles from source during reprojection.

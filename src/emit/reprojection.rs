@@ -657,7 +657,7 @@ fn reproject_array<'de>(
         }
 
         if reordered {
-            dest_entry.meta.set_ignore_source_order();
+            dest_entry.meta.set_array_reordered();
         }
     }
 

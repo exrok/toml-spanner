@@ -2940,3 +2940,44 @@ b = 1
 "#;
     assert_reproject_exact(source, modified, modified);
 }
+
+#[test]
+fn reordered_aot_preserves_child_source_order() {
+    let source = r#"
+[[arr]]
+a = 1
+b = 2
+c = 3
+
+[[arr]]
+x = 10
+y = 20
+z = 30
+"#;
+    // Swap the two elements; children within each element should still
+    // follow source ordering (x/y/z before a/b/c at the outer level,
+    // but each element's own keys stay in source order).
+    let modified = r#"
+[[arr]]
+x = 10
+y = 20
+z = 30
+
+[[arr]]
+a = 1
+c = 3
+b = 2
+"#;
+    let expected = r#"
+[[arr]]
+x = 10
+y = 20
+z = 30
+
+[[arr]]
+a = 1
+b = 2
+c = 3
+"#;
+    assert_reproject_exact(source, modified, expected);
+}
