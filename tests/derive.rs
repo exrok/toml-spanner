@@ -1,9 +1,12 @@
 use std::collections::BTreeMap;
-use toml_spanner::{Arena, FromItem};
+use toml_spanner::{
+    Arena, EmitConfig, Failed, FromToml, Root, ToContext, ToToml, emit_with_config, parse,
+    reproject,
+};
 use toml_spanner_macros::Toml;
 
 #[derive(Toml, Debug, PartialEq)]
-#[toml(FromItem)]
+#[toml(FromToml)]
 struct Config {
     name: String,
     port: u16,
@@ -24,7 +27,7 @@ fn derive_from_item_basic() {
     let mut root = toml_spanner::parse(input, &arena).unwrap();
     let (ctx, table) = root.split();
     let config: Config = {
-        let result = Config::from_item(ctx, table.as_item());
+        let result = Config::from_toml(ctx, table.as_item());
         result.unwrap()
     };
     assert_eq!(config.name, "my-app");
@@ -47,7 +50,7 @@ fn derive_from_item_defaults() {
 
     let (ctx, table) = root.split();
     let config: Config = {
-        let result = Config::from_item(ctx, table.as_item());
+        let result = Config::from_toml(ctx, table.as_item());
         result.unwrap()
     };
     assert_eq!(config.name, "minimal");
@@ -70,7 +73,7 @@ fn derive_from_item_via_from_str() {
 }
 
 #[derive(Toml, Debug, PartialEq)]
-#[toml(ToItem)]
+#[toml(ToToml)]
 struct Simple {
     name: String,
     count: u32,
@@ -91,7 +94,7 @@ fn derive_to_item_basic() {
 }
 
 #[derive(Toml, Debug, PartialEq)]
-#[toml(FromItem, ToItem)]
+#[toml(FromToml, ToToml)]
 struct RoundTrip {
     name: String,
     value: i64,
@@ -112,7 +115,7 @@ fn derive_roundtrip() {
 }
 
 #[derive(Toml, Debug, PartialEq)]
-#[toml(FromItem, ToItem)]
+#[toml(FromToml, ToToml)]
 struct WithOption {
     required: String,
     maybe: Option<u32>,
@@ -158,7 +161,7 @@ fn derive_option_roundtrip() {
 
 // String enum (all-unit, external tag)
 #[derive(Toml, Debug, PartialEq)]
-#[toml(FromItem, ToItem)]
+#[toml(FromToml, ToToml)]
 enum Color {
     Red,
     Green,
@@ -166,7 +169,7 @@ enum Color {
 }
 
 #[test]
-fn enum_string_from_item() {
+fn enum_string_from_toml() {
     let arena = Arena::new();
     let input = r#"color = "Red""#;
     let mut root = toml_spanner::parse(input, &arena).unwrap();
@@ -179,7 +182,7 @@ fn enum_string_from_item() {
 #[test]
 fn enum_string_roundtrip() {
     #[derive(Toml, Debug, PartialEq)]
-    #[toml(FromItem, ToItem)]
+    #[toml(FromToml, ToToml)]
     struct Wrapper {
         color: Color,
     }
@@ -194,7 +197,7 @@ fn enum_string_roundtrip() {
 
 // String enum with rename_all
 #[derive(Toml, Debug, PartialEq)]
-#[toml(FromItem, ToItem, rename_all = "snake_case")]
+#[toml(FromToml, ToToml, rename_all = "snake_case")]
 enum Status {
     InProgress,
     AllDone,
@@ -203,7 +206,7 @@ enum Status {
 #[test]
 fn enum_string_rename_all() {
     #[derive(Toml, Debug, PartialEq)]
-    #[toml(FromItem, ToItem)]
+    #[toml(FromToml, ToToml)]
     struct Wrapper {
         status: Status,
     }
@@ -221,14 +224,14 @@ fn enum_string_rename_all() {
 
 // External tagging (mixed: unit + struct variants)
 #[derive(Toml, Debug, PartialEq)]
-#[toml(FromItem, ToItem)]
+#[toml(FromToml, ToToml)]
 enum Shape {
     Circle,
     Rect { w: u32, h: u32 },
 }
 
 #[test]
-fn enum_external_unit_from_item() {
+fn enum_external_unit_from_toml() {
     let arena = Arena::new();
     let input = r#"shape = "Circle""#;
     let mut root = toml_spanner::parse(input, &arena).unwrap();
@@ -239,7 +242,7 @@ fn enum_external_unit_from_item() {
 }
 
 #[test]
-fn enum_external_struct_from_item() {
+fn enum_external_struct_from_toml() {
     let input = r#"
             [Rect]
             w = 10
@@ -252,7 +255,7 @@ fn enum_external_struct_from_item() {
 #[test]
 fn enum_external_roundtrip() {
     #[derive(Toml, Debug, PartialEq)]
-    #[toml(FromItem, ToItem)]
+    #[toml(FromToml, ToToml)]
     struct Wrapper {
         shape: Shape,
     }
@@ -267,7 +270,7 @@ fn enum_external_roundtrip() {
 
 // External tagging with tuple variant
 #[derive(Toml, Debug, PartialEq)]
-#[toml(FromItem, ToItem)]
+#[toml(FromToml, ToToml)]
 enum Value {
     Text(String),
     Number(i64),
@@ -276,7 +279,7 @@ enum Value {
 #[test]
 fn enum_external_tuple_roundtrip() {
     #[derive(Toml, Debug, PartialEq)]
-    #[toml(FromItem, ToItem)]
+    #[toml(FromToml, ToToml)]
     struct Wrapper {
         val: Value,
     }
@@ -290,21 +293,21 @@ fn enum_external_tuple_roundtrip() {
 
 // Internal tagging
 #[derive(Toml, Debug, PartialEq)]
-#[toml(FromItem, ToItem, tag = "type")]
+#[toml(FromToml, ToToml, tag = "type")]
 enum Message {
     Quit,
     Move { x: i32, y: i32 },
 }
 
 #[test]
-fn enum_internal_unit_from_item() {
+fn enum_internal_unit_from_toml() {
     let input = r#"type = "Quit""#;
     let v: Message = toml_spanner::from_str(input).unwrap();
     assert_eq!(v, Message::Quit);
 }
 
 #[test]
-fn enum_internal_struct_from_item() {
+fn enum_internal_struct_from_toml() {
     let input = r#"
             type = "Move"
             x = 10
@@ -317,7 +320,7 @@ fn enum_internal_struct_from_item() {
 #[test]
 fn enum_internal_roundtrip() {
     #[derive(Toml, Debug, PartialEq)]
-    #[toml(FromItem, ToItem)]
+    #[toml(FromToml, ToToml)]
     struct Wrapper {
         msg: Message,
     }
@@ -331,7 +334,7 @@ fn enum_internal_roundtrip() {
 
 // Adjacent tagging
 #[derive(Toml, Debug, PartialEq)]
-#[toml(FromItem, ToItem, tag = "kind", content = "data")]
+#[toml(FromToml, ToToml, tag = "kind", content = "data")]
 enum Event {
     Click(String),
     Resize { w: u32, h: u32 },
@@ -339,14 +342,14 @@ enum Event {
 }
 
 #[test]
-fn enum_adjacent_unit_from_item() {
+fn enum_adjacent_unit_from_toml() {
     let input = r#"kind = "Close""#;
     let v: Event = toml_spanner::from_str(input).unwrap();
     assert_eq!(v, Event::Close);
 }
 
 #[test]
-fn enum_adjacent_tuple_from_item() {
+fn enum_adjacent_tuple_from_toml() {
     let input = r#"
             kind = "Click"
             data = "button1"
@@ -356,7 +359,7 @@ fn enum_adjacent_tuple_from_item() {
 }
 
 #[test]
-fn enum_adjacent_struct_from_item() {
+fn enum_adjacent_struct_from_toml() {
     let input = r#"
             kind = "Resize"
             [data]
@@ -370,7 +373,7 @@ fn enum_adjacent_struct_from_item() {
 #[test]
 fn enum_adjacent_roundtrip() {
     #[derive(Toml, Debug, PartialEq)]
-    #[toml(FromItem, ToItem)]
+    #[toml(FromToml, ToToml)]
     struct Wrapper {
         event: Event,
     }
@@ -383,7 +386,7 @@ fn enum_adjacent_roundtrip() {
 }
 
 #[derive(Toml, Debug, PartialEq)]
-#[toml(FromItem, ToItem)]
+#[toml(FromToml, ToToml)]
 struct WithFlatten {
     name: String,
     #[toml(flatten)]
@@ -391,7 +394,7 @@ struct WithFlatten {
 }
 
 #[test]
-fn flatten_from_item() {
+fn flatten_from_toml() {
     let input = r#"
         name = "test"
         foo = "bar"
@@ -442,7 +445,7 @@ fn flatten_empty_extras() {
 }
 
 #[derive(Toml, Debug, PartialEq)]
-#[toml(FromItem, ToItem, untagged)]
+#[toml(FromToml, ToToml, untagged)]
 enum Untagged {
     Num(i64),
     Text(String),
@@ -474,7 +477,7 @@ fn untagged_tuple_string() {
 #[test]
 fn untagged_tuple_roundtrip() {
     #[derive(Toml, Debug, PartialEq)]
-    #[toml(FromItem, ToItem)]
+    #[toml(FromToml, ToToml)]
     struct Wrapper {
         val: Untagged,
     }
@@ -495,7 +498,7 @@ fn untagged_tuple_roundtrip() {
 
 // Untagged with struct + tuple mix
 #[derive(Toml, Debug, PartialEq)]
-#[toml(FromItem, ToItem, untagged)]
+#[toml(FromToml, ToToml, untagged)]
 enum UntaggedMixed {
     Structured { x: i32, y: i32 },
     Simple(String),
@@ -526,7 +529,7 @@ fn untagged_fallback_to_later_variant() {
 #[test]
 fn untagged_mixed_roundtrip() {
     #[derive(Toml, Debug, PartialEq)]
-    #[toml(FromItem, ToItem)]
+    #[toml(FromToml, ToToml)]
     struct Wrapper {
         val: UntaggedMixed,
     }
@@ -540,7 +543,7 @@ fn untagged_mixed_roundtrip() {
 
 // Untagged with unit variants
 #[derive(Toml, Debug, PartialEq)]
-#[toml(FromItem, ToItem, untagged)]
+#[toml(FromToml, ToToml, untagged)]
 enum UntaggedWithUnit {
     Named(String),
     Empty,
@@ -577,7 +580,7 @@ fn untagged_no_error_leakage() {
 }
 
 #[derive(Toml, Debug, PartialEq)]
-#[toml(FromItem, untagged)]
+#[toml(FromToml, untagged)]
 enum TryIfEnum {
     #[toml(try_if = |_ctx, item| item.kind() == toml_spanner::Kind::Array)]
     Arr(Vec<String>),
@@ -608,7 +611,7 @@ fn try_if_skips() {
 }
 
 #[derive(Toml, Debug, PartialEq)]
-#[toml(FromItem, untagged)]
+#[toml(FromToml, untagged)]
 enum FinalIfEnum {
     #[toml(final_if = |_ctx, item| item.kind() == toml_spanner::Kind::String)]
     Text(String),
@@ -639,7 +642,7 @@ fn final_if_skips_to_next() {
 }
 
 #[derive(Toml, Debug, PartialEq)]
-#[toml(FromItem, untagged)]
+#[toml(FromToml, untagged)]
 enum MixedHints {
     #[toml(final_if = |_ctx, item| item.kind() == toml_spanner::Kind::Boolean)]
     Flag(bool),
@@ -682,7 +685,7 @@ fn mixed_hints_fallback_unhinted() {
 }
 
 #[derive(Toml, Debug, PartialEq)]
-#[toml(FromItem, untagged)]
+#[toml(FromToml, untagged)]
 enum AllHinted {
     #[toml(final_if = |_ctx, item| item.kind() == toml_spanner::Kind::Boolean)]
     Flag(bool),
@@ -705,7 +708,7 @@ fn all_hinted_no_match_gives_error() {
 fn try_if_no_error_leakage() {
     // When try_if predicate matches but deserialization fails, errors are truncated
     #[derive(Toml, Debug, PartialEq)]
-    #[toml(FromItem, untagged)]
+    #[toml(FromToml, untagged)]
     enum TryIfLeak {
         #[toml(try_if = |_ctx, item| item.kind() == toml_spanner::Kind::String)]
         Num(i64),
@@ -729,7 +732,7 @@ fn try_if_no_error_leakage() {
 }
 
 #[derive(Toml, Debug, PartialEq)]
-#[toml(FromItem, ToItem)]
+#[toml(FromToml, ToToml)]
 struct GenericWithDefault<P: Clone = String> {
     value: P,
 }
@@ -740,7 +743,7 @@ fn derive_generic_with_default_bound() {
     let input = r#"value = "hello""#;
     let mut root = toml_spanner::parse(input, &arena).unwrap();
     let (ctx, doc) = root.split();
-    let result: GenericWithDefault = GenericWithDefault::from_item(ctx, doc.as_item()).unwrap();
+    let result: GenericWithDefault = GenericWithDefault::from_toml(ctx, doc.as_item()).unwrap();
     assert_eq!(result.value, "hello");
 }
 
@@ -751,13 +754,13 @@ fn derive_generic_with_explicit_type() {
     let mut root = toml_spanner::parse(input, &arena).unwrap();
     let (ctx, doc) = root.split();
     let result: GenericWithDefault<i64> =
-        GenericWithDefault::from_item(ctx, doc.as_item()).unwrap();
+        GenericWithDefault::from_toml(ctx, doc.as_item()).unwrap();
     assert_eq!(result.value, 42);
 }
 
 // Option<T> with #[toml(required)]: missing field is an error
 #[derive(Toml, Debug, PartialEq)]
-#[toml(FromItem)]
+#[toml(FromToml)]
 struct RequiredOption {
     #[toml(required)]
     val: Option<u32>,
@@ -780,7 +783,7 @@ fn required_option_absent() {
 
 // Option<T> with #[toml(default)]: missing field uses Default (None)
 #[derive(Toml, Debug, PartialEq)]
-#[toml(FromItem)]
+#[toml(FromToml)]
 struct DefaultOption {
     #[toml(default)]
     val: Option<u32>,
@@ -800,7 +803,7 @@ fn default_option_absent() {
 
 // Option<T> with #[toml(default = Some(99))]: missing field uses custom default
 #[derive(Toml, Debug, PartialEq)]
-#[toml(FromItem)]
+#[toml(FromToml)]
 struct DefaultOptionCustom {
     #[toml(default = Some(99))]
     val: Option<u32>,
@@ -820,7 +823,7 @@ fn default_option_custom_absent() {
 
 // Plain Option<T> (auto-detected) still works as before
 #[derive(Toml, Debug, PartialEq)]
-#[toml(FromItem)]
+#[toml(FromToml)]
 struct PlainOption {
     val: Option<u32>,
 }
@@ -838,7 +841,7 @@ fn plain_option_absent() {
 }
 
 #[derive(Toml, Debug, PartialEq)]
-#[toml(FromItem)]
+#[toml(FromToml)]
 struct WithAlias {
     #[toml(alias = "server_name")]
     name: String,
@@ -867,7 +870,7 @@ fn alias_duplicate_error() {
 }
 
 #[derive(Toml, Debug, PartialEq)]
-#[toml(FromItem)]
+#[toml(FromToml)]
 struct MultiAlias {
     #[toml(alias = "colour", alias = "clr")]
     color: String,
@@ -899,7 +902,7 @@ fn multi_alias_duplicate_error() {
 }
 
 #[derive(Toml, Debug, PartialEq)]
-#[toml(FromItem)]
+#[toml(FromToml)]
 struct AliasOptional {
     #[toml(alias = "nm")]
     name: Option<String>,
@@ -915,4 +918,64 @@ fn alias_optional_via_alias() {
 fn alias_optional_absent() {
     let v: AliasOptional = toml_spanner::from_str("").unwrap();
     assert_eq!(v.name, None);
+}
+
+pub fn srp<T: ToToml>(root: &Root<'_>, item: &T) -> Result<String, Failed> {
+    let arena = Arena::new();
+    let mut ctx = ToContext::new(&arena);
+    let mut item = item.to_toml(&mut ctx)?;
+    let Some(table) = item.as_table_mut() else {
+        return Err(Failed);
+    };
+    let mut items = Vec::new();
+    reproject(root, table, &mut items);
+    let mut output = Vec::new();
+    emit_with_config(
+        table.normalize(),
+        &EmitConfig {
+            projected_source_items: &items,
+            projected_source_text: root.ctx.source(),
+            reprojected_order: true,
+        },
+        &mut output,
+    );
+
+    Ok(String::from_utf8(output).unwrap())
+}
+
+#[test]
+fn full_test() {
+    #[derive(Toml)]
+    #[toml(Toml)]
+    struct Place {
+        world: String,
+        moon: String,
+    }
+
+    #[derive(Toml)]
+    #[toml(Toml)]
+    struct Config {
+        hello: Place,
+        goodbye: String,
+    }
+
+    let document = r#"
+hello.world = "a"
+goodbye = "b"
+hello.moon = "c"
+"#;
+    let expected = r#"
+hello.world = "a"
+goodbye = "beta"
+hello.moon = "c"
+"#;
+
+    let arena = Arena::new();
+    let mut root = parse(document, &arena).unwrap();
+    // toml_spanner::Document::parse(document, &arena);
+    let mut config: Config = root.deserialize().unwrap();
+    config.goodbye = "beta".into();
+
+    let emitted = srp(&root, &config).unwrap();
+    assert_eq!(emitted, expected);
 }

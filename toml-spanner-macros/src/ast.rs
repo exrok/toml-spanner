@@ -1,3 +1,4 @@
+
 use crate::{case::RenameRule, util::Allocator, Error};
 use proc_macro::{Delimiter, Ident, Literal, Span, TokenStream, TokenTree};
 pub enum GenericKind {
@@ -92,8 +93,8 @@ pub struct DeriveTargetInner<'a> {
     pub generic_field_types: Vec<&'a [TokenTree]>,
     pub generic_flatten_field_types: Vec<&'a [TokenTree]>,
     pub transparent_impl: bool,
-    pub from_item: bool,
-    pub to_item: bool,
+    pub from_toml: bool,
+    pub to_toml: bool,
     pub rename_all: RenameRule,
     pub rename_all_fields: RenameRule,
     pub enum_flags: EnumFlag,
@@ -151,11 +152,11 @@ impl<'a> Field<'a> {
 impl<'a> Field<'a> {
     pub const GENERIC: u32 = 1u32 << 0;
     pub const IN_TUPLE: u32 = 1u32 << 1;
-    pub const WITH_FROMITEM_DEFAULT: u32 = 1u32 << 2;
-    pub const WITH_FROMITEM_SKIP: u32 = 1u32 << 3;
-    pub const WITH_TO_ITEM_SKIP: u32 = 1u32 << 4;
+    pub const WITH_FROM_TOML_DEFAULT: u32 = 1u32 << 2;
+    pub const WITH_FROM_TOML_SKIP: u32 = 1u32 << 3;
+    pub const WITH_TO_TOML_SKIP: u32 = 1u32 << 4;
     pub const WITH_FLATTEN: u32 = 1u32 << 5;
-    pub const WITH_FROMITEM_OPTION: u32 = 1u32 << 6;
+    pub const WITH_FROM_TOML_OPTION: u32 = 1u32 << 6;
     #[allow(dead_code)]
     pub fn is(&self, flags: u32) -> bool {
         self.flags & flags != 0
@@ -219,15 +220,15 @@ fn parse_container_attr(
         "transparent" => {
             target.transparent_impl = true;
         }
-        "FromItem" => {
-            target.from_item = true;
+        "FromToml" => {
+            target.from_toml = true;
         }
-        "ToItem" => {
-            target.to_item = true;
+        "ToToml" => {
+            target.to_toml = true;
         }
         "Toml" => {
-            target.from_item = true;
-            target.to_item = true;
+            target.from_toml = true;
+            target.to_toml = true;
         }
         "rename_all" => {
             if target.rename_all != RenameRule::None {
@@ -531,7 +532,7 @@ fn parse_single_field_attr(
 ) {
     let name = ident.to_string();
     if trait_set == 0 {
-        trait_set = FROM_ITEM | TO_ITEM;
+        trait_set = FROM_TOML | TO_TOML;
     }
     let offset = match name.as_str() {
         "rename" => {
@@ -575,9 +576,9 @@ fn parse_single_field_attr(
             if value.is_empty() {
                 Error::span_msg("Expected a function specifying skip criteria", ident.span())
             }
-            trait_set &= TO_ITEM;
+            trait_set &= TO_TOML;
             attrs.attrs.push(FieldAttr {
-                enabled: trait_set & TO_ITEM,
+                enabled: trait_set & TO_TOML,
                 span: ident.span(),
                 inner: FieldAttrInner::Skip(std::mem::take(value)),
             });
@@ -606,7 +607,7 @@ fn parse_single_field_attr(
             if !value.is_empty() {
                 Error::span_msg("required doesn't take any arguments", ident.span())
             }
-            trait_set &= FROM_ITEM;
+            trait_set &= FROM_TOML;
             1u64 * TRAIT_COUNT
         }
         "alias" => {
@@ -616,7 +617,7 @@ fn parse_single_field_attr(
             if !value.is_empty() {
                 Error::span_msg("Expected a single literal", ident.span())
             }
-            trait_set &= FROM_ITEM;
+            trait_set &= FROM_TOML;
             attrs.attrs.push(FieldAttr {
                 enabled: trait_set,
                 span: ident.span(),
@@ -648,8 +649,8 @@ fn extract_toml_attr(group: TokenStream) -> Option<TokenStream> {
     Some(group.stream())
 }
 pub type TraitSet = u8;
-pub const FROM_ITEM: TraitSet = 1 << 0;
-pub const TO_ITEM: TraitSet = 1 << 1;
+pub const FROM_TOML: TraitSet = 1 << 0;
+pub const TO_TOML: TraitSet = 1 << 1;
 fn parse_attrs(toks: TokenStream, func: &mut dyn FnMut(TraitSet, Ident, &mut Vec<TokenTree>)) {
     let mut toks = toks.into_iter();
     let mut buf: Vec<TokenTree> = Vec::new();
@@ -665,9 +666,9 @@ fn parse_attrs(toks: TokenStream, func: &mut dyn FnMut(TraitSet, Ident, &mut Vec
                     TokenTree::Ident(true_ident) => {
                         let text = ident.to_string();
                         match text.as_str() {
-                            "FromItem" => trait_set |= FROM_ITEM,
-                            "ToItem" => trait_set |= TO_ITEM,
-                            "Toml" => trait_set |= FROM_ITEM | TO_ITEM,
+                            "FromToml" => trait_set |= FROM_TOML,
+                            "ToToml" => trait_set |= TO_TOML,
+                            "Toml" => trait_set |= FROM_TOML | TO_TOML,
                             _ => Error::span_msg("Expected trait or alias", ident.span()),
                         }
                         ident = true_ident;
@@ -985,22 +986,22 @@ fn flags_from_attr(attr: &Option<&mut FieldAttrs>) -> u32 {
     let mut f = 0;
     if let Some(attr) = attr {
         if attr.flags & OPTION_AUTO_DETECTED != 0 {
-            f |= Field::WITH_FROMITEM_OPTION;
+            f |= Field::WITH_FROM_TOML_OPTION;
         }
         for attr in &attr.attrs {
             match &attr.inner {
                 FieldAttrInner::Default(..) => {
-                    if attr.enabled & FROM_ITEM != 0 {
-                        f |= Field::WITH_FROMITEM_DEFAULT;
+                    if attr.enabled & FROM_TOML != 0 {
+                        f |= Field::WITH_FROM_TOML_DEFAULT;
                     }
                 }
                 FieldAttrInner::Skip(ref tokens) => {
                     if tokens.is_empty() {
-                        if attr.enabled & FROM_ITEM != 0 {
-                            f |= Field::WITH_FROMITEM_SKIP;
+                        if attr.enabled & FROM_TOML != 0 {
+                            f |= Field::WITH_FROM_TOML_SKIP;
                         }
-                        if attr.enabled & TO_ITEM != 0 {
-                            f |= Field::WITH_TO_ITEM_SKIP;
+                        if attr.enabled & TO_TOML != 0 {
+                            f |= Field::WITH_TO_TOML_SKIP;
                         }
                     }
                 }
@@ -1121,11 +1122,11 @@ pub fn parse_struct_fields<'a>(
         if let [TokenTree::Ident(ident), TokenTree::Punct(punct), ..] = &fields[i + 1..end] {
             if punct.as_char() == '<' && ident_eq(ident, "Option") {
                 let attr = next_attr.get_or_insert_with(|| attr_buf.alloc_default());
-                let oo_mask_item = (FROM_ITEM as u64) << (1u64 * TRAIT_COUNT);
+                let oo_mask_item = (FROM_TOML as u64) << (1u64 * TRAIT_COUNT);
                 if attr.flags & oo_mask_item == 0 {
                     attr.flags |= OPTION_AUTO_DETECTED;
                     attr.attrs.push(FieldAttr {
-                        enabled: FROM_ITEM,
+                        enabled: FROM_TOML,
                         span: ident.span(),
                         inner: FieldAttrInner::Default(DefaultKind::Default),
                     });

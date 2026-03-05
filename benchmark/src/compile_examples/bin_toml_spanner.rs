@@ -1,6 +1,6 @@
 #![allow(unused)]
 
-use toml_spanner::{Context, Failed, FromItem, Item, TableHelper};
+use toml_spanner::{Context, Failed, FromToml, Item, TableHelper};
 
 #[derive(Debug)]
 struct Project {
@@ -13,8 +13,8 @@ struct Project {
     metadata: Option<Metadata>,
 }
 
-impl<'de> FromItem<'de> for Project {
-    fn from_item(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
+impl<'de> FromToml<'de> for Project {
+    fn from_toml(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
         let mut th = value.table_helper(ctx)?;
         let project = Self {
             name: th.required("name")?,
@@ -37,8 +37,8 @@ struct Settings {
     features: Vec<String>,
 }
 
-impl<'de> FromItem<'de> for Settings {
-    fn from_item(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
+impl<'de> FromToml<'de> for Settings {
+    fn from_toml(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
         let mut th = value.table_helper(ctx)?;
         let settings = Self {
             optimize: th.required("optimize")?,
@@ -58,8 +58,8 @@ struct Dependency {
     optional: bool,
 }
 
-impl<'de> FromItem<'de> for Dependency {
-    fn from_item(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
+impl<'de> FromToml<'de> for Dependency {
+    fn from_toml(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
         let mut th = value.table_helper(ctx)?;
         let dep = Self {
             name: th.required("name")?,
@@ -80,8 +80,8 @@ struct Target {
     settings: Option<TargetSettings>,
 }
 
-impl<'de> FromItem<'de> for Target {
-    fn from_item(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
+impl<'de> FromToml<'de> for Target {
+    fn from_toml(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
         let mut th = value.table_helper(ctx)?;
         let target = Self {
             name: th.required("name")?,
@@ -101,8 +101,8 @@ struct TargetSettings {
     extra_flags: Vec<String>,
 }
 
-impl<'de> FromItem<'de> for TargetSettings {
-    fn from_item(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
+impl<'de> FromToml<'de> for TargetSettings {
+    fn from_toml(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
         let mut th = value.table_helper(ctx)?;
         let settings = Self {
             optimize_level: th.optional("optimize_level"),
@@ -122,8 +122,8 @@ struct Metadata {
     keywords: Vec<String>,
 }
 
-impl<'de> FromItem<'de> for Metadata {
-    fn from_item(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
+impl<'de> FromToml<'de> for Metadata {
+    fn from_toml(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
         let mut th = value.table_helper(ctx)?;
         let metadata = Self {
             authors: th.required("authors")?,

@@ -1,4 +1,4 @@
-use toml_spanner::{FromItem, Error as TomlError, Span as TomlSpan};
+use toml_spanner::{Error as TomlError, FromToml, Span as TomlSpan};
 
 fn extract_date(
     datetime: &toml_spanner::DateTime,
@@ -113,8 +113,8 @@ pub struct TimeConfig {
     pub timestamp: jiff::Timestamp,
 }
 
-impl<'de> FromItem<'de> for TimeConfig {
-    fn from_item(
+impl<'de> FromToml<'de> for TimeConfig {
+    fn from_toml(
         ctx: &mut toml_spanner::Context<'de>,
         value: &toml_spanner::Item<'de>,
     ) -> Result<Self, toml_spanner::Failed> {

@@ -124,7 +124,7 @@ mod via_parse {
 
     use toml_spanner::{Context, Error, Failed};
 
-    pub fn from_item<T: FromStr>(
+    pub fn from_toml<T: FromStr>(
         ctx: &mut Context<'_>,
         item: &toml_spanner::Item<'_>,
     ) -> Result<T, Failed>
@@ -150,7 +150,7 @@ mod toml_value {
 
     use crate::cargo::manifest::item_to_toml_value;
 
-    pub fn from_item(
+    pub fn from_toml(
         _ctx: &mut Context<'_>,
         item: &toml_spanner::Item<'_>,
     ) -> Result<toml::Value, Failed> {

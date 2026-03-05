@@ -1873,9 +1873,9 @@ impl<'de> Root<'de> {
     /// Deserialize the root table into a typed value.
     pub fn deserialize<T>(&mut self) -> Result<T, Failed>
     where
-        T: crate::de::FromItem<'de>,
+        T: crate::de::FromToml<'de>,
     {
-        T::from_item(&mut self.ctx, self.table.as_item())
+        T::from_toml(&mut self.ctx, self.table.as_item())
     }
 
     /// Returns the accumulated deserialization errors.
@@ -1964,6 +1964,7 @@ pub fn parse<'de>(document: &'de str, arena: &'de Arena) -> Result<Root<'de>, Er
             errors: Vec::new(),
             index: parser.index,
             arena,
+            source: document,
         },
     })
 }

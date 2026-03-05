@@ -1,9 +1,9 @@
-use super::FromItem;
+use super::FromToml;
 use crate::Item;
 use crate::arena::Arena;
 use crate::span::Spanned;
 
-fn parse_val<'a, T: FromItem<'a>>(input: &'a str, arena: &'a Arena) -> Result<T, crate::Error> {
+fn parse_val<'a, T: FromToml<'a>>(input: &'a str, arena: &'a Arena) -> Result<T, crate::Error> {
     let mut root = crate::parser::parse(input, arena).unwrap();
     let result = {
         let mut helper = root.helper();
@@ -380,6 +380,7 @@ fn expect_custom_string_and_context_errors() {
         arena: &arena,
         index: Default::default(),
         errors: Vec::new(),
+        source: "",
     };
     let _ = ctx.error_message_at("something went wrong", span);
     let _ = ctx.push_error(crate::Error {

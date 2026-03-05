@@ -1,13 +1,13 @@
 use crate::ast::{
     self, DefaultKind, DeriveTargetInner, DeriveTargetKind, EnumKind, EnumVariant, Field,
     FieldAttrs, Generic, GenericKind, ENUM_CONTAINS_STRUCT_VARIANT, ENUM_CONTAINS_TUPLE_VARIANT,
-    ENUM_CONTAINS_UNIT_VARIANT, FROM_ITEM, TO_ITEM,
+    ENUM_CONTAINS_UNIT_VARIANT, FROM_TOML, TO_TOML,
 };
 use crate::case::RenameRule;
 use crate::util::MemoryPool;
 use crate::writer::RustWriter;
 use crate::Error;
-use proc_macro::{Delimiter, Group, Ident, Literal, Span, TokenStream, TokenTree};
+use proc_macro::{Delimiter, Group, Ident, Literal, Punct, Spacing, Span, TokenStream, TokenTree};
 
 #[allow(unused)]
 enum StaticToken {
@@ -52,7 +52,7 @@ fn fmt_generics(buffer: &mut RustWriter, generics: &[Generic], fmt: GenericBound
         }
         match generic.kind {
             GenericKind::Lifetime => {
-                buffer.blit_punct(7);
+                buffer.blit_punct(6);
             }
             GenericKind::Type => (),
             GenericKind::Const => {
@@ -123,7 +123,7 @@ impl<'a> Ctx<'a> {
     }
 }
 fn field_name_literal_toml(_ctx: &Ctx, field: &Field, rename_rule: RenameRule) -> Literal {
-    if let Some(name) = field.attr.rename(FROM_ITEM) {
+    if let Some(name) = field.attr.rename(FROM_TOML) {
         return name.clone();
     }
     if rename_rule != RenameRule::None {
@@ -132,11 +132,11 @@ fn field_name_literal_toml(_ctx: &Ctx, field: &Field, rename_rule: RenameRule) -
         Literal::string(&field.name.to_string())
     }
 }
-fn impl_from_item(output: &mut RustWriter, ctx: &Ctx, inner: TokenStream) {
+fn impl_from_toml(output: &mut RustWriter, ctx: &Ctx, inner: TokenStream) {
     let target = ctx.target;
     let any_generics = !target.generics.is_empty();
     {
-        output.blit_punct(15);
+        output.blit_punct(16);
         {
             let at = output.buf.len();
             output.blit_ident(10);
@@ -215,7 +215,7 @@ fn is_option_type(field: &Field) -> bool {
         false
     }
 }
-fn struct_from_item(out: &mut RustWriter, ctx: &Ctx, fields: &[Field]) {
+fn struct_from_toml(out: &mut RustWriter, ctx: &Ctx, fields: &[Field]) {
     let mut flatten_field: Option<&Field> = None;
     for field in fields {
         if field.flags & Field::WITH_FLATTEN != 0 {
@@ -248,8 +248,8 @@ fn struct_from_item(out: &mut RustWriter, ctx: &Ctx, fields: &[Field]) {
             };
             continue;
         }
-        if field.flags & Field::WITH_FROMITEM_SKIP != 0 {
-            if let Some(default_kind) = field.default(FROM_ITEM) {
+        if field.flags & Field::WITH_FROM_TOML_SKIP != 0 {
+            if let Some(default_kind) = field.default(FROM_TOML) {
                 match default_kind {
                     DefaultKind::Custom(tokens) => {
                         out.blit_ident(96);
@@ -269,7 +269,7 @@ fn struct_from_item(out: &mut RustWriter, ctx: &Ctx, fields: &[Field]) {
                 out.push_ident(field.name);
                 out.blit(79, 7);
             }
-        } else if field.flags & Field::WITH_FROMITEM_OPTION != 0 {
+        } else if field.flags & Field::WITH_FROM_TOML_OPTION != 0 {
             out.blit(67, 2);
             out.push_ident(field.name);
             out.blit_punct(9);
@@ -285,15 +285,15 @@ fn struct_from_item(out: &mut RustWriter, ctx: &Ctx, fields: &[Field]) {
     }
     let match_arms_start = out.buf.len();
     for field in fields {
-        if field.flags & (Field::WITH_FROMITEM_SKIP | Field::WITH_FLATTEN) != 0 {
+        if field.flags & (Field::WITH_FROM_TOML_SKIP | Field::WITH_FLATTEN) != 0 {
             continue;
         }
         let name_lit = field_name_literal_toml(ctx, field, ctx.target.rename_all);
-        let is_default = field.flags & Field::WITH_FROMITEM_DEFAULT != 0;
-        let is_option = field.flags & Field::WITH_FROMITEM_OPTION != 0;
-        let with_path = field.with(FROM_ITEM);
+        let is_default = field.flags & Field::WITH_FROM_TOML_DEFAULT != 0;
+        let is_option = field.flags & Field::WITH_FROM_TOML_OPTION != 0;
+        let with_path = field.with(FROM_TOML);
         let is_required = !is_option && !is_default;
-        let has_aliases = field.attr.has_aliases(FROM_ITEM);
+        let has_aliases = field.attr.has_aliases(FROM_TOML);
         let arm_body_start = out.buf.len();
         if has_aliases {
             {
@@ -515,7 +515,7 @@ fn struct_from_item(out: &mut RustWriter, ctx: &Ctx, fields: &[Field]) {
         {
             out.buf.push(name_lit.into());
         };
-        for alias in field.attr.aliases(FROM_ITEM) {
+        for alias in field.attr.aliases(FROM_TOML) {
             out.blit_punct(11);
             out.buf.push(alias.clone().into());
         }
@@ -613,14 +613,14 @@ fn struct_from_item(out: &mut RustWriter, ctx: &Ctx, fields: &[Field]) {
     }
     for field in fields {
         if field.flags
-            & (Field::WITH_FROMITEM_SKIP | Field::WITH_FLATTEN | Field::WITH_FROMITEM_OPTION)
+            & (Field::WITH_FROM_TOML_SKIP | Field::WITH_FLATTEN | Field::WITH_FROM_TOML_OPTION)
             != 0
         {
             continue;
         }
-        let is_default = field.flags & Field::WITH_FROMITEM_DEFAULT != 0;
+        let is_default = field.flags & Field::WITH_FROM_TOML_DEFAULT != 0;
         if is_default {
-            if let Some(default_kind) = field.default(FROM_ITEM) {
+            if let Some(default_kind) = field.default(FROM_TOML) {
                 match default_kind {
                     DefaultKind::Custom(tokens) => {
                         {
@@ -707,14 +707,14 @@ fn struct_from_item(out: &mut RustWriter, ctx: &Ctx, fields: &[Field]) {
         };
     };
     let body = out.split_off_stream(start);
-    impl_from_item(out, ctx, body);
+    impl_from_toml(out, ctx, body);
 }
-fn impl_to_item(output: &mut RustWriter, ctx: &Ctx, inner: TokenStream) {
+fn impl_to_toml(output: &mut RustWriter, ctx: &Ctx, inner: TokenStream) {
     let target = ctx.target;
     let any_generics = !target.generics.is_empty();
     let lf = Ident::new("__de", Span::mixed_site());
     {
-        output.blit_punct(15);
+        output.blit_punct(16);
         {
             let at = output.buf.len();
             output.blit_ident(10);
@@ -783,13 +783,13 @@ fn impl_to_item(output: &mut RustWriter, ctx: &Ctx, inner: TokenStream) {
         };
     };
 }
-fn struct_to_item(out: &mut RustWriter, ctx: &Ctx, fields: &[Field]) {
+fn struct_to_toml(out: &mut RustWriter, ctx: &Ctx, fields: &[Field]) {
     let mut flatten_field: Option<&Field> = None;
     let mut non_skip_count = 0usize;
     for field in fields {
         if field.flags & Field::WITH_FLATTEN != 0 {
             flatten_field = Some(field);
-        } else if field.flags & Field::WITH_TO_ITEM_SKIP == 0 {
+        } else if field.flags & Field::WITH_TO_TOML_SKIP == 0 {
             non_skip_count += 1;
         }
     }
@@ -829,12 +829,12 @@ fn struct_to_item(out: &mut RustWriter, ctx: &Ctx, fields: &[Field]) {
         out.blit_punct(1);
     };
     for field in fields {
-        if field.flags & (Field::WITH_TO_ITEM_SKIP | Field::WITH_FLATTEN) != 0 {
+        if field.flags & (Field::WITH_TO_TOML_SKIP | Field::WITH_FLATTEN) != 0 {
             continue;
         }
         let name_lit = field_name_literal_toml(ctx, field, ctx.target.rename_all);
-        let with_path = field.with(TO_ITEM);
-        let skip_if = field.skip(TO_ITEM).filter(|tokens| !tokens.is_empty());
+        let with_path = field.with(TO_TOML);
+        let skip_if = field.skip(TO_TOML).filter(|tokens| !tokens.is_empty());
         let first_ty_ident = if let Some(TokenTree::Ident(ident)) = field.ty.first() {
             ident.to_string()
         } else {
@@ -886,7 +886,7 @@ fn struct_to_item(out: &mut RustWriter, ctx: &Ctx, fields: &[Field]) {
                     out.blit(211, 2);
                     out.tt_group(Delimiter::Parenthesis, at);
                 };
-                out.blit_punct(6);
+                out.blit_punct(7);
                 {
                     let at = out.buf.len();
                     out.blit(237, 3);
@@ -977,11 +977,11 @@ fn struct_to_item(out: &mut RustWriter, ctx: &Ctx, fields: &[Field]) {
         };
     };
     let body = out.split_off_stream(start);
-    impl_to_item(out, ctx, body);
+    impl_to_toml(out, ctx, body);
 }
 fn handle_struct(output: &mut RustWriter, target: &DeriveTargetInner, fields: &[Field]) {
     let ctx = Ctx::new(output, target);
-    if target.from_item {
+    if target.from_toml {
         if target.transparent_impl {
             let [single_field] = fields else {
                 Error::msg("Struct must contain a single field to use transparent")
@@ -1002,12 +1002,12 @@ fn handle_struct(output: &mut RustWriter, target: &DeriveTargetInner, fields: &[
                 };
                 output.split_off_stream(len)
             };
-            impl_from_item(output, &ctx, body);
+            impl_from_toml(output, &ctx, body);
         } else {
-            struct_from_item(output, &ctx, fields);
+            struct_from_toml(output, &ctx, fields);
         }
     }
-    if target.to_item {
+    if target.to_toml {
         if target.transparent_impl {
             let [single_field] = fields else {
                 Error::msg("Struct must contain a single field to use transparent")
@@ -1025,15 +1025,15 @@ fn handle_struct(output: &mut RustWriter, target: &DeriveTargetInner, fields: &[
                 };
                 output.split_off_stream(len)
             };
-            impl_to_item(output, &ctx, body);
+            impl_to_toml(output, &ctx, body);
         } else {
-            struct_to_item(output, &ctx, fields);
+            struct_to_toml(output, &ctx, fields);
         }
     }
 }
 fn handle_tuple_struct(output: &mut RustWriter, target: &DeriveTargetInner, fields: &[Field]) {
     let ctx = Ctx::new(output, target);
-    if target.from_item {
+    if target.from_toml {
         if let [single_field] = fields {
             let body = {
                 let len = output.buf.len();
@@ -1055,21 +1055,21 @@ fn handle_tuple_struct(output: &mut RustWriter, target: &DeriveTargetInner, fiel
                             output.blit(298, 3);
                             output.tt_group(Delimiter::Parenthesis, at);
                         };
-                        output.blit_punct(6);
+                        output.blit_punct(7);
                         output.tt_group(Delimiter::Parenthesis, at);
                     };
                     output.tt_group(Delimiter::Parenthesis, at);
                 };
                 output.split_off_stream(len)
             };
-            impl_from_item(output, &ctx, body);
+            impl_from_toml(output, &ctx, body);
         } else {
             Error::msg(
-                "FromItem on tuple structs requires exactly one field (transparent delegation)",
+                "FromToml on tuple structs requires exactly one field (transparent delegation)",
             )
         }
     }
-    if target.to_item {
+    if target.to_toml {
         if let [_single_field] = fields {
             let body = {
                 let len = output.buf.len();
@@ -1086,16 +1086,16 @@ fn handle_tuple_struct(output: &mut RustWriter, target: &DeriveTargetInner, fiel
                 };
                 output.split_off_stream(len)
             };
-            impl_to_item(output, &ctx, body);
+            impl_to_toml(output, &ctx, body);
         } else {
             Error::msg(
-                "ToItem on tuple structs requires exactly one field (transparent delegation)",
+                "ToToml on tuple structs requires exactly one field (transparent delegation)",
             )
         }
     }
 }
 fn variant_name_literal(ctx: &Ctx, variant: &EnumVariant) -> Literal {
-    if let Some(name) = variant.rename(FROM_ITEM) {
+    if let Some(name) = variant.rename(FROM_TOML) {
         return name.clone();
     }
     let raw = variant.name.to_string();
@@ -1106,7 +1106,7 @@ fn variant_name_literal(ctx: &Ctx, variant: &EnumVariant) -> Literal {
     }
 }
 fn variant_field_name_literal(ctx: &Ctx, field: &Field, variant: &EnumVariant) -> Literal {
-    if let Some(name) = field.attr.rename(FROM_ITEM) {
+    if let Some(name) = field.attr.rename(FROM_TOML) {
         return name.clone();
     }
     let rule = if variant.rename_all != RenameRule::None {
@@ -1153,8 +1153,8 @@ fn emit_variant_fields_from_table(
             };
             continue;
         }
-        if field.flags & Field::WITH_FROMITEM_SKIP != 0 {
-            if let Some(default_kind) = field.default(FROM_ITEM) {
+        if field.flags & Field::WITH_FROM_TOML_SKIP != 0 {
+            if let Some(default_kind) = field.default(FROM_TOML) {
                 match default_kind {
                     DefaultKind::Custom(tokens) => {
                         out.blit_ident(96);
@@ -1174,7 +1174,7 @@ fn emit_variant_fields_from_table(
                 out.push_ident(field.name);
                 out.blit(79, 7);
             }
-        } else if field.flags & Field::WITH_FROMITEM_OPTION != 0 {
+        } else if field.flags & Field::WITH_FROM_TOML_OPTION != 0 {
             out.blit(67, 2);
             out.push_ident(field.name);
             out.blit_punct(9);
@@ -1194,15 +1194,15 @@ fn emit_variant_fields_from_table(
         out.blit(122, 3);
     }
     for field in fields {
-        if field.flags & (Field::WITH_FROMITEM_SKIP | Field::WITH_FLATTEN) != 0 {
+        if field.flags & (Field::WITH_FROM_TOML_SKIP | Field::WITH_FLATTEN) != 0 {
             continue;
         }
         let name_lit = variant_field_name_literal(ctx, field, variant);
-        let is_default = field.flags & Field::WITH_FROMITEM_DEFAULT != 0;
-        let is_option = field.flags & Field::WITH_FROMITEM_OPTION != 0;
-        let with_path = field.with(FROM_ITEM);
+        let is_default = field.flags & Field::WITH_FROM_TOML_DEFAULT != 0;
+        let is_option = field.flags & Field::WITH_FROM_TOML_OPTION != 0;
+        let with_path = field.with(FROM_TOML);
         let is_required = !is_option && !is_default;
-        let has_aliases = field.attr.has_aliases(FROM_ITEM);
+        let has_aliases = field.attr.has_aliases(FROM_TOML);
         let arm_body_start = out.buf.len();
         if has_aliases {
             {
@@ -1424,7 +1424,7 @@ fn emit_variant_fields_from_table(
         {
             out.buf.push(name_lit.into());
         };
-        for alias in field.attr.aliases(FROM_ITEM) {
+        for alias in field.attr.aliases(FROM_TOML) {
             out.blit_punct(11);
             out.buf.push(alias.clone().into());
         }
@@ -1522,14 +1522,14 @@ fn emit_variant_fields_from_table(
     }
     for field in fields {
         if field.flags
-            & (Field::WITH_FROMITEM_SKIP | Field::WITH_FLATTEN | Field::WITH_FROMITEM_OPTION)
+            & (Field::WITH_FROM_TOML_SKIP | Field::WITH_FLATTEN | Field::WITH_FROM_TOML_OPTION)
             != 0
         {
             continue;
         }
-        let is_default = field.flags & Field::WITH_FROMITEM_DEFAULT != 0;
+        let is_default = field.flags & Field::WITH_FROM_TOML_DEFAULT != 0;
         if is_default {
-            if let Some(default_kind) = field.default(FROM_ITEM) {
+            if let Some(default_kind) = field.default(FROM_TOML) {
                 match default_kind {
                     DefaultKind::Custom(tokens) => {
                         {
@@ -1609,12 +1609,12 @@ fn emit_variant_fields_to_table(
     fields: &[Field],
 ) {
     for field in fields {
-        if field.flags & (Field::WITH_TO_ITEM_SKIP | Field::WITH_FLATTEN) != 0 {
+        if field.flags & (Field::WITH_TO_TOML_SKIP | Field::WITH_FLATTEN) != 0 {
             continue;
         }
         let name_lit = variant_field_name_literal(ctx, field, variant);
-        let with_path = field.with(TO_ITEM);
-        let skip_if = field.skip(TO_ITEM).filter(|tokens| !tokens.is_empty());
+        let with_path = field.with(TO_TOML);
+        let skip_if = field.skip(TO_TOML).filter(|tokens| !tokens.is_empty());
         let first_ty_ident = if let Some(TokenTree::Ident(ident)) = field.ty.first() {
             ident.to_string()
         } else {
@@ -1664,7 +1664,7 @@ fn emit_variant_fields_to_table(
                     out.blit(211, 2);
                     out.tt_group(Delimiter::Parenthesis, at);
                 };
-                out.blit_punct(6);
+                out.blit_punct(7);
                 {
                     let at = out.buf.len();
                     out.blit(303, 3);
@@ -1746,7 +1746,7 @@ fn emit_variant_fields_to_table(
         }
     }
 }
-fn enum_from_item_string(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVariant]) {
+fn enum_from_toml_string(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVariant]) {
     let start = out.buf.len();
     let mut expected_msg = String::from("one of: ");
     for (i, v) in variants.iter().enumerate() {
@@ -1800,9 +1800,9 @@ fn enum_from_item_string(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVarian
         };
     };
     let body = out.split_off_stream(start);
-    impl_from_item(out, ctx, body);
+    impl_from_toml(out, ctx, body);
 }
-fn enum_to_item_string(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVariant]) {
+fn enum_to_toml_string(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVariant]) {
     let start = out.buf.len();
     {
         out.blit_ident(95);
@@ -1835,9 +1835,9 @@ fn enum_to_item_string(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVariant]
         };
     };
     let body = out.split_off_stream(start);
-    impl_to_item(out, ctx, body);
+    impl_to_toml(out, ctx, body);
 }
-fn enum_from_item_external(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVariant]) {
+fn enum_from_toml_external(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVariant]) {
     let has_unit = ctx.target.enum_flags & ENUM_CONTAINS_UNIT_VARIANT != 0;
     let has_complex =
         ctx.target.enum_flags & (ENUM_CONTAINS_STRUCT_VARIANT | ENUM_CONTAINS_TUPLE_VARIANT) != 0;
@@ -1987,7 +1987,7 @@ fn enum_from_item_external(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVari
                                     out.blit(392, 3);
                                     out.tt_group(Delimiter::Parenthesis, at);
                                 };
-                                out.blit_punct(6);
+                                out.blit_punct(7);
                                 out.tt_group(Delimiter::Parenthesis, at);
                             };
                             out.tt_group(Delimiter::Parenthesis, at);
@@ -2077,9 +2077,9 @@ fn enum_from_item_external(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVari
         };
     }
     let body = out.split_off_stream(start);
-    impl_from_item(out, ctx, body);
+    impl_from_toml(out, ctx, body);
 }
-fn enum_to_item_external(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVariant]) {
+fn enum_to_toml_external(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVariant]) {
     let start = out.buf.len();
     let arms_start = out.buf.len();
     for variant in variants {
@@ -2184,7 +2184,7 @@ fn enum_to_item_external(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVarian
                 let non_skip = variant
                     .fields
                     .iter()
-                    .filter(|f| f.flags & (Field::WITH_TO_ITEM_SKIP | Field::WITH_FLATTEN) == 0)
+                    .filter(|f| f.flags & (Field::WITH_TO_TOML_SKIP | Field::WITH_FLATTEN) == 0)
                     .count();
                 let arm_body_start = out.buf.len();
                 {
@@ -2301,9 +2301,9 @@ fn enum_to_item_external(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVarian
             .push(TokenTree::Group(Group::new(Delimiter::Brace, arms)));
     };
     let body = out.split_off_stream(start);
-    impl_to_item(out, ctx, body);
+    impl_to_toml(out, ctx, body);
 }
-fn enum_from_item_internal(
+fn enum_from_toml_internal(
     out: &mut RustWriter,
     ctx: &Ctx,
     variants: &[EnumVariant],
@@ -2338,7 +2338,7 @@ fn enum_from_item_internal(
                     out.blit(111, 3);
                     out.tt_group(Delimiter::Parenthesis, at);
                 };
-                out.blit_punct(6);
+                out.blit_punct(7);
                 out.tt_group(Delimiter::Parenthesis, at);
             };
             out.blit(447, 3);
@@ -2519,9 +2519,9 @@ fn enum_from_item_internal(
             .push(TokenTree::Group(Group::new(Delimiter::Brace, arms)));
     };
     let body = out.split_off_stream(start);
-    impl_from_item(out, ctx, body);
+    impl_from_toml(out, ctx, body);
 }
-fn enum_to_item_internal(
+fn enum_to_toml_internal(
     out: &mut RustWriter,
     ctx: &Ctx,
     variants: &[EnumVariant],
@@ -2604,7 +2604,7 @@ fn enum_to_item_internal(
                 let non_skip = variant
                     .fields
                     .iter()
-                    .filter(|f| f.flags & (Field::WITH_TO_ITEM_SKIP | Field::WITH_FLATTEN) == 0)
+                    .filter(|f| f.flags & (Field::WITH_TO_TOML_SKIP | Field::WITH_FLATTEN) == 0)
                     .count();
                 let arm_body_start = out.buf.len();
                 {
@@ -2700,9 +2700,9 @@ fn enum_to_item_internal(
             .push(TokenTree::Group(Group::new(Delimiter::Brace, arms)));
     };
     let body = out.split_off_stream(start);
-    impl_to_item(out, ctx, body);
+    impl_to_toml(out, ctx, body);
 }
-fn enum_from_item_adjacent(
+fn enum_from_toml_adjacent(
     out: &mut RustWriter,
     ctx: &Ctx,
     variants: &[EnumVariant],
@@ -2739,7 +2739,7 @@ fn enum_from_item_adjacent(
                     out.blit(111, 3);
                     out.tt_group(Delimiter::Parenthesis, at);
                 };
-                out.blit_punct(6);
+                out.blit_punct(7);
                 out.tt_group(Delimiter::Parenthesis, at);
             };
             out.blit_punct(1);
@@ -2901,7 +2901,7 @@ fn enum_from_item_adjacent(
                                 out.blit(511, 3);
                                 out.tt_group(Delimiter::Parenthesis, at);
                             };
-                            out.blit_punct(6);
+                            out.blit_punct(7);
                             out.tt_group(Delimiter::Parenthesis, at);
                         };
                         out.tt_group(Delimiter::Parenthesis, at);
@@ -3007,9 +3007,9 @@ fn enum_from_item_adjacent(
             .push(TokenTree::Group(Group::new(Delimiter::Brace, arms)));
     };
     let body = out.split_off_stream(start);
-    impl_from_item(out, ctx, body);
+    impl_from_toml(out, ctx, body);
 }
-fn enum_to_item_adjacent(
+fn enum_to_toml_adjacent(
     out: &mut RustWriter,
     ctx: &Ctx,
     variants: &[EnumVariant],
@@ -3190,7 +3190,7 @@ fn enum_to_item_adjacent(
                 let non_skip = variant
                     .fields
                     .iter()
-                    .filter(|f| f.flags & (Field::WITH_TO_ITEM_SKIP | Field::WITH_FLATTEN) == 0)
+                    .filter(|f| f.flags & (Field::WITH_TO_TOML_SKIP | Field::WITH_FLATTEN) == 0)
                     .count();
                 let arm_body_start = out.buf.len();
                 {
@@ -3328,9 +3328,9 @@ fn enum_to_item_adjacent(
             .push(TokenTree::Group(Group::new(Delimiter::Brace, arms)));
     };
     let body = out.split_off_stream(start);
-    impl_to_item(out, ctx, body);
+    impl_to_toml(out, ctx, body);
 }
-fn enum_from_item_untagged(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVariant]) {
+fn enum_from_toml_untagged(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVariant]) {
     let start = out.buf.len();
     let last_index = variants.len() - 1;
     let last_is_unhinted =
@@ -3696,9 +3696,9 @@ fn enum_from_item_untagged(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVari
         };
     }
     let body = out.split_off_stream(start);
-    impl_from_item(out, ctx, body);
+    impl_from_toml(out, ctx, body);
 }
-fn enum_to_item_untagged(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVariant]) {
+fn enum_to_toml_untagged(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVariant]) {
     let start = out.buf.len();
     let arms_start = out.buf.len();
     for variant in variants {
@@ -3750,7 +3750,7 @@ fn enum_to_item_untagged(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVarian
                 let non_skip = variant
                     .fields
                     .iter()
-                    .filter(|f| f.flags & (Field::WITH_TO_ITEM_SKIP | Field::WITH_FLATTEN) == 0)
+                    .filter(|f| f.flags & (Field::WITH_TO_TOML_SKIP | Field::WITH_FLATTEN) == 0)
                     .count();
                 let arm_body_start = out.buf.len();
                 {
@@ -3824,7 +3824,7 @@ fn enum_to_item_untagged(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVarian
             .push(TokenTree::Group(Group::new(Delimiter::Brace, arms)));
     };
     let body = out.split_off_stream(start);
-    impl_to_item(out, ctx, body);
+    impl_to_toml(out, ctx, body);
 }
 fn handle_enum(output: &mut RustWriter, target: &DeriveTargetInner, variants: &[EnumVariant]) {
     if target.content.is_some() && target.tag.is_none() {
@@ -3848,30 +3848,30 @@ fn handle_enum(output: &mut RustWriter, target: &DeriveTargetInner, variants: &[
         && target.tag.is_none()
         && target.enum_flags & ENUM_CONTAINS_UNIT_VARIANT != 0
         && target.enum_flags & (ENUM_CONTAINS_STRUCT_VARIANT | ENUM_CONTAINS_TUPLE_VARIANT) == 0;
-    if target.from_item {
+    if target.from_toml {
         if target.untagged {
-            enum_from_item_untagged(output, &ctx, variants);
+            enum_from_toml_untagged(output, &ctx, variants);
         } else {
             match (&target.tag, &target.content) {
-                (None, _) if is_string_enum => enum_from_item_string(output, &ctx, variants),
-                (None, _) => enum_from_item_external(output, &ctx, variants),
-                (Some(tag_lit), None) => enum_from_item_internal(output, &ctx, variants, tag_lit),
+                (None, _) if is_string_enum => enum_from_toml_string(output, &ctx, variants),
+                (None, _) => enum_from_toml_external(output, &ctx, variants),
+                (Some(tag_lit), None) => enum_from_toml_internal(output, &ctx, variants, tag_lit),
                 (Some(tag_lit), Some(content_lit)) => {
-                    enum_from_item_adjacent(output, &ctx, variants, tag_lit, content_lit)
+                    enum_from_toml_adjacent(output, &ctx, variants, tag_lit, content_lit)
                 }
             }
         }
     }
-    if target.to_item {
+    if target.to_toml {
         if target.untagged {
-            enum_to_item_untagged(output, &ctx, variants);
+            enum_to_toml_untagged(output, &ctx, variants);
         } else {
             match (&target.tag, &target.content) {
-                (None, _) if is_string_enum => enum_to_item_string(output, &ctx, variants),
-                (None, _) => enum_to_item_external(output, &ctx, variants),
-                (Some(tag_lit), None) => enum_to_item_internal(output, &ctx, variants, tag_lit),
+                (None, _) if is_string_enum => enum_to_toml_string(output, &ctx, variants),
+                (None, _) => enum_to_toml_external(output, &ctx, variants),
+                (Some(tag_lit), None) => enum_to_toml_internal(output, &ctx, variants, tag_lit),
                 (Some(tag_lit), Some(content_lit)) => {
-                    enum_to_item_adjacent(output, &ctx, variants, tag_lit, content_lit)
+                    enum_to_toml_adjacent(output, &ctx, variants, tag_lit, content_lit)
                 }
             }
         }
@@ -3887,8 +3887,8 @@ pub fn inner_derive(stream: TokenStream) -> TokenStream {
         generic_flatten_field_types: Vec::new(),
         where_clauses: &[],
         path_override: None,
-        from_item: false,
-        to_item: false,
+        from_toml: false,
+        to_toml: false,
         rename_all: crate::case::RenameRule::None,
         rename_all_fields: crate::case::RenameRule::None,
         enum_flags: 0,
@@ -3897,8 +3897,8 @@ pub fn inner_derive(stream: TokenStream) -> TokenStream {
         untagged: false,
     };
     let (kind, body) = ast::extract_derive_target(&mut target, &outer_tokens);
-    if !(target.from_item || target.to_item) {
-        target.from_item = true;
+    if !(target.from_toml || target.to_toml) {
+        target.from_toml = true;
     }
     let field_toks: Vec<TokenTree> = body.into_iter().collect();
     let mut tt_buf = Vec::<TokenTree>::new();
@@ -3932,7 +3932,7 @@ pub fn inner_derive(stream: TokenStream) -> TokenStream {
     let ts = rust_writer.split_off_stream(0);
     {
         let len = (&mut rust_writer).buf.len();
-        (&mut rust_writer).blit_punct(15);
+        (&mut rust_writer).blit_punct(16);
         {
             let at = (&mut rust_writer).buf.len();
             (&mut rust_writer).blit_ident(1);

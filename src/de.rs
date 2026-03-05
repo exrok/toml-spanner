@@ -29,7 +29,7 @@ use crate::{
 /// # Examples
 ///
 /// ```
-/// use toml_spanner::{Arena, FromItem, Item, Context, Failed, TableHelper};
+/// use toml_spanner::{Arena, FromToml, Item, Context, Failed, TableHelper};
 ///
 /// struct Config {
 ///     name: String,
@@ -37,8 +37,8 @@ use crate::{
 ///     debug: bool,
 /// }
 ///
-/// impl<'de> FromItem<'de> for Config {
-///     fn from_item(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
+/// impl<'de> FromToml<'de> for Config {
+///     fn from_toml(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
 ///         let mut th = value.table_helper(ctx)?;
 ///         let name = th.required("name")?;
 ///         let port = th.required("port")?;
@@ -137,7 +137,7 @@ impl<'t, 'de> Iterator for RemainingEntriesIter<'t, 'de> {
 impl<'ctx, 't, 'de> TableHelper<'ctx, 't, 'de> {
     /// Creates a new helper for the given table.
     ///
-    /// Prefer [`Item::table_helper`] when implementing [`FromItem`], or
+    /// Prefer [`Item::table_helper`] when implementing [`FromToml`], or
     /// [`Root::helper`](crate::Root::helper) for the root table.
     pub fn new(ctx: &'ctx mut Context<'de>, table: &'t Table<'de>) -> Self {
         let table_id = if table.len() > INDEXED_TABLE_THRESHOLD {
@@ -181,7 +181,7 @@ impl<'ctx, 't, 'de> TableHelper<'ctx, 't, 'de> {
     /// Looks up `name`, marks it as consumed, and passes the [`Item`] to
     /// `func`. This is useful for parsing string values via
     /// [`Item::parse`] or applying custom validation without implementing
-    /// [`FromItem`].
+    /// [`FromToml`].
     ///
     /// # Errors
     ///
@@ -308,12 +308,12 @@ impl<'ctx, 't, 'de> TableHelper<'ctx, 't, 'de> {
     ///
     /// Returns [`Failed`] if the key is absent or if `T::deserialize` fails.
     /// In both cases the error is pushed onto the shared [`Context`].
-    pub fn required<T: FromItem<'de>>(&mut self, name: &'static str) -> Result<T, Failed> {
+    pub fn required<T: FromToml<'de>>(&mut self, name: &'static str) -> Result<T, Failed> {
         let Some((_, val)) = self.optional_entry(name) else {
             return Err(self.report_missing_field(name));
         };
 
-        T::from_item(self.ctx, val)
+        T::from_toml(self.ctx, val)
     }
 
     /// Deserializes an optional field, returning [`None`] if the key is missing
@@ -321,13 +321,13 @@ impl<'ctx, 't, 'de> TableHelper<'ctx, 't, 'de> {
     ///
     /// The field is marked as consumed so [`expect_empty`](Self::expect_empty)
     /// will not flag it as unexpected.
-    pub fn optional<T: FromItem<'de>>(&mut self, name: &str) -> Option<T> {
+    pub fn optional<T: FromToml<'de>>(&mut self, name: &str) -> Option<T> {
         let Some((_, val)) = self.optional_entry(name) else {
             return None;
         };
 
         #[allow(clippy::manual_ok_err)]
-        match T::from_item(self.ctx, val) {
+        match T::from_toml(self.ctx, val) {
             Ok(value) => Some(value),
             // Note: The parent will already have recorded the error
             Err(_) => None,
@@ -358,7 +358,7 @@ impl<'ctx, 't, 'de> TableHelper<'ctx, 't, 'de> {
     /// consumed by [`required`](Self::required) or
     /// [`optional`](Self::optional).
     ///
-    /// Call this as the last step in a [`FromItem`] implementation to
+    /// Call this as the last step in a [`FromToml`] implementation to
     /// reject unknown keys.
     ///
     /// # Errors
@@ -394,7 +394,7 @@ impl<'ctx, 't, 'de> TableHelper<'ctx, 't, 'de> {
 ///
 /// A `Context` is created by [`parse`](crate::parse) and lives inside
 /// [`Root`](crate::Root). Pass it into [`TableHelper::new`] or
-/// [`Item::table_helper`] when implementing [`FromItem`].
+/// [`Item::table_helper`] when implementing [`FromToml`].
 ///
 /// Multiple errors can be recorded during a single deserialization pass;
 /// inspect them afterwards via [`Root::errors`](crate::Root::errors).
@@ -402,9 +402,13 @@ pub struct Context<'de> {
     pub arena: &'de Arena,
     pub(crate) index: HashMap<KeyRef<'de>, usize>,
     pub errors: Vec<Error>,
+    pub(crate) source: &'de str,
 }
 
 impl<'de> Context<'de> {
+    pub fn source(&self) -> &'de str {
+        self.source
+    }
     /// Records a "expected X, found Y" type-mismatch error and returns [`Failed`].
     #[cold]
     pub fn error_expected_but_found(&mut self, message: &'static str, found: &Item<'_>) -> Failed {
@@ -446,7 +450,7 @@ impl<'de> Context<'de> {
 
     /// Records a missing-field error and returns [`Failed`].
     ///
-    /// Used by generated `FromItem` implementations that iterate over table
+    /// Used by generated `FromToml` implementations that iterate over table
     /// entries instead of using [`TableHelper`].
     #[cold]
     pub fn report_missing_field(&mut self, name: &'static str, span: Span) -> Failed {
@@ -459,7 +463,7 @@ impl<'de> Context<'de> {
 
     /// Records a duplicate-field error and returns [`Failed`].
     ///
-    /// Used by generated `FromItem` implementations when a field with aliases
+    /// Used by generated `FromToml` implementations when a field with aliases
     /// is set more than once (e.g. both the primary key and an alias appear).
     #[cold]
     pub fn report_duplicate_field(&mut self, name: &'static str, span: Span) -> Failed {
@@ -476,7 +480,7 @@ impl<'de> Context<'de> {
 ///
 /// `Failed` carries no data — the actual error details live in
 /// [`Context::errors`](Context::errors). Return `Err(Failed)` from
-/// [`FromItem::from_item`] after calling one of the `Context::error_*`
+/// [`FromToml::from_toml`] after calling one of the `Context::error_*`
 /// methods.
 #[derive(Debug)]
 pub struct Failed;
@@ -491,15 +495,15 @@ pub struct Failed;
 /// # Examples
 ///
 /// ```
-/// use toml_spanner::{Item, Context, FromItem, Failed, TableHelper};
+/// use toml_spanner::{Item, Context, FromToml, Failed, TableHelper};
 ///
 /// struct Point {
 ///     x: f64,
 ///     y: f64,
 /// }
 ///
-/// impl<'de> FromItem<'de> for Point {
-///     fn from_item(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
+/// impl<'de> FromToml<'de> for Point {
+///     fn from_toml(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
 ///         let mut th = value.table_helper(ctx)?;
 ///         let x = th.required("x")?;
 ///         let y = th.required("y")?;
@@ -508,12 +512,12 @@ pub struct Failed;
 ///     }
 /// }
 /// ```
-pub trait FromItem<'de>: Sized {
+pub trait FromToml<'de>: Sized {
     /// Attempts to produce `Self` from a TOML [`Item`].
     ///
     /// On failure, records one or more errors in `ctx` and returns
     /// `Err(`[`Failed`]`)`.
-    fn from_item(ctx: &mut Context<'de>, item: &Item<'de>) -> Result<Self, Failed>;
+    fn from_toml(ctx: &mut Context<'de>, item: &Item<'de>) -> Result<Self, Failed>;
 }
 
 pub trait FromFlattened<'de>: Sized {
@@ -532,7 +536,7 @@ impl<'de, K, V, H> FromFlattened<'de> for std::collections::HashMap<K, V, H>
 where
     K: Hash + Eq + std::str::FromStr,
     <K as std::str::FromStr>::Err: std::fmt::Display,
-    V: FromItem<'de>,
+    V: FromToml<'de>,
     H: Default + BuildHasher,
 {
     type Partial = Self;
@@ -555,7 +559,7 @@ where
                 return Err(Failed);
             }
         };
-        let v = match V::from_item(ctx, item) {
+        let v = match V::from_toml(ctx, item) {
             Ok(v) => v,
             Err(_) => return Err(Failed),
         };
@@ -570,7 +574,7 @@ impl<'de, K, V> FromFlattened<'de> for BTreeMap<K, V>
 where
     K: Ord + std::str::FromStr,
     <K as std::str::FromStr>::Err: std::fmt::Display,
-    V: FromItem<'de>,
+    V: FromToml<'de>,
 {
     type Partial = Self;
     fn init() -> Self {
@@ -592,7 +596,7 @@ where
                 return Err(Failed);
             }
         };
-        let v = match V::from_item(ctx, item) {
+        let v = match V::from_toml(ctx, item) {
             Ok(v) => v,
             Err(_) => return Err(Failed),
         };
@@ -604,9 +608,9 @@ where
     }
 }
 
-impl<'de, T: FromItem<'de>, const N: usize> FromItem<'de> for [T; N] {
-    fn from_item(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
-        let boxed_slice = Box::<[T]>::from_item(ctx, value)?;
+impl<'de, T: FromToml<'de>, const N: usize> FromToml<'de> for [T; N] {
+    fn from_toml(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
+        let boxed_slice = Box::<[T]>::from_toml(ctx, value)?;
         match <Box<[T; N]>>::try_from(boxed_slice) {
             Ok(array) => Ok(*array),
             Err(res) => Err(ctx.push_error(Error {
@@ -621,8 +625,8 @@ impl<'de, T: FromItem<'de>, const N: usize> FromItem<'de> for [T; N] {
     }
 }
 
-impl<'de> FromItem<'de> for String {
-    fn from_item(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
+impl<'de> FromToml<'de> for String {
+    fn from_toml(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
         match value.as_str() {
             Some(s) => Ok(s.to_string()),
             None => Err(ctx.error_expected_but_found("a string", value)),
@@ -630,38 +634,38 @@ impl<'de> FromItem<'de> for String {
     }
 }
 
-impl<'de, T: FromItem<'de>> FromItem<'de> for Option<T> {
-    fn from_item(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
-        T::from_item(ctx, value).map(Some)
+impl<'de, T: FromToml<'de>> FromToml<'de> for Option<T> {
+    fn from_toml(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
+        T::from_toml(ctx, value).map(Some)
     }
 }
 
-impl<'de, T: FromItem<'de>> FromItem<'de> for Box<T> {
-    fn from_item(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
-        match T::from_item(ctx, value) {
+impl<'de, T: FromToml<'de>> FromToml<'de> for Box<T> {
+    fn from_toml(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
+        match T::from_toml(ctx, value) {
             Ok(v) => Ok(Box::new(v)),
             Err(e) => Err(e),
         }
     }
 }
-impl<'de, T: FromItem<'de>> FromItem<'de> for Box<[T]> {
-    fn from_item(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
-        match Vec::<T>::from_item(ctx, value) {
+impl<'de, T: FromToml<'de>> FromToml<'de> for Box<[T]> {
+    fn from_toml(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
+        match Vec::<T>::from_toml(ctx, value) {
             Ok(vec) => Ok(vec.into_boxed_slice()),
             Err(e) => Err(e),
         }
     }
 }
-impl<'de> FromItem<'de> for Box<str> {
-    fn from_item(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
+impl<'de> FromToml<'de> for Box<str> {
+    fn from_toml(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
         match value.value() {
             item::Value::String(&s) => Ok(s.into()),
             _ => Err(ctx.error_expected_but_found("a string", value)),
         }
     }
 }
-impl<'de> FromItem<'de> for &'de str {
-    fn from_item(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
+impl<'de> FromToml<'de> for &'de str {
+    fn from_toml(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
         match value.value() {
             item::Value::String(s) => Ok(*s),
             _ => Err(ctx.error_expected_but_found("a string", value)),
@@ -669,8 +673,8 @@ impl<'de> FromItem<'de> for &'de str {
     }
 }
 
-impl<'de> FromItem<'de> for std::borrow::Cow<'de, str> {
-    fn from_item(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
+impl<'de> FromToml<'de> for std::borrow::Cow<'de, str> {
+    fn from_toml(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
         match value.value() {
             item::Value::String(s) => Ok(std::borrow::Cow::Borrowed(*s)),
             _ => Err(ctx.error_expected_but_found("a string", value)),
@@ -678,8 +682,8 @@ impl<'de> FromItem<'de> for std::borrow::Cow<'de, str> {
     }
 }
 
-impl<'de> FromItem<'de> for bool {
-    fn from_item(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
+impl<'de> FromToml<'de> for bool {
+    fn from_toml(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
         match value.as_bool() {
             Some(b) => Ok(b),
             None => Err(ctx.error_expected_but_found("a bool", value)),
@@ -704,8 +708,8 @@ fn deser_integer_ctx(
 
 macro_rules! integer_new {
     ($($num:ty),+) => {$(
-        impl<'de> FromItem<'de> for $num {
-            fn from_item(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
+        impl<'de> FromToml<'de> for $num {
+            fn from_toml(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
                 match deser_integer_ctx(ctx, value, <$num>::MIN as i64, <$num>::MAX as i64, stringify!($num)) {
                     Ok(i) => Ok(i as $num),
                     Err(e) => Err(e),
@@ -717,14 +721,14 @@ macro_rules! integer_new {
 
 integer_new!(i8, i16, i32, isize, u8, u16, u32);
 
-impl<'de> FromItem<'de> for i64 {
-    fn from_item(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
+impl<'de> FromToml<'de> for i64 {
+    fn from_toml(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
         deser_integer_ctx(ctx, value, i64::MIN, i64::MAX, "i64")
     }
 }
 
-impl<'de> FromItem<'de> for u64 {
-    fn from_item(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
+impl<'de> FromToml<'de> for u64 {
+    fn from_toml(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
         match deser_integer_ctx(ctx, value, 0, i64::MAX, "u64") {
             Ok(i) => Ok(i as u64),
             Err(e) => Err(e),
@@ -732,8 +736,8 @@ impl<'de> FromItem<'de> for u64 {
     }
 }
 
-impl<'de> FromItem<'de> for usize {
-    fn from_item(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
+impl<'de> FromToml<'de> for usize {
+    fn from_toml(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
         const MAX: i64 = if usize::BITS < 64 {
             usize::MAX as i64
         } else {
@@ -746,8 +750,8 @@ impl<'de> FromItem<'de> for usize {
     }
 }
 
-impl<'de> FromItem<'de> for f32 {
-    fn from_item(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
+impl<'de> FromToml<'de> for f32 {
+    fn from_toml(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
         match value.as_f64() {
             Some(f) => Ok(f as f32),
             None => Err(ctx.error_expected_but_found("a float", value)),
@@ -755,8 +759,8 @@ impl<'de> FromItem<'de> for f32 {
     }
 }
 
-impl<'de> FromItem<'de> for f64 {
-    fn from_item(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
+impl<'de> FromToml<'de> for f64 {
+    fn from_toml(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
         match value.as_f64() {
             Some(f) => Ok(f),
             None => Err(ctx.error_expected_but_found("a float", value)),
@@ -764,16 +768,16 @@ impl<'de> FromItem<'de> for f64 {
     }
 }
 
-impl<'de, T> FromItem<'de> for Vec<T>
+impl<'de, T> FromToml<'de> for Vec<T>
 where
-    T: FromItem<'de>,
+    T: FromToml<'de>,
 {
-    fn from_item(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
+    fn from_toml(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
         let arr = value.expect_array(ctx)?;
         let mut result = Vec::with_capacity(arr.len());
         let mut had_error = false;
         for item in arr {
-            match T::from_item(ctx, item) {
+            match T::from_toml(ctx, item) {
                 Ok(v) => result.push(v),
                 Err(_) => had_error = true,
             }
@@ -782,13 +786,13 @@ where
     }
 }
 
-impl<'de, K, V> FromItem<'de> for BTreeMap<K, V>
+impl<'de, K, V> FromToml<'de> for BTreeMap<K, V>
 where
     K: Ord + std::str::FromStr,
     <K as std::str::FromStr>::Err: std::fmt::Display,
-    V: FromItem<'de>,
+    V: FromToml<'de>,
 {
-    fn from_item(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
+    fn from_toml(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
         let table = value.expect_table(ctx)?;
         let mut map = BTreeMap::new();
         let mut had_error = false;
@@ -806,7 +810,7 @@ where
                     continue;
                 }
             };
-            match V::from_item(ctx, item) {
+            match V::from_toml(ctx, item) {
                 Ok(v) => {
                     map.insert(k, v);
                 }
@@ -859,7 +863,7 @@ impl<'de> Item<'de> {
 
     /// Creates a [`TableHelper`] for this item, returning an error if it is not a table.
     ///
-    /// This is the typical entry point for implementing [`FromItem`].
+    /// This is the typical entry point for implementing [`FromToml`].
     pub fn table_helper<'ctx, 'item>(
         &'item self,
         ctx: &'ctx mut Context<'de>,
@@ -871,7 +875,7 @@ impl<'de> Item<'de> {
     }
 }
 
-/// Generates a [`FromItem`] implementation for a struct using a
+/// Generates a [`FromToml`] implementation for a struct using a
 /// single-pass iterate-and-match approach.
 ///
 /// This is faster than [`TableHelper`] for tables with many fields because
@@ -945,8 +949,8 @@ macro_rules! deserialize_table {
             $($field_kind:ident $($toml_key:literal)? $field_name:ident : $field_type:ty $(= |$map_item:ident| $map_body:block)?),* $(,)?
         }
     ) => {
-        impl<'de> $crate::FromItem<'de> for $struct_name {
-            fn from_item(
+        impl<'de> $crate::FromToml<'de> for $struct_name {
+            fn from_toml(
                 __ctx: &mut $crate::Context<'de>,
                 __item: &$crate::Item<'de>,
             ) -> Result<Self, $crate::Failed> {
@@ -975,8 +979,8 @@ macro_rules! deserialize_table {
             $($field_kind:ident $($toml_key:literal)? $field_name:ident : $field_type:ty $(= |$map_item:ident| $map_body:block)?),* $(,)?
         }
     ) => {
-        impl<'de> $crate::FromItem<'de> for $struct_name {
-            fn from_item(
+        impl<'de> $crate::FromToml<'de> for $struct_name {
+            fn from_toml(
                 __ctx: &mut $crate::Context<'de>,
                 __item: &$crate::Item<'de>,
             ) -> Result<Self, $crate::Failed> {
@@ -1015,8 +1019,8 @@ macro_rules! deserialize_table {
         }
         flatten $flat_name:ident : $flat_type:ty = |$k:ident, $v:ident| $flat_body:expr $(,)?
     ) => {
-        impl<'de> $crate::FromItem<'de> for $struct_name {
-            fn from_item(
+        impl<'de> $crate::FromToml<'de> for $struct_name {
+            fn from_toml(
                 __ctx: &mut $crate::Context<'de>,
                 __item: &$crate::Item<'de>,
             ) -> Result<Self, $crate::Failed> {
@@ -1057,7 +1061,7 @@ macro_rules! deserialize_table {
     }};
     (@deserialize $ctx:ident $value:ident $field_name:ident : $field_type:ty) => {{
         $field_name = Some(
-            <$field_type as $crate::FromItem>::from_item($ctx, $value)?
+            <$field_type as $crate::FromToml>::from_toml($ctx, $value)?
         );
     }};
 

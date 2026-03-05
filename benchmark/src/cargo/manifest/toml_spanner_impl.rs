@@ -44,8 +44,8 @@ fn push_custom_error(
 
 macro_rules! impl_spanner_deserialize_str_newtype {
     ($name:ident) => {
-        impl<'de> toml_spanner::FromItem<'de> for $name {
-            fn from_item(
+        impl<'de> toml_spanner::FromToml<'de> for $name {
+            fn from_toml(
                 ctx: &mut Context<'de>,
                 item: &toml_spanner::Item<'de>,
             ) -> Result<Self, Failed> {
@@ -62,12 +62,12 @@ impl_spanner_deserialize_str_newtype!(ProfileName);
 impl_spanner_deserialize_str_newtype!(FeatureName);
 impl_spanner_deserialize_str_newtype!(PathBaseName);
 
-impl<'de> toml_spanner::FromItem<'de> for StringOrVec {
-    fn from_item(ctx: &mut Context<'de>, item: &toml_spanner::Item<'de>) -> Result<Self, Failed> {
+impl<'de> toml_spanner::FromToml<'de> for StringOrVec {
+    fn from_toml(ctx: &mut Context<'de>, item: &toml_spanner::Item<'de>) -> Result<Self, Failed> {
         match item.value() {
             toml_spanner::Value::String(&s) => Ok(StringOrVec(vec![s.to_owned()])),
             toml_spanner::Value::Array(_) => {
-                let v: Vec<String> = toml_spanner::FromItem::from_item(ctx, item)?;
+                let v: Vec<String> = toml_spanner::FromToml::from_toml(ctx, item)?;
                 Ok(StringOrVec(v))
             }
             _ => Err(ctx.error_expected_but_found("a string or array of strings", item)),
@@ -75,8 +75,8 @@ impl<'de> toml_spanner::FromItem<'de> for StringOrVec {
     }
 }
 
-impl<'de> toml_spanner::FromItem<'de> for StringOrBool {
-    fn from_item(ctx: &mut Context<'de>, item: &toml_spanner::Item<'de>) -> Result<Self, Failed> {
+impl<'de> toml_spanner::FromToml<'de> for StringOrBool {
+    fn from_toml(ctx: &mut Context<'de>, item: &toml_spanner::Item<'de>) -> Result<Self, Failed> {
         match item.value() {
             toml_spanner::Value::Boolean(&b) => Ok(StringOrBool::Bool(b)),
             toml_spanner::Value::String(&s) => Ok(StringOrBool::String(s.to_owned())),
@@ -85,12 +85,12 @@ impl<'de> toml_spanner::FromItem<'de> for StringOrBool {
     }
 }
 
-impl<'de> toml_spanner::FromItem<'de> for VecStringOrBool {
-    fn from_item(ctx: &mut Context<'de>, item: &toml_spanner::Item<'de>) -> Result<Self, Failed> {
+impl<'de> toml_spanner::FromToml<'de> for VecStringOrBool {
+    fn from_toml(ctx: &mut Context<'de>, item: &toml_spanner::Item<'de>) -> Result<Self, Failed> {
         match item.value() {
             toml_spanner::Value::Boolean(&b) => Ok(VecStringOrBool::Bool(b)),
             toml_spanner::Value::Array(_) => {
-                let v: Vec<String> = toml_spanner::FromItem::from_item(ctx, item)?;
+                let v: Vec<String> = toml_spanner::FromToml::from_toml(ctx, item)?;
                 Ok(VecStringOrBool::VecString(v))
             }
             _ => Err(ctx.error_expected_but_found("a boolean or array of strings", item)),
@@ -98,20 +98,20 @@ impl<'de> toml_spanner::FromItem<'de> for VecStringOrBool {
     }
 }
 
-impl<'de> toml_spanner::FromItem<'de> for PathValue {
-    fn from_item(ctx: &mut Context<'de>, item: &toml_spanner::Item<'de>) -> Result<Self, Failed> {
-        let s: String = toml_spanner::FromItem::from_item(ctx, item)?;
+impl<'de> toml_spanner::FromToml<'de> for PathValue {
+    fn from_toml(ctx: &mut Context<'de>, item: &toml_spanner::Item<'de>) -> Result<Self, Failed> {
+        let s: String = toml_spanner::FromToml::from_toml(ctx, item)?;
         Ok(PathValue(s.into()))
     }
 }
 
-impl<'de> toml_spanner::FromItem<'de> for TomlPackageBuild {
-    fn from_item(ctx: &mut Context<'de>, item: &toml_spanner::Item<'de>) -> Result<Self, Failed> {
+impl<'de> toml_spanner::FromToml<'de> for TomlPackageBuild {
+    fn from_toml(ctx: &mut Context<'de>, item: &toml_spanner::Item<'de>) -> Result<Self, Failed> {
         match item.value() {
             toml_spanner::Value::Boolean(&b) => Ok(TomlPackageBuild::Auto(b)),
             toml_spanner::Value::String(&s) => Ok(TomlPackageBuild::SingleScript(s.to_owned())),
             toml_spanner::Value::Array(_) => {
-                let v: Vec<String> = toml_spanner::FromItem::from_item(ctx, item)?;
+                let v: Vec<String> = toml_spanner::FromToml::from_toml(ctx, item)?;
                 Ok(TomlPackageBuild::MultipleScript(v))
             }
             _ => Err(ctx.error_expected_but_found("a bool, string, or array of strings", item)),
@@ -119,8 +119,8 @@ impl<'de> toml_spanner::FromItem<'de> for TomlPackageBuild {
     }
 }
 
-impl<'de> toml_spanner::FromItem<'de> for TomlOptLevel {
-    fn from_item(ctx: &mut Context<'de>, item: &toml_spanner::Item<'de>) -> Result<Self, Failed> {
+impl<'de> toml_spanner::FromToml<'de> for TomlOptLevel {
+    fn from_toml(ctx: &mut Context<'de>, item: &toml_spanner::Item<'de>) -> Result<Self, Failed> {
         match item.value() {
             toml_spanner::Value::Integer(&i) => Ok(TomlOptLevel(i.to_string())),
             toml_spanner::Value::String(&s) => {
@@ -143,8 +143,8 @@ impl<'de> toml_spanner::FromItem<'de> for TomlOptLevel {
     }
 }
 
-impl<'de> toml_spanner::FromItem<'de> for TomlDebugInfo {
-    fn from_item(ctx: &mut Context<'de>, item: &toml_spanner::Item<'de>) -> Result<Self, Failed> {
+impl<'de> toml_spanner::FromToml<'de> for TomlDebugInfo {
+    fn from_toml(ctx: &mut Context<'de>, item: &toml_spanner::Item<'de>) -> Result<Self, Failed> {
         match item.value() {
             toml_spanner::Value::Boolean(&b) => Ok(if b {
                 TomlDebugInfo::Full
@@ -183,8 +183,8 @@ impl<'de> toml_spanner::FromItem<'de> for TomlDebugInfo {
     }
 }
 
-impl<'de> toml_spanner::FromItem<'de> for TomlTrimPathsValue {
-    fn from_item(ctx: &mut Context<'de>, item: &toml_spanner::Item<'de>) -> Result<Self, Failed> {
+impl<'de> toml_spanner::FromToml<'de> for TomlTrimPathsValue {
+    fn from_toml(ctx: &mut Context<'de>, item: &toml_spanner::Item<'de>) -> Result<Self, Failed> {
         let s = item.expect_string(ctx)?;
         match s {
             "diagnostics" => Ok(TomlTrimPathsValue::Diagnostics),
@@ -199,8 +199,8 @@ impl<'de> toml_spanner::FromItem<'de> for TomlTrimPathsValue {
     }
 }
 
-impl<'de> toml_spanner::FromItem<'de> for TomlTrimPaths {
-    fn from_item(ctx: &mut Context<'de>, item: &toml_spanner::Item<'de>) -> Result<Self, Failed> {
+impl<'de> toml_spanner::FromToml<'de> for TomlTrimPaths {
+    fn from_toml(ctx: &mut Context<'de>, item: &toml_spanner::Item<'de>) -> Result<Self, Failed> {
         match item.value() {
             toml_spanner::Value::Boolean(&b) => Ok(if b {
                 TomlTrimPaths::All
@@ -211,12 +211,12 @@ impl<'de> toml_spanner::FromItem<'de> for TomlTrimPaths {
                 "none" => Ok(TomlTrimPaths::none()),
                 "all" => Ok(TomlTrimPaths::All),
                 _ => {
-                    let val = <TomlTrimPathsValue as toml_spanner::FromItem>::from_item(ctx, item)?;
+                    let val = <TomlTrimPathsValue as toml_spanner::FromToml>::from_toml(ctx, item)?;
                     Ok(val.into())
                 }
             },
             toml_spanner::Value::Array(_) => {
-                let v: Vec<TomlTrimPathsValue> = toml_spanner::FromItem::from_item(ctx, item)?;
+                let v: Vec<TomlTrimPathsValue> = toml_spanner::FromToml::from_toml(ctx, item)?;
                 Ok(v.into())
             }
             _ => {
@@ -251,15 +251,15 @@ toml_spanner::deserialize_table! {
     }
 }
 
-impl<'de> toml_spanner::FromItem<'de> for TomlProfiles {
-    fn from_item(ctx: &mut Context<'de>, item: &toml_spanner::Item<'de>) -> Result<Self, Failed> {
-        let map: BTreeMap<ProfileName, TomlProfile> = toml_spanner::FromItem::from_item(ctx, item)?;
+impl<'de> toml_spanner::FromToml<'de> for TomlProfiles {
+    fn from_toml(ctx: &mut Context<'de>, item: &toml_spanner::Item<'de>) -> Result<Self, Failed> {
+        let map: BTreeMap<ProfileName, TomlProfile> = toml_spanner::FromToml::from_toml(ctx, item)?;
         Ok(TomlProfiles(map))
     }
 }
 
-impl<'de> toml_spanner::FromItem<'de> for TomlLintLevel {
-    fn from_item(ctx: &mut Context<'de>, item: &toml_spanner::Item<'de>) -> Result<Self, Failed> {
+impl<'de> toml_spanner::FromToml<'de> for TomlLintLevel {
+    fn from_toml(ctx: &mut Context<'de>, item: &toml_spanner::Item<'de>) -> Result<Self, Failed> {
         let s = item.expect_string(ctx)?;
         match s {
             "forbid" => Ok(TomlLintLevel::Forbid),
@@ -277,8 +277,8 @@ impl<'de> toml_spanner::FromItem<'de> for TomlLintLevel {
     }
 }
 
-impl<'de> toml_spanner::FromItem<'de> for TomlLintConfig {
-    fn from_item(ctx: &mut Context<'de>, item: &toml_spanner::Item<'de>) -> Result<Self, Failed> {
+impl<'de> toml_spanner::FromToml<'de> for TomlLintConfig {
+    fn from_toml(ctx: &mut Context<'de>, item: &toml_spanner::Item<'de>) -> Result<Self, Failed> {
         let mut th = item.table_helper(ctx)?;
         let level: TomlLintLevel = th.required("level")?;
         let priority: i8 = th.optional("priority").unwrap_or(0);
@@ -295,15 +295,15 @@ impl<'de> toml_spanner::FromItem<'de> for TomlLintConfig {
     }
 }
 
-impl<'de> toml_spanner::FromItem<'de> for TomlLint {
-    fn from_item(ctx: &mut Context<'de>, item: &toml_spanner::Item<'de>) -> Result<Self, Failed> {
+impl<'de> toml_spanner::FromToml<'de> for TomlLint {
+    fn from_toml(ctx: &mut Context<'de>, item: &toml_spanner::Item<'de>) -> Result<Self, Failed> {
         match item.value() {
             toml_spanner::Value::String(_) => {
-                let level = <TomlLintLevel as toml_spanner::FromItem>::from_item(ctx, item)?;
+                let level = <TomlLintLevel as toml_spanner::FromToml>::from_toml(ctx, item)?;
                 Ok(TomlLint::Level(level))
             }
             toml_spanner::Value::Table(_) => {
-                let config = <TomlLintConfig as toml_spanner::FromItem>::from_item(ctx, item)?;
+                let config = <TomlLintConfig as toml_spanner::FromToml>::from_toml(ctx, item)?;
                 Ok(TomlLint::Config(config))
             }
             _ => Err(ctx.error_expected_but_found("a lint level string or config table", item)),
@@ -311,8 +311,8 @@ impl<'de> toml_spanner::FromItem<'de> for TomlLint {
     }
 }
 
-impl<'de> toml_spanner::FromItem<'de> for InheritableLints {
-    fn from_item(ctx: &mut Context<'de>, item: &toml_spanner::Item<'de>) -> Result<Self, Failed> {
+impl<'de> toml_spanner::FromToml<'de> for InheritableLints {
+    fn from_toml(ctx: &mut Context<'de>, item: &toml_spanner::Item<'de>) -> Result<Self, Failed> {
         let table = item.expect_table(ctx)?;
         let mut workspace = false;
         let mut lints = TomlLints::new();
@@ -326,7 +326,7 @@ impl<'de> toml_spanner::FromItem<'de> for InheritableLints {
                     }
                 }
             } else {
-                match <BTreeMap<String, TomlLint> as toml_spanner::FromItem>::from_item(ctx, val) {
+                match <BTreeMap<String, TomlLint> as toml_spanner::FromToml>::from_toml(ctx, val) {
                     Ok(tool_lints) => {
                         lints.insert(key.name.to_owned(), tool_lints);
                     }
@@ -338,8 +338,8 @@ impl<'de> toml_spanner::FromItem<'de> for InheritableLints {
     }
 }
 
-impl<'de> toml_spanner::FromItem<'de> for WorkspaceValue {
-    fn from_item(ctx: &mut Context<'de>, item: &toml_spanner::Item<'de>) -> Result<Self, Failed> {
+impl<'de> toml_spanner::FromToml<'de> for WorkspaceValue {
+    fn from_toml(ctx: &mut Context<'de>, item: &toml_spanner::Item<'de>) -> Result<Self, Failed> {
         match item.as_bool() {
             Some(true) => Ok(WorkspaceValue),
             Some(false) => Err(push_custom_error(ctx, item, "`workspace` cannot be false")),
@@ -365,15 +365,15 @@ fn is_workspace_inherit(item: &toml_spanner::Item<'_>) -> bool {
     false
 }
 
-impl<'de> toml_spanner::FromItem<'de> for InheritableSemverVersion {
-    fn from_item(ctx: &mut Context<'de>, item: &toml_spanner::Item<'de>) -> Result<Self, Failed> {
+impl<'de> toml_spanner::FromToml<'de> for InheritableSemverVersion {
+    fn from_toml(ctx: &mut Context<'de>, item: &toml_spanner::Item<'de>) -> Result<Self, Failed> {
         match item.value() {
             toml_spanner::Value::String(&s) => match s.trim().parse::<semver::Version>() {
                 Ok(v) => Ok(InheritableField::Value(v)),
                 Err(err) => Err(push_custom_error(ctx, item, err)),
             },
             toml_spanner::Value::Table(_) => {
-                let field = <TomlInheritedField as toml_spanner::FromItem>::from_item(ctx, item)?;
+                let field = <TomlInheritedField as toml_spanner::FromToml>::from_toml(ctx, item)?;
                 Ok(InheritableField::Inherit(field))
             }
             _ => Err(ctx.error_expected_but_found("a version string or workspace table", item)),
@@ -381,12 +381,12 @@ impl<'de> toml_spanner::FromItem<'de> for InheritableSemverVersion {
     }
 }
 
-impl<'de> toml_spanner::FromItem<'de> for InheritableString {
-    fn from_item(ctx: &mut Context<'de>, item: &toml_spanner::Item<'de>) -> Result<Self, Failed> {
+impl<'de> toml_spanner::FromToml<'de> for InheritableString {
+    fn from_toml(ctx: &mut Context<'de>, item: &toml_spanner::Item<'de>) -> Result<Self, Failed> {
         match item.value() {
             toml_spanner::Value::String(&s) => Ok(InheritableField::Value(s.to_owned())),
             toml_spanner::Value::Table(_) => {
-                let field = <TomlInheritedField as toml_spanner::FromItem>::from_item(ctx, item)?;
+                let field = <TomlInheritedField as toml_spanner::FromToml>::from_toml(ctx, item)?;
                 Ok(InheritableField::Inherit(field))
             }
             _ => Err(ctx.error_expected_but_found("a string or workspace table", item)),
@@ -394,15 +394,15 @@ impl<'de> toml_spanner::FromItem<'de> for InheritableString {
     }
 }
 
-impl<'de> toml_spanner::FromItem<'de> for InheritableRustVersion {
-    fn from_item(ctx: &mut Context<'de>, item: &toml_spanner::Item<'de>) -> Result<Self, Failed> {
+impl<'de> toml_spanner::FromToml<'de> for InheritableRustVersion {
+    fn from_toml(ctx: &mut Context<'de>, item: &toml_spanner::Item<'de>) -> Result<Self, Failed> {
         match item.value() {
             toml_spanner::Value::String(&s) => match s.parse::<RustVersion>() {
                 Ok(v) => Ok(InheritableField::Value(v)),
                 Err(err) => Err(push_custom_error(ctx, item, err)),
             },
             toml_spanner::Value::Table(_) => {
-                let field = <TomlInheritedField as toml_spanner::FromItem>::from_item(ctx, item)?;
+                let field = <TomlInheritedField as toml_spanner::FromToml>::from_toml(ctx, item)?;
                 Ok(InheritableField::Inherit(field))
             }
             _ => Err(ctx.error_expected_but_found("a version string or workspace table", item)),
@@ -410,15 +410,15 @@ impl<'de> toml_spanner::FromItem<'de> for InheritableRustVersion {
     }
 }
 
-impl<'de> toml_spanner::FromItem<'de> for InheritableVecString {
-    fn from_item(ctx: &mut Context<'de>, item: &toml_spanner::Item<'de>) -> Result<Self, Failed> {
+impl<'de> toml_spanner::FromToml<'de> for InheritableVecString {
+    fn from_toml(ctx: &mut Context<'de>, item: &toml_spanner::Item<'de>) -> Result<Self, Failed> {
         match item.value() {
             toml_spanner::Value::Array(_) => {
-                let v: Vec<String> = toml_spanner::FromItem::from_item(ctx, item)?;
+                let v: Vec<String> = toml_spanner::FromToml::from_toml(ctx, item)?;
                 Ok(InheritableField::Value(v))
             }
             toml_spanner::Value::Table(_) => {
-                let field = <TomlInheritedField as toml_spanner::FromItem>::from_item(ctx, item)?;
+                let field = <TomlInheritedField as toml_spanner::FromToml>::from_toml(ctx, item)?;
                 Ok(InheritableField::Inherit(field))
             }
             _ => Err(ctx.error_expected_but_found("an array of strings or workspace table", item)),
@@ -426,15 +426,15 @@ impl<'de> toml_spanner::FromItem<'de> for InheritableVecString {
     }
 }
 
-impl<'de> toml_spanner::FromItem<'de> for InheritableStringOrBool {
-    fn from_item(ctx: &mut Context<'de>, item: &toml_spanner::Item<'de>) -> Result<Self, Failed> {
+impl<'de> toml_spanner::FromToml<'de> for InheritableStringOrBool {
+    fn from_toml(ctx: &mut Context<'de>, item: &toml_spanner::Item<'de>) -> Result<Self, Failed> {
         match item.value() {
             toml_spanner::Value::Boolean(&b) => Ok(InheritableField::Value(StringOrBool::Bool(b))),
             toml_spanner::Value::String(&s) => {
                 Ok(InheritableField::Value(StringOrBool::String(s.to_owned())))
             }
             toml_spanner::Value::Table(_) => {
-                let field = <TomlInheritedField as toml_spanner::FromItem>::from_item(ctx, item)?;
+                let field = <TomlInheritedField as toml_spanner::FromToml>::from_toml(ctx, item)?;
                 Ok(InheritableField::Inherit(field))
             }
             _ => Err(ctx.error_expected_but_found("a string, bool, or workspace table", item)),
@@ -442,18 +442,18 @@ impl<'de> toml_spanner::FromItem<'de> for InheritableStringOrBool {
     }
 }
 
-impl<'de> toml_spanner::FromItem<'de> for InheritableVecStringOrBool {
-    fn from_item(ctx: &mut Context<'de>, item: &toml_spanner::Item<'de>) -> Result<Self, Failed> {
+impl<'de> toml_spanner::FromToml<'de> for InheritableVecStringOrBool {
+    fn from_toml(ctx: &mut Context<'de>, item: &toml_spanner::Item<'de>) -> Result<Self, Failed> {
         match item.value() {
             toml_spanner::Value::Boolean(&b) => {
                 Ok(InheritableField::Value(VecStringOrBool::Bool(b)))
             }
             toml_spanner::Value::Array(_) => {
-                let v: Vec<String> = toml_spanner::FromItem::from_item(ctx, item)?;
+                let v: Vec<String> = toml_spanner::FromToml::from_toml(ctx, item)?;
                 Ok(InheritableField::Value(VecStringOrBool::VecString(v)))
             }
             toml_spanner::Value::Table(_) => {
-                let field = <TomlInheritedField as toml_spanner::FromItem>::from_item(ctx, item)?;
+                let field = <TomlInheritedField as toml_spanner::FromToml>::from_toml(ctx, item)?;
                 Ok(InheritableField::Inherit(field))
             }
             _ => Err(ctx
@@ -462,14 +462,14 @@ impl<'de> toml_spanner::FromItem<'de> for InheritableVecStringOrBool {
     }
 }
 
-impl<'de> toml_spanner::FromItem<'de> for InheritableBtreeMap {
-    fn from_item(ctx: &mut Context<'de>, item: &toml_spanner::Item<'de>) -> Result<Self, Failed> {
+impl<'de> toml_spanner::FromToml<'de> for InheritableBtreeMap {
+    fn from_toml(ctx: &mut Context<'de>, item: &toml_spanner::Item<'de>) -> Result<Self, Failed> {
         if is_workspace_inherit(item) {
-            let field = <TomlInheritedField as toml_spanner::FromItem>::from_item(ctx, item)?;
+            let field = <TomlInheritedField as toml_spanner::FromToml>::from_toml(ctx, item)?;
             Ok(InheritableField::Inherit(field))
         } else {
             let map: BTreeMap<String, BTreeMap<String, String>> =
-                toml_spanner::FromItem::from_item(ctx, item)?;
+                toml_spanner::FromToml::from_toml(ctx, item)?;
             Ok(InheritableField::Value(map))
         }
     }
@@ -501,8 +501,8 @@ toml_spanner::deserialize_table! {
     }
 }
 
-impl<'de> toml_spanner::FromItem<'de> for TomlDependency {
-    fn from_item(ctx: &mut Context<'de>, item: &toml_spanner::Item<'de>) -> Result<Self, Failed> {
+impl<'de> toml_spanner::FromToml<'de> for TomlDependency {
+    fn from_toml(ctx: &mut Context<'de>, item: &toml_spanner::Item<'de>) -> Result<Self, Failed> {
         match item.value() {
             toml_spanner::Value::String(&s) => Ok(TomlDependency::Simple(s.to_owned())),
             toml_spanner::Value::Boolean(&b) => {
@@ -523,7 +523,7 @@ impl<'de> toml_spanner::FromItem<'de> for TomlDependency {
             }
             toml_spanner::Value::Table(_) => {
                 let detailed =
-                    <TomlDetailedDependency as toml_spanner::FromItem>::from_item(ctx, item)?;
+                    <TomlDetailedDependency as toml_spanner::FromToml>::from_toml(ctx, item)?;
                 Ok(TomlDependency::Detailed(detailed))
             }
             _ => Err(ctx.error_expected_but_found("a version string or dependency table", item)),
@@ -586,8 +586,8 @@ toml_spanner::deserialize_table! {
     }
 }
 
-impl<'de> toml_spanner::FromItem<'de> for InvalidCargoFeatures {
-    fn from_item(ctx: &mut Context<'de>, item: &toml_spanner::Item<'de>) -> Result<Self, Failed> {
+impl<'de> toml_spanner::FromToml<'de> for InvalidCargoFeatures {
+    fn from_toml(ctx: &mut Context<'de>, item: &toml_spanner::Item<'de>) -> Result<Self, Failed> {
         Err(push_custom_error(
             ctx,
             item,

@@ -320,6 +320,7 @@ fn expect_helpers() {
         arena: &arena,
         index: Default::default(),
         errors: Vec::new(),
+        source: "",
     };
 
     // expect_string success
