@@ -127,10 +127,14 @@ fn main() {
     }
     util::print_pretty(codegen::derive(tokens! {
 
-    #[derive(Toml)]
-    pub struct Thingy<P: Clone = String> {
-        falue: P
+    #[derive(Jsony, Toml)]
+    pub struct BindingTable {
+        pub normal: Bindings,
+        pub visual: Bindings,
+        pub input_mode: Bindings,
+        pub spelling_correction: Bindings,
     }
 
-    }));
+
+        }));
 }

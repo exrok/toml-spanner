@@ -8,6 +8,18 @@ use crate::Error;
 use self::RenameRule::*;
 use std::fmt::{self, Debug, Display};
 
+fn underscores_to_hyphens(mut s: String) -> String {
+    // SAFETY: replacing '_' (0x5F) with '-' (0x2D) preserves valid UTF-8
+    unsafe {
+        for b in s.as_bytes_mut() {
+            if *b == b'_' {
+                *b = b'-';
+            }
+        }
+    }
+    s
+}
+
 /// The different possible ways to change case of fields in a struct, or variants in an enum.
 #[derive(Copy, Clone, PartialEq)]
 pub enum RenameRule {
@@ -74,10 +86,10 @@ impl RenameRule {
                 snake
             }
             ScreamingSnakeCase => SnakeCase.apply_to_variant(variant).to_ascii_uppercase(),
-            KebabCase => SnakeCase.apply_to_variant(variant).replace('_', "-"),
-            ScreamingKebabCase => ScreamingSnakeCase
-                .apply_to_variant(variant)
-                .replace('_', "-"),
+            KebabCase => underscores_to_hyphens(SnakeCase.apply_to_variant(variant)),
+            ScreamingKebabCase => {
+                underscores_to_hyphens(ScreamingSnakeCase.apply_to_variant(variant))
+            }
         }
     }
 
@@ -106,8 +118,10 @@ impl RenameRule {
                 pascal[..1].to_ascii_lowercase() + &pascal[1..]
             }
             ScreamingSnakeCase => field.to_ascii_uppercase(),
-            KebabCase => field.replace('_', "-"),
-            ScreamingKebabCase => ScreamingSnakeCase.apply_to_field(field).replace('_', "-"),
+            KebabCase => underscores_to_hyphens(field.to_owned()),
+            ScreamingKebabCase => {
+                underscores_to_hyphens(ScreamingSnakeCase.apply_to_field(field))
+            }
         }
     }
 }

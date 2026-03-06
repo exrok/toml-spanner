@@ -4,6 +4,7 @@ mod tests;
 
 use std::hash::BuildHasher;
 use std::num::NonZeroU64;
+use std::path::PathBuf;
 use std::{collections::BTreeMap, hash::Hash};
 
 use foldhash::HashMap;
@@ -570,6 +571,43 @@ where
         Ok(partial)
     }
 }
+
+impl<'de, K, V, H> FromToml<'de> for std::collections::HashMap<K, V, H>
+where
+    K: Hash + Eq + std::str::FromStr,
+    <K as std::str::FromStr>::Err: std::fmt::Display,
+    V: FromToml<'de>,
+    H: Default + BuildHasher,
+{
+    fn from_toml(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
+        let table = value.expect_table(ctx)?;
+        let mut map = std::collections::HashMap::default();
+        let mut had_error = false;
+        for (key, item) in table {
+            let k = match key.name.parse::<K>() {
+                Ok(k) => k,
+                Err(err) => {
+                    ctx.push_error(Error {
+                        kind: ErrorKind::Custom(
+                            format!("invalid key `{}`: {err}", key.name).into(),
+                        ),
+                        span: key.span,
+                    });
+                    had_error = true;
+                    continue;
+                }
+            };
+            match V::from_toml(ctx, item) {
+                Ok(v) => {
+                    map.insert(k, v);
+                }
+                Err(_) => had_error = true,
+            }
+        }
+        if had_error { Err(Failed) } else { Ok(map) }
+    }
+}
+
 impl<'de, K, V> FromFlattened<'de> for BTreeMap<K, V>
 where
     K: Ord + std::str::FromStr,
@@ -630,6 +668,15 @@ impl<'de> FromToml<'de> for String {
         match value.as_str() {
             Some(s) => Ok(s.to_string()),
             None => Err(ctx.error_expected_but_found("a string", value)),
+        }
+    }
+}
+
+impl<'de> FromToml<'de> for PathBuf {
+    fn from_toml(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
+        match value.as_str() {
+            Some(s) => Ok(PathBuf::from(s)),
+            None => Err(ctx.error_expected_but_found("a path", value)),
         }
     }
 }

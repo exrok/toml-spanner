@@ -28,9 +28,6 @@ use StaticToken::Ident as StaticIdent;
 #[allow(unused)]
 use StaticToken::Punct as StaticPunct;
 
-/// Best-effort extraction of the inner type from `Option<T>`.
-/// Returns `&ty[2..ty.len()-1]` when the tokens match `Option < ... >`,
-/// otherwise returns the full type unchanged.
 fn option_inner_ty<'a>(ty: &'a [TokenTree]) -> &'a [TokenTree] {
     if let [TokenTree::Ident(id), _open, inner @ .., TokenTree::Punct(close)] = ty {
         if id.to_string() == "Option" && close.as_char() == '>' {
@@ -168,7 +165,7 @@ const DEF: GenericBoundFormatting = GenericBoundFormatting {
 struct Ctx<'a> {
     lifetime: Ident,
     generics: &'a [Generic<'a>],
-    crate_path: Vec<TokenTree>,
+    crate_path: TokenTree,
     target: &'a DeriveTargetInner<'a>,
 }
 
@@ -179,10 +176,10 @@ impl<'a> Ctx<'a> {
             #[allow(unused)]
             let inner = &content[1..content.len() - 1];
             splat!(out; ::toml_spanner);
-            std::mem::take(&mut out.buf)
+            TokenTree::Group(Group::new(Delimiter::None, out.split_off_stream(0)))
         } else {
             splat!(out; ::toml_spanner);
-            std::mem::take(&mut out.buf)
+            TokenTree::Group(Group::new(Delimiter::None, out.split_off_stream(0)))
         };
         let (lt, generics) = if let [Generic {
             kind: GenericKind::Lifetime,
@@ -248,19 +245,19 @@ fn impl_from_toml(output: &mut RustWriter, ctx: &Ctx, inner: TokenStream) {
         ~[[automatically_derived]]
         impl <#[#: &ctx.lifetime]
             [?(!ctx.generics.is_empty()), [fmt_generics(output, ctx.generics, DEF)]] >
-         [~&ctx.crate_path]::FromToml<#[#: &ctx.lifetime]> for [#: &target.name][?(any_generics) <
+         [#ctx.crate_path]::FromToml<#[#: &ctx.lifetime]> for [#: &target.name][?(any_generics) <
             [fmt_generics(output, &target.generics, USE)]
         >]  [?(!target.where_clauses.is_empty() || !target.generic_field_types.is_empty() || !target.generic_flatten_field_types.is_empty())
              where [for (ty in &target.generic_field_types) {
-                [~ty]: [~&ctx.crate_path]::FromToml<#[#: &ctx.lifetime]>,
+                [~ty]: [#ctx.crate_path]::FromToml<#[#: &ctx.lifetime]>,
             }] [for (ty in &target.generic_flatten_field_types) {
-                [~ty]: [~&ctx.crate_path]::FromFlattened<#[#: &ctx.lifetime]>,
+                [~ty]: [#ctx.crate_path]::FromFlattened<#[#: &ctx.lifetime]>,
             }] [~&target.where_clauses] ]
         {
             fn from_toml(
-                __ctx: &mut [~&ctx.crate_path]::Context<#[#: &ctx.lifetime]>,
-                __item: &[~&ctx.crate_path]::Item<#[#: &ctx.lifetime]>,
-            ) -> ::std::result::Result<Self, [~&ctx.crate_path]::Failed> [@TokenTree::Group(Group::new(Delimiter::Brace, inner))]
+                __ctx: &mut [#ctx.crate_path]::Context<#[#: &ctx.lifetime]>,
+                __item: &[#ctx.crate_path]::Item<#[#: &ctx.lifetime]>,
+            ) -> ::std::result::Result<Self, [#ctx.crate_path]::Failed> [@TokenTree::Group(Group::new(Delimiter::Brace, inner))]
         }
     };
 }
@@ -281,28 +278,26 @@ fn impl_to_toml(output: &mut RustWriter, ctx: &Ctx, inner: TokenStream) {
         output;
         ~[[automatically_derived]]
         impl [?(!target.generics.is_empty()) < [fmt_generics(output, &target.generics, DEF)] >]
-         [~&ctx.crate_path]::ToToml for [#: &target.name][?(any_generics) <
+         [#ctx.crate_path]::ToToml for [#: &target.name][?(any_generics) <
             [fmt_generics(output, &target.generics, USE)]
         >]  [?(!target.where_clauses.is_empty() || !target.generic_field_types.is_empty() || !target.generic_flatten_field_types.is_empty())
              where [for (ty in &target.generic_field_types) {
-                [~ty]: [~&ctx.crate_path]::ToToml,
+                [~ty]: [#ctx.crate_path]::ToToml,
             }] [for (ty in &target.generic_flatten_field_types) {
-                [~ty]: [~&ctx.crate_path]::ToFlattened,
+                [~ty]: [#ctx.crate_path]::ToFlattened,
             }] [~&target.where_clauses] ]
         {
-            fn to_toml<# [#lf](& # [#lf] self, __ctx: &mut [~&ctx.crate_path]::ToContext<# [#lf]>)
-                -> ::std::result::Result<[~&ctx.crate_path]::Item<# [#lf]>, [~&ctx.crate_path]::Failed>
+            fn to_toml<# [#lf]>(& # [#lf] self, __ctx: &mut [#ctx.crate_path]::ToContext<# [#lf]>)
+                -> ::std::result::Result<[#ctx.crate_path]::Item<# [#lf]>, [#ctx.crate_path]::Failed>
                 [@TokenTree::Group(Group::new(Delimiter::Brace, inner))]
         }
     };
 }
 
-// ── Shared helpers ───────────────────────────────────────────────
-
 fn emit_table_alloc(out: &mut RustWriter, ctx: &Ctx, var: &str, capacity: usize) {
-    let var_id = Ident::new(var, Span::call_site());
+    let var_id = Ident::new(var, Span::mixed_site());
     splat!(out;
-        let Some(mut [#var_id]) = [~&ctx.crate_path]::Table::try_with_capacity(
+        let Some(mut [#var_id]) = [#ctx.crate_path]::Table::try_with_capacity(
             [@TokenTree::Literal(Literal::usize_unsuffixed(capacity))],
             __ctx.arena
         ) else {
@@ -311,9 +306,6 @@ fn emit_table_alloc(out: &mut RustWriter, ctx: &Ctx, var: &str, capacity: usize)
     );
 }
 
-/// Shared field deserialization from a table.
-/// Emits: variable declarations, for-loop with key matching, flatten finish, field unwrapping.
-/// The table to iterate must already be in scope as `table_ident`.
 fn emit_table_field_deser(
     out: &mut RustWriter,
     ctx: &Ctx,
@@ -322,9 +314,8 @@ fn emit_table_field_deser(
     variant: Option<&EnumVariant>,
     skip_keys: &[Literal],
 ) {
-    let table_id = Ident::new(table_ident, Span::call_site());
+    let table_id = Ident::new(table_ident, Span::mixed_site());
 
-    // Detect flatten field
     let mut flatten_field: Option<&Field> = None;
     for field in fields {
         if field.flags & Field::WITH_FLATTEN != 0 {
@@ -339,23 +330,12 @@ fn emit_table_field_deser(
     for field in fields {
         if field.flags & Field::WITH_FLATTEN != 0 {
             splat!(out;
-                let mut __flatten_partial = < [~field.ty] as [~&ctx.crate_path]::FromFlattened<#[#: &ctx.lifetime]> >::init();
+                let mut __flatten_partial = < [~field.ty] as [#ctx.crate_path]::FromFlattened<#[#: &ctx.lifetime]> >::init();
             );
             continue;
         }
         if field.flags & Field::WITH_FROM_TOML_SKIP != 0 {
-            if let Some(default_kind) = field.default(FROM_TOML) {
-                match default_kind {
-                    DefaultKind::Custom(tokens) => {
-                        splat!(out; let [#: field.name] = [~tokens.as_slice()];);
-                    }
-                    DefaultKind::Default => {
-                        splat!(out; let [#: field.name] = Default::default(););
-                    }
-                }
-            } else {
-                splat!(out; let [#: field.name] = Default::default(););
-            }
+            emit_field_default(out, field, FROM_TOML, false);
         } else if field.flags & Field::WITH_FROM_TOML_OPTION != 0 {
             splat!(out; let mut [#: field.name] : [~field.ty] = None;);
         } else {
@@ -363,10 +343,17 @@ fn emit_table_field_deser(
         }
     }
 
-    // Build match arms
-    let match_arms_start = out.buf.len();
+    // Build for loop: for (__key, __value) in table { match __key.name { ... } }
+    splat!(out; for);
+    let pat_at = out.buf.len();
+    splat!(out; __key, __value);
+    out.tt_group(Delimiter::Parenthesis, pat_at);
+    splat!(out; in [#table_id]);
+    let for_body_at = out.buf.len();
+    splat!(out; match __key . name);
+    let arms_at = out.buf.len();
 
-    // Skip key arms (e.g. tag key in internal tagging)
+    // Skip key arms
     for skip_key in skip_keys {
         splat!(out; [@skip_key.clone().into()] => {});
     }
@@ -384,50 +371,50 @@ fn emit_table_field_deser(
         let is_required = !is_option && !is_default;
         let has_aliases = field.attr.has_aliases(FROM_TOML);
 
-        let arm_body_start = out.buf.len();
+        // Pattern: name | alias1 | alias2 =>
+        splat!(out; [@name_lit.clone().into()]);
+        for alias in field.attr.aliases(FROM_TOML) {
+            splat!(out; | [@alias.clone().into()]);
+        }
+        splat!(out; =>);
+        let arm_body_at = out.buf.len();
 
         if has_aliases {
             splat!(out;
                 if [#: field.name].is_some() {
-                    return Err(__ctx.report_duplicate_field([@name_lit.clone().into()], __key.span));
+                    return Err(__ctx.report_duplicate_field([@name_lit.into()], __key.span));
                 }
             );
         }
 
-        // Build the from_toml call expression
-        let call_start = out.buf.len();
+        // match from_toml_call { Ok(__val) => { field = Some(__val); } Err(...) }
+        splat!(out; match);
         if let Some(with) = with_path {
             splat!(out; [~with]::from_toml(__ctx, __value));
         } else {
-            let ty = if is_option { option_inner_ty(field.ty) } else { field.ty };
-            splat!(out; < [~ty] as [~&ctx.crate_path]::FromToml<#[#: &ctx.lifetime]> >::from_toml(__ctx, __value));
+            let ty = if is_option {
+                option_inner_ty(field.ty)
+            } else {
+                field.ty
+            };
+            splat!(out; < [~ty] as [#ctx.crate_path]::FromToml<#[#: &ctx.lifetime]> >::from_toml(__ctx, __value));
         }
-        let call_expr = out.split_off_stream(call_start);
-
-        // Unified match with conditional error handling
+        let match_body_at = out.buf.len();
         splat!(out;
-            match [@TokenTree::Group(Group::new(Delimiter::None, call_expr))] {
-                Ok(__val) => { [#: field.name] = Some(__val); }
-                [?(is_required) Err(__e) => return Err(__e),]
-                [?(!is_required) Err(_) => {},]
-            }
+            Ok(__val) => { [#: field.name] = Some(__val); }
+            [?(is_required) Err(__e) => return Err(__e),]
+            [?(!is_required) Err(_) => {},]
         );
+        out.tt_group(Delimiter::Brace, match_body_at);
 
-        let arm_body = out.split_off_stream(arm_body_start);
-        splat!(out; [@name_lit.into()]);
-        for alias in field.attr.aliases(FROM_TOML) {
-            splat!(out; | [@alias.clone().into()]);
-        }
-        splat!(out;
-            => [@TokenTree::Group(Group::new(Delimiter::Brace, arm_body))]
-        );
+        out.tt_group(Delimiter::Brace, arm_body_at);
     }
 
     // Wildcard arm
     if let Some(ff) = flatten_field {
         splat!(out;
             _ => {
-                let _ = < [~ff.ty] as [~&ctx.crate_path]::FromFlattened<#[#: &ctx.lifetime]> >::insert(
+                let _ = < [~ff.ty] as [#ctx.crate_path]::FromFlattened<#[#: &ctx.lifetime]> >::insert(
                     __ctx, __key, __value, &mut __flatten_partial
                 );
             }
@@ -441,28 +428,13 @@ fn emit_table_field_deser(
             }
         );
     }
-    let match_arms = out.split_off_stream(match_arms_start);
-
-    // Build for-loop
-    let for_body_start = out.buf.len();
-    splat!(out;
-        match __key.name [@TokenTree::Group(Group::new(Delimiter::Brace, match_arms))]
-    );
-    let for_body = out.split_off_stream(for_body_start);
-
-    let for_pat = {
-        let pat_stream = token_stream!(out; __key, __value);
-        TokenTree::Group(Group::new(Delimiter::Parenthesis, pat_stream))
-    };
-    splat!(out;
-        for [@for_pat] in [#table_id]
-            [@TokenTree::Group(Group::new(Delimiter::Brace, for_body))]
-    );
+    out.tt_group(Delimiter::Brace, arms_at);
+    out.tt_group(Delimiter::Brace, for_body_at);
 
     // Finish flatten partial
     if let Some(ff) = flatten_field {
         splat!(out;
-            let [#: ff.name] = < [~ff.ty] as [~&ctx.crate_path]::FromFlattened<#[#: &ctx.lifetime]> >::finish(
+            let [#: ff.name] = < [~ff.ty] as [#ctx.crate_path]::FromFlattened<#[#: &ctx.lifetime]> >::finish(
                 __ctx, __flatten_partial
             )?;
         );
@@ -477,47 +449,54 @@ fn emit_table_field_deser(
             continue;
         }
 
-        let is_default = field.flags & Field::WITH_FROM_TOML_DEFAULT != 0;
-
-        if is_default {
-            if let Some(default_kind) = field.default(FROM_TOML) {
-                match default_kind {
-                    DefaultKind::Custom(tokens) => {
-                        splat!(out;
-                            let [#: field.name] = [#: field.name].unwrap_or_else(|| [~tokens.as_slice()]);
-                        );
-                    }
-                    DefaultKind::Default => {
-                        splat!(out;
-                            let [#: field.name] = [#: field.name].unwrap_or_default();
-                        );
-                    }
-                }
-            } else {
-                splat!(out;
-                    let [#: field.name] = [#: field.name].unwrap_or_default();
-                );
-            }
+        if field.flags & Field::WITH_FROM_TOML_DEFAULT != 0 {
+            emit_field_default(out, field, FROM_TOML, true);
         } else {
             let name_lit = field_name_lit(ctx, field, variant);
-            let else_body_start = out.buf.len();
+            splat!(out; let Some([#: field.name]) = [#: field.name].take() else);
+            let else_at = out.buf.len();
             splat!(out;
                 return Err(__ctx.report_missing_field([@name_lit.into()], __item.span_unchecked()));
             );
-            let else_body = out.split_off_stream(else_body_start);
-            splat!(out;
-                let Some([#: field.name]) = [#: field.name].take() else
-                    [@TokenTree::Group(Group::new(Delimiter::Brace, else_body))]
-                ;
-            );
+            out.tt_group(Delimiter::Brace, else_at);
+            splat!(out; ;);
         }
     }
 }
 
-/// Shared field serialization into a table.
-/// Emits insert calls for each non-skip field and to_flattened for flatten fields.
-/// `table_ident` names the table variable in scope.
-/// When `self_access` is true, fields are accessed as `&self.field`; otherwise as `field` (ref binding).
+/// Emit a field default: either as initial `let field = default;` or as unwrap `let field = field.unwrap_or...;`
+fn emit_field_default(out: &mut RustWriter, field: &Field, direction: u8, is_unwrap: bool) {
+    if is_unwrap {
+        if let Some(default_kind) = field.default(direction) {
+            match default_kind {
+                DefaultKind::Custom(tokens) => {
+                    splat!(out;
+                        let [#: field.name] = [#: field.name].unwrap_or_else(|| [~tokens.as_slice()]);
+                    );
+                }
+                DefaultKind::Default => {
+                    splat!(out; let [#: field.name] = [#: field.name].unwrap_or_default(););
+                }
+            }
+        } else {
+            splat!(out; let [#: field.name] = [#: field.name].unwrap_or_default(););
+        }
+    } else {
+        if let Some(default_kind) = field.default(direction) {
+            match default_kind {
+                DefaultKind::Custom(tokens) => {
+                    splat!(out; let [#: field.name] = [~tokens.as_slice()];);
+                }
+                DefaultKind::Default => {
+                    splat!(out; let [#: field.name] = Default::default(););
+                }
+            }
+        } else {
+            splat!(out; let [#: field.name] = Default::default(););
+        }
+    }
+}
+
 fn emit_table_field_ser(
     out: &mut RustWriter,
     ctx: &Ctx,
@@ -526,7 +505,7 @@ fn emit_table_field_ser(
     variant: Option<&EnumVariant>,
     self_access: bool,
 ) {
-    let table_id = Ident::new(table_ident, Span::call_site());
+    let table_id = Ident::new(table_ident, Span::mixed_site());
 
     for field in fields {
         if field.flags & (Field::WITH_TO_TOML_SKIP | Field::WITH_FLATTEN) != 0 {
@@ -542,7 +521,6 @@ fn emit_table_field_ser(
             String::new()
         };
 
-        // Build field reference tokens
         let field_ref = token_stream!(out;
             [?(self_access) & self . [#: field.name]]
             [?(!self_access) [#: field.name]]
@@ -552,17 +530,17 @@ fn emit_table_field_ser(
         if let Some(with) = with_path {
             splat!(out;
                 [#table_id].insert(
-                    [~&ctx.crate_path]::Key::anon([@name_lit.into()]),
+                    [#ctx.crate_path]::Key::anon([@name_lit.into()]),
                     [~with]::to_toml([@TokenTree::Group(Group::new(Delimiter::None, field_ref.clone()))], __ctx)?,
                     __ctx.arena,
                 );
             );
         } else if first_ty_ident == "Option" {
             splat!(out;
-                if let Some(__val) = [~&ctx.crate_path]::ToToml::to_optional_toml(
+                if let Some(__val) = [#ctx.crate_path]::ToToml::to_optional_toml(
                     [@TokenTree::Group(Group::new(Delimiter::None, field_ref.clone()))], __ctx)? {
                     [#table_id].insert(
-                        [~&ctx.crate_path]::Key::anon([@name_lit.into()]),
+                        [#ctx.crate_path]::Key::anon([@name_lit.into()]),
                         __val,
                         __ctx.arena,
                     );
@@ -571,8 +549,8 @@ fn emit_table_field_ser(
         } else {
             splat!(out;
                 [#table_id].insert(
-                    [~&ctx.crate_path]::Key::anon([@name_lit.into()]),
-                    [~&ctx.crate_path]::ToToml::to_toml(
+                    [#ctx.crate_path]::Key::anon([@name_lit.into()]),
+                    [#ctx.crate_path]::ToToml::to_toml(
                         [@TokenTree::Group(Group::new(Delimiter::None, field_ref.clone()))], __ctx)?,
                     __ctx.arena,
                 );
@@ -588,7 +566,6 @@ fn emit_table_field_ser(
         }
     }
 
-    // Emit flatten field serialization
     for field in fields {
         if field.flags & Field::WITH_FLATTEN != 0 {
             let field_ref = token_stream!(out;
@@ -596,7 +573,7 @@ fn emit_table_field_ser(
                 [?(!self_access) [#: field.name]]
             );
             splat!(out;
-                [~&ctx.crate_path]::ToFlattened::to_flattened(
+                [#ctx.crate_path]::ToFlattened::to_flattened(
                     [@TokenTree::Group(Group::new(Delimiter::None, field_ref))],
                     __ctx, &mut [#table_id])?;
             );
@@ -604,13 +581,7 @@ fn emit_table_field_ser(
     }
 }
 
-/// Emit the `Self::Variant { ref field1, ref field2, ... } =>` match arm pattern
-/// with the given arm body.
-fn emit_struct_variant_to_arm(
-    out: &mut RustWriter,
-    variant: &EnumVariant,
-    arm_body_start: usize,
-) {
+fn emit_struct_variant_to_arm(out: &mut RustWriter, variant: &EnumVariant, arm_body_start: usize) {
     let arm_body = out.split_off_stream(arm_body_start);
     splat!(out;
         Self::[#: variant.name] {
@@ -620,7 +591,6 @@ fn emit_struct_variant_to_arm(
     );
 }
 
-/// Count non-skip, non-flatten fields for table capacity.
 fn count_ser_fields(fields: &[Field]) -> usize {
     fields
         .iter()
@@ -628,7 +598,14 @@ fn count_ser_fields(fields: &[Field]) -> usize {
         .count()
 }
 
-// ── Struct handling ──────────────────────────────────────────────
+/// Emit Ok(Self::Variant { field1, field2, ... }) for struct variant deserialization
+fn emit_ok_self_variant(out: &mut RustWriter, variant: &EnumVariant) {
+    splat!(out;
+        Ok(Self::[#: variant.name] {
+            [for field in variant.fields { splat!(out; [#: field.name],); }]
+        })
+    );
+}
 
 fn struct_from_toml(out: &mut RustWriter, ctx: &Ctx, fields: &[Field]) {
     let start = out.buf.len();
@@ -662,7 +639,7 @@ fn handle_struct(output: &mut RustWriter, target: &DeriveTargetInner, fields: &[
             };
             let body = token_stream! {
                 output;
-                < [~single_field.ty] as [~&ctx.crate_path]::FromToml<#[#: &ctx.lifetime]> >::from_toml(
+                < [~single_field.ty] as [#ctx.crate_path]::FromToml<#[#: &ctx.lifetime]> >::from_toml(
                     __ctx, __item
                 )
             };
@@ -678,7 +655,7 @@ fn handle_struct(output: &mut RustWriter, target: &DeriveTargetInner, fields: &[
                 throw!("Struct must contain a single field to use transparent")
             };
             let body = token_stream! {output;
-                [~&ctx.crate_path]::ToToml::to_toml(&self.[#: single_field.name], __ctx)
+                [#ctx.crate_path]::ToToml::to_toml(&self.[#: single_field.name], __ctx)
             };
             impl_to_toml(output, &ctx, body);
         } else {
@@ -695,7 +672,7 @@ fn handle_tuple_struct(output: &mut RustWriter, target: &DeriveTargetInner, fiel
             let body = token_stream! {
                 output;
                 Ok([#: &target.name](
-                    < [~single_field.ty] as [~&ctx.crate_path]::FromToml<#[#: &ctx.lifetime]> >::from_toml(
+                    < [~single_field.ty] as [#ctx.crate_path]::FromToml<#[#: &ctx.lifetime]> >::from_toml(
                         __ctx, __item
                     ) ?
                 ))
@@ -709,7 +686,7 @@ fn handle_tuple_struct(output: &mut RustWriter, target: &DeriveTargetInner, fiel
     if target.to_toml {
         if let [_single_field] = fields {
             let body = token_stream! {output;
-                [~&ctx.crate_path]::ToToml::to_toml(&self.[@TokenTree::Literal(Literal::usize_unsuffixed(0))], __ctx)
+                [#ctx.crate_path]::ToToml::to_toml(&self.[@TokenTree::Literal(Literal::usize_unsuffixed(0))], __ctx)
             };
             impl_to_toml(output, &ctx, body);
         } else {
@@ -717,8 +694,6 @@ fn handle_tuple_struct(output: &mut RustWriter, target: &DeriveTargetInner, fiel
         }
     }
 }
-
-// ── Enum helpers ─────────────────────────────────────────────────
 
 fn variant_name_literal(ctx: &Ctx, variant: &EnumVariant) -> Literal {
     if let Some(name) = variant.rename(FROM_TOML) {
@@ -732,7 +707,23 @@ fn variant_name_literal(ctx: &Ctx, variant: &EnumVariant) -> Literal {
     }
 }
 
-// ── String enum ──────────────────────────────────────────────────
+enum TagMode<'a> {
+    External,
+    Internal(&'a Literal),
+    Adjacent(&'a Literal, &'a Literal),
+    Untagged,
+}
+
+/// Emit a table.insert call for a tag key
+fn emit_tag_insert(out: &mut RustWriter, ctx: &Ctx, tag_lit: &Literal, name_lit: Literal) {
+    splat!(out;
+        table.insert(
+            [#ctx.crate_path]::Key::anon([@tag_lit.clone().into()]),
+            [#ctx.crate_path]::Item::string([@name_lit.into()]),
+            __ctx.arena,
+        );
+    );
+}
 
 fn enum_from_toml_string(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVariant]) {
     let start = out.buf.len();
@@ -763,7 +754,7 @@ fn enum_from_toml_string(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVarian
 fn enum_to_toml_string(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVariant]) {
     let start = out.buf.len();
     splat!(out;
-        Ok([~&ctx.crate_path]::Item::string(match self {
+        Ok([#ctx.crate_path]::Item::string(match self {
             [for variant in variants {
                 let name_lit = variant_name_literal(ctx, variant);
                 splat!(out; Self::[#: variant.name] => [@name_lit.into()],);
@@ -774,7 +765,148 @@ fn enum_to_toml_string(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVariant]
     impl_to_toml(out, ctx, body);
 }
 
-// ── External tagging ─────────────────────────────────────────────
+fn enum_to_toml(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVariant], mode: &TagMode) {
+    let start = out.buf.len();
+    splat!(out; match self);
+    let arms_at = out.buf.len();
+
+    for variant in variants {
+        let name_lit = variant_name_literal(ctx, variant);
+        let tag_lit = match mode {
+            TagMode::Internal(t) | TagMode::Adjacent(t, _) => Some(*t),
+            _ => None,
+        };
+
+        match variant.kind {
+            EnumKind::None => {
+                if let Some(tag) = tag_lit {
+                    splat!(out;
+                        Self::[#: variant.name] => {
+                            [emit_table_alloc(out, ctx, "table", 1)]
+                            [emit_tag_insert(out, ctx, tag, name_lit)]
+                            Ok(table.into_item())
+                        }
+                    );
+                } else {
+                    splat!(out;
+                        Self::[#: variant.name] =>
+                            Ok([#ctx.crate_path]::Item::string([@name_lit.into()])),
+                    );
+                }
+            }
+            EnumKind::Tuple => {
+                if variant.fields.len() != 1 {
+                    throw!("Only single-field tuple variants are supported")
+                }
+                if matches!(mode, TagMode::Untagged) {
+                    splat!(out;
+                        Self::[#: variant.name](inner) =>
+                            [#ctx.crate_path]::ToToml::to_toml(inner, __ctx),
+                    );
+                } else {
+                    let cap = if tag_lit.is_some() { 2 } else { 1 };
+                    splat!(out;
+                        Self::[#: variant.name](inner) => {
+                            [emit_table_alloc(out, ctx, "table", cap)]
+                            [if let Some(tag) = tag_lit {
+                                emit_tag_insert(out, ctx, tag, name_lit.clone());
+                            }]
+                            table.insert(
+                                [#ctx.crate_path]::Key::anon([match mode {
+                                    TagMode::External => { out.buf.push(name_lit.into()); }
+                                    TagMode::Adjacent(_, content) => { out.buf.push(TokenTree::Literal((*content).clone())); }
+                                    _ => {}
+                                }]),
+                                [#ctx.crate_path]::ToToml::to_toml(inner, __ctx)?,
+                                __ctx.arena,
+                            );
+                            Ok(table.into_item())
+                        }
+                    );
+                }
+            }
+            EnumKind::Struct => {
+                let n = count_ser_fields(variant.fields);
+                let arm_body_start = out.buf.len();
+
+                match mode {
+                    TagMode::External => {
+                        emit_table_alloc(out, ctx, "table", n);
+                        emit_table_field_ser(
+                            out,
+                            ctx,
+                            variant.fields,
+                            "table",
+                            Some(variant),
+                            false,
+                        );
+                        emit_table_alloc(out, ctx, "outer", 1);
+                        splat!(out;
+                            outer.insert(
+                                [#ctx.crate_path]::Key::anon([@name_lit.into()]),
+                                table.into_item(),
+                                __ctx.arena,
+                            );
+                            Ok(outer.into_item())
+                        );
+                    }
+                    TagMode::Internal(tag) => {
+                        emit_table_alloc(out, ctx, "table", n + 1);
+                        emit_tag_insert(out, ctx, tag, name_lit);
+                        emit_table_field_ser(
+                            out,
+                            ctx,
+                            variant.fields,
+                            "table",
+                            Some(variant),
+                            false,
+                        );
+                        splat!(out; Ok(table.into_item()));
+                    }
+                    TagMode::Adjacent(tag, content) => {
+                        emit_table_alloc(out, ctx, "table", n);
+                        emit_table_field_ser(
+                            out,
+                            ctx,
+                            variant.fields,
+                            "table",
+                            Some(variant),
+                            false,
+                        );
+                        emit_table_alloc(out, ctx, "outer", 2);
+                        emit_tag_insert(out, ctx, tag, name_lit);
+                        splat!(out;
+                            outer.insert(
+                                [#ctx.crate_path]::Key::anon([@TokenTree::Literal((*content).clone())]),
+                                table.into_item(),
+                                __ctx.arena,
+                            );
+                            Ok(outer.into_item())
+                        );
+                    }
+                    TagMode::Untagged => {
+                        emit_table_alloc(out, ctx, "table", n);
+                        emit_table_field_ser(
+                            out,
+                            ctx,
+                            variant.fields,
+                            "table",
+                            Some(variant),
+                            false,
+                        );
+                        splat!(out; Ok(table.into_item()));
+                    }
+                }
+
+                emit_struct_variant_to_arm(out, variant, arm_body_start);
+            }
+        }
+    }
+
+    out.tt_group(Delimiter::Brace, arms_at);
+    let body = out.split_off_stream(start);
+    impl_to_toml(out, ctx, body);
+}
 
 fn enum_from_toml_external(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVariant]) {
     let has_unit = ctx.target.enum_flags & ENUM_CONTAINS_UNIT_VARIANT != 0;
@@ -783,7 +915,6 @@ fn enum_from_toml_external(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVari
 
     let start = out.buf.len();
 
-    // Unit variants: check as_str first
     if has_unit {
         let if_body_start = out.buf.len();
         splat!(out;
@@ -805,7 +936,6 @@ fn enum_from_toml_external(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVari
         );
     }
 
-    // Complex variants: table with exactly 1 key
     if has_complex {
         splat!(out;
             let table = __item.expect_table(__ctx)?;
@@ -825,13 +955,11 @@ fn enum_from_toml_external(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVari
         splat!(out;
             if !(entries.len() == [@one_lit])
                 [@TokenTree::Group(Group::new(Delimiter::Brace, err_body))]
-        );
-        splat!(out;
             let (key, value) = &entries [@zero_index];
         );
 
-        // Build match arms for complex variants
-        let arms_start = out.buf.len();
+        splat!(out; match key . name);
+        let arms_at = out.buf.len();
         for variant in variants {
             if matches!(variant.kind, EnumKind::None) {
                 continue;
@@ -844,24 +972,24 @@ fn enum_from_toml_external(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVari
                     }
                     splat!(out;
                         [@name_lit.into()] => Ok(Self::[#: variant.name](
-                            [~&ctx.crate_path]::FromToml::from_toml(__ctx, value)?
+                            [#ctx.crate_path]::FromToml::from_toml(__ctx, value)?
                         )),
                     );
                 }
                 EnumKind::Struct => {
-                    let arm_body_start = out.buf.len();
+                    splat!(out; [@name_lit.into()] =>);
+                    let arm_at = out.buf.len();
                     splat!(out; let __subtable = value.expect_table(__ctx)?;);
-                    emit_table_field_deser(out, ctx, variant.fields, "__subtable", Some(variant), &[]);
-                    splat!(out;
-                        Ok(Self::[#: variant.name] {
-                            [for field in variant.fields { splat!(out; [#: field.name],); }]
-                        })
+                    emit_table_field_deser(
+                        out,
+                        ctx,
+                        variant.fields,
+                        "__subtable",
+                        Some(variant),
+                        &[],
                     );
-                    let arm_body = out.split_off_stream(arm_body_start);
-                    splat!(out;
-                        [@name_lit.into()] =>
-                            [@TokenTree::Group(Group::new(Delimiter::Brace, arm_body))]
-                    );
+                    emit_ok_self_variant(out, variant);
+                    out.tt_group(Delimiter::Brace, arm_at);
                 }
                 EnumKind::None => {}
             }
@@ -870,10 +998,7 @@ fn enum_from_toml_external(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVari
             _ => Err(__ctx.error_expected_but_found(
                 [@TokenTree::Literal(Literal::string("a known variant"))], __item)),
         );
-        let arms = out.split_off_stream(arms_start);
-        splat!(out;
-            match key.name [@TokenTree::Group(Group::new(Delimiter::Brace, arms))]
-        );
+        out.tt_group(Delimiter::Brace, arms_at);
     } else if !has_unit {
         splat!(out;
             Err(__ctx.error_expected_but_found(
@@ -884,63 +1009,6 @@ fn enum_from_toml_external(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVari
     let body = out.split_off_stream(start);
     impl_from_toml(out, ctx, body);
 }
-
-fn enum_to_toml_external(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVariant]) {
-    let start = out.buf.len();
-
-    let arms_start = out.buf.len();
-    for variant in variants {
-        let name_lit = variant_name_literal(ctx, variant);
-        match variant.kind {
-            EnumKind::None => {
-                splat!(out;
-                    Self::[#: variant.name] =>
-                        Ok([~&ctx.crate_path]::Item::string([@name_lit.into()])),
-                );
-            }
-            EnumKind::Tuple => {
-                if variant.fields.len() != 1 {
-                    throw!("Only single-field tuple variants are supported in external tagging")
-                }
-                splat!(out;
-                    Self::[#: variant.name](inner) => {
-                        [emit_table_alloc(out, ctx, "table", 1)]
-                        table.insert(
-                            [~&ctx.crate_path]::Key::anon([@name_lit.into()]),
-                            [~&ctx.crate_path]::ToToml::to_toml(inner, __ctx)?,
-                            __ctx.arena,
-                        );
-                        Ok(table.into_item())
-                    }
-                );
-            }
-            EnumKind::Struct => {
-                let arm_body_start = out.buf.len();
-                emit_table_alloc(out, ctx, "table", count_ser_fields(variant.fields));
-                emit_table_field_ser(out, ctx, variant.fields, "table", Some(variant), false);
-                emit_table_alloc(out, ctx, "outer", 1);
-                splat!(out;
-                    outer.insert(
-                        [~&ctx.crate_path]::Key::anon([@name_lit.into()]),
-                        table.into_item(),
-                        __ctx.arena,
-                    );
-                    Ok(outer.into_item())
-                );
-                emit_struct_variant_to_arm(out, variant, arm_body_start);
-            }
-        }
-    }
-    let arms = out.split_off_stream(arms_start);
-    splat!(out;
-        match self [@TokenTree::Group(Group::new(Delimiter::Brace, arms))]
-    );
-
-    let body = out.split_off_stream(start);
-    impl_to_toml(out, ctx, body);
-}
-
-// ── Internal tagging ─────────────────────────────────────────────
 
 fn enum_from_toml_internal(
     out: &mut RustWriter,
@@ -954,49 +1022,47 @@ fn enum_from_toml_internal(
 
     let start = out.buf.len();
 
-    splat!(out;
-        let __table = __item.expect_table(__ctx)?;
-    );
+    splat!(out; let __table = __item.expect_table(__ctx)?;);
 
     // First pass: find tag
-    let tag_loop_body_start = out.buf.len();
+    splat!(out; let mut __tag: Option<&str> = None; for);
+    let pat_at = out.buf.len();
+    splat!(out; __key, __value);
+    out.tt_group(Delimiter::Parenthesis, pat_at);
+    splat!(out; in __table);
+    let tag_body_at = out.buf.len();
     splat!(out;
         if __key.name == [@tag_lit.clone().into()] {
-            __tag = Some([~&ctx.crate_path]::FromToml::from_toml(__ctx, __value)?);
+            __tag = Some([#ctx.crate_path]::FromToml::from_toml(__ctx, __value)?);
             break;
         }
     );
-    let tag_loop_body = out.split_off_stream(tag_loop_body_start);
-    let tag_for_pat = {
-        let pat_stream = token_stream!(out; __key, __value);
-        TokenTree::Group(Group::new(Delimiter::Parenthesis, pat_stream))
-    };
-    splat!(out;
-        let mut __tag: Option<&str> = None;
-        for [@tag_for_pat] in __table
-            [@TokenTree::Group(Group::new(Delimiter::Brace, tag_loop_body))]
-    );
+    out.tt_group(Delimiter::Brace, tag_body_at);
 
     // Check tag was found
-    let missing_tag_else_start = out.buf.len();
+    splat!(out; let Some(__tag) = __tag else);
+    let else_at = out.buf.len();
     splat!(out;
         return Err(__ctx.report_missing_field([@tag_lit.clone().into()], __item.span_unchecked()));
     );
-    let missing_tag_else = out.split_off_stream(missing_tag_else_start);
-    splat!(out;
-        let Some(__tag) = __tag else
-            [@TokenTree::Group(Group::new(Delimiter::Brace, missing_tag_else))]
-        ;
-    );
+    out.tt_group(Delimiter::Brace, else_at);
+    splat!(out; ;);
 
     // Second pass: dispatch to variant
-    let arms_start = out.buf.len();
+    splat!(out; match __tag);
+    let arms_at = out.buf.len();
     for variant in variants {
         let name_lit = variant_name_literal(ctx, variant);
         match variant.kind {
             EnumKind::None => {
-                let arm_body_start = out.buf.len();
-                let check_body_start = out.buf.len();
+                splat!(out; [@name_lit.into()] =>);
+                let arm_at = out.buf.len();
+                splat!(out; for);
+                let cpat_at = out.buf.len();
+                splat!(out; __key, __value);
+                out.tt_group(Delimiter::Parenthesis, cpat_at);
+                splat!(out; in __table);
+                let check_at = out.buf.len();
                 splat!(out;
                     if __key.name != [@tag_lit.clone().into()] {
                         return Err(__ctx.error_message_at(
@@ -1004,24 +1070,13 @@ fn enum_from_toml_internal(
                         ));
                     }
                 );
-                let check_body = out.split_off_stream(check_body_start);
-                let check_pat = {
-                    let pat_stream = token_stream!(out; __key, __value);
-                    TokenTree::Group(Group::new(Delimiter::Parenthesis, pat_stream))
-                };
-                splat!(out;
-                    for [@check_pat] in __table
-                        [@TokenTree::Group(Group::new(Delimiter::Brace, check_body))]
-                    Ok(Self::[#: variant.name])
-                );
-                let arm_body = out.split_off_stream(arm_body_start);
-                splat!(out;
-                    [@name_lit.into()] =>
-                        [@TokenTree::Group(Group::new(Delimiter::Brace, arm_body))]
-                );
+                out.tt_group(Delimiter::Brace, check_at);
+                splat!(out; Ok(Self::[#: variant.name]));
+                out.tt_group(Delimiter::Brace, arm_at);
             }
             EnumKind::Struct => {
-                let arm_body_start = out.buf.len();
+                splat!(out; [@name_lit.into()] =>);
+                let arm_at = out.buf.len();
                 splat!(out; let __subtable = __table;);
                 emit_table_field_deser(
                     out,
@@ -1031,16 +1086,8 @@ fn enum_from_toml_internal(
                     Some(variant),
                     &[tag_lit.clone()],
                 );
-                splat!(out;
-                    Ok(Self::[#: variant.name] {
-                        [for field in variant.fields { splat!(out; [#: field.name],); }]
-                    })
-                );
-                let arm_body = out.split_off_stream(arm_body_start);
-                splat!(out;
-                    [@name_lit.into()] =>
-                        [@TokenTree::Group(Group::new(Delimiter::Brace, arm_body))]
-                );
+                emit_ok_self_variant(out, variant);
+                out.tt_group(Delimiter::Brace, arm_at);
             }
             EnumKind::Tuple => {}
         }
@@ -1049,67 +1096,11 @@ fn enum_from_toml_internal(
         _ => Err(__ctx.error_expected_but_found(
             [@TokenTree::Literal(Literal::string("a known variant"))], __item)),
     );
-    let arms = out.split_off_stream(arms_start);
-    splat!(out;
-        match __tag [@TokenTree::Group(Group::new(Delimiter::Brace, arms))]
-    );
+    out.tt_group(Delimiter::Brace, arms_at);
 
     let body = out.split_off_stream(start);
     impl_from_toml(out, ctx, body);
 }
-
-fn enum_to_toml_internal(
-    out: &mut RustWriter,
-    ctx: &Ctx,
-    variants: &[EnumVariant],
-    tag_lit: &Literal,
-) {
-    let start = out.buf.len();
-
-    let arms_start = out.buf.len();
-    for variant in variants {
-        let name_lit = variant_name_literal(ctx, variant);
-        match variant.kind {
-            EnumKind::None => {
-                splat!(out;
-                    Self::[#: variant.name] => {
-                        [emit_table_alloc(out, ctx, "table", 1)]
-                        table.insert(
-                            [~&ctx.crate_path]::Key::anon([@tag_lit.clone().into()]),
-                            [~&ctx.crate_path]::Item::string([@name_lit.into()]),
-                            __ctx.arena,
-                        );
-                        Ok(table.into_item())
-                    }
-                );
-            }
-            EnumKind::Struct => {
-                let arm_body_start = out.buf.len();
-                emit_table_alloc(out, ctx, "table", count_ser_fields(variant.fields) + 1);
-                splat!(out;
-                    table.insert(
-                        [~&ctx.crate_path]::Key::anon([@tag_lit.clone().into()]),
-                        [~&ctx.crate_path]::Item::string([@name_lit.into()]),
-                        __ctx.arena,
-                    );
-                );
-                emit_table_field_ser(out, ctx, variant.fields, "table", Some(variant), false);
-                splat!(out; Ok(table.into_item()));
-                emit_struct_variant_to_arm(out, variant, arm_body_start);
-            }
-            EnumKind::Tuple => {}
-        }
-    }
-    let arms = out.split_off_stream(arms_start);
-    splat!(out;
-        match self [@TokenTree::Group(Group::new(Delimiter::Brace, arms))]
-    );
-
-    let body = out.split_off_stream(start);
-    impl_to_toml(out, ctx, body);
-}
-
-// ── Adjacent tagging ─────────────────────────────────────────────
 
 fn enum_from_toml_adjacent(
     out: &mut RustWriter,
@@ -1120,18 +1111,24 @@ fn enum_from_toml_adjacent(
 ) {
     let start = out.buf.len();
 
-    // Extract tag and content via for-loop
     splat!(out;
         let __table = __item.expect_table(__ctx)?;
         let mut __tag: Option<&str> = None;
-        let mut __content: Option<& [~&ctx.crate_path]::Item<#[#: &ctx.lifetime]> > = None;
+        let mut __content: Option<& [#ctx.crate_path]::Item<#[#: &ctx.lifetime]> > = None;
     );
 
-    // Build the extraction loop
-    let extract_arms_start = out.buf.len();
+    // Extraction loop
+    splat!(out; for);
+    let pat_at = out.buf.len();
+    splat!(out; __key, __value);
+    out.tt_group(Delimiter::Parenthesis, pat_at);
+    splat!(out; in __table);
+    let for_body_at = out.buf.len();
+    splat!(out; match __key . name);
+    let extract_arms_at = out.buf.len();
     splat!(out;
         [@tag_lit.clone().into()] => {
-            __tag = Some([~&ctx.crate_path]::FromToml::from_toml(__ctx, __value)?);
+            __tag = Some([#ctx.crate_path]::FromToml::from_toml(__ctx, __value)?);
         }
         [@content_lit.clone().into()] => {
             __content = Some(__value);
@@ -1142,59 +1139,39 @@ fn enum_from_toml_adjacent(
             ));
         }
     );
-    let extract_arms = out.split_off_stream(extract_arms_start);
-
-    let extract_body_start = out.buf.len();
-    splat!(out;
-        match __key.name [@TokenTree::Group(Group::new(Delimiter::Brace, extract_arms))]
-    );
-    let extract_body = out.split_off_stream(extract_body_start);
-
-    let extract_pat = {
-        let pat_stream = token_stream!(out; __key, __value);
-        TokenTree::Group(Group::new(Delimiter::Parenthesis, pat_stream))
-    };
-    splat!(out;
-        for [@extract_pat] in __table
-            [@TokenTree::Group(Group::new(Delimiter::Brace, extract_body))]
-    );
+    out.tt_group(Delimiter::Brace, extract_arms_at);
+    out.tt_group(Delimiter::Brace, for_body_at);
 
     // Check tag was found
-    let missing_tag_else_start = out.buf.len();
+    splat!(out; let Some(__tag) = __tag else);
+    let else_at = out.buf.len();
     splat!(out;
         return Err(__ctx.report_missing_field([@tag_lit.clone().into()], __item.span_unchecked()));
     );
-    let missing_tag_else = out.split_off_stream(missing_tag_else_start);
-    splat!(out;
-        let Some(__tag) = __tag else
-            [@TokenTree::Group(Group::new(Delimiter::Brace, missing_tag_else))]
-        ;
-    );
+    out.tt_group(Delimiter::Brace, else_at);
+    splat!(out; ;);
 
     // Dispatch on tag
-    let arms_start = out.buf.len();
+    splat!(out; match __tag);
+    let arms_at = out.buf.len();
     for variant in variants {
         let name_lit = variant_name_literal(ctx, variant);
         match variant.kind {
             EnumKind::None => {
-                splat!(out;
-                    [@name_lit.into()] => {
-                        Ok(Self::[#: variant.name])
-                    }
-                );
+                splat!(out; [@name_lit.into()] => { Ok(Self::[#: variant.name]) });
             }
             EnumKind::Tuple | EnumKind::Struct => {
-                let arm_body_start = out.buf.len();
-                let missing_content_else_start = out.buf.len();
+                splat!(out; [@name_lit.into()] =>);
+                let arm_at = out.buf.len();
+
+                // Require content
+                splat!(out; let Some(__content) = __content else);
+                let ce_at = out.buf.len();
                 splat!(out;
                     return Err(__ctx.report_missing_field([@content_lit.clone().into()], __item.span_unchecked()));
                 );
-                let missing_content_else = out.split_off_stream(missing_content_else_start);
-                splat!(out;
-                    let Some(__content) = __content else
-                        [@TokenTree::Group(Group::new(Delimiter::Brace, missing_content_else))]
-                    ;
-                );
+                out.tt_group(Delimiter::Brace, ce_at);
+                splat!(out; ;);
 
                 match variant.kind {
                     EnumKind::Tuple => {
@@ -1203,27 +1180,26 @@ fn enum_from_toml_adjacent(
                         }
                         splat!(out;
                             Ok(Self::[#: variant.name](
-                                [~&ctx.crate_path]::FromToml::from_toml(__ctx, __content)?
+                                [#ctx.crate_path]::FromToml::from_toml(__ctx, __content)?
                             ))
                         );
                     }
                     EnumKind::Struct => {
                         splat!(out; let __subtable = __content.expect_table(__ctx)?;);
-                        emit_table_field_deser(out, ctx, variant.fields, "__subtable", Some(variant), &[]);
-                        splat!(out;
-                            Ok(Self::[#: variant.name] {
-                                [for field in variant.fields { splat!(out; [#: field.name],); }]
-                            })
+                        emit_table_field_deser(
+                            out,
+                            ctx,
+                            variant.fields,
+                            "__subtable",
+                            Some(variant),
+                            &[],
                         );
+                        emit_ok_self_variant(out, variant);
                     }
                     EnumKind::None => {}
                 }
 
-                let arm_body = out.split_off_stream(arm_body_start);
-                splat!(out;
-                    [@name_lit.into()] =>
-                        [@TokenTree::Group(Group::new(Delimiter::Brace, arm_body))]
-                );
+                out.tt_group(Delimiter::Brace, arm_at);
             }
         }
     }
@@ -1231,94 +1207,11 @@ fn enum_from_toml_adjacent(
         _ => Err(__ctx.error_expected_but_found(
             [@TokenTree::Literal(Literal::string("a known variant"))], __item)),
     );
-    let arms = out.split_off_stream(arms_start);
-    splat!(out;
-        match __tag [@TokenTree::Group(Group::new(Delimiter::Brace, arms))]
-    );
+    out.tt_group(Delimiter::Brace, arms_at);
 
     let body = out.split_off_stream(start);
     impl_from_toml(out, ctx, body);
 }
-
-fn enum_to_toml_adjacent(
-    out: &mut RustWriter,
-    ctx: &Ctx,
-    variants: &[EnumVariant],
-    tag_lit: &Literal,
-    content_lit: &Literal,
-) {
-    let start = out.buf.len();
-
-    let arms_start = out.buf.len();
-    for variant in variants {
-        let name_lit = variant_name_literal(ctx, variant);
-        match variant.kind {
-            EnumKind::None => {
-                splat!(out;
-                    Self::[#: variant.name] => {
-                        [emit_table_alloc(out, ctx, "table", 1)]
-                        table.insert(
-                            [~&ctx.crate_path]::Key::anon([@tag_lit.clone().into()]),
-                            [~&ctx.crate_path]::Item::string([@name_lit.into()]),
-                            __ctx.arena,
-                        );
-                        Ok(table.into_item())
-                    }
-                );
-            }
-            EnumKind::Tuple => {
-                if variant.fields.len() != 1 {
-                    throw!("Only single-field tuple variants are supported")
-                }
-                splat!(out;
-                    Self::[#: variant.name](inner) => {
-                        [emit_table_alloc(out, ctx, "table", 2)]
-                        table.insert(
-                            [~&ctx.crate_path]::Key::anon([@tag_lit.clone().into()]),
-                            [~&ctx.crate_path]::Item::string([@name_lit.into()]),
-                            __ctx.arena,
-                        );
-                        table.insert(
-                            [~&ctx.crate_path]::Key::anon([@content_lit.clone().into()]),
-                            [~&ctx.crate_path]::ToToml::to_toml(inner, __ctx)?,
-                            __ctx.arena,
-                        );
-                        Ok(table.into_item())
-                    }
-                );
-            }
-            EnumKind::Struct => {
-                let arm_body_start = out.buf.len();
-                emit_table_alloc(out, ctx, "table", count_ser_fields(variant.fields));
-                emit_table_field_ser(out, ctx, variant.fields, "table", Some(variant), false);
-                emit_table_alloc(out, ctx, "outer", 2);
-                splat!(out;
-                    outer.insert(
-                        [~&ctx.crate_path]::Key::anon([@tag_lit.clone().into()]),
-                        [~&ctx.crate_path]::Item::string([@name_lit.into()]),
-                        __ctx.arena,
-                    );
-                    outer.insert(
-                        [~&ctx.crate_path]::Key::anon([@content_lit.clone().into()]),
-                        table.into_item(),
-                        __ctx.arena,
-                    );
-                    Ok(outer.into_item())
-                );
-                emit_struct_variant_to_arm(out, variant, arm_body_start);
-            }
-        }
-    }
-    let arms = out.split_off_stream(arms_start);
-    splat!(out;
-        match self [@TokenTree::Group(Group::new(Delimiter::Brace, arms))]
-    );
-
-    let body = out.split_off_stream(start);
-    impl_to_toml(out, ctx, body);
-}
-
-// ── Untagged ─────────────────────────────────────────────────────
 
 fn enum_from_toml_untagged(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVariant]) {
     let start = out.buf.len();
@@ -1352,7 +1245,7 @@ fn enum_from_toml_untagged(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVari
                 }
                 if propagate {
                     splat!(out;
-                        match [~&ctx.crate_path]::FromToml::from_toml(__ctx, __item) {
+                        match [#ctx.crate_path]::FromToml::from_toml(__ctx, __item) {
                             Ok(__val) => return Ok(Self::[#: variant.name](__val)),
                             Err(__e) => return Err(__e),
                         }
@@ -1360,7 +1253,7 @@ fn enum_from_toml_untagged(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVari
                 } else {
                     splat!(out; {
                         let __err_len = __ctx.errors.len();
-                        match [~&ctx.crate_path]::FromToml::from_toml(__ctx, __item) {
+                        match [#ctx.crate_path]::FromToml::from_toml(__ctx, __item) {
                             Ok(__val) => return Ok(Self::[#: variant.name](__val)),
                             Err(_) => { __ctx.errors.truncate(__err_len); }
                         }
@@ -1370,7 +1263,14 @@ fn enum_from_toml_untagged(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVari
             EnumKind::Struct => {
                 if propagate {
                     splat!(out; let __subtable = __item.expect_table(__ctx)?;);
-                    emit_table_field_deser(out, ctx, variant.fields, "__subtable", Some(variant), &[]);
+                    emit_table_field_deser(
+                        out,
+                        ctx,
+                        variant.fields,
+                        "__subtable",
+                        Some(variant),
+                        &[],
+                    );
                     splat!(out;
                         return Ok(Self::[#: variant.name] {
                             [for field in variant.fields { splat!(out; [#: field.name],); }]
@@ -1379,19 +1279,22 @@ fn enum_from_toml_untagged(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVari
                 } else {
                     let closure_body_start = out.buf.len();
                     splat!(out; let __subtable = __item.expect_table(__ctx)?;);
-                    emit_table_field_deser(out, ctx, variant.fields, "__subtable", Some(variant), &[]);
-                    splat!(out;
-                        Ok(Self::[#: variant.name] {
-                            [for field in variant.fields { splat!(out; [#: field.name],); }]
-                        })
+                    emit_table_field_deser(
+                        out,
+                        ctx,
+                        variant.fields,
+                        "__subtable",
+                        Some(variant),
+                        &[],
                     );
+                    emit_ok_self_variant(out, variant);
                     let closure_body = out.split_off_stream(closure_body_start);
                     let closure_body_group =
                         TokenTree::Group(Group::new(Delimiter::Brace, closure_body));
 
                     splat!(out; {
                         let __err_len = __ctx.errors.len();
-                        let __result: ::std::result::Result<Self, [~&ctx.crate_path]::Failed> =
+                        let __result: ::std::result::Result<Self, [#ctx.crate_path]::Failed> =
                             (|| [@closure_body_group]) ();
                         match __result {
                             Ok(__val) => return Ok(__val),
@@ -1402,20 +1305,18 @@ fn enum_from_toml_untagged(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVari
             }
         }
 
-        // If this variant has a hint, wrap the inner code in a predicate check
         if let Some(predicate) = variant.try_if.as_deref().or(variant.final_if.as_deref()) {
             let inner_code = out.split_off_stream(inner_start);
             let inner_group = TokenTree::Group(Group::new(Delimiter::Brace, inner_code));
             let pred_stream: TokenStream = predicate.iter().cloned().collect();
             let pred_group = TokenTree::Group(Group::new(Delimiter::Parenthesis, pred_stream));
             splat!(out; {
-                let __pred: fn(& mut [~&ctx.crate_path]::Context<#[#: &ctx.lifetime]>, & [~&ctx.crate_path]::Item<#[#: &ctx.lifetime]>) -> bool = [@pred_group];
+                let __pred: fn(& mut [#ctx.crate_path]::Context<#[#: &ctx.lifetime]>, & [#ctx.crate_path]::Item<#[#: &ctx.lifetime]>) -> bool = [@pred_group];
                 if __pred(__ctx, __item) [@inner_group]
             });
         }
     }
 
-    // Trailing fallback: needed when the last variant has a hint (could be skipped)
     if !last_is_unhinted {
         splat!(out;
             Err(__ctx.error_expected_but_found(
@@ -1426,48 +1327,6 @@ fn enum_from_toml_untagged(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVari
     let body = out.split_off_stream(start);
     impl_from_toml(out, ctx, body);
 }
-
-fn enum_to_toml_untagged(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVariant]) {
-    let start = out.buf.len();
-
-    let arms_start = out.buf.len();
-    for variant in variants {
-        let name_lit = variant_name_literal(ctx, variant);
-        match variant.kind {
-            EnumKind::None => {
-                splat!(out;
-                    Self::[#: variant.name] =>
-                        Ok([~&ctx.crate_path]::Item::string([@name_lit.into()])),
-                );
-            }
-            EnumKind::Tuple => {
-                if variant.fields.len() != 1 {
-                    throw!("Only single-field tuple variants are supported in untagged enums")
-                }
-                splat!(out;
-                    Self::[#: variant.name](inner) =>
-                        [~&ctx.crate_path]::ToToml::to_toml(inner, __ctx),
-                );
-            }
-            EnumKind::Struct => {
-                let arm_body_start = out.buf.len();
-                emit_table_alloc(out, ctx, "table", count_ser_fields(variant.fields));
-                emit_table_field_ser(out, ctx, variant.fields, "table", Some(variant), false);
-                splat!(out; Ok(table.into_item()));
-                emit_struct_variant_to_arm(out, variant, arm_body_start);
-            }
-        }
-    }
-    let arms = out.split_off_stream(arms_start);
-    splat!(out;
-        match self [@TokenTree::Group(Group::new(Delimiter::Brace, arms))]
-    );
-
-    let body = out.split_off_stream(start);
-    impl_to_toml(out, ctx, body);
-}
-
-// ── Main dispatch ────────────────────────────────────────────────
 
 fn handle_enum(output: &mut RustWriter, target: &DeriveTargetInner, variants: &[EnumVariant]) {
     if target.content.is_some() && target.tag.is_none() {
@@ -1508,17 +1367,19 @@ fn handle_enum(output: &mut RustWriter, target: &DeriveTargetInner, variants: &[
     }
 
     if target.to_toml {
-        if target.untagged {
-            enum_to_toml_untagged(output, &ctx, variants);
+        if is_string_enum {
+            enum_to_toml_string(output, &ctx, variants);
         } else {
-            match (&target.tag, &target.content) {
-                (None, _) if is_string_enum => enum_to_toml_string(output, &ctx, variants),
-                (None, _) => enum_to_toml_external(output, &ctx, variants),
-                (Some(tag_lit), None) => enum_to_toml_internal(output, &ctx, variants, tag_lit),
-                (Some(tag_lit), Some(content_lit)) => {
-                    enum_to_toml_adjacent(output, &ctx, variants, tag_lit, content_lit)
+            let mode = if target.untagged {
+                TagMode::Untagged
+            } else {
+                match (&target.tag, &target.content) {
+                    (None, _) => TagMode::External,
+                    (Some(tag_lit), None) => TagMode::Internal(tag_lit),
+                    (Some(tag_lit), Some(content_lit)) => TagMode::Adjacent(tag_lit, content_lit),
                 }
-            }
+            };
+            enum_to_toml(output, &ctx, variants, &mode);
         }
     }
 }
@@ -1544,7 +1405,6 @@ pub fn inner_derive(stream: TokenStream) -> TokenStream {
     };
     let (kind, body) = ast::extract_derive_target(&mut target, &outer_tokens);
 
-    // Default to from_item when using #[derive(Toml)] with no trait specified
     if !(target.from_toml || target.to_toml) {
         target.from_toml = true;
     }

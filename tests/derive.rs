@@ -6,7 +6,6 @@ use toml_spanner::{
 use toml_spanner_macros::Toml;
 
 #[derive(Toml, Debug, PartialEq)]
-#[toml(FromToml)]
 struct Config {
     name: String,
     port: u16,
@@ -760,7 +759,7 @@ fn derive_generic_with_explicit_type() {
 
 // Option<T> with #[toml(required)]: missing field is an error
 #[derive(Toml, Debug, PartialEq)]
-#[toml(FromToml)]
+
 struct RequiredOption {
     #[toml(required)]
     val: Option<u32>,
@@ -783,7 +782,7 @@ fn required_option_absent() {
 
 // Option<T> with #[toml(default)]: missing field uses Default (None)
 #[derive(Toml, Debug, PartialEq)]
-#[toml(FromToml)]
+
 struct DefaultOption {
     #[toml(default)]
     val: Option<u32>,
@@ -803,7 +802,7 @@ fn default_option_absent() {
 
 // Option<T> with #[toml(default = Some(99))]: missing field uses custom default
 #[derive(Toml, Debug, PartialEq)]
-#[toml(FromToml)]
+
 struct DefaultOptionCustom {
     #[toml(default = Some(99))]
     val: Option<u32>,
@@ -823,7 +822,7 @@ fn default_option_custom_absent() {
 
 // Plain Option<T> (auto-detected) still works as before
 #[derive(Toml, Debug, PartialEq)]
-#[toml(FromToml)]
+
 struct PlainOption {
     val: Option<u32>,
 }
@@ -841,7 +840,7 @@ fn plain_option_absent() {
 }
 
 #[derive(Toml, Debug, PartialEq)]
-#[toml(FromToml)]
+
 struct WithAlias {
     #[toml(alias = "server_name")]
     name: String,
@@ -870,7 +869,7 @@ fn alias_duplicate_error() {
 }
 
 #[derive(Toml, Debug, PartialEq)]
-#[toml(FromToml)]
+
 struct MultiAlias {
     #[toml(alias = "colour", alias = "clr")]
     color: String,
@@ -902,7 +901,7 @@ fn multi_alias_duplicate_error() {
 }
 
 #[derive(Toml, Debug, PartialEq)]
-#[toml(FromToml)]
+
 struct AliasOptional {
     #[toml(alias = "nm")]
     name: Option<String>,
