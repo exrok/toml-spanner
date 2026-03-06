@@ -7,7 +7,7 @@ use crate::case::RenameRule;
 use crate::util::MemoryPool;
 use crate::writer::RustWriter;
 use crate::Error;
-use proc_macro2::{Delimiter, Group, Ident, Literal, Punct, Spacing, Span, TokenStream, TokenTree};
+use proc_macro2::{Delimiter, Group, Ident, Literal, Span, TokenStream, TokenTree};
 
 #[rustfmt::skip]
 macro_rules! throw {
@@ -217,6 +217,29 @@ fn field_name_literal_toml(_ctx: &Ctx, field: &Field, rename_rule: RenameRule) -
     }
 }
 
+fn variant_field_name_literal(ctx: &Ctx, field: &Field, variant: &EnumVariant) -> Literal {
+    if let Some(name) = field.attr.rename(FROM_TOML) {
+        return name.clone();
+    }
+    let rule = if variant.rename_all != RenameRule::None {
+        variant.rename_all
+    } else {
+        ctx.target.rename_all_fields
+    };
+    if rule != RenameRule::None {
+        Literal::string(&rule.apply_to_field(&field.name.to_string()))
+    } else {
+        Literal::string(&field.name.to_string())
+    }
+}
+
+fn field_name_lit(ctx: &Ctx, field: &Field, variant: Option<&EnumVariant>) -> Literal {
+    match variant {
+        Some(v) => variant_field_name_literal(ctx, field, v),
+        None => field_name_literal_toml(ctx, field, ctx.target.rename_all),
+    }
+}
+
 fn impl_from_toml(output: &mut RustWriter, ctx: &Ctx, inner: TokenStream) {
     let target = ctx.target;
     let any_generics = !target.generics.is_empty();
@@ -250,29 +273,71 @@ fn is_option_type(field: &Field) -> bool {
     }
 }
 
-fn struct_from_toml(out: &mut RustWriter, ctx: &Ctx, fields: &[Field]) {
-    // Detect flatten field (at most one)
+fn impl_to_toml(output: &mut RustWriter, ctx: &Ctx, inner: TokenStream) {
+    let target = ctx.target;
+    let any_generics = !target.generics.is_empty();
+    let lf = Ident::new("__de", Span::mixed_site());
+    splat! {
+        output;
+        ~[[automatically_derived]]
+        impl [?(!target.generics.is_empty()) < [fmt_generics(output, &target.generics, DEF)] >]
+         [~&ctx.crate_path]::ToToml for [#: &target.name][?(any_generics) <
+            [fmt_generics(output, &target.generics, USE)]
+        >]  [?(!target.where_clauses.is_empty() || !target.generic_field_types.is_empty() || !target.generic_flatten_field_types.is_empty())
+             where [for (ty in &target.generic_field_types) {
+                [~ty]: [~&ctx.crate_path]::ToToml,
+            }] [for (ty in &target.generic_flatten_field_types) {
+                [~ty]: [~&ctx.crate_path]::ToFlattened,
+            }] [~&target.where_clauses] ]
+        {
+            fn to_toml<# [#lf](& # [#lf] self, __ctx: &mut [~&ctx.crate_path]::ToContext<# [#lf]>)
+                -> ::std::result::Result<[~&ctx.crate_path]::Item<# [#lf]>, [~&ctx.crate_path]::Failed>
+                [@TokenTree::Group(Group::new(Delimiter::Brace, inner))]
+        }
+    };
+}
+
+// ── Shared helpers ───────────────────────────────────────────────
+
+fn emit_table_alloc(out: &mut RustWriter, ctx: &Ctx, var: &str, capacity: usize) {
+    let var_id = Ident::new(var, Span::call_site());
+    splat!(out;
+        let Some(mut [#var_id]) = [~&ctx.crate_path]::Table::try_with_capacity(
+            [@TokenTree::Literal(Literal::usize_unsuffixed(capacity))],
+            __ctx.arena
+        ) else {
+            return __ctx.report_error([@TokenTree::Literal(Literal::string("Table capacity exceeded maximum"))]);
+        };
+    );
+}
+
+/// Shared field deserialization from a table.
+/// Emits: variable declarations, for-loop with key matching, flatten finish, field unwrapping.
+/// The table to iterate must already be in scope as `table_ident`.
+fn emit_table_field_deser(
+    out: &mut RustWriter,
+    ctx: &Ctx,
+    fields: &[Field],
+    table_ident: &str,
+    variant: Option<&EnumVariant>,
+    skip_keys: &[Literal],
+) {
+    let table_id = Ident::new(table_ident, Span::call_site());
+
+    // Detect flatten field
     let mut flatten_field: Option<&Field> = None;
     for field in fields {
         if field.flags & Field::WITH_FLATTEN != 0 {
             if flatten_field.is_some() {
-                throw!("Only one #[toml(flatten)] field is allowed per struct")
+                throw!("Only one #[toml(flatten)] field is allowed")
             }
             flatten_field = Some(field);
         }
     }
 
-    let start = out.buf.len();
-
-    // expect_table instead of table_helper — avoids bitset allocation
-    splat!(out;
-        let __table = __item.expect_table(__ctx)?;
-    );
-
-    // Declare field variables: skip fields get their default, others get Option slots
+    // Declare field variables
     for field in fields {
         if field.flags & Field::WITH_FLATTEN != 0 {
-            // Flatten field: init partial accumulator
             splat!(out;
                 let mut __flatten_partial = < [~field.ty] as [~&ctx.crate_path]::FromFlattened<#[#: &ctx.lifetime]> >::init();
             );
@@ -298,14 +363,21 @@ fn struct_from_toml(out: &mut RustWriter, ctx: &Ctx, fields: &[Field]) {
         }
     }
 
-    // Build match arms for key dispatch
+    // Build match arms
     let match_arms_start = out.buf.len();
+
+    // Skip key arms (e.g. tag key in internal tagging)
+    for skip_key in skip_keys {
+        splat!(out; [@skip_key.clone().into()] => {});
+    }
+
+    // Field arms
     for field in fields {
         if field.flags & (Field::WITH_FROM_TOML_SKIP | Field::WITH_FLATTEN) != 0 {
             continue;
         }
 
-        let name_lit = field_name_literal_toml(ctx, field, ctx.target.rename_all);
+        let name_lit = field_name_lit(ctx, field, variant);
         let is_default = field.flags & Field::WITH_FROM_TOML_DEFAULT != 0;
         let is_option = field.flags & Field::WITH_FROM_TOML_OPTION != 0;
         let with_path = field.with(FROM_TOML);
@@ -322,43 +394,24 @@ fn struct_from_toml(out: &mut RustWriter, ctx: &Ctx, fields: &[Field]) {
             );
         }
 
+        // Build the from_toml call expression
+        let call_start = out.buf.len();
         if let Some(with) = with_path {
-            if is_required {
-                splat!(out;
-                    match [~with]::from_toml(__ctx, __value) {
-                        Ok(__val) => { [#: field.name] = Some(__val); }
-                        Err(__e) => return Err(__e),
-                    }
-                );
-            } else {
-                splat!(out;
-                    match [~with]::from_toml(__ctx, __value) {
-                        Ok(__val) => { [#: field.name] = Some(__val); }
-                        Err(_) => {}
-                    }
-                );
-            }
-        } else if is_required {
-            splat!(out;
-                match < [~field.ty] as [~&ctx.crate_path]::FromToml<#[#: &ctx.lifetime]> >::from_toml(__ctx, __value) {
-                    Ok(__val) => { [#: field.name] = Some(__val); }
-                    Err(__e) => return Err(__e),
-                }
-            );
+            splat!(out; [~with]::from_toml(__ctx, __value));
         } else {
-            // Optional/default: error already recorded by from_item, just skip
-            let inner_ty = if is_option {
-                option_inner_ty(field.ty)
-            } else {
-                field.ty
-            };
-            splat!(out;
-                match < [~inner_ty] as [~&ctx.crate_path]::FromToml<#[#: &ctx.lifetime]> >::from_toml(__ctx, __value) {
-                    Ok(__val) => { [#: field.name] = Some(__val); }
-                    Err(_) => {}
-                }
-            );
+            let ty = if is_option { option_inner_ty(field.ty) } else { field.ty };
+            splat!(out; < [~ty] as [~&ctx.crate_path]::FromToml<#[#: &ctx.lifetime]> >::from_toml(__ctx, __value));
         }
+        let call_expr = out.split_off_stream(call_start);
+
+        // Unified match with conditional error handling
+        splat!(out;
+            match [@TokenTree::Group(Group::new(Delimiter::None, call_expr))] {
+                Ok(__val) => { [#: field.name] = Some(__val); }
+                [?(is_required) Err(__e) => return Err(__e),]
+                [?(!is_required) Err(_) => {},]
+            }
+        );
 
         let arm_body = out.split_off_stream(arm_body_start);
         splat!(out; [@name_lit.into()]);
@@ -390,26 +443,23 @@ fn struct_from_toml(out: &mut RustWriter, ctx: &Ctx, fields: &[Field]) {
     }
     let match_arms = out.split_off_stream(match_arms_start);
 
-    // Build for-loop body (the match statement)
+    // Build for-loop
     let for_body_start = out.buf.len();
     splat!(out;
         match __key.name [@TokenTree::Group(Group::new(Delimiter::Brace, match_arms))]
     );
     let for_body = out.split_off_stream(for_body_start);
 
-    // Build for-loop pattern: (__key, __value)
     let for_pat = {
         let pat_stream = token_stream!(out; __key, __value);
         TokenTree::Group(Group::new(Delimiter::Parenthesis, pat_stream))
     };
-
-    // Emit the iterate-and-match loop
     splat!(out;
-        for [@for_pat] in __table
+        for [@for_pat] in [#table_id]
             [@TokenTree::Group(Group::new(Delimiter::Brace, for_body))]
     );
 
-    // Finish flatten partial after the loop
+    // Finish flatten partial
     if let Some(ff) = flatten_field {
         splat!(out;
             let [#: ff.name] = < [~ff.ty] as [~&ctx.crate_path]::FromFlattened<#[#: &ctx.lifetime]> >::finish(
@@ -418,7 +468,7 @@ fn struct_from_toml(out: &mut RustWriter, ctx: &Ctx, fields: &[Field]) {
         );
     }
 
-    // Unwrap required and default fields after the loop
+    // Unwrap required and default fields
     for field in fields {
         if field.flags
             & (Field::WITH_FROM_TOML_SKIP | Field::WITH_FLATTEN | Field::WITH_FROM_TOML_OPTION)
@@ -449,8 +499,7 @@ fn struct_from_toml(out: &mut RustWriter, ctx: &Ctx, fields: &[Field]) {
                 );
             }
         } else {
-            // Required: take + missing-field error
-            let name_lit = field_name_literal_toml(ctx, field, ctx.target.rename_all);
+            let name_lit = field_name_lit(ctx, field, variant);
             let else_body_start = out.buf.len();
             splat!(out;
                 return Err(__ctx.report_missing_field([@name_lit.into()], __item.span_unchecked()));
@@ -463,7 +512,128 @@ fn struct_from_toml(out: &mut RustWriter, ctx: &Ctx, fields: &[Field]) {
             );
         }
     }
+}
 
+/// Shared field serialization into a table.
+/// Emits insert calls for each non-skip field and to_flattened for flatten fields.
+/// `table_ident` names the table variable in scope.
+/// When `self_access` is true, fields are accessed as `&self.field`; otherwise as `field` (ref binding).
+fn emit_table_field_ser(
+    out: &mut RustWriter,
+    ctx: &Ctx,
+    fields: &[Field],
+    table_ident: &str,
+    variant: Option<&EnumVariant>,
+    self_access: bool,
+) {
+    let table_id = Ident::new(table_ident, Span::call_site());
+
+    for field in fields {
+        if field.flags & (Field::WITH_TO_TOML_SKIP | Field::WITH_FLATTEN) != 0 {
+            continue;
+        }
+        let name_lit = field_name_lit(ctx, field, variant);
+        let with_path = field.with(TO_TOML);
+        let skip_if = field.skip(TO_TOML).filter(|tokens| !tokens.is_empty());
+
+        let first_ty_ident = if let Some(TokenTree::Ident(ident)) = field.ty.first() {
+            ident.to_string()
+        } else {
+            String::new()
+        };
+
+        // Build field reference tokens
+        let field_ref = token_stream!(out;
+            [?(self_access) & self . [#: field.name]]
+            [?(!self_access) [#: field.name]]
+        );
+
+        let emit_start = out.buf.len();
+        if let Some(with) = with_path {
+            splat!(out;
+                [#table_id].insert(
+                    [~&ctx.crate_path]::Key::anon([@name_lit.into()]),
+                    [~with]::to_toml([@TokenTree::Group(Group::new(Delimiter::None, field_ref.clone()))], __ctx)?,
+                    __ctx.arena,
+                );
+            );
+        } else if first_ty_ident == "Option" {
+            splat!(out;
+                if let Some(__val) = [~&ctx.crate_path]::ToToml::to_optional_toml(
+                    [@TokenTree::Group(Group::new(Delimiter::None, field_ref.clone()))], __ctx)? {
+                    [#table_id].insert(
+                        [~&ctx.crate_path]::Key::anon([@name_lit.into()]),
+                        __val,
+                        __ctx.arena,
+                    );
+                }
+            );
+        } else {
+            splat!(out;
+                [#table_id].insert(
+                    [~&ctx.crate_path]::Key::anon([@name_lit.into()]),
+                    [~&ctx.crate_path]::ToToml::to_toml(
+                        [@TokenTree::Group(Group::new(Delimiter::None, field_ref.clone()))], __ctx)?,
+                    __ctx.arena,
+                );
+            );
+        }
+
+        if let Some(skip_tokens) = skip_if {
+            let emit_body = out.split_off_stream(emit_start);
+            splat!(out;
+                if !([~skip_tokens])([@TokenTree::Group(Group::new(Delimiter::None, field_ref))])
+                    [@TokenTree::Group(Group::new(Delimiter::Brace, emit_body))]
+            );
+        }
+    }
+
+    // Emit flatten field serialization
+    for field in fields {
+        if field.flags & Field::WITH_FLATTEN != 0 {
+            let field_ref = token_stream!(out;
+                [?(self_access) & self . [#: field.name]]
+                [?(!self_access) [#: field.name]]
+            );
+            splat!(out;
+                [~&ctx.crate_path]::ToFlattened::to_flattened(
+                    [@TokenTree::Group(Group::new(Delimiter::None, field_ref))],
+                    __ctx, &mut [#table_id])?;
+            );
+        }
+    }
+}
+
+/// Emit the `Self::Variant { ref field1, ref field2, ... } =>` match arm pattern
+/// with the given arm body.
+fn emit_struct_variant_to_arm(
+    out: &mut RustWriter,
+    variant: &EnumVariant,
+    arm_body_start: usize,
+) {
+    let arm_body = out.split_off_stream(arm_body_start);
+    splat!(out;
+        Self::[#: variant.name] {
+            [for field in variant.fields { splat!(out; ref [#: field.name],); }]
+        } =>
+            [@TokenTree::Group(Group::new(Delimiter::Brace, arm_body))]
+    );
+}
+
+/// Count non-skip, non-flatten fields for table capacity.
+fn count_ser_fields(fields: &[Field]) -> usize {
+    fields
+        .iter()
+        .filter(|f| f.flags & (Field::WITH_TO_TOML_SKIP | Field::WITH_FLATTEN) == 0)
+        .count()
+}
+
+// ── Struct handling ──────────────────────────────────────────────
+
+fn struct_from_toml(out: &mut RustWriter, ctx: &Ctx, fields: &[Field]) {
+    let start = out.buf.len();
+    splat!(out; let __table = __item.expect_table(__ctx)?;);
+    emit_table_field_deser(out, ctx, fields, "__table", None, &[]);
     splat!(out;
         Ok(Self {
             [for field in fields { splat!(out; [#: field.name],); }]
@@ -473,112 +643,11 @@ fn struct_from_toml(out: &mut RustWriter, ctx: &Ctx, fields: &[Field]) {
     impl_from_toml(out, ctx, body);
 }
 
-fn impl_to_toml(output: &mut RustWriter, ctx: &Ctx, inner: TokenStream) {
-    let target = ctx.target;
-    let any_generics = !target.generics.is_empty();
-    let lf = Ident::new("__de", Span::mixed_site());
-    splat! {
-        output;
-        ~[[automatically_derived]]
-        impl [?(!target.generics.is_empty()) < [fmt_generics(output, &target.generics, DEF)] >]
-         [~&ctx.crate_path]::ToToml for [#: &target.name][?(any_generics) <
-            [fmt_generics(output, &target.generics, USE)]
-        >]  [?(!target.where_clauses.is_empty() || !target.generic_field_types.is_empty() || !target.generic_flatten_field_types.is_empty())
-             where [for (ty in &target.generic_field_types) {
-                [~ty]: [~&ctx.crate_path]::ToToml,
-            }] [for (ty in &target.generic_flatten_field_types) {
-                [~ty]: [~&ctx.crate_path]::ToFlattened,
-            }] [~&target.where_clauses] ]
-        {
-            fn to_toml<# [#lf]>(& # [#lf] self, __ctx: &mut [~&ctx.crate_path]::ToContext<# [#lf]>)
-                -> ::std::result::Result<[~&ctx.crate_path]::Item<# [#lf]>, [~&ctx.crate_path]::Failed>
-                [@TokenTree::Group(Group::new(Delimiter::Brace, inner))]
-        }
-    };
-}
-
 fn struct_to_toml(out: &mut RustWriter, ctx: &Ctx, fields: &[Field]) {
-    let mut flatten_field: Option<&Field> = None;
-    let mut non_skip_count = 0usize;
-    for field in fields {
-        if field.flags & Field::WITH_FLATTEN != 0 {
-            flatten_field = Some(field);
-        } else if field.flags & Field::WITH_TO_TOML_SKIP == 0 {
-            non_skip_count += 1;
-        }
-    }
     let start = out.buf.len();
-    splat!(out;
-        let Some(mut __table) = [~&ctx.crate_path]::Table::try_with_capacity(
-            [@TokenTree::Literal(Literal::usize_unsuffixed(non_skip_count))],
-            __ctx.arena
-        ) else {
-            return __ctx.report_error([@TokenTree::Literal(Literal::string("Table capacity exceeded maximum"))]);
-        };
-    );
-    for field in fields {
-        if field.flags & (Field::WITH_TO_TOML_SKIP | Field::WITH_FLATTEN) != 0 {
-            continue;
-        }
-        let name_lit = field_name_literal_toml(ctx, field, ctx.target.rename_all);
-        let with_path = field.with(TO_TOML);
-        // Check for skip_if condition (non-empty skip tokens on TO_TOML)
-        let skip_if = field.skip(TO_TOML).filter(|tokens| !tokens.is_empty());
-
-        // Check if this is an Option field (should use to_optional_toml)
-        let first_ty_ident = if let Some(TokenTree::Ident(ident)) = field.ty.first() {
-            ident.to_string()
-        } else {
-            String::new()
-        };
-
-        // Emit the insert, possibly wrapped in a skip_if condition
-        let emit_start = out.buf.len();
-        if let Some(with) = with_path {
-            splat!(out;
-                __table.insert(
-                    [~&ctx.crate_path]::Key::anon([@name_lit.into()]),
-                    [~with]::to_toml(&self.[#: field.name], __ctx)?,
-                    __ctx.arena,
-                );
-            );
-        } else if first_ty_ident == "Option" {
-            splat!(out;
-                if let Some(__val) = [~&ctx.crate_path]::ToToml::to_optional_toml(&self.[#: field.name], __ctx)? {
-                    __table.insert(
-                        [~&ctx.crate_path]::Key::anon([@name_lit.into()]),
-                        __val,
-                        __ctx.arena,
-                    );
-                }
-            );
-        } else {
-            splat!(out;
-                __table.insert(
-                    [~&ctx.crate_path]::Key::anon([@name_lit.into()]),
-                    [~&ctx.crate_path]::ToToml::to_toml(&self.[#: field.name], __ctx)?,
-                    __ctx.arena,
-                );
-            );
-        }
-
-        if let Some(skip_tokens) = skip_if {
-            let emit_body = out.split_off_stream(emit_start);
-            splat!(out;
-                if !([~skip_tokens])(&self.[#: field.name])
-                    [@TokenTree::Group(Group::new(Delimiter::Brace, emit_body))]
-            );
-        }
-    }
-    // Emit flatten field serialization
-    if let Some(ff) = flatten_field {
-        splat!(out;
-            [~&ctx.crate_path]::ToFlattened::to_flattened(&self.[#: ff.name], __ctx, &mut __table)?;
-        );
-    }
-    splat!(out;
-        Ok(__table.into_item())
-    );
+    emit_table_alloc(out, ctx, "__table", count_ser_fields(fields));
+    emit_table_field_ser(out, ctx, fields, "__table", None, true);
+    splat!(out; Ok(__table.into_item()));
     let body = out.split_off_stream(start);
     impl_to_toml(out, ctx, body);
 }
@@ -649,6 +718,8 @@ fn handle_tuple_struct(output: &mut RustWriter, target: &DeriveTargetInner, fiel
     }
 }
 
+// ── Enum helpers ─────────────────────────────────────────────────
+
 fn variant_name_literal(ctx: &Ctx, variant: &EnumVariant) -> Literal {
     if let Some(name) = variant.rename(FROM_TOML) {
         return name.clone();
@@ -658,316 +729,6 @@ fn variant_name_literal(ctx: &Ctx, variant: &EnumVariant) -> Literal {
         Literal::string(&ctx.target.rename_all.apply_to_variant(&raw))
     } else {
         Literal::string(&raw)
-    }
-}
-
-fn variant_field_name_literal(ctx: &Ctx, field: &Field, variant: &EnumVariant) -> Literal {
-    if let Some(name) = field.attr.rename(FROM_TOML) {
-        return name.clone();
-    }
-    let rule = if variant.rename_all != RenameRule::None {
-        variant.rename_all
-    } else {
-        ctx.target.rename_all_fields
-    };
-    if rule != RenameRule::None {
-        Literal::string(&rule.apply_to_field(&field.name.to_string()))
-    } else {
-        Literal::string(&field.name.to_string())
-    }
-}
-
-/// Emit field deserialization from a table for a struct variant.
-/// Assumes `__subtable` is in scope (a `&Table` to iterate).
-/// Generates variable declarations, for-loop with match, and unwrapping.
-/// Does NOT emit the final `Ok(Self::Variant { ... })`.
-fn emit_variant_fields_from_table(
-    out: &mut RustWriter,
-    ctx: &Ctx,
-    variant: &EnumVariant,
-    fields: &[Field],
-    skip_keys: &[Literal],
-) {
-    // Detect flatten field (at most one)
-    let mut flatten_field: Option<&Field> = None;
-    for field in fields {
-        if field.flags & Field::WITH_FLATTEN != 0 {
-            if flatten_field.is_some() {
-                throw!("Only one #[toml(flatten)] field is allowed per variant")
-            }
-            flatten_field = Some(field);
-        }
-    }
-
-    // Declare field variables
-    for field in fields {
-        if field.flags & Field::WITH_FLATTEN != 0 {
-            splat!(out;
-                let mut __flatten_partial = < [~field.ty] as [~&ctx.crate_path]::FromFlattened<#[#: &ctx.lifetime]> >::init();
-            );
-            continue;
-        }
-        if field.flags & Field::WITH_FROM_TOML_SKIP != 0 {
-            if let Some(default_kind) = field.default(FROM_TOML) {
-                match default_kind {
-                    DefaultKind::Custom(tokens) => {
-                        splat!(out; let [#: field.name] = [~tokens.as_slice()];);
-                    }
-                    DefaultKind::Default => {
-                        splat!(out; let [#: field.name] = Default::default(););
-                    }
-                }
-            } else {
-                splat!(out; let [#: field.name] = Default::default(););
-            }
-        } else if field.flags & Field::WITH_FROM_TOML_OPTION != 0 {
-            splat!(out; let mut [#: field.name]: [~field.ty] = None;);
-        } else {
-            splat!(out; let mut [#: field.name] = None::<[~field.ty]>;);
-        }
-    }
-
-    // Build match arms
-    let match_arms_start = out.buf.len();
-
-    // Skip key arms (e.g. tag key in internal tagging)
-    for skip_key in skip_keys {
-        splat!(out;
-            [@skip_key.clone().into()] => {}
-        );
-    }
-
-    // Field arms
-    for field in fields {
-        if field.flags & (Field::WITH_FROM_TOML_SKIP | Field::WITH_FLATTEN) != 0 {
-            continue;
-        }
-
-        let name_lit = variant_field_name_literal(ctx, field, variant);
-        let is_default = field.flags & Field::WITH_FROM_TOML_DEFAULT != 0;
-        let is_option = field.flags & Field::WITH_FROM_TOML_OPTION != 0;
-        let with_path = field.with(FROM_TOML);
-        let is_required = !is_option && !is_default;
-        let has_aliases = field.attr.has_aliases(FROM_TOML);
-
-        let arm_body_start = out.buf.len();
-
-        if has_aliases {
-            splat!(out;
-                if [#: field.name].is_some() {
-                    return Err(__ctx.report_duplicate_field([@name_lit.clone().into()], __key.span));
-                }
-            );
-        }
-
-        if let Some(with) = with_path {
-            if is_required {
-                splat!(out;
-                    match [~with]::from_toml(__ctx, __value) {
-                        Ok(__val) => { [#: field.name] = Some(__val); }
-                        Err(__e) => return Err(__e),
-                    }
-                );
-            } else {
-                splat!(out;
-                    match [~with]::from_toml(__ctx, __value) {
-                        Ok(__val) => { [#: field.name] = Some(__val); }
-                        Err(_) => {}
-                    }
-                );
-            }
-        } else if is_required {
-            splat!(out;
-                match < [~field.ty] as [~&ctx.crate_path]::FromToml<#[#: &ctx.lifetime]> >::from_toml(__ctx, __value) {
-                    Ok(__val) => { [#: field.name] = Some(__val); }
-                    Err(__e) => return Err(__e),
-                }
-            );
-        } else {
-            let inner_ty = if is_option {
-                option_inner_ty(field.ty)
-            } else {
-                field.ty
-            };
-            splat!(out;
-                match < [~inner_ty] as [~&ctx.crate_path]::FromToml<#[#: &ctx.lifetime]> >::from_toml(__ctx, __value) {
-                    Ok(__val) => { [#: field.name] = Some(__val); }
-                    Err(_) => {}
-                }
-            );
-        }
-
-        let arm_body = out.split_off_stream(arm_body_start);
-        splat!(out; [@name_lit.into()]);
-        for alias in field.attr.aliases(FROM_TOML) {
-            splat!(out; | [@alias.clone().into()]);
-        }
-        splat!(out;
-            => [@TokenTree::Group(Group::new(Delimiter::Brace, arm_body))]
-        );
-    }
-
-    // Wildcard arm
-    if let Some(ff) = flatten_field {
-        splat!(out;
-            _ => {
-                let _ = < [~ff.ty] as [~&ctx.crate_path]::FromFlattened<#[#: &ctx.lifetime]> >::insert(
-                    __ctx, __key, __value, &mut __flatten_partial
-                );
-            }
-        );
-    } else {
-        splat!(out;
-            _ => {
-                return Err(__ctx.error_message_at(
-                    [@TokenTree::Literal(Literal::string("unexpected key"))], __key.span
-                ));
-            }
-        );
-    }
-    let match_arms = out.split_off_stream(match_arms_start);
-
-    // Build for-loop body
-    let for_body_start = out.buf.len();
-    splat!(out;
-        match __key.name [@TokenTree::Group(Group::new(Delimiter::Brace, match_arms))]
-    );
-    let for_body = out.split_off_stream(for_body_start);
-
-    let for_pat = {
-        let pat_stream = token_stream!(out; __key, __value);
-        TokenTree::Group(Group::new(Delimiter::Parenthesis, pat_stream))
-    };
-
-    splat!(out;
-        for [@for_pat] in __subtable
-            [@TokenTree::Group(Group::new(Delimiter::Brace, for_body))]
-    );
-
-    // Finish flatten partial
-    if let Some(ff) = flatten_field {
-        splat!(out;
-            let [#: ff.name] = < [~ff.ty] as [~&ctx.crate_path]::FromFlattened<#[#: &ctx.lifetime]> >::finish(
-                __ctx, __flatten_partial
-            )?;
-        );
-    }
-
-    // Unwrap required and default fields
-    for field in fields {
-        if field.flags
-            & (Field::WITH_FROM_TOML_SKIP | Field::WITH_FLATTEN | Field::WITH_FROM_TOML_OPTION)
-            != 0
-        {
-            continue;
-        }
-
-        let is_default = field.flags & Field::WITH_FROM_TOML_DEFAULT != 0;
-
-        if is_default {
-            if let Some(default_kind) = field.default(FROM_TOML) {
-                match default_kind {
-                    DefaultKind::Custom(tokens) => {
-                        splat!(out;
-                            let [#: field.name] = [#: field.name].unwrap_or_else(|| [~tokens.as_slice()]);
-                        );
-                    }
-                    DefaultKind::Default => {
-                        splat!(out;
-                            let [#: field.name] = [#: field.name].unwrap_or_default();
-                        );
-                    }
-                }
-            } else {
-                splat!(out;
-                    let [#: field.name] = [#: field.name].unwrap_or_default();
-                );
-            }
-        } else {
-            let name_lit = variant_field_name_literal(ctx, field, variant);
-            let else_body_start = out.buf.len();
-            splat!(out;
-                return Err(__ctx.report_missing_field([@name_lit.into()], __item.span_unchecked()));
-            );
-            let else_body = out.split_off_stream(else_body_start);
-            splat!(out;
-                let Some([#: field.name]) = [#: field.name].take() else
-                    [@TokenTree::Group(Group::new(Delimiter::Brace, else_body))]
-                ;
-            );
-        }
-    }
-}
-
-/// Emit field serialization into a table for a struct variant.
-/// Assumes `table` and `__ctx` are in scope.
-/// Fields are accessed via `ref` bindings from match destructuring,
-/// so field names are already references - no `&` prefix needed.
-fn emit_variant_fields_to_table(
-    out: &mut RustWriter,
-    ctx: &Ctx,
-    variant: &EnumVariant,
-    fields: &[Field],
-) {
-    for field in fields {
-        if field.flags & (Field::WITH_TO_TOML_SKIP | Field::WITH_FLATTEN) != 0 {
-            continue;
-        }
-        let name_lit = variant_field_name_literal(ctx, field, variant);
-        let with_path = field.with(TO_TOML);
-        let skip_if = field.skip(TO_TOML).filter(|tokens| !tokens.is_empty());
-
-        let first_ty_ident = if let Some(TokenTree::Ident(ident)) = field.ty.first() {
-            ident.to_string()
-        } else {
-            String::new()
-        };
-
-        let emit_start = out.buf.len();
-        if let Some(with) = with_path {
-            splat!(out;
-                table.insert(
-                    [~&ctx.crate_path]::Key::anon([@name_lit.into()]),
-                    [~with]::to_toml([#: field.name], __ctx)?,
-                    __ctx.arena,
-                );
-            );
-        } else if first_ty_ident == "Option" {
-            splat!(out;
-                if let Some(val) = [~&ctx.crate_path]::ToToml::to_optional_toml([#: field.name], __ctx)? {
-                    table.insert(
-                        [~&ctx.crate_path]::Key::anon([@name_lit.into()]),
-                        val,
-                        __ctx.arena,
-                    );
-                }
-            );
-        } else {
-            splat!(out;
-                table.insert(
-                    [~&ctx.crate_path]::Key::anon([@name_lit.into()]),
-                    [~&ctx.crate_path]::ToToml::to_toml([#: field.name], __ctx)?,
-                    __ctx.arena,
-                );
-            );
-        }
-
-        if let Some(skip_tokens) = skip_if {
-            let emit_body = out.split_off_stream(emit_start);
-            splat!(out;
-                if !([~skip_tokens])([#: field.name])
-                    [@TokenTree::Group(Group::new(Delimiter::Brace, emit_body))]
-            );
-        }
-    }
-
-    // Emit flatten field serialization
-    for field in fields {
-        if field.flags & Field::WITH_FLATTEN != 0 {
-            splat!(out;
-                [~&ctx.crate_path]::ToFlattened::to_flattened([#: field.name], __ctx, &mut table)?;
-            );
-        }
     }
 }
 
@@ -1025,7 +786,6 @@ fn enum_from_toml_external(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVari
     // Unit variants: check as_str first
     if has_unit {
         let if_body_start = out.buf.len();
-        // Build inner match for string check
         splat!(out;
             return match s {
                 [for variant in variants {
@@ -1091,7 +851,7 @@ fn enum_from_toml_external(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVari
                 EnumKind::Struct => {
                     let arm_body_start = out.buf.len();
                     splat!(out; let __subtable = value.expect_table(__ctx)?;);
-                    emit_variant_fields_from_table(out, ctx, variant, variant.fields, &[]);
+                    emit_table_field_deser(out, ctx, variant.fields, "__subtable", Some(variant), &[]);
                     splat!(out;
                         Ok(Self::[#: variant.name] {
                             [for field in variant.fields { splat!(out; [#: field.name],); }]
@@ -1144,12 +904,7 @@ fn enum_to_toml_external(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVarian
                 }
                 splat!(out;
                     Self::[#: variant.name](inner) => {
-                        let Some(mut table) = [~&ctx.crate_path]::Table::try_with_capacity(
-                            [@TokenTree::Literal(Literal::usize_unsuffixed(1))], __ctx.arena
-                        ) else {
-                            return __ctx.report_error(
-                                [@TokenTree::Literal(Literal::string("Table capacity exceeded maximum"))]);
-                        };
+                        [emit_table_alloc(out, ctx, "table", 1)]
                         table.insert(
                             [~&ctx.crate_path]::Key::anon([@name_lit.into()]),
                             [~&ctx.crate_path]::ToToml::to_toml(inner, __ctx)?,
@@ -1160,30 +915,11 @@ fn enum_to_toml_external(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVarian
                 );
             }
             EnumKind::Struct => {
-                let non_skip = variant
-                    .fields
-                    .iter()
-                    .filter(|f| f.flags & (Field::WITH_TO_TOML_SKIP | Field::WITH_FLATTEN) == 0)
-                    .count();
-
-                // Build the arm body
                 let arm_body_start = out.buf.len();
+                emit_table_alloc(out, ctx, "table", count_ser_fields(variant.fields));
+                emit_table_field_ser(out, ctx, variant.fields, "table", Some(variant), false);
+                emit_table_alloc(out, ctx, "outer", 1);
                 splat!(out;
-                    let Some(mut table) = [~&ctx.crate_path]::Table::try_with_capacity(
-                        [@TokenTree::Literal(Literal::usize_unsuffixed(non_skip))], __ctx.arena
-                    ) else {
-                        return __ctx.report_error(
-                            [@TokenTree::Literal(Literal::string("Table capacity exceeded maximum"))]);
-                    };
-                );
-                emit_variant_fields_to_table(out, ctx, variant, variant.fields);
-                splat!(out;
-                    let Some(mut outer) = [~&ctx.crate_path]::Table::try_with_capacity(
-                        [@TokenTree::Literal(Literal::usize_unsuffixed(1))], __ctx.arena
-                    ) else {
-                        return __ctx.report_error(
-                            [@TokenTree::Literal(Literal::string("Table capacity exceeded maximum"))]);
-                    };
                     outer.insert(
                         [~&ctx.crate_path]::Key::anon([@name_lit.into()]),
                         table.into_item(),
@@ -1191,15 +927,7 @@ fn enum_to_toml_external(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVarian
                     );
                     Ok(outer.into_item())
                 );
-                let arm_body = out.split_off_stream(arm_body_start);
-
-                // Emit the pattern
-                splat!(out;
-                    Self::[#: variant.name] {
-                        [for field in variant.fields { splat!(out; ref [#: field.name],); }]
-                    } =>
-                        [@TokenTree::Group(Group::new(Delimiter::Brace, arm_body))]
-                );
+                emit_struct_variant_to_arm(out, variant, arm_body_start);
             }
         }
     }
@@ -1226,7 +954,6 @@ fn enum_from_toml_internal(
 
     let start = out.buf.len();
 
-    // Two-pass approach: first find the tag, then dispatch to variant
     splat!(out;
         let __table = __item.expect_table(__ctx)?;
     );
@@ -1268,7 +995,6 @@ fn enum_from_toml_internal(
         let name_lit = variant_name_literal(ctx, variant);
         match variant.kind {
             EnumKind::None => {
-                // For unit variant, just verify no unexpected keys
                 let arm_body_start = out.buf.len();
                 let check_body_start = out.buf.len();
                 splat!(out;
@@ -1297,11 +1023,12 @@ fn enum_from_toml_internal(
             EnumKind::Struct => {
                 let arm_body_start = out.buf.len();
                 splat!(out; let __subtable = __table;);
-                emit_variant_fields_from_table(
+                emit_table_field_deser(
                     out,
                     ctx,
-                    variant,
                     variant.fields,
+                    "__subtable",
+                    Some(variant),
                     &[tag_lit.clone()],
                 );
                 splat!(out;
@@ -1346,12 +1073,7 @@ fn enum_to_toml_internal(
             EnumKind::None => {
                 splat!(out;
                     Self::[#: variant.name] => {
-                        let Some(mut table) = [~&ctx.crate_path]::Table::try_with_capacity(
-                            [@TokenTree::Literal(Literal::usize_unsuffixed(1))], __ctx.arena
-                        ) else {
-                            return __ctx.report_error(
-                                [@TokenTree::Literal(Literal::string("Table capacity exceeded maximum"))]);
-                        };
+                        [emit_table_alloc(out, ctx, "table", 1)]
                         table.insert(
                             [~&ctx.crate_path]::Key::anon([@tag_lit.clone().into()]),
                             [~&ctx.crate_path]::Item::string([@name_lit.into()]),
@@ -1362,36 +1084,18 @@ fn enum_to_toml_internal(
                 );
             }
             EnumKind::Struct => {
-                let non_skip = variant
-                    .fields
-                    .iter()
-                    .filter(|f| f.flags & (Field::WITH_TO_TOML_SKIP | Field::WITH_FLATTEN) == 0)
-                    .count();
-
                 let arm_body_start = out.buf.len();
+                emit_table_alloc(out, ctx, "table", count_ser_fields(variant.fields) + 1);
                 splat!(out;
-                    let Some(mut table) = [~&ctx.crate_path]::Table::try_with_capacity(
-                        [@TokenTree::Literal(Literal::usize_unsuffixed(non_skip + 1))], __ctx.arena
-                    ) else {
-                        return __ctx.report_error(
-                            [@TokenTree::Literal(Literal::string("Table capacity exceeded maximum"))]);
-                    };
                     table.insert(
                         [~&ctx.crate_path]::Key::anon([@tag_lit.clone().into()]),
                         [~&ctx.crate_path]::Item::string([@name_lit.into()]),
                         __ctx.arena,
                     );
                 );
-                emit_variant_fields_to_table(out, ctx, variant, variant.fields);
+                emit_table_field_ser(out, ctx, variant.fields, "table", Some(variant), false);
                 splat!(out; Ok(table.into_item()));
-                let arm_body = out.split_off_stream(arm_body_start);
-
-                splat!(out;
-                    Self::[#: variant.name] {
-                        [for field in variant.fields { splat!(out; ref [#: field.name],); }]
-                    } =>
-                        [@TokenTree::Group(Group::new(Delimiter::Brace, arm_body))]
-                );
+                emit_struct_variant_to_arm(out, variant, arm_body_start);
             }
             EnumKind::Tuple => {}
         }
@@ -1479,49 +1183,42 @@ fn enum_from_toml_adjacent(
                     }
                 );
             }
-            EnumKind::Tuple => {
-                if variant.fields.len() != 1 {
-                    throw!("Only single-field tuple variants are supported")
+            EnumKind::Tuple | EnumKind::Struct => {
+                let arm_body_start = out.buf.len();
+                let missing_content_else_start = out.buf.len();
+                splat!(out;
+                    return Err(__ctx.report_missing_field([@content_lit.clone().into()], __item.span_unchecked()));
+                );
+                let missing_content_else = out.split_off_stream(missing_content_else_start);
+                splat!(out;
+                    let Some(__content) = __content else
+                        [@TokenTree::Group(Group::new(Delimiter::Brace, missing_content_else))]
+                    ;
+                );
+
+                match variant.kind {
+                    EnumKind::Tuple => {
+                        if variant.fields.len() != 1 {
+                            throw!("Only single-field tuple variants are supported")
+                        }
+                        splat!(out;
+                            Ok(Self::[#: variant.name](
+                                [~&ctx.crate_path]::FromToml::from_toml(__ctx, __content)?
+                            ))
+                        );
+                    }
+                    EnumKind::Struct => {
+                        splat!(out; let __subtable = __content.expect_table(__ctx)?;);
+                        emit_table_field_deser(out, ctx, variant.fields, "__subtable", Some(variant), &[]);
+                        splat!(out;
+                            Ok(Self::[#: variant.name] {
+                                [for field in variant.fields { splat!(out; [#: field.name],); }]
+                            })
+                        );
+                    }
+                    EnumKind::None => {}
                 }
-                let arm_body_start = out.buf.len();
-                let missing_content_else_start = out.buf.len();
-                splat!(out;
-                    return Err(__ctx.report_missing_field([@content_lit.clone().into()], __item.span_unchecked()));
-                );
-                let missing_content_else = out.split_off_stream(missing_content_else_start);
-                splat!(out;
-                    let Some(__content) = __content else
-                        [@TokenTree::Group(Group::new(Delimiter::Brace, missing_content_else))]
-                    ;
-                    Ok(Self::[#: variant.name](
-                        [~&ctx.crate_path]::FromToml::from_toml(__ctx, __content)?
-                    ))
-                );
-                let arm_body = out.split_off_stream(arm_body_start);
-                splat!(out;
-                    [@name_lit.into()] =>
-                        [@TokenTree::Group(Group::new(Delimiter::Brace, arm_body))]
-                );
-            }
-            EnumKind::Struct => {
-                let arm_body_start = out.buf.len();
-                let missing_content_else_start = out.buf.len();
-                splat!(out;
-                    return Err(__ctx.report_missing_field([@content_lit.clone().into()], __item.span_unchecked()));
-                );
-                let missing_content_else = out.split_off_stream(missing_content_else_start);
-                splat!(out;
-                    let Some(__content) = __content else
-                        [@TokenTree::Group(Group::new(Delimiter::Brace, missing_content_else))]
-                    ;
-                    let __subtable = __content.expect_table(__ctx)?;
-                );
-                emit_variant_fields_from_table(out, ctx, variant, variant.fields, &[]);
-                splat!(out;
-                    Ok(Self::[#: variant.name] {
-                        [for field in variant.fields { splat!(out; [#: field.name],); }]
-                    })
-                );
+
                 let arm_body = out.split_off_stream(arm_body_start);
                 splat!(out;
                     [@name_lit.into()] =>
@@ -1559,12 +1256,7 @@ fn enum_to_toml_adjacent(
             EnumKind::None => {
                 splat!(out;
                     Self::[#: variant.name] => {
-                        let Some(mut table) = [~&ctx.crate_path]::Table::try_with_capacity(
-                            [@TokenTree::Literal(Literal::usize_unsuffixed(1))], __ctx.arena
-                        ) else {
-                            return __ctx.report_error(
-                                [@TokenTree::Literal(Literal::string("Table capacity exceeded maximum"))]);
-                        };
+                        [emit_table_alloc(out, ctx, "table", 1)]
                         table.insert(
                             [~&ctx.crate_path]::Key::anon([@tag_lit.clone().into()]),
                             [~&ctx.crate_path]::Item::string([@name_lit.into()]),
@@ -1580,12 +1272,7 @@ fn enum_to_toml_adjacent(
                 }
                 splat!(out;
                     Self::[#: variant.name](inner) => {
-                        let Some(mut table) = [~&ctx.crate_path]::Table::try_with_capacity(
-                            [@TokenTree::Literal(Literal::usize_unsuffixed(2))], __ctx.arena
-                        ) else {
-                            return __ctx.report_error(
-                                [@TokenTree::Literal(Literal::string("Table capacity exceeded maximum"))]);
-                        };
+                        [emit_table_alloc(out, ctx, "table", 2)]
                         table.insert(
                             [~&ctx.crate_path]::Key::anon([@tag_lit.clone().into()]),
                             [~&ctx.crate_path]::Item::string([@name_lit.into()]),
@@ -1601,29 +1288,11 @@ fn enum_to_toml_adjacent(
                 );
             }
             EnumKind::Struct => {
-                let non_skip = variant
-                    .fields
-                    .iter()
-                    .filter(|f| f.flags & (Field::WITH_TO_TOML_SKIP | Field::WITH_FLATTEN) == 0)
-                    .count();
-
                 let arm_body_start = out.buf.len();
+                emit_table_alloc(out, ctx, "table", count_ser_fields(variant.fields));
+                emit_table_field_ser(out, ctx, variant.fields, "table", Some(variant), false);
+                emit_table_alloc(out, ctx, "outer", 2);
                 splat!(out;
-                    let Some(mut table) = [~&ctx.crate_path]::Table::try_with_capacity(
-                        [@TokenTree::Literal(Literal::usize_unsuffixed(non_skip))], __ctx.arena
-                    ) else {
-                        return __ctx.report_error(
-                            [@TokenTree::Literal(Literal::string("Table capacity exceeded maximum"))]);
-                    };
-                );
-                emit_variant_fields_to_table(out, ctx, variant, variant.fields);
-                splat!(out;
-                    let Some(mut outer) = [~&ctx.crate_path]::Table::try_with_capacity(
-                        [@TokenTree::Literal(Literal::usize_unsuffixed(2))], __ctx.arena
-                    ) else {
-                        return __ctx.report_error(
-                            [@TokenTree::Literal(Literal::string("Table capacity exceeded maximum"))]);
-                    };
                     outer.insert(
                         [~&ctx.crate_path]::Key::anon([@tag_lit.clone().into()]),
                         [~&ctx.crate_path]::Item::string([@name_lit.into()]),
@@ -1636,14 +1305,7 @@ fn enum_to_toml_adjacent(
                     );
                     Ok(outer.into_item())
                 );
-                let arm_body = out.split_off_stream(arm_body_start);
-
-                splat!(out;
-                    Self::[#: variant.name] {
-                        [for field in variant.fields { splat!(out; ref [#: field.name],); }]
-                    } =>
-                        [@TokenTree::Group(Group::new(Delimiter::Brace, arm_body))]
-                );
+                emit_struct_variant_to_arm(out, variant, arm_body_start);
             }
         }
     }
@@ -1662,50 +1324,33 @@ fn enum_from_toml_untagged(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVari
     let start = out.buf.len();
 
     let last_index = variants.len() - 1;
-    // The last variant can propagate errors directly only if it has no hint
-    // (a hinted last variant could be skipped, so we need a trailing fallback)
     let last_is_unhinted =
         variants[last_index].try_if.is_none() && variants[last_index].final_if.is_none();
 
     for (i, variant) in variants.iter().enumerate() {
         let has_hint = variant.try_if.is_some() || variant.final_if.is_some();
-        // is_last optimization: propagate errors directly for the last unhinted variant
         let is_last = i == last_index && !has_hint;
-        // final_if always propagates errors (acts like is_last=true)
         let propagate = is_last || variant.final_if.is_some();
         let name_lit = variant_name_literal(ctx, variant);
 
-        // Emit the inner deserialization code for this variant
         let inner_start = out.buf.len();
         match variant.kind {
             EnumKind::None => {
-                // Unit variant: match as string equal to variant name
-                if propagate {
-                    splat!(out;
-                        if let Some(__s) = __item.as_str() {
-                            if __s == [@name_lit.into()] {
-                                return Ok(Self::[#: variant.name]);
-                            }
+                splat!(out;
+                    if let Some(__s) = __item.as_str() {
+                        if __s == [@name_lit.into()] {
+                            return Ok(Self::[#: variant.name]);
                         }
-                        return Err(__ctx.error_expected_but_found(
-                            [@TokenTree::Literal(Literal::string("a matching variant"))], __item));
-                    );
-                } else {
-                    splat!(out;
-                        if let Some(__s) = __item.as_str() {
-                            if __s == [@name_lit.into()] {
-                                return Ok(Self::[#: variant.name]);
-                            }
-                        }
-                    );
-                }
+                    }
+                    [?(propagate) return Err(__ctx.error_expected_but_found(
+                        [@TokenTree::Literal(Literal::string("a matching variant"))], __item));]
+                );
             }
             EnumKind::Tuple => {
                 if variant.fields.len() != 1 {
                     throw!("Only single-field tuple variants are supported in untagged enums")
                 }
                 if propagate {
-                    // Propagate errors via match
                     splat!(out;
                         match [~&ctx.crate_path]::FromToml::from_toml(__ctx, __item) {
                             Ok(__val) => return Ok(Self::[#: variant.name](__val)),
@@ -1713,7 +1358,6 @@ fn enum_from_toml_untagged(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVari
                         }
                     );
                 } else {
-                    // Try with fallback: save error count, truncate on failure
                     splat!(out; {
                         let __err_len = __ctx.errors.len();
                         match [~&ctx.crate_path]::FromToml::from_toml(__ctx, __item) {
@@ -1725,19 +1369,17 @@ fn enum_from_toml_untagged(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVari
             }
             EnumKind::Struct => {
                 if propagate {
-                    // Propagate errors
                     splat!(out; let __subtable = __item.expect_table(__ctx)?;);
-                    emit_variant_fields_from_table(out, ctx, variant, variant.fields, &[]);
+                    emit_table_field_deser(out, ctx, variant.fields, "__subtable", Some(variant), &[]);
                     splat!(out;
                         return Ok(Self::[#: variant.name] {
                             [for field in variant.fields { splat!(out; [#: field.name],); }]
                         });
                     );
                 } else {
-                    // Try with fallback: closure + error truncation
                     let closure_body_start = out.buf.len();
                     splat!(out; let __subtable = __item.expect_table(__ctx)?;);
-                    emit_variant_fields_from_table(out, ctx, variant, variant.fields, &[]);
+                    emit_table_field_deser(out, ctx, variant.fields, "__subtable", Some(variant), &[]);
                     splat!(out;
                         Ok(Self::[#: variant.name] {
                             [for field in variant.fields { splat!(out; [#: field.name],); }]
@@ -1766,7 +1408,6 @@ fn enum_from_toml_untagged(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVari
             let inner_group = TokenTree::Group(Group::new(Delimiter::Brace, inner_code));
             let pred_stream: TokenStream = predicate.iter().cloned().collect();
             let pred_group = TokenTree::Group(Group::new(Delimiter::Parenthesis, pred_stream));
-            // Use a typed fn pointer to help the compiler infer closure parameter types
             splat!(out; {
                 let __pred: fn(& mut [~&ctx.crate_path]::Context<#[#: &ctx.lifetime]>, & [~&ctx.crate_path]::Item<#[#: &ctx.lifetime]>) -> bool = [@pred_group];
                 if __pred(__ctx, __item) [@inner_group]
@@ -1794,7 +1435,6 @@ fn enum_to_toml_untagged(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVarian
         let name_lit = variant_name_literal(ctx, variant);
         match variant.kind {
             EnumKind::None => {
-                // Serialize as string
                 splat!(out;
                     Self::[#: variant.name] =>
                         Ok([~&ctx.crate_path]::Item::string([@name_lit.into()])),
@@ -1810,31 +1450,11 @@ fn enum_to_toml_untagged(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVarian
                 );
             }
             EnumKind::Struct => {
-                let non_skip = variant
-                    .fields
-                    .iter()
-                    .filter(|f| f.flags & (Field::WITH_TO_TOML_SKIP | Field::WITH_FLATTEN) == 0)
-                    .count();
-
                 let arm_body_start = out.buf.len();
-                splat!(out;
-                    let Some(mut table) = [~&ctx.crate_path]::Table::try_with_capacity(
-                        [@TokenTree::Literal(Literal::usize_unsuffixed(non_skip))], __ctx.arena
-                    ) else {
-                        return __ctx.report_error(
-                            [@TokenTree::Literal(Literal::string("Table capacity exceeded maximum"))]);
-                    };
-                );
-                emit_variant_fields_to_table(out, ctx, variant, variant.fields);
+                emit_table_alloc(out, ctx, "table", count_ser_fields(variant.fields));
+                emit_table_field_ser(out, ctx, variant.fields, "table", Some(variant), false);
                 splat!(out; Ok(table.into_item()));
-                let arm_body = out.split_off_stream(arm_body_start);
-
-                splat!(out;
-                    Self::[#: variant.name] {
-                        [for field in variant.fields { splat!(out; ref [#: field.name],); }]
-                    } =>
-                        [@TokenTree::Group(Group::new(Delimiter::Brace, arm_body))]
-                );
+                emit_struct_variant_to_arm(out, variant, arm_body_start);
             }
         }
     }
