@@ -62,6 +62,13 @@ impl_spanner_deserialize_str_newtype!(ProfileName);
 impl_spanner_deserialize_str_newtype!(FeatureName);
 impl_spanner_deserialize_str_newtype!(PathBaseName);
 
+impl<'de> toml_spanner::FromToml<'de> for ProfilePackageSpec {
+    fn from_toml(ctx: &mut Context<'de>, item: &toml_spanner::Item<'de>) -> Result<Self, Failed> {
+        let s = item.expect_string(ctx)?;
+        s.parse().map_err(|err| push_custom_error(ctx, item, err))
+    }
+}
+
 impl<'de> toml_spanner::FromToml<'de> for StringOrVec {
     fn from_toml(ctx: &mut Context<'de>, item: &toml_spanner::Item<'de>) -> Result<Self, Failed> {
         match item.value() {

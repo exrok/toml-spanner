@@ -3,7 +3,6 @@ name = "benchmark"
 version = "0.1.0"
 edition = "2024"
 
-
 [dependencies]
 jsony_bench = { git = "https://github.com/exrok/jsony" }
 toml-spanner.path = ".."

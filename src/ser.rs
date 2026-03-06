@@ -5,7 +5,7 @@ use std::{
     sync::Arc,
 };
 
-use crate::{Arena, Array, Failed, Item, Key, Table};
+use crate::{Arena, Array, Failed, Item, Key, Table, item::Value};
 
 /// I don't like this name, but as is it's easily grepable
 pub struct ToContext<'a> {
@@ -257,19 +257,28 @@ pub trait ToFlattened {
     ) -> Result<(), Failed>;
 }
 
-impl<K: AsRef<str>, V: ToToml> ToFlattened for BTreeMap<K, V> {
+/// Serializes a map key to a TOML key string via `ToToml`.
+fn key_to_str<'a>(item: &Item<'a>) -> Option<&'a str> {
+    match item.value() {
+        Value::String(s) => Some(*s),
+        _ => None,
+    }
+}
+
+impl<K: ToToml, V: ToToml> ToFlattened for BTreeMap<K, V> {
     fn to_flattened<'a>(
         &'a self,
         ctx: &mut ToContext<'a>,
         table: &mut Table<'a>,
     ) -> Result<(), Failed> {
         for (k, v) in self {
+            let key_item = k.to_toml(ctx)?;
+            let Some(key_str) = key_to_str(&key_item) else {
+                return Err(Failed);
+            };
             table.insert(
-                Key::anon(k.as_ref()),
-                match v.to_toml(ctx) {
-                    Ok(it) => it,
-                    Err(_) => return Err(Failed),
-                },
+                Key::anon(key_str),
+                v.to_toml(ctx)?,
                 ctx.arena,
             );
         }
@@ -277,19 +286,20 @@ impl<K: AsRef<str>, V: ToToml> ToFlattened for BTreeMap<K, V> {
     }
 }
 
-impl<K: AsRef<str>, V: ToToml, H> ToFlattened for HashMap<K, V, H> {
+impl<K: ToToml, V: ToToml, H> ToFlattened for HashMap<K, V, H> {
     fn to_flattened<'a>(
         &'a self,
         ctx: &mut ToContext<'a>,
         table: &mut Table<'a>,
     ) -> Result<(), Failed> {
         for (k, v) in self {
+            let key_item = k.to_toml(ctx)?;
+            let Some(key_str) = key_to_str(&key_item) else {
+                return Err(Failed);
+            };
             table.insert(
-                Key::anon(k.as_ref()),
-                match v.to_toml(ctx) {
-                    Ok(it) => it,
-                    Err(_) => return Err(Failed),
-                },
+                Key::anon(key_str),
+                v.to_toml(ctx)?,
                 ctx.arena,
             );
         }
@@ -297,7 +307,7 @@ impl<K: AsRef<str>, V: ToToml, H> ToFlattened for HashMap<K, V, H> {
     }
 }
 
-impl<K: AsRef<str>, V: ToToml> ToToml for BTreeMap<K, V> {
+impl<K: ToToml, V: ToToml> ToToml for BTreeMap<K, V> {
     fn to_toml<'a>(&'a self, ctx: &mut ToContext<'a>) -> Result<Item<'a>, Failed> {
         let Some(mut table) = Table::try_with_capacity(self.len(), &ctx.arena) else {
             return ctx.report_error("Length of table exceeded maximum capacity");
@@ -309,7 +319,7 @@ impl<K: AsRef<str>, V: ToToml> ToToml for BTreeMap<K, V> {
     }
 }
 
-impl<K: AsRef<str>, V: ToToml, H> ToToml for HashMap<K, V, H> {
+impl<K: ToToml, V: ToToml, H> ToToml for HashMap<K, V, H> {
     fn to_toml<'a>(&'a self, ctx: &mut ToContext<'a>) -> Result<Item<'a>, Failed> {
         let Some(mut table) = Table::try_with_capacity(self.len(), &ctx.arena) else {
             return ctx.report_error("Length of table exceeded maximum capacity");
