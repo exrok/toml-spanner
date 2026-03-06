@@ -126,15 +126,11 @@ fn main() {
         codegen::derive(tokens!());
     }
     util::print_pretty(codegen::derive(tokens! {
-
-    #[derive(Jsony, Toml)]
-    pub struct BindingTable {
-        pub normal: Bindings,
-        pub visual: Bindings,
-        pub input_mode: Bindings,
-        pub spelling_correction: Bindings,
+    #[derive(Toml)]
+    pub struct Example<P: Clone> {
+        pub path: Option<P>,
     }
 
 
-        }));
+            }));
 }

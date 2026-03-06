@@ -157,6 +157,56 @@ mod toml_value {
         Ok(item_to_toml_value(item))
     }
 }
+mod flatten_toml_value {
+    use std::collections::BTreeMap;
+
+    use toml_spanner::{Context, Failed, Item, Key};
+
+    use crate::cargo::manifest::item_to_toml_value;
+
+    pub fn init() -> BTreeMap<String, toml::Value> {
+        BTreeMap::new()
+    }
+    pub fn insert(
+        _ctx: &mut Context<'_>,
+        key: &Key<'_>,
+        item: &Item<'_>,
+        partial: &mut BTreeMap<String, toml::Value>,
+    ) -> Result<(), Failed> {
+        partial.insert(key.name.to_owned(), item_to_toml_value(item));
+        Ok(())
+    }
+    pub fn finish(
+        _ctx: &mut Context<'_>,
+        partial: BTreeMap<String, toml::Value>,
+    ) -> Result<BTreeMap<String, toml::Value>, Failed> {
+        Ok(partial)
+    }
+}
+mod flatten_toml_table {
+    use toml_spanner::{Context, Failed, Item, Key};
+
+    use crate::cargo::manifest::item_to_toml_value;
+
+    pub fn init() -> toml::Table {
+        toml::Table::new()
+    }
+    pub fn insert(
+        _ctx: &mut Context<'_>,
+        key: &Key<'_>,
+        item: &Item<'_>,
+        partial: &mut toml::Table,
+    ) -> Result<(), Failed> {
+        partial.insert(key.name.to_owned(), item_to_toml_value(item));
+        Ok(())
+    }
+    pub fn finish(
+        _ctx: &mut Context<'_>,
+        partial: toml::Table,
+    ) -> Result<toml::Table, Failed> {
+        Ok(partial)
+    }
+}
 
 #[derive(Debug, Default, Deserialize, Serialize, Toml, Clone)]
 #[serde(rename_all = "kebab-case")]
@@ -208,8 +258,9 @@ pub struct InheritablePackage {
 /// are serialized to a TOML file. For example, you cannot have values after
 /// the field `metadata`, since it is a table and values cannot appear after
 /// tables.
-#[derive(Deserialize, Serialize, Clone, Debug, Default)]
+#[derive(Deserialize, Serialize, Clone, Debug, Default, Toml)]
 #[serde(rename_all = "kebab-case")]
+#[toml(rename_all = "kebab-case")]
 pub struct TomlPackage {
     pub edition: Option<InheritableString>,
     pub rust_version: Option<InheritableRustVersion>,
@@ -245,10 +296,12 @@ pub struct TomlPackage {
     pub repository: Option<InheritableString>,
     pub resolver: Option<String>,
 
+    #[toml(with = toml_value)]
     pub metadata: Option<toml::Value>,
 
     /// Provide a helpful error message for a common user error.
     #[serde(rename = "cargo-features", skip_serializing)]
+    #[toml(rename = "cargo-features")]
     pub _invalid_cargo_features: Option<InvalidCargoFeatures>,
 }
 
@@ -744,13 +797,15 @@ impl<'de> de::Deserialize<'de> for InheritableDependency {
     }
 }
 
-#[derive(Deserialize, Serialize, Clone, Debug)]
+#[derive(Deserialize, Serialize, Clone, Debug, Toml)]
 #[serde(rename_all = "kebab-case")]
+#[toml(rename_all = "kebab-case")]
 pub struct TomlInheritedDependency {
     pub workspace: bool,
     pub features: Option<Vec<String>>,
     pub default_features: Option<bool>,
     #[serde(rename = "default_features")]
+    #[toml(rename = "default_features")]
     pub default_features2: Option<bool>,
     pub optional: Option<bool>,
     pub public: Option<bool>,
@@ -758,6 +813,7 @@ pub struct TomlInheritedDependency {
     /// This is here to provide a way to see the "unused manifest keys" when deserializing
     #[serde(skip_serializing)]
     #[serde(flatten)]
+    #[toml(flatten, with = flatten_toml_value)]
     pub _unused_keys: BTreeMap<String, toml::Value>,
 }
 
@@ -846,8 +902,9 @@ impl<'de, P: Deserialize<'de> + Clone> de::Deserialize<'de> for TomlDependency<P
     }
 }
 
-#[derive(Deserialize, Serialize, Clone, Debug)]
+#[derive(Deserialize, Serialize, Clone, Debug, Toml)]
 #[serde(rename_all = "kebab-case")]
+#[toml(rename_all = "kebab-case")]
 pub struct TomlDetailedDependency<P: Clone = String> {
     pub version: Option<String>,
 
@@ -871,6 +928,7 @@ pub struct TomlDetailedDependency<P: Clone = String> {
     pub optional: Option<bool>,
     pub default_features: Option<bool>,
     #[serde(rename = "default_features")]
+    #[toml(rename = "default_features")]
     pub default_features2: Option<bool>,
     pub package: Option<PackageName>,
     pub public: Option<bool>,
@@ -885,6 +943,7 @@ pub struct TomlDetailedDependency<P: Clone = String> {
     /// This is here to provide a way to see the "unused manifest keys" when deserializing
     #[serde(skip_serializing)]
     #[serde(flatten)]
+    #[toml(flatten, with = flatten_toml_value)]
     pub _unused_keys: BTreeMap<String, toml::Value>,
 }
 
@@ -921,7 +980,7 @@ impl<P: Clone> Default for TomlDetailedDependency<P> {
     }
 }
 
-#[derive(Deserialize, Serialize, Clone, Debug, Default)]
+#[derive(Deserialize, Serialize, Clone, Debug, Default, Toml)]
 pub struct TomlProfiles(pub BTreeMap<ProfileName, TomlProfile>);
 
 impl TomlProfiles {
@@ -934,8 +993,9 @@ impl TomlProfiles {
     }
 }
 
-#[derive(Deserialize, Serialize, Clone, Debug, Default, Eq, PartialEq)]
+#[derive(Deserialize, Serialize, Clone, Debug, Default, Eq, PartialEq, Toml)]
 #[serde(default, rename_all = "kebab-case")]
+#[toml(rename_all = "kebab-case")]
 pub struct TomlProfile {
     pub opt_level: Option<TomlOptLevel>,
     pub lto: Option<StringOrBool>,
@@ -1328,8 +1388,9 @@ impl From<Vec<TomlTrimPathsValue>> for TomlTrimPaths {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Ord, PartialOrd, Hash, Serialize, Deserialize, Toml)]
 #[serde(rename_all = "kebab-case")]
+#[toml(rename_all = "kebab-case")]
 pub enum TomlTrimPathsValue {
     Diagnostics,
     Macro,
@@ -1358,8 +1419,9 @@ pub type TomlExampleTarget = TomlTarget;
 pub type TomlTestTarget = TomlTarget;
 pub type TomlBenchTarget = TomlTarget;
 
-#[derive(Default, Serialize, Deserialize, Debug, Clone)]
+#[derive(Default, Serialize, Deserialize, Debug, Clone, Toml)]
 #[serde(rename_all = "kebab-case")]
+#[toml(rename_all = "kebab-case")]
 pub struct TomlTarget {
     pub name: Option<String>,
 
@@ -1367,6 +1429,7 @@ pub struct TomlTarget {
     // versions of Cargo also accepted `crate_type`, so look for both.
     pub crate_type: Option<Vec<String>>,
     #[serde(rename = "crate_type")]
+    #[toml(rename = "crate_type")]
     pub crate_type2: Option<Vec<String>>,
 
     pub path: Option<PathValue>,
@@ -1379,6 +1442,7 @@ pub struct TomlTarget {
     pub doc_scrape_examples: Option<bool>,
     pub proc_macro: Option<bool>,
     #[serde(rename = "proc_macro")]
+    #[toml(rename = "proc_macro")]
     pub proc_macro2: Option<bool>,
     pub harness: Option<bool>,
     pub required_features: Option<Vec<String>>,
@@ -1530,15 +1594,18 @@ impl<T: AsRef<str>> PathBaseName<T> {
 }
 
 /// Corresponds to a `target` entry, but `TomlTarget` is already used.
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, Toml)]
 #[serde(rename_all = "kebab-case")]
+#[toml(rename_all = "kebab-case")]
 pub struct TomlPlatform {
     pub dependencies: Option<BTreeMap<PackageName, InheritableDependency>>,
     pub build_dependencies: Option<BTreeMap<PackageName, InheritableDependency>>,
     #[serde(rename = "build_dependencies")]
+    #[toml(rename = "build_dependencies")]
     pub build_dependencies2: Option<BTreeMap<PackageName, InheritableDependency>>,
     pub dev_dependencies: Option<BTreeMap<PackageName, InheritableDependency>>,
     #[serde(rename = "dev_dependencies")]
+    #[toml(rename = "dev_dependencies")]
     pub dev_dependencies2: Option<BTreeMap<PackageName, InheritableDependency>>,
 }
 
@@ -1626,8 +1693,9 @@ pub type TomlLints = BTreeMap<String, TomlToolLints>;
 
 pub type TomlToolLints = BTreeMap<String, TomlLint>;
 
-#[derive(Serialize, Debug, Clone)]
+#[derive(Serialize, Debug, Clone, Toml)]
 #[serde(untagged)]
+#[toml(untagged)]
 pub enum TomlLint {
     Level(TomlLintLevel),
     Config(TomlLintConfig),
@@ -1670,18 +1738,22 @@ impl TomlLint {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, Toml)]
 #[serde(rename_all = "kebab-case")]
+#[toml(rename_all = "kebab-case")]
 pub struct TomlLintConfig {
     pub level: TomlLintLevel,
     #[serde(default)]
+    #[toml(default)]
     pub priority: i8,
     #[serde(flatten)]
+    #[toml(flatten, with = flatten_toml_table)]
     pub config: toml::Table,
 }
 
-#[derive(Serialize, Deserialize, Debug, Copy, Clone, Eq, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Copy, Clone, Eq, PartialEq, Toml)]
 #[serde(rename_all = "kebab-case")]
+#[toml(rename_all = "kebab-case")]
 pub enum TomlLintLevel {
     Forbid,
     Deny,
@@ -1689,9 +1761,11 @@ pub enum TomlLintLevel {
     Allow,
 }
 
-#[derive(Serialize, Deserialize, Debug, Default, Clone)]
+#[derive(Serialize, Deserialize, Debug, Default, Clone, Toml)]
 #[serde(rename_all = "kebab-case")]
+#[toml(rename_all = "kebab-case")]
 pub struct Hints {
+    #[toml(with = toml_value)]
     pub mostly_unused: Option<toml::Value>,
 }
 
@@ -1735,8 +1809,9 @@ impl<'de> de::Deserialize<'de> for StringOrVec {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Eq, PartialEq)]
+#[derive(Clone, Debug, Serialize, Eq, PartialEq, Toml)]
 #[serde(untagged)]
+#[toml(untagged)]
 pub enum StringOrBool {
     String(String),
     Bool(bool),
@@ -1754,8 +1829,9 @@ impl<'de> Deserialize<'de> for StringOrBool {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Eq, PartialEq)]
+#[derive(Clone, Debug, Serialize, Eq, PartialEq, Toml)]
 #[serde(untagged)]
+#[toml(untagged)]
 pub enum TomlPackageBuild {
     /// If build scripts are disabled or enabled.
     /// If true, `build.rs` in the root folder will be the build script.
@@ -1781,8 +1857,9 @@ impl<'de> Deserialize<'de> for TomlPackageBuild {
     }
 }
 
-#[derive(PartialEq, Clone, Debug, Serialize)]
+#[derive(PartialEq, Clone, Debug, Serialize, Toml)]
 #[serde(untagged)]
+#[toml(untagged)]
 pub enum VecStringOrBool {
     VecString(Vec<String>),
     Bool(bool),
@@ -1801,7 +1878,7 @@ impl<'de> de::Deserialize<'de> for VecStringOrBool {
     }
 }
 
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq, Toml)]
 pub struct PathValue(pub PathBuf);
 
 impl fmt::Debug for PathValue {

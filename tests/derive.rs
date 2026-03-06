@@ -1,7 +1,6 @@
 use std::collections::BTreeMap;
 use toml_spanner::{
-    Arena, EmitConfig, Failed, FromToml, Root, ToContext, ToToml, emit_with_config, parse,
-    reproject,
+    Arena, EmitConfig, Failed, FromToml, Root, ToContext, ToToml, emit_with_config, reproject,
 };
 use toml_spanner_macros::Toml;
 
@@ -736,6 +735,12 @@ struct GenericWithDefault<P: Clone = String> {
     value: P,
 }
 
+#[derive(Toml, Debug, PartialEq)]
+#[toml(FromToml, ToToml)]
+struct GenericOptionalField<P: Clone> {
+    path: Option<P>,
+}
+
 #[test]
 fn derive_generic_with_default_bound() {
     let arena = Arena::new();
@@ -755,6 +760,28 @@ fn derive_generic_with_explicit_type() {
     let result: GenericWithDefault<i64> =
         GenericWithDefault::from_toml(ctx, doc.as_item()).unwrap();
     assert_eq!(result.value, 42);
+}
+
+#[test]
+fn generic_optional_field_present() {
+    let v: GenericOptionalField<String> =
+        toml_spanner::from_str(r#"path = "hello""#).unwrap();
+    assert_eq!(v.path, Some("hello".to_string()));
+}
+
+#[test]
+fn generic_optional_field_absent() {
+    let v: GenericOptionalField<String> = toml_spanner::from_str("").unwrap();
+    assert_eq!(v.path, None);
+}
+
+#[test]
+fn generic_optional_field_to_toml() {
+    let v = GenericOptionalField {
+        path: Some("test".to_string()),
+    };
+    let s = toml_spanner::to_string(&v).unwrap();
+    assert!(s.contains("path = \"test\""), "got: {s}");
 }
 
 // Option<T> with #[toml(required)]: missing field is an error
@@ -940,4 +967,74 @@ pub fn srp<T: ToToml>(root: &Root<'_>, item: &T) -> Result<String, Failed> {
     );
 
     Ok(String::from_utf8(output).unwrap())
+}
+
+mod flatten_key_helper {
+    use toml_spanner::{Context, Failed, Item, Key, Table, ToContext};
+
+    pub fn init() -> Vec<String> {
+        Vec::new()
+    }
+
+    pub fn insert<'de>(
+        _ctx: &mut Context<'de>,
+        key: &Key<'de>,
+        _item: &Item<'de>,
+        partial: &mut Vec<String>,
+    ) -> Result<(), Failed> {
+        partial.push(key.name.to_string());
+        Ok(())
+    }
+
+    pub fn finish<'de>(
+        _ctx: &mut Context<'de>,
+        partial: Vec<String>,
+    ) -> Result<Vec<String>, Failed> {
+        Ok(partial)
+    }
+
+    pub fn to_flattened<'a>(
+        val: &'a Vec<String>,
+        ctx: &mut ToContext<'a>,
+        table: &mut Table<'a>,
+    ) -> Result<(), Failed> {
+        for s in val {
+            table.insert(Key::anon(ctx.arena.alloc_str(s)), Item::from(true), ctx.arena);
+        }
+        Ok(())
+    }
+}
+
+#[derive(Toml, Debug, PartialEq)]
+#[toml(FromToml, ToToml)]
+struct FlattenWithHelper {
+    name: String,
+    #[toml(flatten, with = flatten_key_helper)]
+    extra_keys: Vec<String>,
+}
+
+#[test]
+fn flatten_with_from_toml() {
+    let input = r#"
+        name = "test"
+        foo = "bar"
+        baz = "qux"
+    "#;
+    let v: FlattenWithHelper = toml_spanner::from_str(input).unwrap();
+    assert_eq!(v.name, "test");
+    assert_eq!(v.extra_keys.len(), 2);
+    assert!(v.extra_keys.contains(&"foo".to_string()));
+    assert!(v.extra_keys.contains(&"baz".to_string()));
+}
+
+#[test]
+fn flatten_with_to_toml() {
+    let v = FlattenWithHelper {
+        name: "hello".to_string(),
+        extra_keys: vec!["alpha".to_string(), "beta".to_string()],
+    };
+    let toml_str = toml_spanner::to_string(&v).unwrap();
+    assert!(toml_str.contains("name = \"hello\""), "got: {toml_str}");
+    assert!(toml_str.contains("alpha = true"), "got: {toml_str}");
+    assert!(toml_str.contains("beta = true"), "got: {toml_str}");
 }

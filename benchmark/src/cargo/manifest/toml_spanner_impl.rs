@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 use std::fmt;
 
 use toml_spanner::{Context, Failed};
@@ -82,50 +82,6 @@ impl<'de> toml_spanner::FromToml<'de> for StringOrVec {
     }
 }
 
-impl<'de> toml_spanner::FromToml<'de> for StringOrBool {
-    fn from_toml(ctx: &mut Context<'de>, item: &toml_spanner::Item<'de>) -> Result<Self, Failed> {
-        match item.value() {
-            toml_spanner::Value::Boolean(&b) => Ok(StringOrBool::Bool(b)),
-            toml_spanner::Value::String(&s) => Ok(StringOrBool::String(s.to_owned())),
-            _ => Err(ctx.error_expected_but_found("a string or bool", item)),
-        }
-    }
-}
-
-impl<'de> toml_spanner::FromToml<'de> for VecStringOrBool {
-    fn from_toml(ctx: &mut Context<'de>, item: &toml_spanner::Item<'de>) -> Result<Self, Failed> {
-        match item.value() {
-            toml_spanner::Value::Boolean(&b) => Ok(VecStringOrBool::Bool(b)),
-            toml_spanner::Value::Array(_) => {
-                let v: Vec<String> = toml_spanner::FromToml::from_toml(ctx, item)?;
-                Ok(VecStringOrBool::VecString(v))
-            }
-            _ => Err(ctx.error_expected_but_found("a boolean or array of strings", item)),
-        }
-    }
-}
-
-impl<'de> toml_spanner::FromToml<'de> for PathValue {
-    fn from_toml(ctx: &mut Context<'de>, item: &toml_spanner::Item<'de>) -> Result<Self, Failed> {
-        let s: String = toml_spanner::FromToml::from_toml(ctx, item)?;
-        Ok(PathValue(s.into()))
-    }
-}
-
-impl<'de> toml_spanner::FromToml<'de> for TomlPackageBuild {
-    fn from_toml(ctx: &mut Context<'de>, item: &toml_spanner::Item<'de>) -> Result<Self, Failed> {
-        match item.value() {
-            toml_spanner::Value::Boolean(&b) => Ok(TomlPackageBuild::Auto(b)),
-            toml_spanner::Value::String(&s) => Ok(TomlPackageBuild::SingleScript(s.to_owned())),
-            toml_spanner::Value::Array(_) => {
-                let v: Vec<String> = toml_spanner::FromToml::from_toml(ctx, item)?;
-                Ok(TomlPackageBuild::MultipleScript(v))
-            }
-            _ => Err(ctx.error_expected_but_found("a bool, string, or array of strings", item)),
-        }
-    }
-}
-
 impl<'de> toml_spanner::FromToml<'de> for TomlOptLevel {
     fn from_toml(ctx: &mut Context<'de>, item: &toml_spanner::Item<'de>) -> Result<Self, Failed> {
         match item.value() {
@@ -190,22 +146,6 @@ impl<'de> toml_spanner::FromToml<'de> for TomlDebugInfo {
     }
 }
 
-impl<'de> toml_spanner::FromToml<'de> for TomlTrimPathsValue {
-    fn from_toml(ctx: &mut Context<'de>, item: &toml_spanner::Item<'de>) -> Result<Self, Failed> {
-        let s = item.expect_string(ctx)?;
-        match s {
-            "diagnostics" => Ok(TomlTrimPathsValue::Diagnostics),
-            "macro" => Ok(TomlTrimPathsValue::Macro),
-            "object" => Ok(TomlTrimPathsValue::Object),
-            _ => Err(push_custom_error(
-                ctx,
-                item,
-                format_args!("expected \"diagnostics\", \"macro\", or \"object\", found \"{s}\""),
-            )),
-        }
-    }
-}
-
 impl<'de> toml_spanner::FromToml<'de> for TomlTrimPaths {
     fn from_toml(ctx: &mut Context<'de>, item: &toml_spanner::Item<'de>) -> Result<Self, Failed> {
         match item.value() {
@@ -230,90 +170,6 @@ impl<'de> toml_spanner::FromToml<'de> for TomlTrimPaths {
                 Err(ctx
                     .error_expected_but_found("a boolean, string, or array for trim-paths", item))
             }
-        }
-    }
-}
-
-toml_spanner::deserialize_table! {
-    struct TomlProfile {
-        optional "opt-level" opt_level: TomlOptLevel,
-        optional lto: StringOrBool,
-        optional "codegen-backend" codegen_backend: String,
-        optional "codegen-units" codegen_units: u32,
-        optional debug: TomlDebugInfo,
-        optional "split-debuginfo" split_debuginfo: String,
-        optional "debug-assertions" debug_assertions: bool,
-        optional rpath: bool,
-        optional panic: String,
-        optional "overflow-checks" overflow_checks: bool,
-        optional incremental: bool,
-        optional "dir-name" dir_name: String,
-        optional inherits: String,
-        optional strip: StringOrBool,
-        optional rustflags: Vec<String>,
-        optional package: BTreeMap<ProfilePackageSpec, TomlProfile>,
-        optional "build-override" build_override: Box<TomlProfile>,
-        optional "trim-paths" trim_paths: TomlTrimPaths,
-        optional "hint-mostly-unused" hint_mostly_unused: bool,
-    }
-}
-
-impl<'de> toml_spanner::FromToml<'de> for TomlProfiles {
-    fn from_toml(ctx: &mut Context<'de>, item: &toml_spanner::Item<'de>) -> Result<Self, Failed> {
-        let map: BTreeMap<ProfileName, TomlProfile> = toml_spanner::FromToml::from_toml(ctx, item)?;
-        Ok(TomlProfiles(map))
-    }
-}
-
-impl<'de> toml_spanner::FromToml<'de> for TomlLintLevel {
-    fn from_toml(ctx: &mut Context<'de>, item: &toml_spanner::Item<'de>) -> Result<Self, Failed> {
-        let s = item.expect_string(ctx)?;
-        match s {
-            "forbid" => Ok(TomlLintLevel::Forbid),
-            "deny" => Ok(TomlLintLevel::Deny),
-            "warn" => Ok(TomlLintLevel::Warn),
-            "allow" => Ok(TomlLintLevel::Allow),
-            _ => Err(push_custom_error(
-                ctx,
-                item,
-                format_args!(
-                    "expected \"forbid\", \"deny\", \"warn\", or \"allow\", found \"{s}\""
-                ),
-            )),
-        }
-    }
-}
-
-impl<'de> toml_spanner::FromToml<'de> for TomlLintConfig {
-    fn from_toml(ctx: &mut Context<'de>, item: &toml_spanner::Item<'de>) -> Result<Self, Failed> {
-        let mut th = item.table_helper(ctx)?;
-        let level: TomlLintLevel = th.required("level")?;
-        let priority: i8 = th.optional("priority").unwrap_or(0);
-        // Remaining fields go into the config table
-        let mut config = toml::Table::new();
-        for (key, val) in th.into_remaining() {
-            config.insert(key.name.to_owned(), item_to_toml_value(val));
-        }
-        Ok(TomlLintConfig {
-            level,
-            priority,
-            config,
-        })
-    }
-}
-
-impl<'de> toml_spanner::FromToml<'de> for TomlLint {
-    fn from_toml(ctx: &mut Context<'de>, item: &toml_spanner::Item<'de>) -> Result<Self, Failed> {
-        match item.value() {
-            toml_spanner::Value::String(_) => {
-                let level = <TomlLintLevel as toml_spanner::FromToml>::from_toml(ctx, item)?;
-                Ok(TomlLint::Level(level))
-            }
-            toml_spanner::Value::Table(_) => {
-                let config = <TomlLintConfig as toml_spanner::FromToml>::from_toml(ctx, item)?;
-                Ok(TomlLint::Config(config))
-            }
-            _ => Err(ctx.error_expected_but_found("a lint level string or config table", item)),
         }
     }
 }
@@ -482,32 +338,6 @@ impl<'de> toml_spanner::FromToml<'de> for InheritableBtreeMap {
     }
 }
 
-toml_spanner::deserialize_table! {
-    struct TomlDetailedDependency {
-        optional version: String,
-        optional registry: RegistryName,
-        optional "registry-index" registry_index: String,
-        optional path: String,
-        optional base: PathBaseName,
-        optional git: String,
-        optional branch: String,
-        optional tag: String,
-        optional rev: String,
-        optional features: Vec<String>,
-        optional optional: bool,
-        optional "default-features" default_features: bool,
-        optional "default_features" default_features2: bool,
-        optional package: PackageName,
-        optional public: bool,
-        optional artifact: StringOrVec,
-        optional lib: bool,
-        optional target: String,
-    }
-    flatten _unused_keys: BTreeMap<String, toml::Value> = |key, value| {
-        _unused_keys.insert(key.name.to_owned(), item_to_toml_value(value));
-    }
-}
-
 impl<'de> toml_spanner::FromToml<'de> for TomlDependency {
     fn from_toml(ctx: &mut Context<'de>, item: &toml_spanner::Item<'de>) -> Result<Self, Failed> {
         match item.value() {
@@ -538,61 +368,6 @@ impl<'de> toml_spanner::FromToml<'de> for TomlDependency {
     }
 }
 
-toml_spanner::deserialize_table! {
-    struct TomlInheritedDependency {
-        required workspace: bool,
-        optional features: Vec<String>,
-        optional "default-features" default_features: bool,
-        optional "default_features" default_features2: bool,
-        optional optional: bool,
-        optional public: bool,
-    }
-    flatten _unused_keys: BTreeMap<String, toml::Value> = |key, value| {
-        _unused_keys.insert(key.name.to_owned(), item_to_toml_value(value));
-    }
-}
-
-toml_spanner::deserialize_table! {
-    #[deny_unknown_fields]
-    struct TomlTarget {
-        optional name: String,
-        optional "crate-type" crate_type: Vec<String>,
-        optional "crate_type" crate_type2: Vec<String>,
-        optional path: PathValue,
-        optional filename: String,
-        optional test: bool,
-        optional doctest: bool,
-        optional bench: bool,
-        optional doc: bool,
-        optional "doc-scrape-examples" doc_scrape_examples: bool,
-        optional "proc-macro" proc_macro: bool,
-        optional "proc_macro" proc_macro2: bool,
-        optional harness: bool,
-        optional "required-features" required_features: Vec<String>,
-        optional edition: String,
-    }
-}
-
-toml_spanner::deserialize_table! {
-    #[deny_unknown_fields]
-    struct TomlPlatform {
-        optional dependencies: BTreeMap<PackageName, InheritableDependency>,
-        optional "build-dependencies" build_dependencies: BTreeMap<PackageName, InheritableDependency>,
-        optional "build_dependencies" build_dependencies2: BTreeMap<PackageName, InheritableDependency>,
-        optional "dev-dependencies" dev_dependencies: BTreeMap<PackageName, InheritableDependency>,
-        optional "dev_dependencies" dev_dependencies2: BTreeMap<PackageName, InheritableDependency>,
-    }
-}
-
-toml_spanner::deserialize_table! {
-    #[deny_unknown_fields]
-    struct Hints {
-        optional "mostly-unused" mostly_unused: toml::Value = |item| {
-            Ok(item_to_toml_value(item))
-        },
-    }
-}
-
 impl<'de> toml_spanner::FromToml<'de> for InvalidCargoFeatures {
     fn from_toml(ctx: &mut Context<'de>, item: &toml_spanner::Item<'de>) -> Result<Self, Failed> {
         Err(push_custom_error(
@@ -602,118 +377,3 @@ impl<'de> toml_spanner::FromToml<'de> for InvalidCargoFeatures {
         ))
     }
 }
-
-toml_spanner::deserialize_table! {
-    struct TomlPackage {
-        optional edition: InheritableString,
-        optional "rust-version" rust_version: InheritableRustVersion,
-        optional name: PackageName,
-        optional version: InheritableSemverVersion,
-        optional authors: InheritableVecString,
-        optional build: TomlPackageBuild,
-        optional metabuild: StringOrVec,
-        optional "default-target" default_target: String,
-        optional "forced-target" forced_target: String,
-        optional links: String,
-        optional exclude: InheritableVecString,
-        optional include: InheritableVecString,
-        optional publish: InheritableVecStringOrBool,
-        optional workspace: String,
-        optional "im-a-teapot" im_a_teapot: bool,
-        optional autolib: bool,
-        optional autobins: bool,
-        optional autoexamples: bool,
-        optional autotests: bool,
-        optional autobenches: bool,
-        optional "default-run" default_run: String,
-        optional description: InheritableString,
-        optional homepage: InheritableString,
-        optional documentation: InheritableString,
-        optional readme: InheritableStringOrBool,
-        optional keywords: InheritableVecString,
-        optional categories: InheritableVecString,
-        optional license: InheritableString,
-        optional "license-file" license_file: InheritableString,
-        optional repository: InheritableString,
-        optional resolver: String,
-        optional "cargo-features" _invalid_cargo_features: InvalidCargoFeatures,
-        optional metadata: toml::Value = |item| {
-            Ok(item_to_toml_value(item))
-        },
-    }
-}
-
-// toml_spanner::deserialize_table! {
-//     struct InheritablePackage {
-//         optional authors: Vec<String>,
-//         optional description: String,
-//         optional homepage: String,
-//         optional documentation: String,
-//         optional readme: StringOrBool,
-//         optional keywords: Vec<String>,
-//         optional categories: Vec<String>,
-//         optional license: String,
-//         optional "license-file" license_file: String,
-//         optional repository: String,
-//         optional publish: VecStringOrBool,
-//         optional edition: String,
-//         optional badges: BTreeMap<String, BTreeMap<String, String>>,
-//         optional exclude: Vec<String>,
-//         optional include: Vec<String>,
-//         optional "version" version: semver::Version = |item| {
-//             let s = item.as_str().ok_or_else(|| item.expected("a version string"))?;
-//             s.trim().parse::<semver::Version>()
-//                 .map_err(|err| toml_spanner::Error::custom(err, item.span_unchecked()))
-//         },
-//         optional "rust-version" rust_version: RustVersion = |item| {
-//             let s = item.as_str().ok_or_else(|| item.expected("a rust version string"))?;
-//             s.parse::<RustVersion>()
-//                 .map_err(|err| toml_spanner::Error::custom(err, item.span_unchecked()))
-//         },
-//     }
-// }
-
-// toml_spanner::deserialize_table! {
-//     struct TomlWorkspace {
-//         optional members: Vec<String>,
-//         optional exclude: Vec<String>,
-//         optional "default-members" default_members: Vec<String>,
-//         optional resolver: String,
-//         optional package: InheritablePackage,
-//         optional dependencies: BTreeMap<PackageName, TomlDependency>,
-//         optional lints: TomlLints,
-//         optional metadata: toml::Value = |item| {
-//             Ok(item_to_toml_value(item))
-//         },
-//     }
-// }
-
-// toml_spanner::deserialize_table! {
-//     struct TomlManifest {
-//         optional "cargo-features" cargo_features: Vec<String>,
-//         optional package: Box<TomlPackage>,
-//         optional project: Box<TomlPackage>,
-//         optional badges: BTreeMap<String, BTreeMap<String, String>>,
-//         optional features: BTreeMap<FeatureName, Vec<String>>,
-//         optional lib: TomlLibTarget,
-//         optional bin: Vec<TomlBinTarget>,
-//         optional example: Vec<TomlExampleTarget>,
-//         optional test: Vec<TomlTestTarget>,
-//         optional bench: Vec<TomlTestTarget>,
-//         optional dependencies: BTreeMap<PackageName, InheritableDependency>,
-//         optional "dev-dependencies" dev_dependencies: BTreeMap<PackageName, InheritableDependency>,
-//         optional "dev_dependencies" dev_dependencies2: BTreeMap<PackageName, InheritableDependency>,
-//         optional "build-dependencies" build_dependencies: BTreeMap<PackageName, InheritableDependency>,
-//         optional "build_dependencies" build_dependencies2: BTreeMap<PackageName, InheritableDependency>,
-//         optional target: BTreeMap<String, TomlPlatform>,
-//         optional lints: InheritableLints,
-//         optional hints: Hints,
-//         optional workspace: TomlWorkspace,
-//         optional profile: TomlProfiles,
-//         optional patch: BTreeMap<String, BTreeMap<PackageName, TomlDependency>>,
-//         optional replace: BTreeMap<String, TomlDependency>,
-//     }
-//     flatten _unused_keys: BTreeSet<String> = |key, _value| {
-//         _unused_keys.insert(key.name.to_owned());
-//     }
-// }

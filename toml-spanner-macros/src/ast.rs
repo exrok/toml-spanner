@@ -1,4 +1,3 @@
-
 use crate::{case::RenameRule, util::Allocator, Error};
 use proc_macro::{Delimiter, Ident, Literal, Span, TokenStream, TokenTree};
 pub enum GenericKind {
@@ -756,9 +755,27 @@ pub fn scan_fields<'a>(target: &mut DeriveTargetInner<'a>, fields: &mut Vec<Fiel
                 if type_generic_names.iter().any(|x| ident == *x) {
                     field.flags |= Field::GENERIC;
                     if field.flags & Field::WITH_FLATTEN != 0 {
-                        target.generic_flatten_field_types.push(field.ty);
+                        if field.with(FROM_TOML).is_none() && field.with(TO_TOML).is_none() {
+                            target.generic_flatten_field_types.push(field.ty);
+                        }
                     } else {
-                        target.generic_field_types.push(field.ty);
+                        let ty = if field.flags & Field::WITH_FROM_TOML_OPTION != 0 {
+                            // TODO do this more robustly and princibled
+                            if let [TokenTree::Ident(id), _, inner @ .., TokenTree::Punct(close)] =
+                                field.ty
+                            {
+                                if id.to_string() == "Option" && close.as_char() == '>' {
+                                    inner
+                                } else {
+                                    field.ty
+                                }
+                            } else {
+                                field.ty
+                            }
+                        } else {
+                            field.ty
+                        };
+                        target.generic_field_types.push(ty);
                     }
                     break;
                 }

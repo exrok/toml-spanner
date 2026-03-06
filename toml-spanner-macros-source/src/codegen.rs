@@ -329,9 +329,15 @@ fn emit_table_field_deser(
     // Declare field variables
     for field in fields {
         if field.flags & Field::WITH_FLATTEN != 0 {
-            splat!(out;
-                let mut __flatten_partial = < [~field.ty] as [#ctx.crate_path]::FromFlattened<#[#: &ctx.lifetime]> >::init();
-            );
+            if let Some(with) = field.with(FROM_TOML) {
+                splat!(out;
+                    let mut __flatten_partial = [~with]::init();
+                );
+            } else {
+                splat!(out;
+                    let mut __flatten_partial = < [~field.ty] as [#ctx.crate_path]::FromFlattened<#[#: &ctx.lifetime]> >::init();
+                );
+            }
             continue;
         }
         if field.flags & Field::WITH_FROM_TOML_SKIP != 0 {
@@ -412,13 +418,23 @@ fn emit_table_field_deser(
 
     // Wildcard arm
     if let Some(ff) = flatten_field {
-        splat!(out;
-            _ => {
-                let _ = < [~ff.ty] as [#ctx.crate_path]::FromFlattened<#[#: &ctx.lifetime]> >::insert(
-                    __ctx, __key, __value, &mut __flatten_partial
-                );
-            }
-        );
+        if let Some(with) = ff.with(FROM_TOML) {
+            splat!(out;
+                _ => {
+                    let _ = [~with]::insert(
+                        __ctx, __key, __value, &mut __flatten_partial
+                    );
+                }
+            );
+        } else {
+            splat!(out;
+                _ => {
+                    let _ = < [~ff.ty] as [#ctx.crate_path]::FromFlattened<#[#: &ctx.lifetime]> >::insert(
+                        __ctx, __key, __value, &mut __flatten_partial
+                    );
+                }
+            );
+        }
     } else {
         splat!(out;
             _ => {
@@ -433,11 +449,19 @@ fn emit_table_field_deser(
 
     // Finish flatten partial
     if let Some(ff) = flatten_field {
-        splat!(out;
-            let [#: ff.name] = < [~ff.ty] as [#ctx.crate_path]::FromFlattened<#[#: &ctx.lifetime]> >::finish(
-                __ctx, __flatten_partial
-            )?;
-        );
+        if let Some(with) = ff.with(FROM_TOML) {
+            splat!(out;
+                let [#: ff.name] = [~with]::finish(
+                    __ctx, __flatten_partial
+                )?;
+            );
+        } else {
+            splat!(out;
+                let [#: ff.name] = < [~ff.ty] as [#ctx.crate_path]::FromFlattened<#[#: &ctx.lifetime]> >::finish(
+                    __ctx, __flatten_partial
+                )?;
+            );
+        }
     }
 
     // Unwrap required and default fields
@@ -572,11 +596,19 @@ fn emit_table_field_ser(
                 [?(self_access) & self . [#: field.name]]
                 [?(!self_access) [#: field.name]]
             );
-            splat!(out;
-                [#ctx.crate_path]::ToFlattened::to_flattened(
-                    [@TokenTree::Group(Group::new(Delimiter::None, field_ref))],
-                    __ctx, &mut [#table_id])?;
-            );
+            if let Some(with) = field.with(TO_TOML) {
+                splat!(out;
+                    [~with]::to_flattened(
+                        [@TokenTree::Group(Group::new(Delimiter::None, field_ref))],
+                        __ctx, &mut [#table_id])?;
+                );
+            } else {
+                splat!(out;
+                    [#ctx.crate_path]::ToFlattened::to_flattened(
+                        [@TokenTree::Group(Group::new(Delimiter::None, field_ref))],
+                        __ctx, &mut [#table_id])?;
+                );
+            }
         }
     }
 }
