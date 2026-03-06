@@ -120,13 +120,13 @@ impl ItemMetadata {
         self.end_and_flag & HINTS_BIT == 0
     }
 
-    /// Returns the source span, or `None` if in format-hints mode.
+    /// Returns the source span, or `0..0` if in format-hints mode.
     #[inline]
-    pub fn span(&self) -> Option<Span> {
+    pub fn span(&self) -> Span {
         if self.is_span_mode() {
-            Some(self.span_unchecked())
+            self.span_unchecked()
         } else {
-            None
+            Span::default()
         }
     }
 
@@ -615,10 +615,10 @@ impl<'de> Item<'de> {
         self.meta.span_unchecked()
     }
 
-    /// Returns the source span, or `None` if this item was constructed
+    /// Returns the source span, or `0..0` if this item was constructed
     /// programmatically (format-hints mode).
     #[inline]
-    pub fn span(&self) -> Option<Span> {
+    pub fn span(&self) -> Span {
         self.meta.span()
     }
 
@@ -1439,12 +1439,12 @@ impl<'de> MaybeItem<'de> {
         }
     }
 
-    /// Returns the source span, or [`None`] if this is a missing value.
-    pub fn span(&self) -> Option<Span> {
+    /// Returns the source span, or `0..0` if this is a missing value.
+    pub fn span(&self) -> Span {
         if let Some(item) = self.item() {
-            Some(item.span_unchecked())
+            item.span_unchecked()
         } else {
-            None
+            Span::default()
         }
     }
 

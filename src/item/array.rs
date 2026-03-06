@@ -365,9 +365,9 @@ impl<'de> Array<'de> {
         self.meta.span_unchecked()
     }
 
-    /// Returns the source span, or `None` if this array was constructed
+    /// Returns the source span, or `0..0` if this array was constructed
     /// programmatically (format-hints mode).
-    pub fn span(&self) -> Option<Span> {
+    pub fn span(&self) -> Span {
         self.meta.span()
     }
 

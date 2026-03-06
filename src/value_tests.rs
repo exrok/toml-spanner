@@ -624,10 +624,10 @@ fn maybe_item_chained_and_none_propagation() {
 
     // span()/value() on valid vs NONE MaybeItem
     let maybe = &root_item["users"][0]["name"];
-    assert!(maybe.span().is_some());
+    assert!(!maybe.span().is_empty());
     assert!(matches!(maybe.value(), Some(Value::String(_))));
     let none = &root_item["missing"];
-    assert!(none.span().is_none());
+    assert!(none.span().is_empty());
     assert!(none.value().is_none());
 
     // NONE propagates through arbitrary chains

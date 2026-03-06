@@ -274,7 +274,7 @@ fn default_and_debug() {
     // Table::default - public type (format-hints mode, no span)
     let table: Table<'_> = Table::default();
     assert_eq!(table.len(), 0);
-    assert!(table.span().is_none());
+    assert!(table.span().is_empty());
 
     // Table::Debug - public type
     let mut table = Table::new_spanned(Span::new(0, 10));
