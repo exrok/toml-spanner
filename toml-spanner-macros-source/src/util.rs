@@ -37,9 +37,10 @@ impl<T> Drop for MemoryPool<T> {
                     &mut bucket.data as *mut _ as *mut T,
                     current_size,
                 ) as *mut [T]);
+                let to_dealloc = current_bucket;
                 current_bucket = bucket.next;
                 current_size = FREAKY_BUCKET_SIZE;
-                std::alloc::dealloc(current_bucket as *mut u8, Layout::new::<Bucket<T>>());
+                std::alloc::dealloc(to_dealloc as *mut u8, Layout::new::<Bucket<T>>());
             }
         }
     }

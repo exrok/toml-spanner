@@ -1,3 +1,4 @@
+
 use crate::{case::RenameRule, util::Allocator, Error};
 use proc_macro::{Delimiter, Ident, Literal, Span, TokenStream, TokenTree};
 pub enum GenericKind {
@@ -760,7 +761,6 @@ pub fn scan_fields<'a>(target: &mut DeriveTargetInner<'a>, fields: &mut Vec<Fiel
                         }
                     } else {
                         let ty = if field.flags & Field::WITH_FROM_TOML_OPTION != 0 {
-                            // TODO do this more robustly and princibled
                             if let [TokenTree::Ident(id), _, inner @ .., TokenTree::Punct(close)] =
                                 field.ty
                             {

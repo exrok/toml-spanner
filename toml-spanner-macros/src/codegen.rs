@@ -154,7 +154,7 @@ fn impl_from_toml(output: &mut RustWriter, ctx: &Ctx, inner: TokenStream) {
     let target = ctx.target;
     let any_generics = !target.generics.is_empty();
     {
-        output.blit_punct(14);
+        output.blit_punct(12);
         {
             let at = output.buf.len();
             output.blit_ident(23);
@@ -238,7 +238,7 @@ fn impl_to_toml(output: &mut RustWriter, ctx: &Ctx, inner: TokenStream) {
     let any_generics = !target.generics.is_empty();
     let lf = Ident::new("__de", Span::mixed_site());
     {
-        output.blit_punct(14);
+        output.blit_punct(12);
         {
             let at = output.buf.len();
             output.blit_ident(23);
@@ -430,7 +430,7 @@ fn emit_table_field_deser(
             out.buf.push(name_lit.clone().into());
         };
         for alias in field.attr.aliases(FROM_TOML) {
-            out.blit_punct(11);
+            out.blit_punct(14);
             out.buf.push(alias.clone().into());
         }
         {
@@ -2664,7 +2664,7 @@ pub fn inner_derive(stream: TokenStream) -> TokenStream {
     let ts = rust_writer.split_off_stream(0);
     {
         let len = (&mut rust_writer).buf.len();
-        (&mut rust_writer).blit_punct(14);
+        (&mut rust_writer).blit_punct(12);
         {
             let at = (&mut rust_writer).buf.len();
             (&mut rust_writer).blit_ident(2);
