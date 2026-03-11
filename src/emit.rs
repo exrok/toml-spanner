@@ -1,12 +1,18 @@
-pub(crate) mod normalization;
+pub mod normalization;
 mod partition;
+#[cfg(fuzzing)]
+pub(crate) mod reprojection;
+#[cfg(not(fuzzing))]
 mod reprojection;
 #[cfg(test)]
 #[path = "emit_tests.rs"]
 mod tests;
 
 pub use normalization::NormalizedTable;
+#[cfg(fuzzing)]
 pub use reprojection::reproject;
+#[cfg(not(fuzzing))]
+pub(crate) use reprojection::reproject;
 
 use crate::Array;
 use crate::Table;

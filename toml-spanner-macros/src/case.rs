@@ -119,9 +119,7 @@ impl RenameRule {
             }
             ScreamingSnakeCase => field.to_ascii_uppercase(),
             KebabCase => underscores_to_hyphens(field.to_owned()),
-            ScreamingKebabCase => {
-                underscores_to_hyphens(ScreamingSnakeCase.apply_to_field(field))
-            }
+            ScreamingKebabCase => underscores_to_hyphens(ScreamingSnakeCase.apply_to_field(field)),
         }
     }
 }

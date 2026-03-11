@@ -211,13 +211,6 @@ impl<'de> toml_spanner::FromToml<'de> for WorkspaceValue {
     }
 }
 
-toml_spanner::deserialize_table! {
-    #[deny_unknown_fields]
-    struct TomlInheritedField {
-        required workspace: WorkspaceValue,
-    }
-}
-
 /// Check if a table item has a `workspace = true` key.
 fn is_workspace_inherit(item: &toml_spanner::Item<'_>) -> bool {
     if let Some(table) = item.as_table() {

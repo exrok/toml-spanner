@@ -83,17 +83,21 @@ fn reproject_item<'de>(
 
 /// Returns `true` if the entry is an empty body-level table whose source
 /// was a header/implicit section (eligible for promotion to Header).
-fn is_promotable(entry: &(Key<'_>, Item<'_>), src: &Table<'_>, index: &TableIndex<'_>) -> bool {
-    let Some(dt) = entry.1.as_table() else {
+fn is_promotable(
+    (key, item): &(Key<'_>, Item<'_>),
+    src: &Table<'_>,
+    index: &TableIndex<'_>,
+) -> bool {
+    let Some(dt) = item.as_table() else {
         return false;
     };
     if !dt.is_empty() || !matches!(dt.style(), TableStyle::Dotted | TableStyle::Inline) {
         return false;
     }
-    let Some(e) = src.value.get_entry_with_index(entry.0.name, index) else {
+    let Some((_, child_item)) = src.value.get_entry_with_index(key.name, index) else {
         return false;
     };
-    let Some(st) = e.1.as_table() else {
+    let Some(st) = child_item.as_table() else {
         return false;
     };
     matches!(st.style(), TableStyle::Header | TableStyle::Implicit)

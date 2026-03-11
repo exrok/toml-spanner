@@ -697,7 +697,7 @@ impl<'de> de::Deserialize<'de> for InheritableBtreeMap {
     }
 }
 
-#[derive(Deserialize, Serialize, Copy, Clone, Debug)]
+#[derive(Deserialize, Serialize, Copy, Clone, Debug, toml_spanner_macros::Toml)]
 #[serde(rename_all = "kebab-case")]
 pub struct TomlInheritedField {
     workspace: WorkspaceValue,

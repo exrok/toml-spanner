@@ -502,7 +502,7 @@ fn run_reproject_edit(path: &str) {
     };
 
     // Invariant 3: semantically equal to dest (values, ignoring flags).
-    if !toml_spanner::items_equal(ref_root.table().as_item(), out_root.table().as_item()) {
+    if ref_root.table().as_item() != out_root.table().as_item() {
         eprintln!(
             "FAILURE: emit output differs semantically from dest!\n\
              src:\n{src_text:?}\n\
@@ -511,7 +511,7 @@ fn run_reproject_edit(path: &str) {
         );
         std::process::exit(1);
     }
-    println!("── items_equal: OK ──");
+    println!("── items equal: OK ──");
 
     // Invariant 4: idempotent — re-emit the output with self-reprojection.
     let arena_s2 = toml_spanner::Arena::new();
@@ -663,7 +663,7 @@ fn run_reproject_reorder(path: &str) {
     };
 
     // Invariant 3: semantically equal to dest (values, ignoring flags).
-    if !toml_spanner::items_equal(ref_root.table().as_item(), out_root.table().as_item()) {
+    if ref_root.table().as_item() != out_root.table().as_item() {
         eprintln!(
             "FAILURE: emit output differs semantically from dest!\n\
              src:\n{src_text:?}\n\
@@ -672,7 +672,7 @@ fn run_reproject_reorder(path: &str) {
         );
         std::process::exit(1);
     }
-    println!("── items_equal: OK ──");
+    println!("── items equal: OK ──");
 
     // Invariant 4: idempotent — re-emit the output with self-reprojection.
     let arena_s2 = toml_spanner::Arena::new();

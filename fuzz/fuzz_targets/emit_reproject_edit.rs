@@ -66,7 +66,7 @@ fuzz_target!(|data: &[u8]| -> Corpus {
     // Invariant 3: semantically equal to dest (values, ignoring structural flags
     // which may differ due to reprojection from src).
     assert!(
-        toml_spanner::items_equal(dest_table.as_item(), out_root.table().as_item()),
+        dest_table.as_item() == out_root.table().as_item(),
         "emit output differs semantically from dest!\n\
          src:\n{src_text}\n\
          dest:\n{dest_text}\n\

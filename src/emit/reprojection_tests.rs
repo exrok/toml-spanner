@@ -2,7 +2,6 @@ use super::reproject;
 use crate::Table;
 use crate::arena::Arena;
 use crate::emit::EmitConfig;
-use crate::item::items_equal;
 use crate::item::{ArrayStyle, Item, Key, TableStyle, Value};
 use crate::parser::parse;
 use crate::{Root, emit, emit_with_config};
@@ -1151,7 +1150,7 @@ fn assert_reproject_edit(src_text: &str, dest_text: &str) {
     });
 
     // Check: semantically equal to dest.
-    if !items_equal(ref_root.table().as_item(), out_root.table().as_item()) {
+    if ref_root.table().as_item() != out_root.table().as_item() {
         panic!(
             "FAILURE: emit output differs semantically from dest!\n\
              \n── source text ({} bytes) ──\n{src_text:?}\
@@ -1463,7 +1462,7 @@ fn run_edit_ordered(src_text: &str, dest_text: &str) {
     });
 
     // Semantically equal to dest.
-    if !items_equal(ref_root.table().as_item(), out_root.table().as_item()) {
+    if ref_root.table().as_item() != out_root.table().as_item() {
         panic!(
             "emit output differs semantically from dest!\n\
              src: {src_text:?}\ndest: {dest_text:?}\n\

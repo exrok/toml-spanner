@@ -276,11 +276,7 @@ impl<K: ToToml, V: ToToml> ToFlattened for BTreeMap<K, V> {
             let Some(key_str) = key_to_str(&key_item) else {
                 return Err(Failed);
             };
-            table.insert(
-                Key::anon(key_str),
-                v.to_toml(ctx)?,
-                ctx.arena,
-            );
+            table.insert(Key::anon(key_str), v.to_toml(ctx)?, ctx.arena);
         }
         Ok(())
     }
@@ -297,11 +293,7 @@ impl<K: ToToml, V: ToToml, H> ToFlattened for HashMap<K, V, H> {
             let Some(key_str) = key_to_str(&key_item) else {
                 return Err(Failed);
             };
-            table.insert(
-                Key::anon(key_str),
-                v.to_toml(ctx)?,
-                ctx.arena,
-            );
+            table.insert(Key::anon(key_str), v.to_toml(ctx)?, ctx.arena);
         }
         Ok(())
     }

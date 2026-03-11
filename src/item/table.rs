@@ -345,7 +345,7 @@ impl ExactSizeIterator for IntoIter<'_> {}
 ///   panics on missing keys, and supports chained indexing.
 /// - **`get` / `get_mut`** — return `Option<&Item>` / `Option<&mut Item>`.
 ///
-/// For type-safe deserialization, use [`Item::table_helper`](crate::value::Item::table_helper)
+/// For type-safe deserialization, use [`Item::table_helper`](crate::Item::table_helper)
 /// to create a [`TableHelper`](crate::de::TableHelper).
 ///
 /// # Lookup performance
@@ -357,7 +357,7 @@ impl ExactSizeIterator for IntoIter<'_> {}
 /// For structured deserialization of larger tables, use
 /// [`TableHelper`](crate::de::TableHelper) via
 /// [`Root::helper`](crate::Root::helper) or
-/// [`Item::table_helper`](crate::value::Item::table_helper). The
+/// [`Item::table_helper`](crate::Item::table_helper). The
 /// [`Context`](crate::de::Context) returned by [`parse`](crate::parse)
 /// carries the parser's hash index.
 ///

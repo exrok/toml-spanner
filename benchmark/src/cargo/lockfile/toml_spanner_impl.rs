@@ -13,30 +13,3 @@ impl<'de> toml_spanner::FromToml<'de> for TomlLockfilePackageId {
         item.parse().map_err(|err| ctx.push_error(err))
     }
 }
-
-toml_spanner::deserialize_table! {
-    struct TomlLockfileDependency {
-        required name: String,
-        required version: String,
-        optional source: TomlLockfileSourceId,
-        optional checksum: String,
-        optional dependencies: Vec<TomlLockfilePackageId>,
-        optional replace: TomlLockfilePackageId,
-    }
-}
-
-toml_spanner::deserialize_table! {
-    struct TomlLockfilePatch {
-        default unused: Vec<TomlLockfileDependency>,
-    }
-}
-
-toml_spanner::deserialize_table! {
-    struct TomlLockfile {
-        optional version: u32,
-        optional package: Vec<TomlLockfileDependency>,
-        optional root: TomlLockfileDependency,
-        optional metadata: TomlLockfileMetadata,
-        default patch: TomlLockfilePatch,
-    }
-}

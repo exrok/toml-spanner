@@ -762,8 +762,7 @@ fn derive_generic_with_explicit_type() {
 
 #[test]
 fn generic_optional_field_present() {
-    let v: GenericOptionalField<String> =
-        toml_spanner::from_str(r#"path = "hello""#).unwrap();
+    let v: GenericOptionalField<String> = toml_spanner::from_str(r#"path = "hello""#).unwrap();
     assert_eq!(v.path, Some("hello".to_string()));
 }
 
@@ -1034,7 +1033,10 @@ port = 443
     let root = toml_spanner::parse(input, &arena).unwrap();
     let val: WithSection = toml_spanner::from_str(input).unwrap();
     let output = to_string_preserving_formatting(&val, &root).unwrap();
-    assert!(output.contains("[server]"), "header style should be preserved, got: {output}");
+    assert!(
+        output.contains("[server]"),
+        "header style should be preserved, got: {output}"
+    );
     assert!(output.contains("host = \"0.0.0.0\""), "got: {output}");
 }
 
@@ -1053,8 +1055,14 @@ debug = false
         debug: false,
     };
     let output = to_string_preserving_formatting(&config, &root).unwrap();
-    assert!(output.contains("port = 9090"), "modified value should appear, got: {output}");
-    assert!(output.contains("host = \"localhost\""), "unchanged value should be preserved, got: {output}");
+    assert!(
+        output.contains("port = 9090"),
+        "modified value should appear, got: {output}"
+    );
+    assert!(
+        output.contains("host = \"localhost\""),
+        "unchanged value should be preserved, got: {output}"
+    );
 }
 
 #[test]
@@ -1127,7 +1135,11 @@ mod flatten_key_helper {
         table: &mut Table<'a>,
     ) -> Result<(), Failed> {
         for s in val {
-            table.insert(Key::anon(ctx.arena.alloc_str(s)), Item::from(true), ctx.arena);
+            table.insert(
+                Key::anon(ctx.arena.alloc_str(s)),
+                Item::from(true),
+                ctx.arena,
+            );
         }
         Ok(())
     }

@@ -1231,7 +1231,7 @@ impl<'de> PartialEq for Item<'de> {
                         let Some(val_b) = tab_b.get(key.name) else {
                             return false;
                         };
-                        if !items_equal(val_a, val_b) {
+                        if val_a != val_b {
                             return false;
                         }
                     }
@@ -1240,10 +1240,6 @@ impl<'de> PartialEq for Item<'de> {
             }
         }
     }
-}
-/// Compares two [`Item`] values for semantic equality, ignoring spans.
-pub fn items_equal(a: &Item<'_>, b: &Item<'_>) -> bool {
-    a == b
 }
 
 impl<'de> std::ops::Index<&str> for Item<'de> {

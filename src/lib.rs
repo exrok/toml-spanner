@@ -148,15 +148,18 @@ pub use item::owned::{OwnedItem, OwnedTable};
 pub use arena::Arena;
 #[cfg(feature = "from-toml")]
 pub use de::{Context, Failed, FromFlattened, FromToml, TableHelper};
+#[cfg(all(feature = "to-toml", fuzzing))]
+pub use emit::reproject;
+#[cfg(all(feature = "to-toml", not(fuzzing)))]
+use emit::reproject;
 #[cfg(feature = "to-toml")]
-pub use emit::{EmitConfig, NormalizedTable, emit, emit_with_config, reproject};
-pub use error::{Error, ErrorKind};
+pub use emit::{EmitConfig, NormalizedTable, emit, emit_with_config};
 #[cfg(feature = "from-toml")]
 pub use error::FromTomlError;
 #[cfg(feature = "to-toml")]
 pub use error::ToTomlError;
+pub use error::{Error, ErrorKind};
 pub use item::array::Array;
-pub use item::items_equal;
 pub use item::table::Table;
 pub use item::{ArrayStyle, Item, Key, Kind, MaybeItem, TableStyle, Value, ValueMut};
 pub use parser::{Root, parse};
@@ -171,27 +174,39 @@ pub use toml_spanner_macros::Toml;
 #[cfg(feature = "serde")]
 pub mod impl_serde;
 
+/// Parses and deserializes a TOML document in one step.
+///
+/// This is a convenience wrapper that allocates its own [`Arena`] and
+/// calls [`parse`] followed by [`Root::to`]. Because the arena is
+/// local, the deserialized type `T` cannot borrow from the input.
+///
+/// For more control over lifetimes — for example, to borrow `&'de str`
+/// fields directly from the input, or to reuse an arena across multiple
+/// parses — use the lower-level API instead:
+///
+/// ```
+/// # fn main() -> Result<(), toml_spanner::FromTomlError> {
+/// let arena = toml_spanner::Arena::new();
+/// let mut root = toml_spanner::parse("key = 'value'", &arena)?;
+/// let config = root.to::<std::collections::HashMap<String, String>>()?;
+/// # Ok(())
+/// # }
+/// ```
+///
+/// Note that [`to_string_preserving_formatting`] requires a [`Root`]
+/// to reproject formatting from, but it does not have to be the
+/// same `Root` that produced the deserialized value, any parsed
+/// TOML tree can serve as a formatting template.
+///
+/// # Errors
+///
+/// Returns a [`FromTomlError`] containing all parse and deserialization
+/// errors encountered.
 #[cfg(feature = "from-toml")]
 pub fn from_str<T: for<'a> FromToml<'a>>(document: &str) -> Result<T, FromTomlError> {
     let arena = Arena::new();
-    from_str_in(document, &arena)
-}
-
-#[cfg(feature = "from-toml")]
-pub fn from_str_in<'de, T: FromToml<'de>>(
-    document: &'de str,
-    arena: &'de Arena,
-) -> Result<T, FromTomlError> {
-    match parse(document, arena) {
-        Ok(mut root) => {
-            let value = T::from_toml(&mut root.ctx, root.table.as_item());
-            match value {
-                Ok(v) if root.ctx.errors.is_empty() => Ok(v),
-                _ => Err(FromTomlError { errors: root.ctx.errors }),
-            }
-        }
-        Err(e) => Err(FromTomlError { errors: vec![e] }),
-    }
+    let mut root = parse(document, &arena)?;
+    root.to()
 }
 
 #[cfg(feature = "to-toml")]
@@ -212,20 +227,24 @@ pub fn to_string(value: &dyn ToToml) -> Result<String, ToTomlError> {
         }
     };
     let Some(table) = item.as_table_mut() else {
-        return Err(ToTomlError { message: "Top-level item must be a table".into() });
+        return Err(ToTomlError {
+            message: "Top-level item must be a table".into(),
+        });
     };
     let mut buffer = Vec::new();
     emit(table.normalize(), &mut buffer);
     match String::from_utf8(buffer) {
         Ok(s) => Ok(s),
-        Err(_) => Err(ToTomlError { message: "Failed to convert emitted bytes into a UTF-8 string".into() }),
+        Err(_) => Err(ToTomlError {
+            message: "Failed to convert emitted bytes into a UTF-8 string".into(),
+        }),
     }
 }
 
 #[cfg(feature = "to-toml")]
 pub fn to_string_preserving_formatting(
     value: &dyn ToToml,
-    of: &Root<'_>,
+    formatting_reference: &Root<'_>,
 ) -> Result<String, ToTomlError> {
     let arena = Arena::new();
     let mut context = ToContext {
@@ -243,22 +262,26 @@ pub fn to_string_preserving_formatting(
         }
     };
     let Some(table) = item.as_table_mut() else {
-        return Err(ToTomlError { message: "Top-level item must be a table".into() });
+        return Err(ToTomlError {
+            message: "Top-level item must be a table".into(),
+        });
     };
     let mut items = Vec::new();
-    reproject(of, table, &mut items);
+    reproject(formatting_reference, table, &mut items);
     let mut buffer = Vec::new();
     emit_with_config(
         table.normalize(),
         &EmitConfig {
             projected_source_items: &items,
-            projected_source_text: of.ctx.source(),
+            projected_source_text: formatting_reference.ctx.source(),
             reprojected_order: true,
         },
         &mut buffer,
     );
     match String::from_utf8(buffer) {
         Ok(s) => Ok(s),
-        Err(_) => Err(ToTomlError { message: "Failed to convert emitted bytes into a UTF-8 string".into() }),
+        Err(_) => Err(ToTomlError {
+            message: "Failed to convert emitted bytes into a UTF-8 string".into(),
+        }),
     }
 }

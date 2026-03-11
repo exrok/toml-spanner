@@ -16,7 +16,7 @@ use url::Url;
 use super::source_kind::{GitReference, SourceKind};
 
 /// Serialization of `Cargo.lock`
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, toml_spanner_macros::Toml)]
 pub struct TomlLockfile {
     /// The lockfile format version (`version =` field).
     ///
@@ -40,6 +40,7 @@ pub struct TomlLockfile {
     ///
     /// The lockfile stores them as a list of `[[patch.unused]]` entries.
     #[serde(default, skip_serializing_if = "TomlLockfilePatch::is_empty")]
+    #[toml(default)]
     pub patch: TomlLockfilePatch,
 }
 
@@ -51,9 +52,10 @@ pub type TomlLockfileMetadata = BTreeMap<String, String>;
 /// Serialization of unused patches
 ///
 /// Cargo stores patches that were declared but not used during resolution.
-#[derive(Serialize, Deserialize, Debug, Default)]
+#[derive(Serialize, Deserialize, Debug, Default, toml_spanner_macros::Toml)]
 pub struct TomlLockfilePatch {
     /// The list of unused dependency patches.
+    #[toml(default)]
     pub unused: Vec<TomlLockfileDependency>,
 }
 
@@ -64,7 +66,7 @@ impl TomlLockfilePatch {
 }
 
 /// Serialization of lockfiles dependencies
-#[derive(Serialize, Deserialize, Debug, PartialOrd, Ord, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Debug, PartialOrd, Ord, PartialEq, Eq, toml_spanner_macros::Toml)]
 pub struct TomlLockfileDependency {
     /// The name of the dependency.
     pub name: String,

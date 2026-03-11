@@ -454,7 +454,11 @@ impl Display for FromTomlError {
         Display::fmt(first, f)?;
         let remaining = self.errors.len() - 1;
         if remaining > 0 {
-            write!(f, " (+{remaining} more error{})", if remaining == 1 { "" } else { "s" })?;
+            write!(
+                f,
+                " (+{remaining} more error{})",
+                if remaining == 1 { "" } else { "s" }
+            )?;
         }
         Ok(())
     }
@@ -475,7 +479,9 @@ impl std::error::Error for FromTomlError {}
 #[cfg(feature = "from-toml")]
 impl From<Error> for FromTomlError {
     fn from(error: Error) -> Self {
-        Self { errors: vec![error] }
+        Self {
+            errors: vec![error],
+        }
     }
 }
 
@@ -520,6 +526,8 @@ impl From<std::borrow::Cow<'static, str>> for ToTomlError {
 #[cfg(feature = "to-toml")]
 impl From<&'static str> for ToTomlError {
     fn from(message: &'static str) -> Self {
-        Self { message: std::borrow::Cow::Borrowed(message) }
+        Self {
+            message: std::borrow::Cow::Borrowed(message),
+        }
     }
 }

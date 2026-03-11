@@ -40,7 +40,7 @@ pub fn parse_lock_toml_spanner(
 ) -> Result<lockfile::TomlLockfile, Vec<toml_spanner::Error>> {
     let arena = toml_spanner::Arena::new();
     let mut root = toml_spanner::parse(s, &arena).map_err(|e| vec![e])?;
-    match root.deserialize::<lockfile::TomlLockfile>() {
+    match root.to::<lockfile::TomlLockfile>() {
         Ok(lockfile) if !root.has_errors() => Ok(lockfile),
         Ok(_) => Err(root.ctx.errors),
         Err(_) => Err(root.ctx.errors),
@@ -64,7 +64,7 @@ pub fn parse_manifest_toml_spanner(
 ) -> Result<manifest::TomlManifest, Vec<toml_spanner::Error>> {
     let arena = toml_spanner::Arena::new();
     let mut root = toml_spanner::parse(s, &arena).map_err(|e| vec![e])?;
-    match root.deserialize::<manifest::TomlManifest>() {
+    match root.to::<manifest::TomlManifest>() {
         Ok(manifest) if !root.has_errors() => Ok(manifest),
         Ok(_) => Err(root.ctx.errors),
         Err(_) => Err(root.ctx.errors),
