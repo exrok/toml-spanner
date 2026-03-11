@@ -1,5 +1,4 @@
 use crate::{Gen, pick_unique_idx};
-use toml_spanner::dev;
 use toml_spanner::{Arena, Array, ArrayStyle, Item, Key, Table, TableStyle, Value};
 
 pub const KEYS: [&str; 8] = ["a", "b", "c", "d", "e", "x", "y", "z"];
@@ -34,8 +33,8 @@ pub fn gen_item<'de>(g: &mut Gen<'_>, arena: &'de Arena, depth: u8) -> Item<'de>
             Item::string(s)
         }
         1 => Item::from(g.next() as i64),
-        2 => dev::make_float(g.next() as f64),
-        3 => dev::make_boolean(g.next() % 2 == 0),
+        2 => Item::from(g.next() as f64),
+        3 => Item::from(g.next() % 2 == 0),
         4 => gen_array_item(g, arena, depth),
         _ => gen_table_item(g, arena, depth),
     }

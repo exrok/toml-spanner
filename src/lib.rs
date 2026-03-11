@@ -131,22 +131,24 @@
 //! </details>
 
 mod arena;
-#[cfg(feature = "deserialization")]
+#[cfg(feature = "from-toml")]
 mod de;
+#[cfg(feature = "to-toml")]
 mod emit;
 mod error;
 mod item;
 mod parser;
+#[cfg(feature = "to-toml")]
 mod ser;
 mod span;
 mod time;
 
 pub use item::owned::{OwnedItem, OwnedTable};
-use std::borrow::Cow;
 
 pub use arena::Arena;
-#[cfg(feature = "deserialization")]
+#[cfg(feature = "from-toml")]
 pub use de::{Context, Failed, FromFlattened, FromToml, TableHelper};
+#[cfg(feature = "to-toml")]
 pub use emit::{EmitConfig, NormalizedTable, emit, emit_with_config, reproject};
 pub use error::{Error, ErrorKind};
 pub use item::array::Array;
@@ -154,6 +156,7 @@ pub use item::items_equal;
 pub use item::table::Table;
 pub use item::{ArrayStyle, Item, Key, Kind, MaybeItem, TableStyle, Value, ValueMut};
 pub use parser::{Root, parse};
+#[cfg(feature = "to-toml")]
 pub use ser::{ToContext, ToFlattened, ToToml};
 pub use span::{Span, Spanned};
 pub use time::{Date, DateTime, Time, TimeOffset};
@@ -164,14 +167,13 @@ pub use toml_spanner_macros::Toml;
 #[cfg(feature = "serde")]
 pub mod impl_serde;
 
-// Temporary module for testing and debugging during development
-pub mod dev;
-
+#[cfg(feature = "from-toml")]
 pub fn from_str<T: for<'a> FromToml<'a>>(document: &str) -> Result<T, Vec<Error>> {
     let arena = Arena::new();
     from_str_in(document, &arena)
 }
 
+#[cfg(feature = "from-toml")]
 pub fn from_str_in<'de, T: FromToml<'de>>(
     document: &'de str,
     arena: &'de Arena,
@@ -188,7 +190,8 @@ pub fn from_str_in<'de, T: FromToml<'de>>(
     }
 }
 
-pub fn to_string(value: &dyn ToToml) -> Result<String, Cow<'static, str>> {
+#[cfg(feature = "to-toml")]
+pub fn to_string(value: &dyn ToToml) -> Result<String, std::borrow::Cow<'static, str>> {
     let arena = Arena::new();
     let mut context = ToContext {
         arena: &arena,

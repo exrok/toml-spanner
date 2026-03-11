@@ -7,15 +7,18 @@ use crate::item::{
     FLAG_DOTTED, FLAG_FROZEN, FLAG_HEADER, FLAG_TABLE, Item, ItemMetadata, Key, MaybeItem, NONE,
     TAG_TABLE, TableStyle,
 };
+#[cfg(feature = "to-toml")]
 use crate::parser::KeyRef;
 use std::mem::size_of;
 use std::ptr::NonNull;
 
 use crate::arena::Arena;
 
+#[cfg(feature = "to-toml")]
 #[repr(transparent)]
 pub struct TableIndex<'de>(foldhash::HashMap<KeyRef<'de>, usize>);
 
+#[cfg(feature = "to-toml")]
 impl<'de> TableIndex<'de> {
     pub(crate) fn from_ref<'a>(map: &'a foldhash::HashMap<KeyRef<'de>, usize>) -> &'a Self {
         // SAFETY: TableIndex is #[repr(transparent)] around the HashMap.
@@ -90,6 +93,7 @@ impl<'de> InnerTable<'de> {
     ///
     /// Both the table and the index must originate from the same `parse` call
     /// and neither must have been mutated since parsing.
+    #[cfg(feature = "to-toml")]
     pub(crate) fn get_entry_with_index(
         &self,
         key: &str,
@@ -593,11 +597,13 @@ impl<'de> Table<'de> {
 
     /// Disables source-position reordering for this table's immediate entries
     /// during emission. Non-recursive: child tables are unaffected.
+    #[cfg(feature = "to-toml")]
     pub fn set_ignore_source_order(&mut self) {
         self.meta.set_ignore_source_order();
     }
 
     /// Returns `true` if source-position reordering is disabled for this table.
+    #[cfg(feature = "to-toml")]
     #[must_use]
     pub fn ignore_source_order(&self) -> bool {
         self.meta.ignore_source_order()
@@ -606,11 +612,13 @@ impl<'de> Table<'de> {
     /// Disables copying structural styles (TableStyle/ArrayStyle) from source
     /// during reprojection for this table's immediate entries. Key spans and
     /// reprojection indices are still copied. Non-recursive.
+    #[cfg(feature = "to-toml")]
     pub fn set_ignore_source_style(&mut self) {
         self.meta.set_ignore_source_style();
     }
 
     /// Returns `true` if source-style copying is disabled for this table.
+    #[cfg(feature = "to-toml")]
     #[must_use]
     pub fn ignore_source_style(&self) -> bool {
         self.meta.ignore_source_style()

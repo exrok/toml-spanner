@@ -312,7 +312,7 @@ fn type_error_helpers() {
     assert_eq!(err.span, sp(0, 2));
 }
 
-#[cfg(feature = "deserialization")]
+#[cfg(feature = "from-toml")]
 #[test]
 fn expect_helpers() {
     let arena = Arena::new();

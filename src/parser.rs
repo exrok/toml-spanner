@@ -6,16 +6,18 @@
 #[path = "./parser_tests.rs"]
 mod tests;
 
-#[cfg(feature = "deserialization")]
+#[cfg(feature = "from-toml")]
 use crate::de::{Failed, TableHelper};
 use crate::{
     MaybeItem, Span,
     arena::Arena,
     error::{Error, ErrorKind},
-    item::table::{InnerTable, Table, TableIndex},
+    item::table::{InnerTable, Table},
     item::{self, Item, Key},
     time::DateTime,
 };
+#[cfg(feature = "to-toml")]
+use crate::item::table::TableIndex;
 use std::char;
 use std::hash::{Hash, Hasher};
 use std::ptr::NonNull;
@@ -1817,9 +1819,9 @@ impl<'de> Parser<'de> {
 /// [`Root::into_table()`] to extract the table for mutable access.
 pub struct Root<'de> {
     pub(crate) table: Table<'de>,
-    #[cfg(not(feature = "deserialization"))]
+    #[cfg(all(not(feature = "from-toml"), feature = "to-toml"))]
     index: foldhash::HashMap<KeyRef<'de>, usize>,
-    #[cfg(feature = "deserialization")]
+    #[cfg(feature = "from-toml")]
     pub ctx: crate::de::Context<'de>,
 }
 
@@ -1841,7 +1843,7 @@ impl<'de> Root<'de> {
     }
 
     /// Access the root table immutably.
-    #[cfg(feature = "deserialization")]
+    #[cfg(feature = "from-toml")]
     pub fn split(&mut self) -> (&mut crate::de::Context<'de>, &Table<'de>) {
         (&mut self.ctx, &self.table)
     }
@@ -1849,21 +1851,14 @@ impl<'de> Root<'de> {
     /// Returns the parser's hash index for O(1) key lookups in large tables.
     ///
     /// Used internally by [`reproject`](crate::reproject).
-    #[cfg(feature = "deserialization")]
+    #[cfg(feature = "to-toml")]
     pub(crate) fn table_index(&self) -> &TableIndex<'de> {
+        // `to-toml` implies `from-toml`, so ctx is always available here.
         TableIndex::from_ref(&self.ctx.index)
-    }
-
-    /// Returns the parser's hash index for O(1) key lookups in large tables.
-    ///
-    /// Used internally by [`reproject`](crate::reproject).
-    #[cfg(not(feature = "deserialization"))]
-    pub(crate) fn table_index(&self) -> &TableIndex<'de> {
-        TableIndex::from_ref(&self.index)
     }
 }
 
-#[cfg(feature = "deserialization")]
+#[cfg(feature = "from-toml")]
 impl<'de> Root<'de> {
     /// Create a [`TableHelper`] for the root table.
     pub fn helper<'ctx>(&'ctx mut self) -> TableHelper<'ctx, 'ctx, 'de> {
@@ -1957,9 +1952,9 @@ pub fn parse<'de>(document: &'de str, arena: &'de Arena) -> Result<Root<'de>, Er
     // todo don't do this
     Ok(Root {
         table: root_st,
-        #[cfg(not(feature = "deserialization"))]
+        #[cfg(all(not(feature = "from-toml"), feature = "to-toml"))]
         index: parser.index,
-        #[cfg(feature = "deserialization")]
+        #[cfg(feature = "from-toml")]
         ctx: crate::de::Context {
             errors: Vec::new(),
             index: parser.index,

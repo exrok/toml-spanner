@@ -365,7 +365,7 @@ where
     }
 }
 
-#[cfg(feature = "deserialization")]
+#[cfg(feature = "from-toml")]
 impl<'de, T> crate::de::FromToml<'de> for Spanned<T>
 where
     T: crate::de::FromToml<'de>,

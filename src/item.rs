@@ -47,17 +47,21 @@ pub(crate) const FLAG_FROZEN: u32 = 7;
 /// (constructed programmatically); when clear, it is in span mode (from parser).
 pub(crate) const HINTS_BIT: u32 = 1 << 31;
 /// Bit 30 of `end_and_flag`: marks a full match during reprojection.
+#[cfg(feature = "to-toml")]
 pub(crate) const FULL_MATCH_BIT: u32 = 1 << 30;
 /// Bit 29 of `end_and_flag`: when set in format-hints mode, disables
 /// source-position reordering for this table's immediate entries.
+#[cfg(feature = "to-toml")]
 pub(crate) const IGNORE_SOURCE_ORDER_BIT: u32 = 1 << 29;
 /// Bit 28 of `end_and_flag`: when set in format-hints mode, disables
 /// copying structural styles from source during reprojection.
+#[cfg(feature = "to-toml")]
 pub(crate) const IGNORE_SOURCE_STYLE_BIT: u32 = 1 << 28;
 /// Bit 27 of `end_and_flag`: marks an array element as reordered during
 /// reprojection. Prevents the emitter from sorting this element back to
 /// its original source position in the parent array, without affecting
 /// source-ordering of the element's own children.
+#[cfg(feature = "to-toml")]
 pub(crate) const ARRAY_REORDERED_BIT: u32 = 1 << 27;
 /// Value bits (above TAG_SHIFT) all set = "not projected".
 const NOT_PROJECTED: u32 = !(TAG_MASK); // 0xFFFF_FFF8
@@ -168,12 +172,14 @@ impl ItemMetadata {
         self.end_and_flag = (current.max(new_end) << FLAG_SHIFT) | (old & FLAG_MASK);
     }
 
+    #[cfg(feature = "to-toml")]
     /// Returns the projected index (bits 3-31 of `start_and_tag`).
     #[inline]
     pub(crate) fn projected_index(&self) -> u32 {
         self.start_and_tag >> TAG_SHIFT
     }
 
+    #[cfg(feature = "to-toml")]
     /// Branchless mask: span mode -> FLAG_MASK (clears stale span data),
     /// hints mode -> 0xFFFFFFFF (preserves existing hint bits).
     #[inline]
@@ -181,6 +187,7 @@ impl ItemMetadata {
         ((self.end_and_flag as i32) >> 31) as u32 | FLAG_MASK
     }
 
+    #[cfg(feature = "to-toml")]
     /// Stores a reprojected index, preserving user-set hint bits when
     /// already in hints mode. Returns `false` if the index doesn't fit.
     #[inline]
@@ -194,6 +201,7 @@ impl ItemMetadata {
         }
     }
 
+    #[cfg(feature = "to-toml")]
     /// Marks as not projected, preserving user-set hint bits when already
     /// in hints mode and clearing full-match.
     #[inline]
@@ -203,22 +211,26 @@ impl ItemMetadata {
             (self.end_and_flag & (self.hints_preserve_mask() & !FULL_MATCH_BIT)) | HINTS_BIT;
     }
 
+    #[cfg(feature = "to-toml")]
     #[inline]
     pub(crate) fn set_reprojected_full_match(&mut self) {
         self.end_and_flag |= FULL_MATCH_BIT;
     }
 
+    #[cfg(feature = "to-toml")]
     #[inline]
     pub(crate) fn is_reprojected_full_match(&self) -> bool {
         self.end_and_flag & FULL_MATCH_BIT != 0
     }
 
+    #[cfg(feature = "to-toml")]
     /// Disables source-position reordering for this table's entries.
     #[inline]
     pub(crate) fn set_ignore_source_order(&mut self) {
         self.end_and_flag |= HINTS_BIT | IGNORE_SOURCE_ORDER_BIT;
     }
 
+    #[cfg(feature = "to-toml")]
     /// Returns `true` if source-position reordering is disabled.
     /// Gates on `HINTS_BIT` so stale span-end bits cannot false-positive.
     #[inline]
@@ -227,24 +239,28 @@ impl ItemMetadata {
             == (HINTS_BIT | IGNORE_SOURCE_ORDER_BIT)
     }
 
+    #[cfg(feature = "to-toml")]
     /// Marks an array element as reordered during reprojection.
     #[inline]
     pub(crate) fn set_array_reordered(&mut self) {
         self.end_and_flag |= HINTS_BIT | ARRAY_REORDERED_BIT;
     }
 
+    #[cfg(feature = "to-toml")]
     /// Returns `true` if this element was reordered during array reprojection.
     #[inline]
     pub(crate) fn array_reordered(&self) -> bool {
         self.end_and_flag & (HINTS_BIT | ARRAY_REORDERED_BIT) == (HINTS_BIT | ARRAY_REORDERED_BIT)
     }
 
+    #[cfg(feature = "to-toml")]
     /// Disables copying structural styles from source during reprojection.
     #[inline]
     pub(crate) fn set_ignore_source_style(&mut self) {
         self.end_and_flag |= HINTS_BIT | IGNORE_SOURCE_STYLE_BIT;
     }
 
+    #[cfg(feature = "to-toml")]
     /// Returns `true` if source-style copying is disabled for this table.
     #[inline]
     pub(crate) fn ignore_source_style(&self) -> bool {
@@ -356,6 +372,7 @@ impl<'de> From<DateTime> for Item<'de> {
     }
 }
 
+#[cfg(feature = "to-toml")]
 impl<'de> Item<'de> {
     /// Access projected item from source computed in reprojection.
     pub(crate) fn projected<'a>(&self, inputs: &[&'a Item<'a>]) -> Option<&'a Item<'a>> {
@@ -376,6 +393,9 @@ impl<'de> Item<'de> {
     pub(crate) fn is_reprojected_full_match(&self) -> bool {
         self.meta.is_reprojected_full_match()
     }
+}
+
+impl<'de> Item<'de> {
     #[inline]
     fn raw(tag: u32, flag: u32, start: u32, end: u32, payload: Payload<'de>) -> Self {
         Self {
@@ -603,7 +623,7 @@ impl<'de> Item<'de> {
     }
 
     #[inline]
-    #[cfg(test)]
+    #[cfg(all(test, feature = "to-toml"))]
     pub(crate) fn set_flag(&mut self, flag: u32) {
         self.meta.set_flag(flag);
     }
@@ -679,6 +699,7 @@ impl<'de> Item<'de> {
     /// as part of the body: `[header]` tables, implicit tables, and
     /// `[[array-of-tables]]`.
     #[inline]
+    #[cfg(feature = "to-toml")]
     pub(crate) fn is_subsection(&self) -> bool {
         self.has_header_bit() || self.is_implicit_table() || self.is_aot()
     }

@@ -384,7 +384,7 @@ fn extract_header_span_empty_section() {
     assert_eq!(&text[hdr.range()], b"[a]");
 }
 
-#[cfg(feature = "deserialization")]
+#[cfg(feature = "from-toml")]
 #[test]
 fn spanned_deserialize() {
     let arena = crate::arena::Arena::new();
