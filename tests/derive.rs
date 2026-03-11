@@ -1,7 +1,5 @@
 use std::collections::BTreeMap;
-use toml_spanner::{
-    Arena, EmitConfig, Failed, FromToml, Root, ToContext, ToToml, emit_with_config, reproject,
-};
+use toml_spanner::{Arena, FromToml, to_string_preserving_formatting};
 use toml_spanner_macros::Toml;
 
 #[derive(Toml, Debug, PartialEq)]
@@ -946,27 +944,157 @@ fn alias_optional_absent() {
     assert_eq!(v.name, None);
 }
 
-pub fn srp<T: ToToml>(root: &Root<'_>, item: &T) -> Result<String, Failed> {
-    let arena = Arena::new();
-    let mut ctx = ToContext::new(&arena);
-    let mut item = item.to_toml(&mut ctx)?;
-    let Some(table) = item.as_table_mut() else {
-        return Err(Failed);
-    };
-    let mut items = Vec::new();
-    reproject(root, table, &mut items);
-    let mut output = Vec::new();
-    emit_with_config(
-        table.normalize(),
-        &EmitConfig {
-            projected_source_items: &items,
-            projected_source_text: root.ctx.source(),
-            reprojected_order: true,
-        },
-        &mut output,
-    );
+// ==== to_string_preserving_formatting tests ====
 
-    Ok(String::from_utf8(output).unwrap())
+#[derive(Toml, Debug, PartialEq)]
+#[toml(FromToml, ToToml)]
+struct ServerConfig {
+    host: String,
+    port: u16,
+    #[toml(default)]
+    debug: bool,
+}
+
+#[test]
+fn preserving_formatting_identity_roundtrip() {
+    let input = "host = \"localhost\"\nport = 8080\ndebug = true\n";
+    let arena = Arena::new();
+    let root = toml_spanner::parse(input, &arena).unwrap();
+    let config: ServerConfig = toml_spanner::from_str(input).unwrap();
+    let output = to_string_preserving_formatting(&config, &root).unwrap();
+    assert_eq!(output, input);
+}
+
+#[test]
+fn preserving_formatting_keeps_comments() {
+    let input = "\
+# Server configuration
+host = \"localhost\"
+port = 8080
+# Enable debug mode
+debug = true
+";
+    let arena = Arena::new();
+    let root = toml_spanner::parse(input, &arena).unwrap();
+    let config: ServerConfig = toml_spanner::from_str(input).unwrap();
+    let output = to_string_preserving_formatting(&config, &root).unwrap();
+    assert!(output.contains("# Server configuration"), "got: {output}");
+    assert!(output.contains("# Enable debug mode"), "got: {output}");
+}
+
+#[test]
+fn preserving_formatting_keeps_inline_table_style() {
+    #[derive(Toml, Debug, PartialEq)]
+    #[toml(FromToml, ToToml)]
+    struct WithNested {
+        name: String,
+        point: Point,
+    }
+    #[derive(Toml, Debug, PartialEq)]
+    #[toml(FromToml, ToToml)]
+    struct Point {
+        x: i64,
+        y: i64,
+    }
+
+    let input = "name = \"test\"\npoint = { x = 1, y = 2 }\n";
+    let arena = Arena::new();
+    let root = toml_spanner::parse(input, &arena).unwrap();
+    let val: WithNested = toml_spanner::from_str(input).unwrap();
+    let output = to_string_preserving_formatting(&val, &root).unwrap();
+    assert!(
+        output.contains("point = {"),
+        "inline table style should be preserved, got: {output}"
+    );
+}
+
+#[test]
+fn preserving_formatting_keeps_header_style() {
+    #[derive(Toml, Debug, PartialEq)]
+    #[toml(FromToml, ToToml)]
+    struct WithSection {
+        name: String,
+        server: ServerSection,
+    }
+    #[derive(Toml, Debug, PartialEq)]
+    #[toml(FromToml, ToToml)]
+    struct ServerSection {
+        host: String,
+        port: u16,
+    }
+
+    let input = "\
+name = \"app\"
+
+[server]
+host = \"0.0.0.0\"
+port = 443
+";
+    let arena = Arena::new();
+    let root = toml_spanner::parse(input, &arena).unwrap();
+    let val: WithSection = toml_spanner::from_str(input).unwrap();
+    let output = to_string_preserving_formatting(&val, &root).unwrap();
+    assert!(output.contains("[server]"), "header style should be preserved, got: {output}");
+    assert!(output.contains("host = \"0.0.0.0\""), "got: {output}");
+}
+
+#[test]
+fn preserving_formatting_modified_value() {
+    let input = "\
+host = \"localhost\"
+port = 8080
+debug = false
+";
+    let arena = Arena::new();
+    let root = toml_spanner::parse(input, &arena).unwrap();
+    let config = ServerConfig {
+        host: "localhost".to_string(),
+        port: 9090,
+        debug: false,
+    };
+    let output = to_string_preserving_formatting(&config, &root).unwrap();
+    assert!(output.contains("port = 9090"), "modified value should appear, got: {output}");
+    assert!(output.contains("host = \"localhost\""), "unchanged value should be preserved, got: {output}");
+}
+
+#[test]
+fn preserving_formatting_hex_integers() {
+    #[derive(Toml, Debug, PartialEq)]
+    #[toml(FromToml, ToToml)]
+    struct HexConfig {
+        color: i64,
+        size: i64,
+    }
+
+    let input = "color = 0xFF00FF\nsize = 42\n";
+    let arena = Arena::new();
+    let root = toml_spanner::parse(input, &arena).unwrap();
+    let val: HexConfig = toml_spanner::from_str(input).unwrap();
+    let output = to_string_preserving_formatting(&val, &root).unwrap();
+    assert!(
+        output.contains("0xFF00FF"),
+        "hex format should be preserved, got: {output}"
+    );
+}
+
+#[test]
+fn preserving_formatting_literal_strings() {
+    #[derive(Toml, Debug, PartialEq)]
+    #[toml(FromToml, ToToml)]
+    struct PathConfig {
+        path: String,
+        name: String,
+    }
+
+    let input = "path = 'C:\\Users\\test'\nname = \"hello\"\n";
+    let arena = Arena::new();
+    let root = toml_spanner::parse(input, &arena).unwrap();
+    let val: PathConfig = toml_spanner::from_str(input).unwrap();
+    let output = to_string_preserving_formatting(&val, &root).unwrap();
+    assert!(
+        output.contains("'C:\\Users\\test'"),
+        "literal string format should be preserved, got: {output}"
+    );
 }
 
 mod flatten_key_helper {

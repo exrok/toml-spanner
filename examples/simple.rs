@@ -46,12 +46,13 @@ fn main() {
         None => panic!("Expected value but found nothing"),
     }
 
-    if let Ok(config) = root.deserialize::<Config>() {
-        println!("parsed: {:#?}", config);
-    } else {
-        println!("Deserialization Failure");
-        for error in root.errors() {
-            println!("error: {}", error);
+    match root.to::<Config>() {
+        Ok(config) => println!("parsed: {:#?}", config),
+        Err(e) => {
+            println!("Deserialization Failure");
+            for error in &e.errors {
+                println!("error: {}", error);
+            }
         }
     }
 }

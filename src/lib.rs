@@ -151,6 +151,10 @@ pub use de::{Context, Failed, FromFlattened, FromToml, TableHelper};
 #[cfg(feature = "to-toml")]
 pub use emit::{EmitConfig, NormalizedTable, emit, emit_with_config, reproject};
 pub use error::{Error, ErrorKind};
+#[cfg(feature = "from-toml")]
+pub use error::FromTomlError;
+#[cfg(feature = "to-toml")]
+pub use error::ToTomlError;
 pub use item::array::Array;
 pub use item::items_equal;
 pub use item::table::Table;
@@ -168,7 +172,7 @@ pub use toml_spanner_macros::Toml;
 pub mod impl_serde;
 
 #[cfg(feature = "from-toml")]
-pub fn from_str<T: for<'a> FromToml<'a>>(document: &str) -> Result<T, Vec<Error>> {
+pub fn from_str<T: for<'a> FromToml<'a>>(document: &str) -> Result<T, FromTomlError> {
     let arena = Arena::new();
     from_str_in(document, &arena)
 }
@@ -177,21 +181,21 @@ pub fn from_str<T: for<'a> FromToml<'a>>(document: &str) -> Result<T, Vec<Error>
 pub fn from_str_in<'de, T: FromToml<'de>>(
     document: &'de str,
     arena: &'de Arena,
-) -> Result<T, Vec<Error>> {
+) -> Result<T, FromTomlError> {
     match parse(document, arena) {
         Ok(mut root) => {
             let value = T::from_toml(&mut root.ctx, root.table.as_item());
             match value {
                 Ok(v) if root.ctx.errors.is_empty() => Ok(v),
-                _ => Err(root.ctx.errors),
+                _ => Err(FromTomlError { errors: root.ctx.errors }),
             }
         }
-        Err(e) => Err(vec![e]),
+        Err(e) => Err(FromTomlError { errors: vec![e] }),
     }
 }
 
 #[cfg(feature = "to-toml")]
-pub fn to_string(value: &dyn ToToml) -> Result<String, std::borrow::Cow<'static, str>> {
+pub fn to_string(value: &dyn ToToml) -> Result<String, ToTomlError> {
     let arena = Arena::new();
     let mut context = ToContext {
         arena: &arena,
@@ -200,18 +204,61 @@ pub fn to_string(value: &dyn ToToml) -> Result<String, std::borrow::Cow<'static,
     let mut item = match value.to_toml(&mut context) {
         Ok(item) => item,
         Err(_) => {
-            return Err(context
-                .error
-                .unwrap_or_else(|| "Failed to convert into item".into()));
+            return Err(ToTomlError {
+                message: context
+                    .error
+                    .unwrap_or_else(|| "Failed to convert into item".into()),
+            });
         }
     };
     let Some(table) = item.as_table_mut() else {
-        return Err("Top-level item must be a table".into());
+        return Err(ToTomlError { message: "Top-level item must be a table".into() });
     };
     let mut buffer = Vec::new();
     emit(table.normalize(), &mut buffer);
     match String::from_utf8(buffer) {
         Ok(s) => Ok(s),
-        Err(_) => Err("Failed to convert emitted bytes into a UTF-8 string".into()),
+        Err(_) => Err(ToTomlError { message: "Failed to convert emitted bytes into a UTF-8 string".into() }),
+    }
+}
+
+#[cfg(feature = "to-toml")]
+pub fn to_string_preserving_formatting(
+    value: &dyn ToToml,
+    of: &Root<'_>,
+) -> Result<String, ToTomlError> {
+    let arena = Arena::new();
+    let mut context = ToContext {
+        arena: &arena,
+        error: None,
+    };
+    let mut item = match value.to_toml(&mut context) {
+        Ok(item) => item,
+        Err(_) => {
+            return Err(ToTomlError {
+                message: context
+                    .error
+                    .unwrap_or_else(|| "Failed to convert into item".into()),
+            });
+        }
+    };
+    let Some(table) = item.as_table_mut() else {
+        return Err(ToTomlError { message: "Top-level item must be a table".into() });
+    };
+    let mut items = Vec::new();
+    reproject(of, table, &mut items);
+    let mut buffer = Vec::new();
+    emit_with_config(
+        table.normalize(),
+        &EmitConfig {
+            projected_source_items: &items,
+            projected_source_text: of.ctx.source(),
+            reprojected_order: true,
+        },
+        &mut buffer,
+    );
+    match String::from_utf8(buffer) {
+        Ok(s) => Ok(s),
+        Err(_) => Err(ToTomlError { message: "Failed to convert emitted bytes into a UTF-8 string".into() }),
     }
 }

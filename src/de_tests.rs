@@ -415,8 +415,8 @@ fn root_methods() {
 
     // deserialize() on root (type mismatch: root is table, asking for i64)
     let mut root = crate::parser::parse("a = 1", &arena).unwrap();
-    assert!(root.deserialize::<i64>().is_err());
-    assert!(root.has_errors());
+    let err = root.to::<i64>().unwrap_err();
+    assert!(!err.errors.is_empty());
 }
 
 #[test]

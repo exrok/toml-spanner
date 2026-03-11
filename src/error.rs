@@ -439,3 +439,87 @@ impl Error {
         }
     }
 }
+
+#[cfg(feature = "from-toml")]
+pub struct FromTomlError {
+    pub errors: Vec<Error>,
+}
+
+#[cfg(feature = "from-toml")]
+impl Display for FromTomlError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let Some(first) = self.errors.first() else {
+            return f.write_str("deserialization failed");
+        };
+        Display::fmt(first, f)?;
+        let remaining = self.errors.len() - 1;
+        if remaining > 0 {
+            write!(f, " (+{remaining} more error{})", if remaining == 1 { "" } else { "s" })?;
+        }
+        Ok(())
+    }
+}
+
+#[cfg(feature = "from-toml")]
+impl Debug for FromTomlError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("FromTomlError")
+            .field("errors", &self.errors)
+            .finish()
+    }
+}
+
+#[cfg(feature = "from-toml")]
+impl std::error::Error for FromTomlError {}
+
+#[cfg(feature = "from-toml")]
+impl From<Error> for FromTomlError {
+    fn from(error: Error) -> Self {
+        Self { errors: vec![error] }
+    }
+}
+
+#[cfg(feature = "from-toml")]
+impl From<Vec<Error>> for FromTomlError {
+    fn from(errors: Vec<Error>) -> Self {
+        Self { errors }
+    }
+}
+
+#[cfg(feature = "to-toml")]
+pub struct ToTomlError {
+    pub message: std::borrow::Cow<'static, str>,
+}
+
+#[cfg(feature = "to-toml")]
+impl Display for ToTomlError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.message)
+    }
+}
+
+#[cfg(feature = "to-toml")]
+impl Debug for ToTomlError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ToTomlError")
+            .field("message", &self.message)
+            .finish()
+    }
+}
+
+#[cfg(feature = "to-toml")]
+impl std::error::Error for ToTomlError {}
+
+#[cfg(feature = "to-toml")]
+impl From<std::borrow::Cow<'static, str>> for ToTomlError {
+    fn from(message: std::borrow::Cow<'static, str>) -> Self {
+        Self { message }
+    }
+}
+
+#[cfg(feature = "to-toml")]
+impl From<&'static str> for ToTomlError {
+    fn from(message: &'static str) -> Self {
+        Self { message: std::borrow::Cow::Borrowed(message) }
+    }
+}

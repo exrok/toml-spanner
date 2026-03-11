@@ -7,26 +7,24 @@
 mod tests;
 
 #[cfg(feature = "from-toml")]
-use crate::de::{Failed, TableHelper};
-use crate::{
-    MaybeItem, Span,
-    arena::Arena,
-    error::{Error, ErrorKind},
-    item::table::{InnerTable, Table},
-    item::{self, Item, Key},
-    time::DateTime,
-};
+use crate::de::TableHelper;
 #[cfg(feature = "to-toml")]
 use crate::item::table::TableIndex;
+use crate::{
+    Failed, MaybeItem, Span,
+    arena::Arena,
+    error::{Error, ErrorKind},
+    item::{
+        self, Item, Key,
+        table::{InnerTable, Table},
+    },
+    time::DateTime,
+};
 use std::char;
 use std::hash::{Hash, Hasher};
 use std::ptr::NonNull;
 
 const MAX_RECURSION_DEPTH: i16 = 256;
-// When a method returns Err(ParseError), the full error details have already
-// been written into Parser::error_kind / Parser::error_span.
-#[derive(Copy, Clone)]
-struct ParseError;
 
 struct Ctx<'b, 'de> {
     /// The current table context — a `Table` view into a table `Value`.
@@ -126,7 +124,7 @@ struct Parser<'de> {
     cursor: usize,
     arena: &'de Arena,
 
-    // Error context -- populated just before returning ParseError
+    // Error context -- populated just before returning Failed
     error_span: Span,
     error_kind: Option<ErrorKind>,
 
@@ -178,19 +176,19 @@ impl<'de> Parser<'de> {
     }
 
     #[cold]
-    fn set_duplicate_key_error(&mut self, first: Span, second: Span, key: &str) -> ParseError {
+    fn set_duplicate_key_error(&mut self, first: Span, second: Span, key: &str) -> Failed {
         self.error_span = second;
         self.error_kind = Some(ErrorKind::DuplicateKey {
             key: key.into(),
             first,
         });
-        ParseError
+        Failed
     }
     #[cold]
-    fn set_error(&mut self, start: usize, end: Option<usize>, kind: ErrorKind) -> ParseError {
+    fn set_error(&mut self, start: usize, end: Option<usize>, kind: ErrorKind) -> Failed {
         self.error_span = Span::new(start as u32, end.unwrap_or(start + 1) as u32);
         self.error_kind = Some(kind);
-        ParseError
+        Failed
     }
 
     fn take_error(&mut self) -> Error {
@@ -228,7 +226,7 @@ impl<'de> Parser<'de> {
         }
     }
     #[cold]
-    fn expected_error(&mut self, b: u8) -> ParseError {
+    fn expected_error(&mut self, b: u8) -> Failed {
         let start = self.cursor;
         let (found_desc, end) = self.scan_token_desc_and_end();
         self.set_error(
@@ -241,7 +239,7 @@ impl<'de> Parser<'de> {
         )
     }
 
-    fn expect_byte(&mut self, b: u8) -> Result<(), ParseError> {
+    fn expect_byte(&mut self, b: u8) -> Result<(), Failed> {
         if self.peek_byte() == Some(b) {
             self.cursor += 1;
             Ok(())
@@ -271,7 +269,7 @@ impl<'de> Parser<'de> {
         None
     }
 
-    fn eat_newline_or_eof(&mut self) -> Result<(), ParseError> {
+    fn eat_newline_or_eof(&mut self) -> Result<(), Failed> {
         match self.peek_byte() {
             None => Ok(()),
             Some(b'\n') => {
@@ -297,7 +295,7 @@ impl<'de> Parser<'de> {
         }
     }
 
-    fn eat_comment(&mut self) -> Result<bool, ParseError> {
+    fn eat_comment(&mut self) -> Result<bool, Failed> {
         if !self.eat_byte(b'#') {
             return Ok(false);
         }
@@ -374,7 +372,7 @@ impl<'de> Parser<'de> {
         unsafe { self.str_slice(start, self.cursor) }
     }
 
-    fn read_table_key(&mut self) -> Result<Key<'de>, ParseError> {
+    fn read_table_key(&mut self) -> Result<Key<'de>, Failed> {
         let Some(b) = self.peek_byte() else {
             return Err(self.set_error(
                 self.bytes.len(),
@@ -441,7 +439,7 @@ impl<'de> Parser<'de> {
 
     /// Read a basic (double-quoted) string. `start` is the byte offset of the
     /// opening quote. The cursor should be positioned right after the opening `"`.
-    fn read_string(&mut self, start: usize, delim: u8) -> Result<(Key<'de>, bool), ParseError> {
+    fn read_string(&mut self, start: usize, delim: u8) -> Result<(Key<'de>, bool), Failed> {
         let mut multiline = false;
         if self.eat_byte(delim) {
             if self.eat_byte(delim) {
@@ -548,7 +546,7 @@ impl<'de> Parser<'de> {
         content_start: usize,
         multiline: bool,
         delim: u8,
-    ) -> Result<(Key<'de>, bool), ParseError> {
+    ) -> Result<(Key<'de>, bool), Failed> {
         let mut flush_from = content_start;
         let mut scratch: Option<crate::arena::Scratch<'de>> = None;
         loop {
@@ -638,7 +636,7 @@ impl<'de> Parser<'de> {
         scratch: &mut crate::arena::Scratch<'_>,
         string_start: usize,
         multi: bool,
-    ) -> Result<(), ParseError> {
+    ) -> Result<(), Failed> {
         let i = self.cursor;
         let Some(&b) = self.bytes.get(i) else {
             return Err(self.set_error(string_start, None, ErrorKind::UnterminatedString));
@@ -743,7 +741,7 @@ impl<'de> Parser<'de> {
         n: usize,
         string_start: usize,
         escape_start: usize,
-    ) -> Result<char, ParseError> {
+    ) -> Result<char, Failed> {
         let mut val: u32 = 0;
         for _ in 0..n {
             let Some(&byte) = self.bytes.get(self.cursor) else {
@@ -780,13 +778,7 @@ impl<'de> Parser<'de> {
             char::REPLACEMENT_CHARACTER
         }
     }
-    fn number(
-        &mut self,
-        start: u32,
-        end: u32,
-        s: &'de str,
-        sign: u8,
-    ) -> Result<Item<'de>, ParseError> {
+    fn number(&mut self, start: u32, end: u32, s: &'de str, sign: u8) -> Result<Item<'de>, Failed> {
         let bytes = s.as_bytes();
 
         // Base-prefixed integers (0x, 0o, 0b).
@@ -835,7 +827,7 @@ impl<'de> Parser<'de> {
             };
         }
 
-        Err(ParseError)
+        Err(Failed)
     }
 
     fn integer_decimal(
@@ -843,7 +835,7 @@ impl<'de> Parser<'de> {
         bytes: &'de [u8],
         span: Span,
         sign: u8,
-    ) -> Result<Item<'de>, ParseError> {
+    ) -> Result<Item<'de>, Failed> {
         let mut acc: u64 = 0;
         let mut prev_underscore = false;
         let mut has_digit = false;
@@ -898,10 +890,10 @@ impl<'de> Parser<'de> {
         }
         self.error_span = span;
         self.error_kind = Some(ErrorKind::InvalidNumber);
-        Err(ParseError)
+        Err(Failed)
     }
 
-    fn integer_hex(&mut self, bytes: &'de [u8], span: Span) -> Result<Item<'de>, ParseError> {
+    fn integer_hex(&mut self, bytes: &'de [u8], span: Span) -> Result<Item<'de>, Failed> {
         let mut acc: u64 = 0;
         let mut prev_underscore = false;
         let mut has_digit = false;
@@ -941,10 +933,10 @@ impl<'de> Parser<'de> {
         }
         self.error_span = span;
         self.error_kind = Some(ErrorKind::InvalidNumber);
-        Err(ParseError)
+        Err(Failed)
     }
 
-    fn integer_octal(&mut self, bytes: &'de [u8], span: Span) -> Result<Item<'de>, ParseError> {
+    fn integer_octal(&mut self, bytes: &'de [u8], span: Span) -> Result<Item<'de>, Failed> {
         let mut acc: u64 = 0;
         let mut prev_underscore = false;
         let mut has_digit = false;
@@ -983,10 +975,10 @@ impl<'de> Parser<'de> {
         }
         self.error_span = span;
         self.error_kind = Some(ErrorKind::InvalidNumber);
-        Err(ParseError)
+        Err(Failed)
     }
 
-    fn integer_binary(&mut self, bytes: &'de [u8], span: Span) -> Result<Item<'de>, ParseError> {
+    fn integer_binary(&mut self, bytes: &'de [u8], span: Span) -> Result<Item<'de>, Failed> {
         let mut acc: u64 = 0;
         let mut prev_underscore = false;
         let mut has_digit = false;
@@ -1025,7 +1017,7 @@ impl<'de> Parser<'de> {
         }
         self.error_span = span;
         self.error_kind = Some(ErrorKind::InvalidNumber);
-        Err(ParseError)
+        Err(Failed)
     }
 
     fn float(
@@ -1035,7 +1027,7 @@ impl<'de> Parser<'de> {
         s: &'de str,
         after_decimal: Option<&'de str>,
         sign: u8,
-    ) -> Result<f64, ParseError> {
+    ) -> Result<f64, Failed> {
         let s_start = start as usize;
         let s_end = end as usize;
 
@@ -1102,7 +1094,7 @@ impl<'de> Parser<'de> {
         }
     }
 
-    fn value(&mut self, depth_remaining: i16) -> Result<Item<'de>, ParseError> {
+    fn value(&mut self, depth_remaining: i16) -> Result<Item<'de>, Failed> {
         let at = self.cursor;
         let Some(byte) = self.peek_byte() else {
             return Err(self.set_error(self.bytes.len(), None, ErrorKind::UnexpectedEof));
@@ -1224,7 +1216,7 @@ impl<'de> Parser<'de> {
         &mut self,
         out: &mut crate::item::table::InnerTable<'de>,
         depth_remaining: i16,
-    ) -> Result<(), ParseError> {
+    ) -> Result<(), Failed> {
         if depth_remaining < 0 {
             return Err(self.set_error(
                 self.cursor,
@@ -1298,7 +1290,7 @@ impl<'de> Parser<'de> {
         &mut self,
         out: &mut crate::item::array::InternalArray<'de>,
         depth_remaining: i16,
-    ) -> Result<(), ParseError> {
+    ) -> Result<(), Failed> {
         if depth_remaining < 0 {
             return Err(self.set_error(
                 self.cursor,
@@ -1331,7 +1323,7 @@ impl<'de> Parser<'de> {
     }
 
     #[inline(always)]
-    fn eat_inline_table_whitespace(&mut self) -> Result<(), ParseError> {
+    fn eat_inline_table_whitespace(&mut self) -> Result<(), Failed> {
         loop {
             match self.peek_byte() {
                 Some(b' ' | b'\t' | b'\n') => self.cursor += 1,
@@ -1346,7 +1338,7 @@ impl<'de> Parser<'de> {
     }
 
     #[inline(always)]
-    fn eat_intermediate(&mut self) -> Result<(), ParseError> {
+    fn eat_intermediate(&mut self) -> Result<(), Failed> {
         loop {
             match self.peek_byte() {
                 Some(b' ' | b'\t' | b'\n') => self.cursor += 1,
@@ -1367,7 +1359,7 @@ impl<'de> Parser<'de> {
         &mut self,
         table: &'t mut InnerTable<'de>,
         key: Key<'de>,
-    ) -> Result<&'t mut InnerTable<'de>, ParseError> {
+    ) -> Result<&'t mut InnerTable<'de>, Failed> {
         if let Some(idx) = self.indexed_find(table, key.name) {
             let (existing_key, value) = &mut table.entries_mut()[idx];
             let ok = value.is_table() && !value.is_frozen() && !value.has_header_bit();
@@ -1414,7 +1406,7 @@ impl<'de> Parser<'de> {
         &mut self,
         st: &'b mut Table<'de>,
         key: Key<'de>,
-    ) -> Result<&'b mut Table<'de>, ParseError> {
+    ) -> Result<&'b mut Table<'de>, Failed> {
         let table = &mut st.value;
 
         if let Some(idx) = self.indexed_find(table, key.name) {
@@ -1483,7 +1475,7 @@ impl<'de> Parser<'de> {
         key: Key<'de>,
         header_start: u32,
         header_end: u32,
-    ) -> Result<Ctx<'b, 'de>, ParseError> {
+    ) -> Result<Ctx<'b, 'de>, Failed> {
         let table = &mut st.value;
 
         if let Some(idx) = self.indexed_find(table, key.name) {
@@ -1539,7 +1531,7 @@ impl<'de> Parser<'de> {
         key: Key<'de>,
         header_start: u32,
         header_end: u32,
-    ) -> Result<Ctx<'b, 'de>, ParseError> {
+    ) -> Result<Ctx<'b, 'de>, Failed> {
         let table = &mut st.value;
 
         if let Some(idx) = self.indexed_find(table, key.name) {
@@ -1595,7 +1587,7 @@ impl<'de> Parser<'de> {
         table: &mut InnerTable<'de>,
         key: Key<'de>,
         item: Item<'de>,
-    ) -> Result<(), ParseError> {
+    ) -> Result<(), Failed> {
         if table.len() < INDEXED_TABLE_THRESHOLD {
             for (existing_key, _) in table.entries() {
                 if existing_key.as_str() == key.name {
@@ -1651,7 +1643,7 @@ impl<'de> Parser<'de> {
         }
     }
 
-    fn parse_document(&mut self, root_st: &mut Table<'de>) -> Result<(), ParseError> {
+    fn parse_document(&mut self, root_st: &mut Table<'de>) -> Result<(), Failed> {
         let mut ctx = Ctx {
             table: root_st,
             array_end_span: None,
@@ -1692,7 +1684,7 @@ impl<'de> Parser<'de> {
     fn process_table_header<'b>(
         &mut self,
         root_st: &'b mut Table<'de>,
-    ) -> Result<Ctx<'b, 'de>, ParseError> {
+    ) -> Result<Ctx<'b, 'de>, Failed> {
         let header_start = self.cursor as u32;
         if let Err(e) = self.expect_byte(b'[') {
             return Err(e);
@@ -1748,7 +1740,7 @@ impl<'de> Parser<'de> {
         }
     }
 
-    fn process_key_value(&mut self, ctx: &mut Ctx<'_, 'de>) -> Result<(), ParseError> {
+    fn process_key_value(&mut self, ctx: &mut Ctx<'_, 'de>) -> Result<(), Failed> {
         let line_start = self.cursor as u32;
         // Borrow the Table payload from the Table. NLL drops this
         // borrow at its last use (the insert_value call), freeing ctx.st
@@ -1865,12 +1857,18 @@ impl<'de> Root<'de> {
         TableHelper::new(&mut self.ctx, &self.table)
     }
 
-    /// Deserialize the root table into a typed value.
-    pub fn deserialize<T>(&mut self) -> Result<T, Failed>
+    /// Produce a typed value from the root table.
+    pub fn to<T>(&mut self) -> Result<T, crate::error::FromTomlError>
     where
         T: crate::de::FromToml<'de>,
     {
-        T::from_toml(&mut self.ctx, self.table.as_item())
+        let result = T::from_toml(&mut self.ctx, self.table.as_item());
+        match result {
+            Ok(v) if self.ctx.errors.is_empty() => Ok(v),
+            _ => Err(crate::error::FromTomlError {
+                errors: std::mem::take(&mut self.ctx.errors),
+            }),
+        }
     }
 
     /// Returns the accumulated deserialization errors.
