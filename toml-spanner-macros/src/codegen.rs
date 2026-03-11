@@ -430,7 +430,7 @@ fn emit_table_field_deser(
             out.buf.push(name_lit.clone().into());
         };
         for alias in field.attr.aliases(FROM_TOML) {
-            out.blit_punct(11);
+            out.blit_punct(14);
             out.buf.push(alias.clone().into());
         }
         {

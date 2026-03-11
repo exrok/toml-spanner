@@ -308,7 +308,7 @@ fn export_merged_blocks(files: &[&[u8]]) -> (Vec<u8>, Vec<Vec<u8>>) {
             }
             puncts.push(stmt);
         }
-        puncts.sort_unstable_by_key(|(k, _, _)| *k as u32);
+        puncts.sort_by_key(|(k, kind, text)| (*k as u32, *kind, *text));
         let mut iter = puncts.iter_mut().rev();
         let minimizing = [b'\t' as u64, b'\n' as u64, b'\r' as u64];
         for idx in minimizing {
