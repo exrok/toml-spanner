@@ -507,7 +507,7 @@ impl<'de> Table<'de> {
     }
     /// Returns a slice of all entries.
     #[inline]
-    // todo rmeove
+    // todo remove
     pub fn entries_mut(&mut self) -> &mut [TableEntry<'de>] {
         self.value.entries_mut()
     }

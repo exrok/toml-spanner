@@ -1192,7 +1192,7 @@ impl PartialEq for Key<'_> {
 
 impl Eq for Key<'_> {}
 
-// Would be technically more efficent to pass table index as thread local storage,
+// Would be technically more efficient to pass table index as thread local storage,
 // but that requires even more unsafe.
 pub(crate) fn equal_items(a: &Item<'_>, b: &Item<'_>, index: Option<&TableIndex<'_>>) -> bool {
     if a.kind() != b.kind() {

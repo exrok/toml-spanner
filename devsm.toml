@@ -104,6 +104,7 @@ info = """
 Validate toml-spanner against https://github.com/toml-lang/toml-test decoder and encoder test suite
 Requires `toml-test` to be installed, see REPO for installation procedure.
 """
+tag = ["fast"]
 pwd = "toml-test-harness"
 sh = '''
 DECODER=$(cargo --config "target.'cfg(unix)'.runner = 'echo'" run --bin decoder --release || exit 1)
@@ -113,3 +114,4 @@ toml-test test -toml 1.1 "-decoder=$DECODER" "-encoder=$ENCODER"
 
 [test.typos]
 cmd = "typos"
+tag = ["fast"]

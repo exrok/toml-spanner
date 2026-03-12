@@ -490,10 +490,10 @@ fn main_for_clone() {
         let pc = f64::from(ps.cycles) / 1000.0;
         let ct = f64::from(cs.nanos) / 1000.0;
         let cc = f64::from(cs.cycles) / 1000.0;
-        let ot = f64::from(os.nanos) / 1000.0;
+        let nanos = f64::from(os.nanos) / 1000.0;
         let oc = f64::from(os.cycles) / 1000.0;
         let clone_ratio = ct / pt;
-        let owned_ratio = ot / pt;
+        let owned_ratio = nanos / pt;
         println!(
             "{:<20} {:>9.1} {:>9.0} {:>9.1} {:>9.0} {:>5.1}% {:>9.1} {:>9.0} {:>5.1}%",
             name,
@@ -502,7 +502,7 @@ fn main_for_clone() {
             ct,
             cc,
             clone_ratio * 100.0,
-            ot,
+            nanos,
             oc,
             owned_ratio * 100.0
         );

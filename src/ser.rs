@@ -208,7 +208,7 @@ impl ToToml for std::path::Path {
     fn to_toml<'a>(&'a self, ctx: &mut ToContext<'a>) -> Result<Item<'a>, Failed> {
         match self.to_str() {
             Some(s) => return Ok(Item::string(s)),
-            None => return ctx.report_error("path containes invalid UTF-8 characters"),
+            None => return ctx.report_error("path contains invalid UTF-8 characters"),
         }
     }
 }
