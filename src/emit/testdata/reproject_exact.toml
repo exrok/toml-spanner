@@ -430,6 +430,67 @@ z = 30
 a = 1
 b = 2
 c = 3
+#--- float_array_reordering
+#-- SOURCE
+
+vals = [
+    1.5,
+    2.7,
+    3.14,
+]
+#-- MODIFIED
+
+vals = [
+    3.14,
+    1.5,
+    2.7,
+]
+#--- boolean_array_reordering
+#-- SOURCE
+
+flags = [
+    true,
+    false,
+    true,
+    false,
+]
+#-- MODIFIED
+
+flags = [
+    false,
+    true,
+    false,
+    true,
+]
+#--- datetime_array_reordering
+#-- SOURCE
+
+dates = [
+    2024-01-15T10:30:00Z, # First
+    2024-06-20, # Second
+    2024-12-31T23:59:59+05:30, # Third
+]
+#-- MODIFIED
+
+dates = [
+    2024-12-31T23:59:59+05:30, # Third
+    2024-01-15T10:30:00Z, # First
+    2024-06-20, # Second
+]
+#--- datetime_array_removal
+#-- SOURCE
+
+times = [
+    07:30:00,
+    12:00:00,
+    18:45:00,
+]
+#-- MODIFIED
+
+times = [
+    07:30:00,
+    18:45:00,
+]
 #--- spacing_above_and_below_preserved
 #-- SOURCE
 

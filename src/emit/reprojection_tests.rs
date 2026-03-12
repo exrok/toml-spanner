@@ -397,6 +397,67 @@ fn new_sibling_alongside_aot() {
 }
 
 #[test]
+fn new_array_sibling_inherits_aot_style() {
+    // Source has [[servers]] (AOT). Mutation adds a new array `tasks` with
+    // table entries. The new array should inherit AOT style from servers.
+    let result = reproject_after_mutation(
+        "[[servers]]\nname = \"alpha\"\n\n[[servers]]\nname = \"beta\"",
+        |root, arena| {
+            let mut arr = crate::Array::new();
+            let mut t = Table::default();
+            t.insert(Key::anon("name"), Item::from("build"), arena);
+            arr.push(t.into_item(), arena);
+            root.insert(Key::anon("tasks"), arr.into_item(), arena);
+        },
+    );
+    assert!(result.contains("[[servers]]"), "{result}");
+    assert!(
+        result.contains("[[tasks]]"),
+        "new array should inherit AOT style: {result}"
+    );
+    assert!(result.contains("name = \"build\""), "{result}");
+}
+
+#[test]
+fn new_array_sibling_before_match_backfills_aot() {
+    // Dest has new array `jobs` before matched `servers`. The backfill
+    // should apply AOT style from the first matched array.
+    let arena = Arena::new();
+    let src_root = parse(
+        "[[servers]]\nname = \"a\"\n\n[[servers]]\nname = \"b\"",
+        &arena,
+    )
+    .unwrap();
+
+    let mut dest = Table::default();
+    // Insert `jobs` first (new, before matched `servers`)
+    let mut arr = crate::Array::new();
+    let mut t = Table::default();
+    t.insert(Key::anon("id"), Item::from(1i64), &arena);
+    arr.push(t.into_item(), &arena);
+    dest.insert(Key::anon("jobs"), arr.into_item(), &arena);
+    // Insert `servers` (will match src)
+    let mut arr2 = crate::Array::new();
+    let mut t1 = Table::default();
+    t1.insert(Key::anon("name"), Item::from("a"), &arena);
+    arr2.push(t1.into_item(), &arena);
+    let mut t2 = Table::default();
+    t2.insert(Key::anon("name"), Item::from("b"), &arena);
+    arr2.push(t2.into_item(), &arena);
+    dest.insert(Key::anon("servers"), arr2.into_item(), &arena);
+
+    let mut items = Vec::new();
+    reproject(&src_root, &mut dest, &mut items);
+
+    let result = emit_table(&mut dest);
+    assert!(
+        result.contains("[[jobs]]"),
+        "new array before match should be backfilled to AOT: {result}"
+    );
+    assert!(result.contains("[[servers]]"), "{result}");
+}
+
+#[test]
 fn constructed_new_sibling_dotted_via_macro() {
     // Source: A = Header { b = Dotted { c = 1 } }
     // Dest: A = Header { b = { c = 1 }, d = { e = 2 } }
@@ -1479,4 +1540,119 @@ eta = "0.1"
         println!("=== Got ===\n {}", output);
         panic!("TOML didn't match expected result after serialization:");
     }
+}
+
+// ==== Forced hash collision tests ====
+//
+// These set FORCE_HASH_COLLISIONS so that every array element hashes to the
+// same value, forcing the collision-group cross-product code path.
+
+fn with_forced_collisions(f: impl FnOnce()) {
+    super::FORCE_HASH_COLLISIONS.set(true);
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(f));
+    super::FORCE_HASH_COLLISIONS.set(false);
+    if let Err(e) = result {
+        std::panic::resume_unwind(e);
+    }
+}
+
+#[test]
+fn forced_collision_reorder_matched() {
+    // All elements collide → single collision group. Different values break
+    // the group prefix, exercising the cross-product fallback.
+    with_forced_collisions(|| {
+        let src = "a = [1, 2, 3]";
+        let dest = "a = [3, 1, 2]";
+        assert_reproject_edit(src, dest);
+    });
+}
+
+#[test]
+fn forced_collision_partial_overlap() {
+    // src has 3 elements, dest has 4 (one new). Cross-product matches the
+    // overlapping elements; the remainder gets fallback pairing.
+    with_forced_collisions(|| {
+        let src = "a = [1, 2, 3]";
+        let dest = "a = [3, 4, 1, 2]";
+        assert_reproject_edit(src, dest);
+    });
+}
+
+#[test]
+fn forced_collision_removal() {
+    // Dest has fewer elements than src. Cross-product matches what it can;
+    // excess src entries go into the fallback list.
+    with_forced_collisions(|| {
+        let src = "a = [1, 2, 3, 4]";
+        let dest = "a = [4, 2]";
+        assert_reproject_edit(src, dest);
+    });
+}
+
+#[test]
+fn forced_collision_tables_in_array() {
+    // Table elements with different keys in a single collision group.
+    with_forced_collisions(|| {
+        let src = "a = [{x = 1}, {y = 2}, {z = 3}]";
+        let dest = "a = [{z = 3}, {x = 1}]";
+        assert_reproject_edit(src, dest);
+    });
+}
+
+#[test]
+fn forced_collision_exact_reorder_preserves_format() {
+    // With reprojection, reordered elements should still emit valid TOML
+    // and be semantically equivalent to dest.
+    with_forced_collisions(|| {
+        assert_reproject_exact(
+            "a = [1, 2, 3]\nb = 10",
+            "a = [2, 3, 1]\nb = 10",
+            "a = [2, 3, 1]\nb = 10",
+        );
+    });
+}
+
+#[test]
+fn forced_collision_exceeds_cap() {
+    // With COLLISION_CAP=16 in test mode, 5 distinct src × 5 distinct dest
+    // (25 > 16) exceeds the cap, triggering the skip path.
+    with_forced_collisions(|| {
+        let src = "a = [1, 2, 3, 4, 5]";
+        let dest = "a = [6, 7, 8, 9, 10]";
+        assert_reproject_edit(src, dest);
+    });
+}
+
+#[test]
+fn positional_fallback_large_array() {
+    // With INDEX_LIMIT=32 in test mode, an array with >32 elements falls
+    // back to positional matching.
+    let arena = Arena::new();
+    let n = 35;
+    let mut src_parts = Vec::new();
+    let mut dest_parts = Vec::new();
+    for i in 0..n {
+        src_parts.push(format!("{i}"));
+        dest_parts.push(format!("{}", n - 1 - i));
+    }
+    let src_text = format!("a = [{}]", src_parts.join(", "));
+    let dest_text = format!("a = [{}]", dest_parts.join(", "));
+
+    let src_root = parse(&src_text, &arena).unwrap();
+    let mut dest_root = parse(&dest_text, &arena).unwrap();
+    let mut items = Vec::new();
+    reproject(&src_root, &mut dest_root.table, &mut items);
+
+    // Positional fallback: each dest[i] pairs with src[i].
+    // Result should be valid TOML and semantically equal to dest.
+    let norm = dest_root.table.normalize();
+    let mut buf = Vec::new();
+    emit::emit(norm, &mut buf);
+    let output = String::from_utf8(buf).unwrap();
+    let out_root = parse(&output, &arena).unwrap();
+    assert_eq!(
+        out_root.table().as_item(),
+        parse(&dest_text, &arena).unwrap().table().as_item(),
+        "positional fallback should preserve dest semantics"
+    );
 }

@@ -1720,10 +1720,7 @@ tags = ["c"]
     let tags = items[0].as_table().unwrap()["tags"].as_array().unwrap();
     assert_eq!(tags[0].as_str(), Some("a"));
     assert_eq!(tags[1].as_str(), Some("b"));
-    assert_eq!(
-        items[1].as_table().unwrap()["key"].as_str(),
-        Some("second")
-    );
+    assert_eq!(items[1].as_table().unwrap()["key"].as_str(), Some("second"));
 
     // Clone preserves all data
     let cloned = owned.clone();

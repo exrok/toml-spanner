@@ -21,6 +21,16 @@ port = 8080
 [[servers]]
 name = "beta"
 port = 9090
+#--- datetime_array
+dates = [2024-01-15T10:30:00Z, 2024-06-20T08:00:00+05:30, 2024-12-31]
+#--- datetime_in_aot
+[[events]]
+when = 2024-01-15T10:30:00Z
+name = "launch"
+
+[[events]]
+when = 2024-06-20
+name = "update"
 #--- mixed_structure
 [package]
 name = "demo"

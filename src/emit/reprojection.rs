@@ -9,6 +9,20 @@ use crate::span::Span;
 use crate::{Array, Table};
 use std::hash::{BuildHasher, Hasher};
 
+#[cfg(test)]
+std::thread_local! {
+    static FORCE_HASH_COLLISIONS: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+#[inline]
+fn maybe_force_collision(hash: u64) -> u64 {
+    #[cfg(test)]
+    if FORCE_HASH_COLLISIONS.get() {
+        return 42;
+    }
+    hash
+}
+
 /// Reprojects structural kinds from a parsed source onto a destination table.
 ///
 /// Takes a [`Root`] to statically enforce that the source was produced by
@@ -318,6 +332,7 @@ fn ensure_valid_subsection_ordering(
             continue;
         }
         let Some((_, src_item)) = src.value.get_entry_with_index(dst_key.name, index) else {
+            // Currently unreachable: entries with non-empty span were matched
             continue;
         };
         let Some(st) = src_item.as_table() else {
@@ -425,7 +440,17 @@ const MATCHED_BIT: u64 = 1 << 63;
 /// Hash mask: bits 62-16 (47 bits of hash, bit 63 reserved).
 const HASH_MASK: u64 = !INDEX_MASK & !MATCHED_BIT;
 /// Max collision-group cross-product before we skip matching.
+#[cfg(not(test))]
 const COLLISION_CAP: usize = 256;
+#[cfg(test)]
+const COLLISION_CAP: usize = 16;
+
+/// Max array length for content-based matching; beyond this, fall back to
+/// positional matching.
+#[cfg(not(test))]
+const INDEX_LIMIT: usize = u16::MAX as usize;
+#[cfg(test)]
+const INDEX_LIMIT: usize = 32;
 
 /// Content-based array matching using hash + sort + merge-join.
 ///
@@ -456,8 +481,8 @@ fn reproject_array<'de>(
         return n == 0 && m == 0;
     }
 
-    // Fall back to positional for arrays exceeding u16 index space.
-    if n > u16::MAX as usize || m > u16::MAX as usize {
+    // Fall back to positional for arrays exceeding the index space.
+    if n > INDEX_LIMIT || m > INDEX_LIMIT {
         return reproject_array_positional(index, src, dest, items);
     }
 
@@ -483,12 +508,12 @@ fn reproject_array<'de>(
     for (i, item) in src.iter().enumerate() {
         let mut h = build.build_hasher();
         hash_item(item, &mut h, &build);
-        buf.push(((h.finish() << HASH_SHIFT) & !MATCHED_BIT) | (i as u64));
+        buf.push(((maybe_force_collision(h.finish()) << HASH_SHIFT) & !MATCHED_BIT) | (i as u64));
     }
     for (i, item) in dest.iter().enumerate() {
         let mut h = build.build_hasher();
         hash_item(item, &mut h, &build);
-        buf.push(((h.finish() << HASH_SHIFT) & !MATCHED_BIT) | (i as u64));
+        buf.push(((maybe_force_collision(h.finish()) << HASH_SHIFT) & !MATCHED_BIT) | (i as u64));
     }
 
     let (src_sorted, dest_sorted) = buf.split_at_mut(n);
@@ -625,6 +650,9 @@ fn reproject_array<'de>(
         if *entry & MATCHED_BIT != 0 {
             let src_idx = ((*entry >> HASH_SHIFT) & INDEX_MASK) as usize;
             if !reproject_item(index, src.get(src_idx).unwrap(), dest_entry, items) {
+                // Currently unreachable: content-matched elements (verified
+                // by equal_items) always produce a full match in reproject_item.
+                // Kept as a defensive guard.
                 all_matched = false;
             }
         } else if fi < fc {
@@ -647,6 +675,8 @@ fn reproject_array<'de>(
 }
 
 /// Simple positional fallback for arrays exceeding u16 index space.
+/// Only reachable for arrays with >65535 elements; see the u16 guard
+/// in [`reproject_array`].
 fn reproject_array_positional<'de>(
     index: &TableIndex<'_>,
     src: &'de Array<'de>,
