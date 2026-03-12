@@ -361,6 +361,16 @@ impl std::fmt::Debug for DateTime {
     }
 }
 
+impl PartialEq for DateTime {
+    fn eq(&self, other: &Self) -> bool {
+        self.date() == other.date()
+            && self.time() == other.time()
+            && self.offset() == other.offset()
+    }
+}
+
+impl Eq for DateTime {}
+
 const HAS_DATE: u8 = 1 << 0;
 const HAS_TIME: u8 = 1 << 1;
 const HAS_SECONDS: u8 = 1 << 2;

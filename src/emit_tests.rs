@@ -129,19 +129,8 @@ fn assert_items_equal_with_flags(
         Value::DateTime(dt_a) => {
             let dt_b = b.as_datetime().unwrap();
             assert_eq!(
-                dt_a.date(),
-                dt_b.date(),
-                "datetime date mismatch at {path_str}\ninput:\n{input}\nemitted:\n{emitted}"
-            );
-            assert_eq!(
-                dt_a.time(),
-                dt_b.time(),
-                "datetime time mismatch at {path_str}\ninput:\n{input}\nemitted:\n{emitted}"
-            );
-            assert_eq!(
-                dt_a.offset(),
-                dt_b.offset(),
-                "datetime offset mismatch at {path_str}\ninput:\n{input}\nemitted:\n{emitted}"
+                dt_a, dt_b,
+                "datetime mismatch at {path_str}\ninput:\n{input}\nemitted:\n{emitted}"
             );
         }
         Value::Array(arr_a) => {

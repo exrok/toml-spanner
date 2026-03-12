@@ -52,9 +52,7 @@ fn reproject_item<'de>(
         (Value::Integer(a), ValueMut::Integer(b)) => *a == *b,
         (Value::Float(a), ValueMut::Float(b)) => a.to_bits() == b.to_bits(),
         (Value::Boolean(a), ValueMut::Boolean(b)) => *a == *b,
-        (Value::DateTime(a), ValueMut::DateTime(b)) => {
-            a.date() == b.date() && a.time() == b.time() && a.offset() == b.offset()
-        }
+        (Value::DateTime(a), ValueMut::DateTime(b)) => a == b,
         (Value::Table(src_table), ValueMut::Table(dest_table)) => {
             container_match = true;
             reproject_table(index, src_table, dest_table, items)

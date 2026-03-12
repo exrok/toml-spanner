@@ -1215,11 +1215,7 @@ pub(crate) fn equal_items(a: &Item<'_>, b: &Item<'_>, index: Option<&TableIndex<
                 }
             }
             Kind::Boolean => a.payload.boolean == b.payload.boolean,
-            Kind::DateTime => {
-                let da = &a.payload.datetime;
-                let db = &b.payload.datetime;
-                da.date() == db.date() && da.time() == db.time() && da.offset() == db.offset()
-            }
+            Kind::DateTime => a.payload.datetime == b.payload.datetime,
             Kind::Array => {
                 let a = a.payload.array.as_slice();
                 let b = b.payload.array.as_slice();

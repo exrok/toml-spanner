@@ -111,9 +111,7 @@ fn items_eq(
         Value::DateTime(dt_a) => {
             let dt_b = b.as_datetime().unwrap();
             assert!(
-                dt_a.date() == dt_b.date()
-                    && dt_a.time() == dt_b.time()
-                    && dt_a.offset() == dt_b.offset(),
+                dt_a == dt_b,
                 "datetime mismatch at {}\ninput:\n{input}\nemitted:\n{emitted}",
                 p(),
             );

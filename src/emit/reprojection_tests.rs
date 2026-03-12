@@ -1480,5 +1480,3 @@ eta = "0.1"
         panic!("TOML didn't match expected result after serialization:");
     }
 }
-
-// Array and reorder exact tests: moved to testdata/reproject_exact.toml

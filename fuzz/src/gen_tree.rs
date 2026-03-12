@@ -160,10 +160,7 @@ pub fn items_eq(a: &Item<'_>, b: &Item<'_>, path: &mut Vec<String>) -> Result<()
         }
         Value::DateTime(dt_a) => {
             let dt_b = b.as_datetime().unwrap();
-            if dt_a.date() != dt_b.date()
-                || dt_a.time() != dt_b.time()
-                || dt_a.offset() != dt_b.offset()
-            {
+            if dt_a != dt_b {
                 return Err(format!("datetime mismatch at {}", p()));
             }
         }
