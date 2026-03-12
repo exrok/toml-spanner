@@ -64,10 +64,12 @@ tag = ["lint"]
 
 [test.snapshot-tests]
 cmd = ["cargo", "insta", "test", "-p", "snapshot-tests"]
+tag = ["fast"]
 
 [test.cargo-test]
 cmd = ["cargo", "test", "-q"]
 require = ["build-macros"]
+tag = ["fast"]
 
 [test.miri-stress-tests]
 pwd = "stress-tests"
@@ -77,6 +79,7 @@ tag = ["slow", "miri"]
 [test.stress-tests]
 pwd = "stress-tests"
 cmd = ["cargo", "run", "--", "5000"]
+tag = ["fast"]
 
 [test.miri-tests]
 info = "Requires `cargo-nextest` and miri."

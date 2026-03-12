@@ -51,7 +51,6 @@ t = { a.b = 1, a.c = 2 }
 host = "localhost"
 port = 8080
 #-- EXPECTED
-
 [server]
 host = "localhost"
 port = 8080
@@ -63,7 +62,6 @@ x = 1
 [b]
 y = 2
 #-- EXPECTED
-
 [a]
 x = 1
 
@@ -77,7 +75,6 @@ x = 1
 [a.b]
 y = 2
 #-- EXPECTED
-
 [a]
 x = 1
 
@@ -104,7 +101,6 @@ a.c = 2
 [a.b.c]
 x = 1
 #-- EXPECTED
-
 [a.b.c]
 x = 1
 #--- simple_aot
@@ -115,7 +111,6 @@ name = "apple"
 [[fruit]]
 name = "banana"
 #-- EXPECTED
-
 [[fruit]]
 name = "apple"
 
@@ -132,7 +127,6 @@ color = "red"
 [[fruit]]
 name = "banana"
 #-- EXPECTED
-
 [[fruit]]
 name = "apple"
 
@@ -150,7 +144,6 @@ smooth = true
 apple.color = "red"
 apple.taste.sweet = true
 #-- EXPECTED
-
 [fruit]
 apple.color = "red"
 apple.taste.sweet = true
@@ -165,7 +158,6 @@ val = 1
 [a]
 val = 2
 #-- EXPECTED
-
 [a]
 val = 2
 
@@ -179,7 +171,6 @@ x = 1
 [a]
 b.d = 1
 #-- EXPECTED
-
 [a]
 b.d = 1
 
@@ -193,7 +184,6 @@ b.c = 1
 [a.b.d]
 val = 2
 #-- EXPECTED
-
 [a]
 b.c = 1
 
@@ -206,7 +196,6 @@ val = 2
 [zA]
 3.28 = 12
 #-- EXPECTED
-
 [zA]
 3.28 = 12
 
@@ -264,7 +253,6 @@ items = [{ name = "a", val = 1 }, { name = "b", val = 2 }]
 [a.b.c.d]
 x = 1
 #-- EXPECTED
-
 [a.b.c.d]
 x = 1
 #--- empty_header_section
@@ -274,7 +262,6 @@ x = 1
 [b]
 val = 1
 #-- EXPECTED
-
 [a]
 
 [b]
@@ -284,7 +271,6 @@ val = 1
 ["hello world"]
 val = 1
 #-- EXPECTED
-
 ["hello world"]
 val = 1
 #--- literal_string_roundtrip
@@ -299,7 +285,6 @@ s = "hello"
 c = 1
 d=2
 #-- EXPECTED
-
 [a]
 
 [a.b]

@@ -23,11 +23,27 @@ fn data_emit_identity() {
         let input = case.source();
         let result = emit_with_projection(input);
         let expected = case.expected.unwrap_or(input);
-        assert_eq!(
-            result, expected,
-            "case {:?}: emit_with_projection mismatch",
-            case.name
-        );
+        if result != expected {
+            let arena = Arena::new();
+            let src_root = parse(input, &arena).unwrap();
+            let mut dest_root = parse(input, &arena).unwrap();
+            let mut items = Vec::new();
+            reproject(&src_root, &mut dest_root.table, &mut items);
+            panic!(
+                "case {:?}: emit_with_projection mismatch\
+                 \n── input ({} bytes) ──\n{input:?}\
+                 \n── parsed source tree ──\n{}\
+                 \n── dest tree (after reproject) ──\n{}\
+                 \n── reprojected ({} items) ──\
+                 \n── expected ──\n{expected:?}\
+                 \n── actual ──\n{result:?}",
+                case.name,
+                input.len(),
+                debug_table(src_root.table()),
+                debug_table(&dest_root.table),
+                items.len(),
+            );
+        }
     });
 }
 
@@ -82,11 +98,53 @@ fn data_reorder_identity() {
         if let Some(dest) = case.dest {
             let result = reproject_edit_reorder(input, dest);
             let expected = case.expected();
-            assert_eq!(result, expected, "case {:?}: reorder mismatch", case.name);
+            if result != expected {
+                let arena = Arena::new();
+                let src_root = parse(input, &arena).unwrap();
+                let mut dest_root = parse(dest, &arena).unwrap();
+                let mut items = Vec::new();
+                reproject(&src_root, &mut dest_root.table, &mut items);
+                panic!(
+                    "case {:?}: reorder mismatch\
+                     \n── source ({} bytes) ──\n{input:?}\
+                     \n── dest ({} bytes) ──\n{dest:?}\
+                     \n── parsed source tree ──\n{}\
+                     \n── dest tree (after reproject) ──\n{}\
+                     \n── reprojected ({} items) ──\
+                     \n── expected ──\n{expected:?}\
+                     \n── actual ──\n{result:?}",
+                    case.name,
+                    input.len(),
+                    dest.len(),
+                    debug_table(src_root.table()),
+                    debug_table(&dest_root.table),
+                    items.len(),
+                );
+            }
         } else {
             let result = emit_with_reorder(input);
             let expected = case.expected();
-            assert_eq!(result, expected, "case {:?}: reorder mismatch", case.name);
+            if result != expected {
+                let arena = Arena::new();
+                let src_root = parse(input, &arena).unwrap();
+                let mut dest_root = parse(input, &arena).unwrap();
+                let mut items = Vec::new();
+                reproject(&src_root, &mut dest_root.table, &mut items);
+                panic!(
+                    "case {:?}: reorder mismatch\
+                     \n── input ({} bytes) ──\n{input:?}\
+                     \n── parsed source tree ──\n{}\
+                     \n── dest tree (after reproject) ──\n{}\
+                     \n── reprojected ({} items) ──\
+                     \n── expected ──\n{expected:?}\
+                     \n── actual ──\n{result:?}",
+                    case.name,
+                    input.len(),
+                    debug_table(src_root.table()),
+                    debug_table(&dest_root.table),
+                    items.len(),
+                );
+            }
         }
     });
 }
@@ -142,10 +200,21 @@ fn assert_reproject_recovers(input: &str) {
     reproject(&src_root, &mut dest_root.table, &mut items);
 
     let reprojected = emit_table(&mut dest_root.table);
-    assert_eq!(
-        reprojected, reference,
-        "reprojected output should match reference"
-    );
+    if reprojected != reference {
+        panic!(
+            "reprojected output should match reference\
+             \n── input ({} bytes) ──\n{input:?}\
+             \n── parsed source tree ──\n{}\
+             \n── dest tree (after erase + reproject) ──\n{}\
+             \n── reprojected ({} items) ──\
+             \n── reference emit ──\n{reference:?}\
+             \n── reprojected emit ──\n{reprojected:?}",
+            input.len(),
+            debug_table(src_root.table()),
+            debug_table(&dest_root.table),
+            items.len(),
+        );
+    }
 }
 
 // recovers tests: moved to testdata/reproject_recovers.toml
@@ -189,7 +258,7 @@ fn new_sibling_inherits_dotted_kind() {
         let (k, v) = make_nested("d", "e", Item::from(2i64), arena);
         section.insert(k, v, arena);
     });
-    assert_eq!(result, "\n[A]\nb.c = 1\nd.e = 2");
+    assert_eq!(result, "[A]\nb.c = 1\nd.e = 2");
 }
 
 #[test]
@@ -199,7 +268,7 @@ fn new_sibling_inherits_inline_kind() {
         let (k, v) = make_nested("d", "e", Item::from(2i64), arena);
         section.insert(k, v, arena);
     });
-    assert_eq!(result, "\n[A]\nb = { c = 1 }\nd = { e = 2 }");
+    assert_eq!(result, "[A]\nb = { c = 1 }\nd = { e = 2 }");
 }
 
 #[test]
@@ -211,7 +280,7 @@ fn multiple_new_siblings_all_inherit_dotted() {
         let (k, v) = make_nested("f", "g", Item::from(3i64), arena);
         section.insert(k, v, arena);
     });
-    assert_eq!(result, "\n[A]\nb.c = 1\nd.e = 2\nf.g = 3");
+    assert_eq!(result, "[A]\nb.c = 1\nd.e = 2\nf.g = 3");
 }
 
 #[test]
@@ -223,7 +292,7 @@ fn multiple_new_siblings_all_inherit_inline() {
         let (k, v) = make_nested("f", "g", Item::from(3i64), arena);
         section.insert(k, v, arena);
     });
-    assert_eq!(result, "\n[A]\nb = { c = 1 }\nd = { e = 2 }\nf = { g = 3 }");
+    assert_eq!(result, "[A]\nb = { c = 1 }\nd = { e = 2 }\nf = { g = 3 }");
 }
 
 #[test]
@@ -233,7 +302,7 @@ fn new_sibling_after_multiple_dotted() {
         let (k, v) = make_nested("z", "w", Item::from(99i64), arena);
         section.insert(k, v, arena);
     });
-    assert_eq!(result, "\n[A]\nb.c = 1\nb.d = 2\nx.y = 3\nz.w = 99");
+    assert_eq!(result, "[A]\nb.c = 1\nb.d = 2\nx.y = 3\nz.w = 99");
 }
 
 #[test]
@@ -244,7 +313,7 @@ fn new_sibling_inherits_last_match_dotted_after_inline() {
         let (k, v) = make_nested("z", "w", Item::from(4i64), arena);
         section.insert(k, v, arena);
     });
-    assert_eq!(result, "\n[A]\nb = { c = 1 }\nx.y = 3\nz.w = 4");
+    assert_eq!(result, "[A]\nb = { c = 1 }\nx.y = 3\nz.w = 4");
 }
 
 #[test]
@@ -255,7 +324,7 @@ fn new_sibling_inherits_last_match_inline_after_dotted() {
         let (k, v) = make_nested("z", "w", Item::from(4i64), arena);
         section.insert(k, v, arena);
     });
-    assert_eq!(result, "\n[A]\nb.c = 1\nx = { y = 3 }\nz = { w = 4 }");
+    assert_eq!(result, "[A]\nb.c = 1\nx = { y = 3 }\nz = { w = 4 }");
 }
 
 #[test]
@@ -279,7 +348,7 @@ fn new_sibling_before_match_backfills_dotted() {
 
     let result = emit_table(&mut dest);
     // d should be backfilled with dotted kind from b (first match)
-    assert_eq!(result, "\n[A]\nd.e = 2\nb.c = 1");
+    assert_eq!(result, "[A]\nd.e = 2\nb.c = 1");
 }
 
 #[test]
@@ -300,7 +369,7 @@ fn new_sibling_before_match_backfills_inline() {
     reproject(&src_root, &mut dest, &mut items);
 
     let result = emit_table(&mut dest);
-    assert_eq!(result, "\n[A]\nd = { e = 2 }\nb = { c = 1 }");
+    assert_eq!(result, "[A]\nd = { e = 2 }\nb = { c = 1 }");
 }
 
 #[test]
@@ -309,7 +378,7 @@ fn new_scalar_alongside_dotted() {
         let section = root.get_mut("A").unwrap().as_table_mut().unwrap();
         section.insert(Key::anon("x"), Item::from(42i64), arena);
     });
-    assert_eq!(result, "\n[A]\nb.c = 1\nx = 42");
+    assert_eq!(result, "[A]\nb.c = 1\nx = 42");
 }
 
 #[test]
@@ -318,7 +387,7 @@ fn new_scalar_alongside_inline() {
         let section = root.get_mut("A").unwrap().as_table_mut().unwrap();
         section.insert(Key::anon("x"), Item::from(42i64), arena);
     });
-    assert_eq!(result, "\n[A]\nb = { c = 1 }\nx = 42");
+    assert_eq!(result, "[A]\nb = { c = 1 }\nx = 42");
 }
 
 #[test]
@@ -330,7 +399,7 @@ fn new_sibling_deep_dotted_nesting() {
         let c = bc.get_mut("c").unwrap().as_table_mut().unwrap();
         c.insert(Key::anon("e"), Item::from(2i64), arena);
     });
-    assert_eq!(result, "\n[A]\nb.c.d = 1\nb.c.e = 2");
+    assert_eq!(result, "[A]\nb.c.d = 1\nb.c.e = 2");
 }
 
 #[test]
@@ -341,7 +410,7 @@ fn new_sibling_deep_inline_nesting() {
         let c = b.get_mut("c").unwrap().as_table_mut().unwrap();
         c.insert(Key::anon("e"), Item::from(2i64), arena);
     });
-    assert_eq!(result, "\n[A]\nb = { c = { d = 1, e = 2 } }");
+    assert_eq!(result, "[A]\nb = { c = { d = 1, e = 2 } }");
 }
 
 #[test]
@@ -556,7 +625,7 @@ fn new_deep_nested_sibling_inherits_dotted() {
         d_table.insert(Key::anon("e"), e_table.into_item(), arena);
         section.insert(Key::anon("d"), d_table.into_item(), arena);
     });
-    assert_eq!(result, "\n[A]\nb.c = 1\nd.e.f.g = 2");
+    assert_eq!(result, "[A]\nb.c = 1\nd.e.f.g = 2");
 }
 
 #[test]
@@ -573,7 +642,7 @@ fn new_deep_nested_sibling_inherits_inline() {
     });
     assert_eq!(
         result,
-        "\n[A]\nb = { c = 1 }\nd = { e = { f = { g = 2 } } }"
+        "[A]\nb = { c = 1 }\nd = { e = { f = { g = 2 } } }"
     );
 }
 
@@ -589,7 +658,7 @@ fn modified_value_plus_new_sibling_dotted() {
         let (k, v) = make_nested("d", "e", Item::from(2i64), arena);
         section.insert(k, v, arena);
     });
-    assert_eq!(result, "\n[A]\nb.c = 99\nd.e = 2");
+    assert_eq!(result, "[A]\nb.c = 99\nd.e = 2");
 }
 
 #[test]
@@ -846,34 +915,96 @@ fn plain_emit_ignores_whitespace() {
 
 // ==== Cross-document reprojection (edit scenario) ====
 
-/// Formats a table's entries for debug output.
+fn flag_name(flag: u32) -> &'static str {
+    match flag {
+        0 => "NONE",
+        1 => "???1",
+        2 => "ARRAY",
+        3 => "AOT",
+        4 => "IMPLICIT",
+        5 => "DOTTED",
+        6 => "HEADER",
+        7 => "FROZEN",
+        _ => "UNKNOWN",
+    }
+}
+
+/// Formats a table's entries for debug output, including spans, flags,
+/// and hints-mode metadata (similar to fuzz/src/gen_tree.rs print_item).
 fn debug_table(table: &Table<'_>) -> String {
+    fn span_str(item: &Item<'_>) -> String {
+        let span = item.span();
+        if span.is_empty() {
+            "no-span".to_string()
+        } else {
+            format!("{}..{}", span.start, span.end)
+        }
+    }
+
+    fn key_span_str(key: &Key<'_>) -> String {
+        if key.span.is_empty() {
+            "no-span".to_string()
+        } else {
+            format!("{}..{}", key.span.start, key.span.end)
+        }
+    }
+
     fn fmt_item(item: &Item<'_>, indent: usize, prefix: &str, out: &mut String) {
         use std::fmt::Write;
         let pad = " ".repeat(indent);
+        let flag = flag_name(item.flag());
+        let sp = span_str(item);
+
         match item.value() {
-            Value::String(s) => writeln!(out, "{pad}{prefix}String = {s:?}").unwrap(),
-            Value::Integer(i) => writeln!(out, "{pad}{prefix}Integer = {i}").unwrap(),
-            Value::Float(f) => writeln!(out, "{pad}{prefix}Float = {f}").unwrap(),
-            Value::Boolean(b) => writeln!(out, "{pad}{prefix}Boolean = {b}").unwrap(),
-            Value::DateTime(dt) => writeln!(out, "{pad}{prefix}DateTime = {dt:?}").unwrap(),
+            Value::String(s) => {
+                writeln!(out, "{pad}{prefix}String({flag}) [{sp}] = {s:?}").unwrap();
+            }
+            Value::Integer(i) => {
+                writeln!(out, "{pad}{prefix}Integer({flag}) [{sp}] = {i}").unwrap();
+            }
+            Value::Float(f) => {
+                writeln!(out, "{pad}{prefix}Float({flag}) [{sp}] = {f}").unwrap();
+            }
+            Value::Boolean(b) => {
+                writeln!(out, "{pad}{prefix}Boolean({flag}) [{sp}] = {b}").unwrap();
+            }
+            Value::DateTime(dt) => {
+                writeln!(out, "{pad}{prefix}DateTime({flag}) [{sp}] = {dt:?}").unwrap();
+            }
             Value::Array(arr) => {
-                writeln!(out, "{pad}{prefix}Array [{} elements]", arr.len()).unwrap();
+                writeln!(
+                    out,
+                    "{pad}{prefix}Array({flag}) [{sp}] [{} elements]",
+                    arr.len()
+                )
+                .unwrap();
                 for (i, elem) in arr.iter().enumerate() {
                     fmt_item(elem, indent + 2, &format!("[{i}] "), out);
                 }
             }
             Value::Table(tab) => {
-                writeln!(out, "{pad}{prefix}Table ({} entries)", tab.len()).unwrap();
+                writeln!(
+                    out,
+                    "{pad}{prefix}Table({flag}) [{sp}] {{{} entries}}",
+                    tab.len()
+                )
+                .unwrap();
                 for (key, val) in tab {
-                    fmt_item(val, indent + 2, &format!("{} = ", key.name), out);
+                    let ks = key_span_str(key);
+                    fmt_item(
+                        val,
+                        indent + 2,
+                        &format!("{} [key:{ks}] = ", key.name),
+                        out,
+                    );
                 }
             }
         }
     }
     let mut out = String::new();
     for (key, val) in table {
-        fmt_item(val, 0, &format!("{} = ", key.name), &mut out);
+        let ks = key_span_str(key);
+        fmt_item(val, 0, &format!("{} [key:{ks}] = ", key.name), &mut out);
     }
     out
 }
@@ -1091,21 +1222,40 @@ fn run_edit_ordered(src_text: &str, dest_text: &str) {
     // Must parse as valid TOML.
     let out_root = parse(&output, &arena).unwrap_or_else(|e| {
         panic!(
-            "emit output is not valid TOML!\n\
-             src: {src_text:?}\ndest: {dest_text:?}\n\
-             output: {output:?}\nerror: {e:?}"
+            "emit output is not valid TOML!\
+             \n── source text ({} bytes) ──\n{src_text:?}\
+             \n── dest text ({} bytes) ──\n{dest_text:?}\
+             \n── parsed source tree ──\n{}\
+             \n── parsed dest (reference) ──\n{}\
+             \n── reprojected ({} items) ──\
+             \n── emit output ({} bytes) ──\n{output:?}\
+             \n── parse error ──\n{e:?}",
+            src_text.len(),
+            dest_text.len(),
+            debug_table(src_root.table()),
+            debug_table(ref_root.table()),
+            items.len(),
+            output.len(),
         );
     });
 
     // Semantically equal to dest.
     if ref_root.table().as_item() != out_root.table().as_item() {
         panic!(
-            "emit output differs semantically from dest!\n\
-             src: {src_text:?}\ndest: {dest_text:?}\n\
-             output: {output:?}\n\
-             parsed src:\n{}\nparsed dest:\n{}\nparsed output:\n{}",
+            "emit output differs semantically from dest!\
+             \n── source text ({} bytes) ──\n{src_text:?}\
+             \n── dest text ({} bytes) ──\n{dest_text:?}\
+             \n── parsed source tree ──\n{}\
+             \n── parsed dest (reference) ──\n{}\
+             \n── reprojected ({} items) ──\
+             \n── emit output ({} bytes) ──\n{output:?}\
+             \n── re-parsed output ──\n{}",
+            src_text.len(),
+            dest_text.len(),
             debug_table(src_root.table()),
             debug_table(ref_root.table()),
+            items.len(),
+            output.len(),
             debug_table(out_root.table()),
         );
     }
@@ -1123,13 +1273,24 @@ fn run_edit_ordered(src_text: &str, dest_text: &str) {
     };
     let mut buf2 = Vec::new();
     emit::emit_with_config(norm2, &config2, &mut buf2);
-    assert_eq!(
-        buf,
-        buf2,
-        "emit not idempotent!\nsrc: {src_text:?}\ndest: {dest_text:?}\n\
-         first: {output:?}\nsecond: {:?}",
-        String::from_utf8_lossy(&buf2),
-    );
+    if buf != buf2 {
+        let output2 = String::from_utf8_lossy(&buf2);
+        panic!(
+            "emit not idempotent!\
+             \n── source text ({} bytes) ──\n{src_text:?}\
+             \n── dest text ({} bytes) ──\n{dest_text:?}\
+             \n── parsed source tree ──\n{}\
+             \n── parsed dest (reference) ──\n{}\
+             \n── reprojected ({} items) ──\
+             \n── first emit ──\n{output:?}\
+             \n── second emit ──\n{output2:?}",
+            src_text.len(),
+            dest_text.len(),
+            debug_table(src_root.table()),
+            debug_table(ref_root.table()),
+            items.len(),
+        );
+    }
 
     // Order preservation: projected entries keep source-relative ordering.
     let mut out_positions: Vec<(Vec<String>, u32)> = Vec::new();
@@ -1245,10 +1406,28 @@ fn assert_reproject_exact(source: &str, modified: &str, expected: &str) {
     emit::emit_with_config(norm, &config, &mut buf);
     let output = String::from_utf8(buf).unwrap();
 
-    assert_eq!(
-        output, expected,
-        "\n--- emitted ---\n{output}\n--- expected ---\n{expected}\nsource:\n{source}\nmodified:\n{modified}"
-    );
+    if output != expected {
+        // Re-parse to get trees for debug (norm consumed dest_root.table)
+        let src_root2 = parse(source, &arena).unwrap();
+        let mut dest_root2 = parse(modified, &arena).unwrap();
+        let mut items2 = Vec::new();
+        reproject(&src_root2, &mut dest_root2.table, &mut items2);
+        panic!(
+            "reproject_exact mismatch\
+             \n── source ({} bytes) ──\n{source:?}\
+             \n── modified ({} bytes) ──\n{modified:?}\
+             \n── parsed source tree ──\n{}\
+             \n── dest tree (after reproject) ──\n{}\
+             \n── reprojected ({} items) ──\
+             \n── expected ──\n{expected:?}\
+             \n── actual ──\n{output:?}",
+            source.len(),
+            modified.len(),
+            debug_table(src_root2.table()),
+            debug_table(&dest_root2.table),
+            items2.len(),
+        );
+    }
 }
 
 // exact_* and test_* tests: moved to testdata/reproject_exact.toml and testdata/edit_ordered.toml

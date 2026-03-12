@@ -219,7 +219,7 @@ fn emit_ordered<'a, 'b, 'de: 'b>(
                 // was emitted, but only if the output doesn't already
                 // end with a newline (i.e. there was skipped source
                 // content, not just adjacent segments).
-                if out.len() == pre_len && is_header && out.last() != Some(&b'\n') {
+                if out.len() == pre_len && is_header && !out.is_empty() && out.last() != Some(&b'\n') {
                     out.push(b'\n');
                 }
                 *cursor = target;
@@ -658,7 +658,9 @@ fn emit_formatted_subsections(
             let Some(sub_table) = item.as_table() else {
                 continue;
             };
-            out.push(b'\n');
+            if !out.is_empty() {
+                out.push(b'\n');
+            }
             write_section_header(&node, emit, out);
             emit_formatted(sub_table, Some(&node), emit, out);
         } else if item.is_implicit_table() || item.has_dotted_bit() {
@@ -674,7 +676,9 @@ fn emit_formatted_subsections(
                 let Some(sub_table) = entry.as_table() else {
                     continue;
                 };
-                out.push(b'\n');
+                if !out.is_empty() {
+                    out.push(b'\n');
+                }
                 write_aot_header(&node, emit, out);
                 emit_formatted(sub_table, Some(&node), emit, out);
             }

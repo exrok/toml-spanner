@@ -5,13 +5,13 @@ b.c = 1
 e.f = 2
 b.g = 3
 #-- EXPECTED
-
 [A]
 b.c = 1
 e.f = 2
 b.g = 3
 #--- interleaved_headers
 #-- SOURCE
+
 [A.b.c]
 x = 1
 
@@ -73,7 +73,6 @@ y = 2
 [B]
 z = 3
 #-- EXPECTED
-
 [A]
 x = 1
 y = 2
@@ -91,7 +90,6 @@ y = 2
 [[a]]
 z = 3
 #-- EXPECTED
-
 [[a]]
 x = 1
 
