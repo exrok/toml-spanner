@@ -481,3 +481,161 @@ fn normalize_reg_promoted_header_before_dotted_sibling() {
         }
     });
 }
+
+#[test]
+fn normalize_dotted_with_header_child_demoted() {
+    // A DOTTED table with a HEADER child: the child must be demoted
+    // to DOTTED so the parent can still emit via dotted-key syntax.
+    let arena = Arena::new();
+    check_normalize(&mut table! {
+        in arena;
+        d: Dotted @ { sub: Header @ { val: 1 }, name: "x" },
+        top: ""
+    });
+}
+
+#[test]
+fn normalize_dotted_with_implicit_child_demoted() {
+    // A DOTTED table with an implicit child: child is demoted to
+    // DOTTED, and if it has body items they remain reachable.
+    let arena = Arena::new();
+    check_normalize(&mut table! {
+        in arena;
+        d: Dotted @ { sub: Implicit @ { val: 1, inner: "y" }, name: "x" },
+        top: ""
+    });
+}
+
+#[test]
+fn normalize_dotted_with_aot_child_demoted() {
+    // A DOTTED table with an AOT child: the AOT must be demoted to
+    // inline array since dotted tables can't contain header sections.
+    let arena = Arena::new();
+    check_normalize(&mut table! {
+        in arena;
+        d: Dotted @ {
+            arr: Header @ [{ a: 1 }, { a: 2 }],
+            x: ""
+        },
+        top: ""
+    });
+}
+
+#[test]
+fn normalize_dotted_all_children_promoted_no_body() {
+    // A DOTTED table whose ALL children are empty tables (promoted to
+    // headers) — no body items remain, so the dotted table must become
+    // IMPLICIT.
+    let arena = Arena::new();
+    check_normalize(&mut table! {
+        in arena;
+        d: Dotted @ { a: Header @ {}, b: Implicit @ {} },
+        x: ""
+    });
+}
+
+// A DOTTED table with effective_body=true whose children are all headers
+// (no body items remain after normalization). The demotion block must
+// also handle scalars and inline arrays that are already body-level.
+#[test]
+fn normalize_dotted_body_with_scalar_and_inline_children() {
+    let arena = Arena::new();
+    // Dotted table inside body context, with a scalar child (already body),
+    // an inline array child (already body), and a Dotted child (already body).
+    // This exercises the "else" branches (lines 234, 243, 247) in demotion.
+    check_normalize(&mut table! {
+        in arena;
+        parent: Header @ {
+            d: Dotted @ {
+                scalar_val: "hello",
+                arr_val: [1, 2],
+                sub: Dotted @ { x: 1 }
+            }
+        }
+    });
+}
+
+// DOTTED table at root level (effective_body=false) where all children
+// are subsections: exercises the `!effective_body` → true path (line 216)
+// and subsequent demotion to IMPLICIT when no body items are produced.
+#[test]
+fn normalize_dotted_at_root_all_subsections() {
+    let arena = Arena::new();
+    check_normalize(&mut table! {
+        in arena;
+        d: Dotted @ { a: Header @ { v: 1 }, b: Implicit @ { w: 2 } },
+        x: ""
+    });
+}
+
+// Empty AOT gets downgraded and normalized correctly via check_normalize
+#[test]
+fn normalize_reg_empty_aot_downgraded() {
+    let arena = Arena::new();
+    check_normalize(&mut table! {
+        in arena;
+        arr: Header @ []
+    });
+}
+
+#[test]
+fn emit_string_escape_sequences() {
+    // Exercises format_string escape paths: backslash, newline, tab, etc.
+    let arena = Arena::new();
+    let mut t = Table::default();
+    t.insert(
+        Key::anon("esc"),
+        Item::string("line1\nline2\ttab\\back\"quote"),
+        &arena,
+    );
+    t.insert(
+        Key::anon("ctrl"),
+        Item::string("\r\u{0008}\u{000C}"),
+        &arena,
+    );
+    t.insert(Key::anon("low"), Item::string("\x01\x1F"), &arena);
+    let s = emit_normalized(&mut t);
+    assert!(s.contains(r#"\n"#), "newline escape: {s}");
+    assert!(s.contains(r#"\t"#), "tab escape: {s}");
+    assert!(s.contains(r#"\\"#), "backslash escape: {s}");
+    assert!(s.contains(r#"\""#), "quote escape: {s}");
+    assert!(s.contains(r#"\r"#), "carriage return escape: {s}");
+    assert!(s.contains(r#"\b"#), "backspace escape: {s}");
+    assert!(s.contains(r#"\f"#), "formfeed escape: {s}");
+    assert!(s.contains(r#"\u"#), "unicode escape: {s}");
+}
+
+#[test]
+fn emit_special_floats() {
+    // Exercises format_float NaN and infinity paths
+    let arena = Arena::new();
+    let mut t = Table::default();
+    t.insert(Key::anon("pos_nan"), Item::from(f64::NAN), &arena);
+    t.insert(Key::anon("neg_nan"), Item::from(-f64::NAN), &arena);
+    t.insert(Key::anon("pos_inf"), Item::from(f64::INFINITY), &arena);
+    t.insert(Key::anon("neg_inf"), Item::from(f64::NEG_INFINITY), &arena);
+    let s = emit_normalized(&mut t);
+    assert!(s.contains("nan"), "NaN: {s}");
+    assert!(s.contains("inf"), "infinity: {s}");
+    assert!(s.contains("-inf"), "neg infinity: {s}");
+}
+
+#[test]
+fn emit_nested_inline_dotted() {
+    // Exercises format_inline_dotted_kv recursive path
+    let arena = Arena::new();
+    let mut t = Table::default();
+    let mut inner = Table::default();
+    inner.set_style(TableStyle::Dotted);
+    let mut deep = Table::default();
+    deep.set_style(TableStyle::Dotted);
+    deep.insert(Key::anon("val"), Item::from(42i64), &arena);
+    inner.insert(Key::anon("deep"), deep.into_item(), &arena);
+    inner.insert(Key::anon("x"), Item::from(1i64), &arena);
+    t.insert(Key::anon("outer"), inner.into_item(), &arena);
+    t.set_style(TableStyle::Inline);
+    let mut root = Table::default();
+    root.insert(Key::anon("t"), t.into_item(), &arena);
+    let s = emit_normalized(&mut root);
+    assert!(s.contains("42"), "deep value: {s}");
+}

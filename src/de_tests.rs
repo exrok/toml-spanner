@@ -821,3 +821,282 @@ fn required_mapped_and_optional_mapped() {
         assert!(h.optional_mapped("also_missing", parse_uppercase).is_none());
     }
 }
+
+#[test]
+fn deser_hashmap_and_btreemap() {
+    let arena = Arena::new();
+
+    // BTreeMap<String, i64>
+    let input = r#"
+[v]
+alpha = 1
+beta = 2
+gamma = 3
+"#;
+    let val: std::collections::BTreeMap<String, i64> = parse_val(input, &arena).unwrap();
+    assert_eq!(val.len(), 3);
+    assert_eq!(val["alpha"], 1);
+    assert_eq!(val["beta"], 2);
+    assert_eq!(val["gamma"], 3);
+
+    // HashMap<String, String>
+    let input = r#"
+[v]
+key1 = "val1"
+key2 = "val2"
+"#;
+    let val: std::collections::HashMap<String, String> = parse_val(input, &arena).unwrap();
+    assert_eq!(val.len(), 2);
+    assert_eq!(val["key1"], "val1");
+    assert_eq!(val["key2"], "val2");
+
+    // BTreeMap wrong type (not a table)
+    let err = parse_val::<std::collections::BTreeMap<String, i64>>("v = 42", &arena).unwrap_err();
+    assert!(matches!(err.kind, crate::ErrorKind::Wanted { .. }));
+
+    // HashMap wrong type
+    let err =
+        parse_val::<std::collections::HashMap<String, i64>>("v = \"nope\"", &arena).unwrap_err();
+    assert!(matches!(err.kind, crate::ErrorKind::Wanted { .. }));
+
+    // PathBuf
+    let val: std::path::PathBuf = parse_val(r#"v = "/usr/bin/test""#, &arena).unwrap();
+    assert_eq!(val, std::path::PathBuf::from("/usr/bin/test"));
+
+    // PathBuf wrong type
+    let err = parse_val::<std::path::PathBuf>("v = 42", &arena).unwrap_err();
+    assert!(matches!(err.kind, crate::ErrorKind::Wanted { .. }));
+
+    // HashMap with value type mismatch triggers error accumulation
+    let input = r#"
+[v]
+good = 1
+bad = "not a number"
+"#;
+    let err = parse_val::<std::collections::HashMap<String, i64>>(input, &arena).unwrap_err();
+    assert!(matches!(err.kind, crate::ErrorKind::Wanted { .. }));
+
+    // BTreeMap with value type mismatch
+    let input = r#"
+[v]
+ok = 10
+nope = "string"
+"#;
+    let err = parse_val::<std::collections::BTreeMap<String, i64>>(input, &arena).unwrap_err();
+    assert!(matches!(err.kind, crate::ErrorKind::Wanted { .. }));
+}
+
+#[test]
+fn from_str_and_to_string_roundtrip() {
+    use std::collections::BTreeMap;
+
+    // from_str convenience function with flat key-value pairs
+    let val: BTreeMap<String, String> = crate::from_str("x = \"hello\"\ny = \"world\"").unwrap();
+    assert_eq!(val["x"], "hello");
+    assert_eq!(val["y"], "world");
+
+    // to_string convenience function
+    let mut map = BTreeMap::new();
+    map.insert("name".to_string(), "test".to_string());
+    map.insert("value".to_string(), "42".to_string());
+    let toml_str = crate::to_string(&map).unwrap();
+    assert!(toml_str.contains("name = \"test\""), "got: {toml_str}");
+    assert!(toml_str.contains("value = \"42\""), "got: {toml_str}");
+
+    // Roundtrip: to_string then from_str
+    let restored: BTreeMap<String, String> = crate::from_str(&toml_str).unwrap();
+    assert_eq!(restored["name"], "test");
+    assert_eq!(restored["value"], "42");
+
+    // to_string_preserving_formatting
+    let source = "name = \"test\"\nvalue = \"42\"\n";
+    let arena = crate::Arena::new();
+    let root = crate::parse(source, &arena).unwrap();
+    let output = crate::to_string_preserving_formatting(&map, &root).unwrap();
+    assert!(output.contains("name = \"test\""), "got: {output}");
+
+    // to_string with non-table value should error
+    let err = crate::to_string(&42i64).unwrap_err();
+    assert!(
+        err.message.contains("Top-level item must be a table"),
+        "got: {}",
+        err.message
+    );
+
+    // to_string_preserving_formatting with non-table value should error
+    let err = crate::to_string_preserving_formatting(&42i64, &root).unwrap_err();
+    assert!(
+        err.message.contains("Top-level item must be a table"),
+        "got: {}",
+        err.message
+    );
+}
+
+#[test]
+fn to_toml_wrapper_types() {
+    use crate::Arena;
+    use crate::ser::{ToContext, ToToml};
+    use std::collections::{BTreeMap, BTreeSet};
+    use std::path::PathBuf;
+    use std::rc::Rc;
+    use std::sync::Arc;
+
+    let arena = Arena::new();
+    let mut ctx = ToContext::new(&arena);
+
+    // str (not String)
+    let s: &str = "hello";
+    let item = s.to_toml(&mut ctx).unwrap();
+    assert_eq!(item.as_str(), Some("hello"));
+
+    // &T delegates to T
+    let num: i64 = 42;
+    let item = (&num).to_toml(&mut ctx).unwrap();
+    assert_eq!(item.as_i64(), Some(42));
+
+    // Box<T>
+    let boxed = Box::new(99i64);
+    let item = boxed.to_toml(&mut ctx).unwrap();
+    assert_eq!(item.as_i64(), Some(99));
+
+    // Rc<T>
+    let rc = Rc::new("rc-str".to_string());
+    let item = rc.to_toml(&mut ctx).unwrap();
+    assert_eq!(item.as_str(), Some("rc-str"));
+
+    // Arc<T>
+    let arc = Arc::new(7i64);
+    let item = arc.to_toml(&mut ctx).unwrap();
+    assert_eq!(item.as_i64(), Some(7));
+
+    // Cow<T>
+    let cow: std::borrow::Cow<'_, str> = std::borrow::Cow::Borrowed("cow-val");
+    let item = cow.to_toml(&mut ctx).unwrap();
+    assert_eq!(item.as_str(), Some("cow-val"));
+
+    // char
+    let ch = 'A';
+    let item = ch.to_toml(&mut ctx).unwrap();
+    assert_eq!(item.as_str(), Some("A"));
+
+    // f32
+    let f: f32 = 1.5;
+    let item = f.to_toml(&mut ctx).unwrap();
+    assert!((item.as_f64().unwrap() - 1.5).abs() < f64::EPSILON);
+
+    // f64
+    let f: f64 = 2.5;
+    let item = f.to_toml(&mut ctx).unwrap();
+    assert!((item.as_f64().unwrap() - 2.5).abs() < f64::EPSILON);
+
+    // bool
+    let b = true;
+    let item = b.to_toml(&mut ctx).unwrap();
+    assert_eq!(item.as_bool(), Some(true));
+
+    // PathBuf
+    let path = PathBuf::from("/usr/bin");
+    let item = path.to_toml(&mut ctx).unwrap();
+    assert_eq!(item.as_str(), Some("/usr/bin"));
+
+    // std::path::Path (via &Path)
+    let path = std::path::Path::new("/etc/config");
+    let item = path.to_toml(&mut ctx).unwrap();
+    assert_eq!(item.as_str(), Some("/etc/config"));
+
+    // Vec<T> → [T]
+    let vec = vec![1i64, 2, 3];
+    let item = vec.to_toml(&mut ctx).unwrap();
+    assert_eq!(item.as_array().unwrap().len(), 3);
+
+    // [T; N]
+    let arr = [10i64, 20, 30];
+    let item = arr.to_toml(&mut ctx).unwrap();
+    assert_eq!(item.as_array().unwrap().len(), 3);
+
+    // BTreeSet
+    let mut set = BTreeSet::new();
+    set.insert("a".to_string());
+    set.insert("b".to_string());
+    let item = set.to_toml(&mut ctx).unwrap();
+    assert_eq!(item.as_array().unwrap().len(), 2);
+
+    // HashSet
+    let mut hset = std::collections::HashSet::new();
+    hset.insert("x".to_string());
+    let item = hset.to_toml(&mut ctx).unwrap();
+    assert_eq!(item.as_array().unwrap().len(), 1);
+
+    // Option<T>: Some and None
+    let some_val: Option<i64> = Some(5);
+    let item = some_val.to_optional_toml(&mut ctx).unwrap();
+    assert!(item.is_some());
+    assert_eq!(item.unwrap().as_i64(), Some(5));
+
+    let none_val: Option<i64> = None;
+    let item = none_val.to_optional_toml(&mut ctx).unwrap();
+    assert!(item.is_none());
+
+    // BTreeMap (as table)
+    let mut btm = BTreeMap::new();
+    btm.insert("k".to_string(), "v".to_string());
+    let item = btm.to_toml(&mut ctx).unwrap();
+    assert!(item.as_table().is_some());
+    assert_eq!(
+        item.as_table().unwrap().get("k").unwrap().as_str(),
+        Some("v")
+    );
+
+    // HashMap (as table)
+    let mut hm = std::collections::HashMap::new();
+    hm.insert("key".to_string(), 42i64);
+    let item = hm.to_toml(&mut ctx).unwrap();
+    assert!(item.as_table().is_some());
+
+    // Integer types
+    let item = (42u8).to_toml(&mut ctx).unwrap();
+    assert_eq!(item.as_i64(), Some(42));
+    let item = (-5i8).to_toml(&mut ctx).unwrap();
+    assert_eq!(item.as_i64(), Some(-5));
+    let item = (1000u16).to_toml(&mut ctx).unwrap();
+    assert_eq!(item.as_i64(), Some(1000));
+    let item = (-200i16).to_toml(&mut ctx).unwrap();
+    assert_eq!(item.as_i64(), Some(-200));
+    let item = (100000u32).to_toml(&mut ctx).unwrap();
+    assert_eq!(item.as_i64(), Some(100000));
+    let item = (-50000i32).to_toml(&mut ctx).unwrap();
+    assert_eq!(item.as_i64(), Some(-50000));
+
+    // Table::to_toml (clone)
+    let tbl = btm.to_toml(&mut ctx).unwrap();
+    let tbl_ref = tbl.as_table().unwrap();
+    let item = tbl_ref.to_toml(&mut ctx).unwrap();
+    assert!(item.as_table().is_some());
+
+    // Array::to_toml (clone)
+    let arr_item = vec.to_toml(&mut ctx).unwrap();
+    let arr_ref = arr_item.as_array().unwrap();
+    let item = arr_ref.to_toml(&mut ctx).unwrap();
+    assert_eq!(item.as_array().unwrap().len(), 3);
+
+    // Item::to_toml (clone)
+    let original = Item::from(42i64);
+    let item = original.to_toml(&mut ctx).unwrap();
+    assert_eq!(item.as_i64(), Some(42));
+
+    // &mut T delegates to T
+    let mut num2: i64 = 77;
+    let num2_ref = &mut num2;
+    let item = num2_ref.to_toml(&mut ctx).unwrap();
+    assert_eq!(item.as_i64(), Some(77));
+
+    // Cow (owned variant)
+    let cow_owned: std::borrow::Cow<'_, str> = std::borrow::Cow::Owned("owned-val".to_string());
+    let item = cow_owned.to_toml(&mut ctx).unwrap();
+    assert_eq!(item.as_str(), Some("owned-val"));
+
+    // Multi-byte char
+    let ch_multi = '\u{1F600}';
+    let item = ch_multi.to_toml(&mut ctx).unwrap();
+    assert_eq!(item.as_str(), Some("\u{1F600}"));
+}

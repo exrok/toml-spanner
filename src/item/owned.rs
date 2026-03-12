@@ -530,4 +530,48 @@ port = 8080
         let owned = OwnedItem::from(root.table.as_item());
         drop(owned);
     }
+
+    #[test]
+    fn owned_item_clone_and_as_mut() {
+        let arena = Arena::new();
+        let root = parse("[pkg]\nname = 'original'\ncount = 5", &arena).unwrap();
+        let owned = OwnedItem::from(root.table.as_item());
+
+        // Clone preserves content
+        let cloned = owned.clone();
+        assert_eq!(
+            cloned.as_ref().as_table().unwrap()["pkg"]["name"].as_str(),
+            Some("original")
+        );
+
+        // as_mut allows mutation
+        let mut owned2 = OwnedItem::from(root["pkg"]["count"].item().unwrap());
+        let item = owned2.as_mut();
+        assert_eq!(item.as_i64(), Some(5));
+    }
+
+    #[test]
+    fn owned_table_roundtrip() {
+        let toml = "[db]\nhost = 'localhost'\nport = 5432";
+        let arena = Arena::new();
+        let root = parse(toml, &arena).unwrap();
+        let table_ref = root["db"].as_table().unwrap();
+
+        // OwnedTable::from
+        let owned = OwnedTable::from(table_ref);
+
+        // as_ref
+        let t = owned.as_ref();
+        assert_eq!(t["host"].as_str(), Some("localhost"));
+        assert_eq!(t["port"].as_i64(), Some(5432));
+
+        // clone
+        let cloned = owned.clone();
+        assert_eq!(cloned.as_ref()["host"].as_str(), Some("localhost"));
+
+        // as_mut
+        let mut owned2 = OwnedTable::from(table_ref);
+        let t_mut = owned2.as_mut();
+        assert_eq!(t_mut.len(), 2);
+    }
 }

@@ -321,3 +321,115 @@ fn error_constructors() {
     // Error is std::error::Error
     let _: &dyn std::error::Error = &err;
 }
+
+#[test]
+fn duplicate_field_display() {
+    let err = Error {
+        kind: ErrorKind::DuplicateField("name"),
+        span: Span::new(0, 4),
+    };
+    assert_eq!(format!("{err}"), "duplicate field 'name'");
+
+    let kind = ErrorKind::DuplicateField("x");
+    assert_eq!(format!("{kind}"), "duplicate-field");
+}
+
+#[cfg(feature = "from-toml")]
+#[test]
+fn from_toml_error_display_and_debug() {
+    use crate::error::FromTomlError;
+
+    // Single error
+    let err = FromTomlError {
+        errors: vec![Error {
+            kind: ErrorKind::MissingField("name"),
+            span: Span::new(0, 5),
+        }],
+    };
+    assert_eq!(format!("{err}"), "missing field 'name' in table");
+    let debug = format!("{err:?}");
+    assert!(debug.contains("FromTomlError"));
+
+    // Multiple errors
+    let err = FromTomlError {
+        errors: vec![
+            Error {
+                kind: ErrorKind::MissingField("a"),
+                span: Span::new(0, 1),
+            },
+            Error {
+                kind: ErrorKind::MissingField("b"),
+                span: Span::new(2, 3),
+            },
+            Error {
+                kind: ErrorKind::MissingField("c"),
+                span: Span::new(4, 5),
+            },
+        ],
+    };
+    let display = format!("{err}");
+    assert!(display.contains("(+2 more errors)"), "got: {display}");
+
+    // Single extra error (singular)
+    let err = FromTomlError {
+        errors: vec![
+            Error {
+                kind: ErrorKind::InvalidNumber,
+                span: Span::new(0, 1),
+            },
+            Error {
+                kind: ErrorKind::InvalidNumber,
+                span: Span::new(2, 3),
+            },
+        ],
+    };
+    let display = format!("{err}");
+    assert!(display.contains("(+1 more error)"), "got: {display}");
+
+    // Empty errors vec
+    let err = FromTomlError { errors: vec![] };
+    assert_eq!(format!("{err}"), "deserialization failed");
+
+    // std::error::Error impl
+    let _: &dyn std::error::Error = &err;
+
+    // From<Error>
+    let single_err = Error {
+        kind: ErrorKind::InvalidNumber,
+        span: Span::new(0, 1),
+    };
+    let from: FromTomlError = single_err.into();
+    assert_eq!(from.errors.len(), 1);
+
+    // From<Vec<Error>>
+    let errors = vec![Error {
+        kind: ErrorKind::InvalidNumber,
+        span: Span::new(0, 1),
+    }];
+    let from: FromTomlError = errors.into();
+    assert_eq!(from.errors.len(), 1);
+}
+
+#[cfg(feature = "to-toml")]
+#[test]
+fn to_toml_error_display_and_debug() {
+    use crate::error::ToTomlError;
+
+    let err = ToTomlError {
+        message: "something went wrong".into(),
+    };
+    assert_eq!(format!("{err}"), "something went wrong");
+    let debug = format!("{err:?}");
+    assert!(debug.contains("ToTomlError"));
+
+    // std::error::Error impl
+    let _: &dyn std::error::Error = &err;
+
+    // From<Cow<'static, str>>
+    let err: ToTomlError = std::borrow::Cow::Borrowed("static msg").into();
+    assert_eq!(format!("{err}"), "static msg");
+
+    // From<&'static str>
+    let err: ToTomlError = "plain str".into();
+    assert_eq!(format!("{err}"), "plain str");
+}

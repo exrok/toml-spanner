@@ -1927,3 +1927,67 @@ fn duplicate_key_in_indexed_table() {
         e.kind
     );
 }
+
+#[test]
+fn crlf_line_endings() {
+    let ctx = TestCtx::new();
+
+    // Basic CRLF document
+    let v = ctx.parse_ok("a = 1\r\nb = 2\r\n");
+    assert_eq!(v["a"].as_i64(), Some(1));
+    assert_eq!(v["b"].as_i64(), Some(2));
+
+    // CRLF blank lines between entries (exercises eat_newline CRLF path)
+    let v = ctx.parse_ok("a = 1\r\n\r\n\r\nb = 2\r\n");
+    assert_eq!(v["a"].as_i64(), Some(1));
+    assert_eq!(v["b"].as_i64(), Some(2));
+
+    // CRLF blank lines between table headers
+    let v = ctx.parse_ok("[t]\r\nx = 'hello'\r\n\r\n[u]\r\ny = 42\r\n");
+    assert_eq!(v["t"]["x"].as_str(), Some("hello"));
+    assert_eq!(v["u"]["y"].as_i64(), Some(42));
+
+    // CRLF in array of tables with blank lines
+    let v = ctx.parse_ok("[[items]]\r\nval = 1\r\n\r\n[[items]]\r\nval = 2\r\n");
+    assert_eq!(v["items"][0]["val"].as_i64(), Some(1));
+    assert_eq!(v["items"][1]["val"].as_i64(), Some(2));
+
+    // CRLF with comments
+    let v = ctx.parse_ok("# comment\r\n\r\na = 1\r\n");
+    assert_eq!(v["a"].as_i64(), Some(1));
+
+    // CRLF after inline table entries
+    let v = ctx.parse_ok("t = {\r\n  a = 1,\r\n  b = 2\r\n}\r\n");
+    assert_eq!(v["t"]["a"].as_i64(), Some(1));
+    assert_eq!(v["t"]["b"].as_i64(), Some(2));
+
+    // CRLF after array entries
+    let v = ctx.parse_ok("a = [\r\n  1,\r\n  2,\r\n  3\r\n]\r\n");
+    let arr = v["a"].as_array().unwrap();
+    assert_eq!(arr.len(), 3);
+}
+
+#[test]
+fn parse_error_token_descriptions() {
+    let ctx = TestCtx::new();
+
+    // Whitespace-only input after key (exercises scan_token_desc_and_end whitespace path)
+    let e = ctx.parse_err("key   ");
+    assert!(matches!(e.kind, ErrorKind::Wanted { .. }));
+
+    // Stray colon (exercises scan_token_desc_and_end colon path)
+    let e = ctx.parse_err("key : value");
+    assert!(matches!(e.kind, ErrorKind::Wanted { .. }));
+
+    // Stray plus (exercises scan_token_desc_and_end plus path)
+    let e = ctx.parse_err("key = +");
+    assert!(matches!(e.kind, ErrorKind::InvalidNumber));
+
+    // Incomplete inline table with whitespace error
+    let e = ctx.parse_err("t = { a = 1  ");
+    assert!(matches!(e.kind, ErrorKind::Wanted { .. }));
+
+    // Array with trailing error
+    let e = ctx.parse_err("a = [1, 2  ");
+    assert!(matches!(e.kind, ErrorKind::Wanted { .. }));
+}

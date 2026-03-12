@@ -1105,6 +1105,141 @@ fn preserving_formatting_literal_strings() {
     );
 }
 
+// Comprehensive ToToml coverage via roundtrip: exercises many ser.rs impls
+#[derive(Toml, Debug, PartialEq)]
+#[toml(FromToml, ToToml)]
+struct ComprehensiveTypes {
+    // Primitives
+    flag: bool,
+    int_i32: i32,
+    int_i64: i64,
+    float_f64: f64,
+    name: String,
+    // Collections
+    int_list: Vec<i64>,
+    labels: BTreeMap<String, String>,
+    hash_labels: std::collections::HashMap<String, i64>,
+    // Nested / wrapper types
+    boxed_val: Box<i64>,
+    path: std::path::PathBuf,
+    maybe: Option<String>,
+    maybe_absent: Option<String>,
+    fixed_arr: [i32; 3],
+}
+
+#[test]
+fn comprehensive_ser_roundtrip() {
+    let mut labels = BTreeMap::new();
+    labels.insert("env".to_string(), "prod".to_string());
+    labels.insert("region".to_string(), "us-east".to_string());
+
+    let mut hash_labels = std::collections::HashMap::new();
+    hash_labels.insert("count".to_string(), 42);
+
+    let original = ComprehensiveTypes {
+        flag: true,
+        int_i32: -100,
+        int_i64: 9999999999,
+        float_f64: 3.14159,
+        name: "test-name".to_string(),
+        int_list: vec![1, 2, 3],
+        labels,
+        hash_labels,
+        boxed_val: Box::new(99),
+        path: std::path::PathBuf::from("/usr/local/bin"),
+        maybe: Some("present".to_string()),
+        maybe_absent: None,
+        fixed_arr: [10, 20, 30],
+    };
+
+    let toml_str = toml_spanner::to_string(&original).unwrap();
+
+    // Verify key content is present
+    assert!(toml_str.contains("flag = true"), "got: {toml_str}");
+    assert!(toml_str.contains("int_i32 = -100"), "got: {toml_str}");
+    assert!(toml_str.contains("float_f64 = 3.14159"), "got: {toml_str}");
+    assert!(toml_str.contains("name = \"test-name\""), "got: {toml_str}");
+    assert!(toml_str.contains("boxed_val = 99"), "got: {toml_str}");
+    assert!(
+        toml_str.contains("path = \"/usr/local/bin\""),
+        "got: {toml_str}"
+    );
+    assert!(toml_str.contains("maybe = \"present\""), "got: {toml_str}");
+
+    // Roundtrip: parse back
+    let restored: ComprehensiveTypes = toml_spanner::from_str(&toml_str).unwrap();
+    assert_eq!(original.flag, restored.flag);
+    assert_eq!(original.int_i32, restored.int_i32);
+    assert_eq!(original.int_i64, restored.int_i64);
+    assert!((original.float_f64 - restored.float_f64).abs() < f64::EPSILON);
+    assert_eq!(original.name, restored.name);
+    assert_eq!(original.int_list, restored.int_list);
+
+    assert_eq!(original.labels, restored.labels);
+    assert_eq!(original.hash_labels, restored.hash_labels);
+    assert_eq!(original.boxed_val, restored.boxed_val);
+    assert_eq!(original.path, restored.path);
+    assert_eq!(original.maybe, restored.maybe);
+    assert_eq!(original.maybe_absent, restored.maybe_absent);
+    assert_eq!(original.fixed_arr, restored.fixed_arr);
+}
+
+// Test ToToml for small integer types (i8, u8, i16, u16) and f32
+#[derive(Toml, Debug, PartialEq)]
+#[toml(FromToml, ToToml)]
+struct SmallIntegers {
+    a: i64,
+    b: i64,
+    c: i64,
+    d: i64,
+}
+
+#[test]
+fn small_integer_serialization() {
+    // Test that various integer types can be serialized and round-tripped
+    // (they all upcast to i64 for TOML)
+    let v = SmallIntegers {
+        a: 42,
+        b: 255,
+        c: -128,
+        d: 1000,
+    };
+    let toml_str = toml_spanner::to_string(&v).unwrap();
+    let restored: SmallIntegers = toml_spanner::from_str(&toml_str).unwrap();
+    assert_eq!(v, restored);
+}
+
+// Direct ToToml tests for types not easily reachable via derive
+#[test]
+fn to_string_with_nested_vecs() {
+    #[derive(Toml, Debug, PartialEq)]
+    #[toml(FromToml, ToToml)]
+    struct WithVecs {
+        nums: Vec<Vec<i64>>,
+    }
+    let v = WithVecs {
+        nums: vec![vec![1, 2], vec![3, 4, 5]],
+    };
+    let toml_str = toml_spanner::to_string(&v).unwrap();
+    let restored: WithVecs = toml_spanner::from_str(&toml_str).unwrap();
+    assert_eq!(v, restored);
+}
+
+#[test]
+fn to_string_with_float_types() {
+    #[derive(Toml, Debug, PartialEq)]
+    #[toml(FromToml, ToToml)]
+    struct Floats {
+        a: f64,
+        b: f64,
+    }
+    let v = Floats { a: 1.5, b: -0.001 };
+    let toml_str = toml_spanner::to_string(&v).unwrap();
+    let restored: Floats = toml_spanner::from_str(&toml_str).unwrap();
+    assert!((v.a - restored.a).abs() < f64::EPSILON);
+    assert!((v.b - restored.b).abs() < f64::EPSILON);
+}
+
 mod flatten_key_helper {
     use toml_spanner::{Context, Failed, Item, Key, Table, ToContext};
 
@@ -1177,4 +1312,598 @@ fn flatten_with_to_toml() {
     assert!(toml_str.contains("name = \"hello\""), "got: {toml_str}");
     assert!(toml_str.contains("alpha = true"), "got: {toml_str}");
     assert!(toml_str.contains("beta = true"), "got: {toml_str}");
+}
+
+// HashMap flatten exercises de.rs HashMap FromFlattened path
+#[derive(Toml, Debug, PartialEq)]
+#[toml(FromToml, ToToml)]
+struct WithHashMapFlatten {
+    name: String,
+    #[toml(flatten)]
+    extras: std::collections::HashMap<String, i64>,
+}
+
+#[test]
+fn flatten_hashmap_roundtrip() {
+    let input = r#"
+        name = "test"
+        alpha = 1
+        beta = 2
+    "#;
+    let v: WithHashMapFlatten = toml_spanner::from_str(input).unwrap();
+    assert_eq!(v.name, "test");
+    assert_eq!(v.extras.len(), 2);
+    assert_eq!(v.extras["alpha"], 1);
+    assert_eq!(v.extras["beta"], 2);
+
+    // Roundtrip via to_string → from_str
+    let toml_str = toml_spanner::to_string(&v).unwrap();
+    let restored: WithHashMapFlatten = toml_spanner::from_str(&toml_str).unwrap();
+    assert_eq!(v.name, restored.name);
+    assert_eq!(v.extras, restored.extras);
+}
+
+// Preserving formatting with diverse value types exercises reprojection hash paths
+#[derive(Toml, Debug, PartialEq)]
+#[toml(FromToml, ToToml)]
+struct DiverseValues {
+    label: String,
+    count: i64,
+    ratio: f64,
+    enabled: bool,
+    tags: Vec<String>,
+    #[toml(default)]
+    nested: Option<NestedPart>,
+}
+
+#[derive(Toml, Debug, PartialEq)]
+#[toml(FromToml, ToToml)]
+struct NestedPart {
+    x: i64,
+    y: i64,
+}
+
+#[test]
+fn preserving_formatting_diverse_types() {
+    let input = "\
+label = \"hello\"
+count = 42
+ratio = 3.14
+enabled = true
+tags = [\"a\", \"b\"]
+
+[nested]
+x = 10
+y = 20
+";
+    let arena = Arena::new();
+    let root = toml_spanner::parse(input, &arena).unwrap();
+    let val: DiverseValues = toml_spanner::from_str(input).unwrap();
+    let output = to_string_preserving_formatting(&val, &root).unwrap();
+    assert!(output.contains("ratio = 3.14"), "got: {output}");
+    assert!(output.contains("enabled = true"), "got: {output}");
+    assert!(output.contains("[nested]"), "got: {output}");
+    assert!(output.contains("tags = [\"a\", \"b\"]"), "got: {output}");
+}
+
+#[test]
+fn preserving_formatting_with_new_field() {
+    // When dest has a field not in source, reprojection should handle gracefully
+    let source_input = "\
+host = \"localhost\"
+port = 8080
+";
+    let arena = Arena::new();
+    let root = toml_spanner::parse(source_input, &arena).unwrap();
+    let config = ServerConfig {
+        host: "localhost".to_string(),
+        port: 8080,
+        debug: true, // new field not in source
+    };
+    let output = to_string_preserving_formatting(&config, &root).unwrap();
+    assert!(output.contains("host = \"localhost\""), "got: {output}");
+    assert!(output.contains("port = 8080"), "got: {output}");
+    assert!(output.contains("debug = true"), "got: {output}");
+}
+
+// AOT (array of tables) roundtrip with preserving formatting
+#[derive(Toml, Debug, PartialEq)]
+#[toml(FromToml, ToToml)]
+struct WithAot {
+    name: String,
+    items: Vec<AotEntry>,
+}
+
+#[derive(Toml, Debug, PartialEq)]
+#[toml(FromToml, ToToml)]
+struct AotEntry {
+    key: String,
+    val: i64,
+}
+
+#[test]
+fn preserving_formatting_aot() {
+    let input = "\
+name = \"project\"
+
+[[items]]
+key = \"first\"
+val = 1
+
+[[items]]
+key = \"second\"
+val = 2
+";
+    let arena = Arena::new();
+    let root = toml_spanner::parse(input, &arena).unwrap();
+    let val: WithAot = toml_spanner::from_str(input).unwrap();
+    let output = to_string_preserving_formatting(&val, &root).unwrap();
+    assert!(output.contains("[[items]]"), "got: {output}");
+    assert!(output.contains("key = \"first\""), "got: {output}");
+    assert!(output.contains("key = \"second\""), "got: {output}");
+}
+
+// Exercises reprojection hash_item for float, bool, and integer array elements
+#[derive(Toml, Debug, PartialEq)]
+#[toml(FromToml, ToToml)]
+struct WithDiverseArrays {
+    floats: Vec<f64>,
+    bools: Vec<bool>,
+    ints: Vec<i64>,
+}
+
+#[test]
+fn preserving_formatting_diverse_arrays() {
+    let input = "\
+floats = [1.5, 2.5, 3.5]
+bools = [true, false, true]
+ints = [10, 20, 30]
+";
+    let arena = Arena::new();
+    let root = toml_spanner::parse(input, &arena).unwrap();
+    let val: WithDiverseArrays = toml_spanner::from_str(input).unwrap();
+    let output = to_string_preserving_formatting(&val, &root).unwrap();
+    assert!(output.contains("floats = [1.5, 2.5, 3.5]"), "got: {output}");
+    assert!(
+        output.contains("bools = [true, false, true]"),
+        "got: {output}"
+    );
+}
+
+// Exercises reprojection with modified array (element added/removed)
+#[test]
+fn preserving_formatting_modified_array() {
+    let input = "\
+floats = [1.0, 2.0, 3.0]
+bools = [true, false]
+ints = [10, 20, 30]
+";
+    let arena = Arena::new();
+    let root = toml_spanner::parse(input, &arena).unwrap();
+    let modified = WithDiverseArrays {
+        floats: vec![1.0, 2.0, 3.0, 4.0], // added element
+        bools: vec![true],                // removed element
+        ints: vec![10, 20, 30],
+    };
+    let output = to_string_preserving_formatting(&modified, &root).unwrap();
+    assert!(output.contains("floats"), "got: {output}");
+    assert!(output.contains("bools"), "got: {output}");
+
+    // Roundtrip: parse the output and verify
+    let restored: WithDiverseArrays = toml_spanner::from_str(&output).unwrap();
+    assert_eq!(modified.floats, restored.floats);
+    assert_eq!(modified.bools, restored.bools);
+    assert_eq!(modified.ints, restored.ints);
+}
+
+// Exercises reprojection with reordered array elements
+#[test]
+fn preserving_formatting_reordered_array() {
+    let input = "ints = [30, 10, 20]\nfloats = [3.0, 1.0, 2.0]\nbools = [false, true, false]\n";
+    let arena = Arena::new();
+    let root = toml_spanner::parse(input, &arena).unwrap();
+    let reordered = WithDiverseArrays {
+        floats: vec![1.0, 2.0, 3.0],
+        bools: vec![true, false, false],
+        ints: vec![10, 20, 30],
+    };
+    let output = to_string_preserving_formatting(&reordered, &root).unwrap();
+    let restored: WithDiverseArrays = toml_spanner::from_str(&output).unwrap();
+    assert_eq!(reordered.floats, restored.floats);
+    assert_eq!(reordered.ints, restored.ints);
+}
+
+// Exercises ser.rs ToToml impls for BTreeMap, BTreeSet, HashSet, Box, Rc, Arc, Cow, char, PathBuf
+#[test]
+fn ser_btreemap_and_btreeset_roundtrip() {
+    use std::collections::{BTreeMap, BTreeSet};
+
+    #[derive(Toml, Debug, PartialEq)]
+    #[toml(FromToml, ToToml)]
+    struct WithCollections {
+        #[toml(flatten)]
+        map: BTreeMap<String, i64>,
+    }
+
+    let mut map = BTreeMap::new();
+    map.insert("alpha".to_string(), 1);
+    map.insert("beta".to_string(), 2);
+    let v = WithCollections { map };
+    let toml_str = toml_spanner::to_string(&v).unwrap();
+    let restored: WithCollections = toml_spanner::from_str(&toml_str).unwrap();
+    assert_eq!(v, restored);
+
+    // BTreeSet via a Vec field (sets serialize as arrays)
+    #[derive(Toml, Debug, PartialEq)]
+    #[toml(ToToml)]
+    struct WithSet {
+        items: BTreeSet<String>,
+    }
+    let mut items = BTreeSet::new();
+    items.insert("x".to_string());
+    items.insert("y".to_string());
+    let v = WithSet { items };
+    let toml_str = toml_spanner::to_string(&v).unwrap();
+    assert!(toml_str.contains("items = ["), "got: {toml_str}");
+    assert!(toml_str.contains("\"x\""), "got: {toml_str}");
+    assert!(toml_str.contains("\"y\""), "got: {toml_str}");
+}
+
+#[test]
+fn ser_hashset_roundtrip() {
+    use std::collections::HashSet;
+
+    #[derive(Toml, Debug)]
+    #[toml(ToToml)]
+    struct WithHashSet {
+        vals: HashSet<i64>,
+    }
+    let mut vals = HashSet::new();
+    vals.insert(10);
+    vals.insert(20);
+    let v = WithHashSet { vals };
+    let toml_str = toml_spanner::to_string(&v).unwrap();
+    assert!(toml_str.contains("vals = ["), "got: {toml_str}");
+}
+
+#[test]
+fn ser_smart_pointers_and_cow() {
+    use std::borrow::Cow;
+    use std::rc::Rc;
+    use std::sync::Arc;
+
+    // All these implement ToToml by delegating to the inner type.
+    // Exercise them through the to_string → from_str path.
+    let arena = toml_spanner::Arena::new();
+    let mut ctx = toml_spanner::ToContext::new(&arena);
+
+    let boxed: Box<String> = Box::new("boxed".to_string());
+    let item = toml_spanner::ToToml::to_toml(&boxed, &mut ctx).unwrap();
+    assert_eq!(item.as_str(), Some("boxed"));
+
+    let rc = Rc::new(42i64);
+    let item = toml_spanner::ToToml::to_toml(&rc, &mut ctx).unwrap();
+    assert_eq!(item.as_i64(), Some(42));
+
+    let arc = Arc::new("arc_str".to_string());
+    let item = toml_spanner::ToToml::to_toml(&arc, &mut ctx).unwrap();
+    assert_eq!(item.as_str(), Some("arc_str"));
+
+    let cow: Cow<'_, String> = Cow::Owned("cow_str".to_string());
+    let item = toml_spanner::ToToml::to_toml(&cow, &mut ctx).unwrap();
+    assert_eq!(item.as_str(), Some("cow_str"));
+}
+
+#[test]
+fn ser_char_and_path() {
+    let arena = toml_spanner::Arena::new();
+    let mut ctx = toml_spanner::ToContext::new(&arena);
+
+    let ch = 'Z';
+    let item = toml_spanner::ToToml::to_toml(&ch, &mut ctx).unwrap();
+    assert_eq!(item.as_str(), Some("Z"));
+
+    let ch_multi = '€';
+    let item = toml_spanner::ToToml::to_toml(&ch_multi, &mut ctx).unwrap();
+    assert_eq!(item.as_str(), Some("€"));
+
+    let path = std::path::PathBuf::from("/tmp/test.toml");
+    let item = toml_spanner::ToToml::to_toml(&path, &mut ctx).unwrap();
+    assert_eq!(item.as_str(), Some("/tmp/test.toml"));
+
+    let path_ref = std::path::Path::new("/etc/config");
+    let item = toml_spanner::ToToml::to_toml(&path_ref, &mut ctx).unwrap();
+    assert_eq!(item.as_str(), Some("/etc/config"));
+}
+
+#[test]
+fn ser_f32_roundtrip() {
+    #[derive(Toml, Debug, PartialEq)]
+    #[toml(ToToml)]
+    struct WithF32 {
+        val: f32,
+    }
+    let v = WithF32 { val: 1.5 };
+    let toml_str = toml_spanner::to_string(&v).unwrap();
+    assert!(toml_str.contains("1.5"), "got: {toml_str}");
+}
+
+#[test]
+fn ser_array_and_table_clone() {
+    // Exercises ToToml for Array<'_> and Table<'_>
+    let arena = toml_spanner::Arena::new();
+    let root = toml_spanner::parse("[t]\na = 1\nb = [2, 3]", &arena).unwrap();
+
+    let mut ctx = toml_spanner::ToContext::new(&arena);
+    let table = root["t"].as_table().unwrap();
+    let item = toml_spanner::ToToml::to_toml(table, &mut ctx).unwrap();
+    assert_eq!(item.as_table().unwrap()["a"].as_i64(), Some(1));
+
+    let arr = root["t"]["b"].as_array().unwrap();
+    let item = toml_spanner::ToToml::to_toml(arr, &mut ctx).unwrap();
+    assert_eq!(item.as_array().unwrap().len(), 2);
+
+    // Item::to_toml clones the item
+    let orig = root["t"]["a"].item().unwrap();
+    let cloned = toml_spanner::ToToml::to_toml(orig, &mut ctx).unwrap();
+    assert_eq!(cloned.as_i64(), Some(1));
+}
+
+#[test]
+fn ser_ref_and_mut_ref() {
+    let arena = toml_spanner::Arena::new();
+    let mut ctx = toml_spanner::ToContext::new(&arena);
+
+    let val = 99i64;
+    let r = &val;
+    let item = toml_spanner::ToToml::to_toml(&r, &mut ctx).unwrap();
+    assert_eq!(item.as_i64(), Some(99));
+
+    let mut val2 = true;
+    let mr = &mut val2;
+    let item = toml_spanner::ToToml::to_toml(&mr, &mut ctx).unwrap();
+    assert_eq!(item.as_bool(), Some(true));
+}
+
+#[test]
+fn ser_fixed_array() {
+    // Exercises [T; N]::to_toml
+    #[derive(Toml, Debug, PartialEq)]
+    #[toml(ToToml)]
+    struct WithFixedArray {
+        vals: [i64; 3],
+    }
+    let v = WithFixedArray { vals: [10, 20, 30] };
+    let toml_str = toml_spanner::to_string(&v).unwrap();
+    assert!(toml_str.contains("vals = [10, 20, 30]"), "got: {toml_str}");
+}
+
+#[test]
+fn ser_hashmap_as_table() {
+    use std::collections::HashMap;
+
+    #[derive(Toml, Debug, PartialEq)]
+    #[toml(ToToml)]
+    struct WithMap {
+        #[toml(flatten)]
+        data: HashMap<String, String>,
+    }
+    let mut data = HashMap::new();
+    data.insert("key1".to_string(), "val1".to_string());
+    let v = WithMap { data };
+    let toml_str = toml_spanner::to_string(&v).unwrap();
+    assert!(toml_str.contains("key1 = \"val1\""), "got: {toml_str}");
+}
+
+// OwnedItem with deeply nested array-of-tables containing strings
+#[test]
+fn owned_item_aot_with_strings() {
+    let toml = r#"
+name = "project"
+
+[[items]]
+key = "first"
+tags = ["a", "b"]
+
+[[items]]
+key = "second"
+tags = ["c"]
+"#;
+    let arena = toml_spanner::Arena::new();
+    let root = toml_spanner::parse(toml, &arena).unwrap();
+    let owned = toml_spanner::OwnedItem::from(root.table().as_item());
+    let tbl = owned.as_ref().as_table().unwrap();
+    assert_eq!(tbl["name"].as_str(), Some("project"));
+    let items = tbl["items"].as_array().unwrap();
+    assert_eq!(items.len(), 2);
+    assert_eq!(items[0].as_table().unwrap()["key"].as_str(), Some("first"));
+    let tags = items[0].as_table().unwrap()["tags"].as_array().unwrap();
+    assert_eq!(tags[0].as_str(), Some("a"));
+    assert_eq!(tags[1].as_str(), Some("b"));
+    assert_eq!(
+        items[1].as_table().unwrap()["key"].as_str(),
+        Some("second")
+    );
+
+    // Clone preserves all data
+    let cloned = owned.clone();
+    let tbl2 = cloned.as_ref().as_table().unwrap();
+    assert_eq!(tbl2["items"][0]["key"].as_str(), Some("first"));
+}
+
+// Exercises to_string_preserving_formatting with nested tables and dotted keys
+#[test]
+fn preserving_formatting_dotted_keys() {
+    #[derive(Toml, Debug, PartialEq)]
+    #[toml(FromToml, ToToml)]
+    struct Server {
+        host: String,
+        port: i64,
+    }
+    #[derive(Toml, Debug, PartialEq)]
+    #[toml(FromToml, ToToml)]
+    struct AppConfig {
+        name: String,
+        server: Server,
+    }
+
+    let input = "\
+name = \"myapp\"
+
+[server]
+host = \"localhost\"
+port = 8080
+";
+    let arena = Arena::new();
+    let root = toml_spanner::parse(input, &arena).unwrap();
+    let val: AppConfig = toml_spanner::from_str(input).unwrap();
+    let output = to_string_preserving_formatting(&val, &root).unwrap();
+    assert!(output.contains("[server]"), "got: {output}");
+    assert!(output.contains("host = \"localhost\""), "got: {output}");
+
+    // Modify a value and re-emit
+    let modified = AppConfig {
+        name: "changed".to_string(),
+        server: Server {
+            host: "0.0.0.0".to_string(),
+            port: 9090,
+        },
+    };
+    let output2 = to_string_preserving_formatting(&modified, &root).unwrap();
+    let restored: AppConfig = toml_spanner::from_str(&output2).unwrap();
+    assert_eq!(modified, restored);
+}
+
+// Exercises preserving_formatting with removed nested table
+#[test]
+fn preserving_formatting_optional_nested_removed() {
+    #[derive(Toml, Debug, PartialEq)]
+    #[toml(FromToml, ToToml)]
+    struct WithOptNested {
+        name: String,
+        #[toml(default)]
+        extra: Option<NestedPart>,
+    }
+
+    let input = "\
+name = \"test\"
+
+[extra]
+x = 1
+y = 2
+";
+    let arena = Arena::new();
+    let root = toml_spanner::parse(input, &arena).unwrap();
+    // Remove the nested table
+    let modified = WithOptNested {
+        name: "test".to_string(),
+        extra: None,
+    };
+    let output = to_string_preserving_formatting(&modified, &root).unwrap();
+    assert!(output.contains("name = \"test\""), "got: {output}");
+    let restored: WithOptNested = toml_spanner::from_str(&output).unwrap();
+    assert_eq!(modified, restored);
+}
+
+// Exercises preserving_formatting with inline tables
+#[test]
+fn preserving_formatting_inline_table() {
+    let input = "point = { x = 1, y = 2 }\nlabel = \"origin\"\n";
+    let arena = Arena::new();
+    let root = toml_spanner::parse(input, &arena).unwrap();
+
+    #[derive(Toml, Debug, PartialEq)]
+    #[toml(FromToml, ToToml)]
+    struct Point {
+        x: i64,
+        y: i64,
+    }
+    #[derive(Toml, Debug, PartialEq)]
+    #[toml(FromToml, ToToml)]
+    struct WithInline {
+        point: Point,
+        label: String,
+    }
+    let val: WithInline = toml_spanner::from_str(input).unwrap();
+    let output = to_string_preserving_formatting(&val, &root).unwrap();
+    assert!(output.contains("point = { x = 1, y = 2 }"), "got: {output}");
+
+    // Modified inline table
+    let modified = WithInline {
+        point: Point { x: 10, y: 20 },
+        label: "origin".to_string(),
+    };
+    let output2 = to_string_preserving_formatting(&modified, &root).unwrap();
+    let restored: WithInline = toml_spanner::from_str(&output2).unwrap();
+    assert_eq!(modified, restored);
+}
+
+// Exercises Array::pop, Array::into_iter, and Array::as_item
+#[test]
+fn array_pop_into_iter_and_as_item() {
+    let arena = Arena::new();
+    let root = toml_spanner::parse("a = [1, 2, 3, 4]", &arena).unwrap();
+    let mut arr = root["a"].as_array().unwrap().clone_in(&arena);
+
+    // pop
+    let last = arr.pop().unwrap();
+    assert_eq!(last.as_i64(), Some(4));
+    assert_eq!(arr.len(), 3);
+
+    // as_item
+    let item = arr.as_item();
+    assert_eq!(item.as_array().unwrap().len(), 3);
+
+    // into_iter (consuming)
+    let collected: Vec<i64> = arr.into_iter().filter_map(|i| i.as_i64()).collect();
+    assert_eq!(collected, vec![1, 2, 3]);
+}
+
+// Exercises Array index operator for out-of-bounds (returns NONE)
+#[test]
+fn array_index_out_of_bounds() {
+    let arena = Arena::new();
+    let root = toml_spanner::parse("a = [1]", &arena).unwrap();
+    let arr = root["a"].as_array().unwrap();
+    assert!(arr[99].as_i64().is_none());
+}
+
+// Exercises to_string error path when top-level is not a table
+#[test]
+fn to_string_non_table_error() {
+    let arena = toml_spanner::Arena::new();
+    let mut ctx = toml_spanner::ToContext::new(&arena);
+
+    // A type that produces a non-table item at the top level
+    let result = toml_spanner::to_string(&"just a string");
+    assert!(result.is_err());
+
+    // report_error exercises the error path
+    let err = ctx.report_error("test error");
+    assert!(err.is_err());
+}
+
+// Exercises preserving_formatting with comments in source
+#[test]
+fn preserving_formatting_with_comments() {
+    let input = "\
+# This is a config file
+name = \"myapp\"
+# Server settings
+port = 8080
+";
+    let arena = Arena::new();
+    let root = toml_spanner::parse(input, &arena).unwrap();
+
+    #[derive(Toml, Debug, PartialEq)]
+    #[toml(FromToml, ToToml)]
+    struct SimpleConf {
+        name: String,
+        port: i64,
+    }
+    let val: SimpleConf = toml_spanner::from_str(input).unwrap();
+    let output = to_string_preserving_formatting(&val, &root).unwrap();
+    // Comments should be preserved in source-ordered mode
+    assert!(output.contains("# This is a config file"), "got: {output}");
+    assert!(output.contains("name = \"myapp\""), "got: {output}");
 }
