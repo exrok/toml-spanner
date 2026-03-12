@@ -113,11 +113,32 @@ impl<'de> InnerTable<'de> {
             None
         }
     }
+
+    pub(crate) fn get_entry_with_maybe_index(
+        &self,
+        key: &str,
+        index: Option<&TableIndex<'_>>,
+    ) -> Option<&TableEntry<'de>> {
+        if self.len() > crate::parser::INDEXED_TABLE_THRESHOLD {
+            if let Some(index) = index {
+                // SAFETY: len > INDEXED_TABLE_THRESHOLD (> 6), so the table is non-empty.
+                let first_key_span = unsafe { self.first_key_span_start_unchecked() };
+                let i = *index.0.get(&KeyRef::new(key, first_key_span))?;
+                return self.entries().get(i);
+            }
+        }
+        for entry in self.entries() {
+            if entry.0.name == key {
+                return Some(entry);
+            }
+        }
+        None
+    }
     /// Linear scan for a key, returning both key and value references.
     pub fn get_entry(&self, name: &str) -> Option<(&Key<'de>, &Item<'de>)> {
-        for entry in self.entries() {
-            if entry.0.name == name {
-                return Some((&entry.0, &entry.1));
+        for (key, item) in self.entries() {
+            if key.name == name {
+                return Some((key, item));
             }
         }
         None
@@ -125,9 +146,9 @@ impl<'de> InnerTable<'de> {
 
     /// Returns a reference to the value for `name`.
     pub fn get(&self, name: &str) -> Option<&Item<'de>> {
-        for entry in self.entries() {
-            if entry.0.name == name {
-                return Some(&entry.1);
+        for (key, item) in self.entries() {
+            if key.name == name {
+                return Some(item);
             }
         }
         None
@@ -135,9 +156,9 @@ impl<'de> InnerTable<'de> {
 
     /// Returns a mutable reference to the value for `name`.
     pub fn get_mut(&mut self, name: &str) -> Option<&mut Item<'de>> {
-        for entry in self.entries_mut() {
-            if entry.0.name == name {
-                return Some(&mut entry.1);
+        for (key, item) in self.entries_mut() {
+            if key.name == name {
+                return Some(item);
             }
         }
         None
@@ -186,8 +207,8 @@ impl<'de> InnerTable<'de> {
     }
 
     pub(crate) fn find_index(&self, name: &str) -> Option<usize> {
-        for (i, entry) in self.entries().iter().enumerate() {
-            if entry.0.name == name {
+        for (i, (key, _)) in self.entries().iter().enumerate() {
+            if key.name == name {
                 return Some(i);
             }
         }
@@ -270,8 +291,8 @@ impl<'de> InnerTable<'de> {
                 // SAFETY: the entry's value is an aggregate; deep-clone it.
                 // Key is Copy.
                 unsafe {
-                    let entry = &*src.add(i);
-                    dst_ptr.add(i).write((entry.0, entry.1.clone_in(arena)));
+                    let (key, item) = &*src.add(i);
+                    dst_ptr.add(i).write((*key, item.clone_in(arena)));
                 }
                 run_start = i + 1;
             }

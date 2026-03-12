@@ -102,19 +102,17 @@ pub struct RemainingEntriesIter<'t, 'de> {
 }
 impl RemainingEntriesIter<'_, '_> {
     fn next_bucket(&mut self) -> bool {
-        if let Some(bucket) = self.remaining_cells.next() {
-            debug_assert!(self.entries.len() > 64);
-            if let Some(remaining) = self.entries.get(64..) {
-                self.entries = remaining;
-            } else {
-                // Shouldn't occur in practice, but no need to panic here.
-                return false;
-            }
-            self.bits = !*bucket;
-            true
-        } else {
-            false
-        }
+        let Some(bucket) = self.remaining_cells.next() else {
+            return false;
+        };
+        debug_assert!(self.entries.len() > 64);
+        let Some(remaining) = self.entries.get(64..) else {
+            // Shouldn't occur in practice, but no need to panic here.
+            return false;
+        };
+        self.entries = remaining;
+        self.bits = !*bucket;
+        true
     }
 }
 

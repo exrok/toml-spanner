@@ -7,6 +7,7 @@ pub(crate) mod array;
 pub(crate) mod owned;
 pub(crate) mod table;
 use crate::arena::Arena;
+use crate::item::table::TableIndex;
 use crate::{DateTime, Error, ErrorKind, Span, Table};
 use std::fmt;
 use std::mem::ManuallyDrop;
@@ -1191,54 +1192,117 @@ impl PartialEq for Key<'_> {
 
 impl Eq for Key<'_> {}
 
-impl<'de> PartialEq for Item<'de> {
-    fn eq(&self, other: &Self) -> bool {
-        let a = self;
-        let b = other;
-        if a.kind() != b.kind() {
-            return false;
-        }
-        // SAFETY: kind check above guarantees both payloads hold the same union
-        // variant. Each arm reads only the field that corresponds to that variant.
-        // Righting this way generates the minimal LLVM lines and the fastest impl
-        unsafe {
-            match a.kind() {
-                Kind::String => a.payload.string == b.payload.string,
-                Kind::Integer => a.payload.integer == b.payload.integer,
-                Kind::Float => {
-                    let af = a.payload.float;
-                    let bf = b.payload.float;
-                    if af.is_nan() && bf.is_nan() {
-                        af.is_sign_negative() == bf.is_sign_negative()
-                    } else {
-                        af.to_bits() == bf.to_bits()
-                    }
-                }
-                Kind::Boolean => a.payload.boolean == b.payload.boolean,
-                Kind::DateTime => {
-                    let da = &a.payload.datetime;
-                    let db = &b.payload.datetime;
-                    da.date() == db.date() && da.time() == db.time() && da.offset() == db.offset()
-                }
-                Kind::Array => a.payload.array.as_slice() == a.payload.array.as_slice(),
-                Kind::Table => {
-                    let tab_a = a.as_table_unchecked();
-                    let tab_b = b.as_table_unchecked();
-                    if tab_a.len() != tab_b.len() {
-                        return false;
-                    }
-                    for (key, val_a) in tab_a {
-                        let Some(val_b) = tab_b.get(key.name) else {
-                            return false;
-                        };
-                        if val_a != val_b {
-                            return false;
-                        }
-                    }
-                    true
+// Would be technically more efficent to pass table index as thread local storage,
+// but that requires even more unsafe.
+pub(crate) fn equal_items(a: &Item<'_>, b: &Item<'_>, index: Option<&TableIndex<'_>>) -> bool {
+    if a.kind() != b.kind() {
+        return false;
+    }
+    // SAFETY: kind check above guarantees both payloads hold the same union
+    // variant. Each arm reads only the field that corresponds to that variant.
+    // Righting this way generates the minimal LLVM lines and the fastest impl
+    unsafe {
+        match a.kind() {
+            Kind::String => a.payload.string == b.payload.string,
+            Kind::Integer => a.payload.integer == b.payload.integer,
+            Kind::Float => {
+                let af = a.payload.float;
+                let bf = b.payload.float;
+                if af.is_nan() && bf.is_nan() {
+                    af.is_sign_negative() == bf.is_sign_negative()
+                } else {
+                    af.to_bits() == bf.to_bits()
                 }
             }
+            Kind::Boolean => a.payload.boolean == b.payload.boolean,
+            Kind::DateTime => {
+                let da = &a.payload.datetime;
+                let db = &b.payload.datetime;
+                da.date() == db.date() && da.time() == db.time() && da.offset() == db.offset()
+            }
+            Kind::Array => {
+                let a = a.payload.array.as_slice();
+                let b = b.payload.array.as_slice();
+                if a.len() != b.len() {
+                    return false;
+                }
+                for i in 0..a.len() {
+                    if !equal_items(&*a.as_ptr().add(i), &*b.as_ptr().add(i), index) {
+                        return false;
+                    }
+                }
+                true
+            }
+            Kind::Table => {
+                let tab_a = a.as_table_unchecked();
+                let tab_b = b.as_table_unchecked();
+                if tab_a.len() != tab_b.len() {
+                    return false;
+                }
+                for (key, val_a) in tab_a {
+                    let Some((_, val_b)) = tab_b.value.get_entry_with_maybe_index(key.name, index)
+                    else {
+                        return false;
+                    };
+                    if !equal_items(val_a, val_b, index) {
+                        return false;
+                    }
+                }
+                true
+            }
         }
+    }
+}
+
+impl<'de> PartialEq for Item<'de> {
+    fn eq(&self, other: &Self) -> bool {
+        return equal_items(self, other, None);
+        // let a = self;
+        // let b = other;
+        // if a.kind() != b.kind() {
+        //     return false;
+        // }
+        // // SAFETY: kind check above guarantees both payloads hold the same union
+        // // variant. Each arm reads only the field that corresponds to that variant.
+        // // Righting this way generates the minimal LLVM lines and the fastest impl
+        // unsafe {
+        //     match a.kind() {
+        //         Kind::String => a.payload.string == b.payload.string,
+        //         Kind::Integer => a.payload.integer == b.payload.integer,
+        //         Kind::Float => {
+        //             let af = a.payload.float;
+        //             let bf = b.payload.float;
+        //             if af.is_nan() && bf.is_nan() {
+        //                 af.is_sign_negative() == bf.is_sign_negative()
+        //             } else {
+        //                 af.to_bits() == bf.to_bits()
+        //             }
+        //         }
+        //         Kind::Boolean => a.payload.boolean == b.payload.boolean,
+        //         Kind::DateTime => {
+        //             let da = &a.payload.datetime;
+        //             let db = &b.payload.datetime;
+        //             da.date() == db.date() && da.time() == db.time() && da.offset() == db.offset()
+        //         }
+        //         Kind::Array => a.payload.array.as_slice() == a.payload.array.as_slice(),
+        //         Kind::Table => {
+        //             let tab_a = a.as_table_unchecked();
+        //             let tab_b = b.as_table_unchecked();
+        //             if tab_a.len() != tab_b.len() {
+        //                 return false;
+        //             }
+        //             for (key, val_a) in tab_a {
+        //                 let Some(val_b) = tab_b.get(key.name) else {
+        //                     return false;
+        //                 };
+        //                 if val_a != val_b {
+        //                     return false;
+        //                 }
+        //             }
+        //             true
+        //         }
+        //     }
+        // }
     }
 }
 

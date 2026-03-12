@@ -361,14 +361,14 @@ impl Cursor {
         // Fixup pass: read key names/tags from source (safe), write patches to dst.
         for i in 0..len {
             let (ref src_key, ref src_val) = src_entries[i];
-            let dst_entry = unsafe { &mut *dst.add(i) };
+            let (dst_key, dst_item) = unsafe { &mut *dst.add(i) };
 
             // Key name fixup: patch dst key to point to our owned copy.
             let name = src_key.name;
             if !name.is_empty() {
                 let new_name_ptr = unsafe { self.push_str_raw(name.as_ptr(), name.len()) };
                 // SAFETY: new_name_ptr points to our owned buffer with name.len() bytes.
-                dst_entry.0.name = unsafe {
+                dst_key.name = unsafe {
                     std::str::from_utf8_unchecked(std::slice::from_raw_parts(
                         new_name_ptr,
                         name.len(),
@@ -386,14 +386,14 @@ impl Cursor {
                     let new_ptr = unsafe { self.push_str_raw(s.as_ptr(), s.len()) };
                     // SAFETY: dst item is a string; new_ptr is our owned copy.
                     unsafe {
-                        dst_entry.1.payload.string = std::str::from_utf8_unchecked(
+                        dst_item.payload.string = std::str::from_utf8_unchecked(
                             std::slice::from_raw_parts(new_ptr, s.len()),
                         );
                     }
                 }
             } else if tag >= TAG_TABLE {
                 // Recursive clone from original source.
-                dst_entry.1 = unsafe { self.to_owned(src_val) };
+                *dst_item = unsafe { self.to_owned(src_val) };
             }
         }
 

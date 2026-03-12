@@ -2980,3 +2980,30 @@ c = 3
 "#;
     assert_reproject_exact(source, modified, expected);
 }
+
+#[test]
+fn spacing_above_and_below_preserved() {
+    let source = r#"
+
+# above
+
+
+a = 1
+b = 1
+
+# below
+
+"#;
+    let modified = r#"
+
+# above
+
+
+a = 2
+b = 2
+
+# below
+
+"#;
+    assert_reproject_exact(source, modified, modified);
+}

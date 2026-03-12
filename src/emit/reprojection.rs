@@ -3,7 +3,7 @@
 mod tests;
 
 use crate::item::table::TableIndex;
-use crate::item::{ArrayStyle, Item, Key, TableStyle, Value, ValueMut};
+use crate::item::{ArrayStyle, Item, TableStyle, Value, ValueMut};
 use crate::parser::Root;
 use crate::span::Span;
 use crate::{Array, Table};
@@ -81,28 +81,6 @@ fn reproject_item<'de>(
     full_match
 }
 
-/// Returns `true` if the entry is an empty body-level table whose source
-/// was a header/implicit section (eligible for promotion to Header).
-fn is_promotable(
-    (key, item): &(Key<'_>, Item<'_>),
-    src: &Table<'_>,
-    index: &TableIndex<'_>,
-) -> bool {
-    let Some(dt) = item.as_table() else {
-        return false;
-    };
-    if !dt.is_empty() || !matches!(dt.style(), TableStyle::Dotted | TableStyle::Inline) {
-        return false;
-    }
-    let Some((_, child_item)) = src.value.get_entry_with_index(key.name, index) else {
-        return false;
-    };
-    let Some(st) = child_item.as_table() else {
-        return false;
-    };
-    matches!(st.style(), TableStyle::Header | TableStyle::Implicit)
-}
-
 /// Returns `true` when every entry in dest matched a src entry in the same
 /// order and every `reproject_item` returned `true` (full structural match).
 fn reproject_table<'de>(
@@ -125,172 +103,191 @@ fn reproject_table<'de>(
     let mut max_stuck_src_pos: u32 = 0;
     let mut has_stuck = false;
 
-    // Pass 1: Match entries, assign structural kinds, execute localized backfills,
+    // Match entries, assign structural kinds, execute localized backfills,
     // and detect any "stuck" entries (subsections forced into body-level).
     for i in 0..entries.len() {
-        let key_name = entries[i].0.name;
+        let (dst_key, dst_item) = &mut entries[i];
+        let mut dst_item = dst_item;
 
-        if let Some(src_entry) = src.value.get_entry_with_index(key_name, index) {
-            entries[i].0.span = src_entry.0.span;
-
-            let item_full = reproject_item(index, &src_entry.1, &mut entries[i].1, items);
-            if !item_full {
-                all_matched = false;
-            }
-
-            if !ignore_style {
-                let mut src_is_sub = false;
-
-                if let Some(st) = src_entry.1.as_table() {
-                    let mut kind = st.style();
-                    src_is_sub = matches!(kind, TableStyle::Header | TableStyle::Implicit);
-
-                    if let Some(dt) = entries[i].1.as_table_mut() {
-                        let dest_kind = dt.style();
-                        let dest_is_body =
-                            dest_kind == TableStyle::Dotted || dest_kind == TableStyle::Inline;
-                        if dest_is_body && src_is_sub {
-                            kind = dest_kind;
-                        }
-                        dt.set_style(kind);
-                    }
-
-                    if !first_table_matched {
-                        first_table_matched = true;
-                        // Backfill: apply first matched table kind to preceding unmatched tables
-                        for j in 0..i {
-                            if entries[j].0.span.is_empty() {
-                                if let Some(dt) = entries[j].1.as_table_mut() {
-                                    dt.set_style(kind);
-                                }
-                            }
-                        }
-                    }
-                    last_table_kind = Some(kind);
-                }
-
-                if let Some(sa) = src_entry.1.as_array() {
-                    let kind = sa.style();
-                    if kind == ArrayStyle::Header {
-                        src_is_sub = true;
-                    }
-
-                    if let Some(da) = entries[i].1.as_array_mut() {
-                        if kind == ArrayStyle::Header && da.style() == ArrayStyle::Inline {
-                            let mut has_non_frozen = false;
-                            for e in da.iter() {
-                                if let Some(t) = e.as_table() {
-                                    if t.style() != TableStyle::Inline {
-                                        has_non_frozen = true;
-                                        break;
-                                    }
-                                }
-                            }
-                            if has_non_frozen {
-                                da.set_style(kind);
-                            }
-                        } else {
-                            da.set_style(kind);
-                        }
-                    }
-
-                    if !first_array_matched {
-                        first_array_matched = true;
-                        // Backfill: apply first matched array kind to preceding unmatched arrays
-                        for j in 0..i {
-                            if entries[j].0.span.is_empty() {
-                                if let Some(da) = entries[j].1.as_array_mut() {
-                                    da.set_style(kind);
-                                }
-                            }
-                        }
-                    }
-                    last_array_kind = Some(kind);
-                }
-
-                // When the source is not a table but dest is: the source
-                // was a body entry, so demote subsection-style dest tables
-                // to body-level to preserve ordering. But if the dest is
-                // already body-level (Inline/Dotted), keep its style —
-                // it reflects user intent and the source has no structural
-                // opinion about the new container.
-                if src_entry.1.as_table().is_none() {
-                    if let Some(dt) = entries[i].1.as_table_mut() {
-                        let dest_kind = dt.style();
-                        if dest_kind != TableStyle::Inline && dest_kind != TableStyle::Dotted {
-                            dt.set_style(if dt.is_empty() {
-                                TableStyle::Inline
-                            } else {
-                                TableStyle::Dotted
-                            });
-                        }
-                    }
-                }
-                if src_entry.1.as_array().is_none() {
-                    if let Some(da) = entries[i].1.as_array_mut() {
-                        if da.style() != ArrayStyle::Inline {
-                            da.set_style(ArrayStyle::Inline);
-                        }
-                    }
-                }
-
-                if src_is_sub {
-                    let is_stuck = if let Some(dt) = entries[i].1.as_table() {
-                        let body = matches!(dt.style(), TableStyle::Dotted | TableStyle::Inline);
-                        // Stuck if it is a non-empty body table, or an empty body table with non-table source
-                        body && !(dt.is_empty() && src_entry.1.as_table().is_some())
-                    } else if let Some(da) = entries[i].1.as_array() {
-                        da.style() == ArrayStyle::Inline
-                    } else {
-                        true // Scalar type mismatch
-                    };
-
-                    if is_stuck {
-                        has_stuck = true;
-                        max_stuck_src_pos = max_stuck_src_pos.max(entries[i].0.span.start);
-                    }
-                }
-            }
-        } else {
+        let Some((src_key, src_item)) = src.value.get_entry_with_index(dst_key.name, index) else {
             // Unmatched Entry
             all_matched = false;
-            entries[i].0.span = Span::default();
-            clear_stale_item(&mut entries[i].1);
+            dst_key.span = Span::default();
+            clear_stale_item(&mut dst_item);
 
             if !ignore_style {
-                if let Some(kind) = last_table_kind {
-                    if let Some(dt) = entries[i].1.as_table_mut() {
-                        dt.set_style(kind);
+                match dst_item.value_mut() {
+                    ValueMut::Table(t) => {
+                        if let Some(style) = last_table_kind {
+                            t.set_style(style);
+                        }
+                    }
+                    ValueMut::Array(a) => {
+                        if let Some(style) = last_array_kind {
+                            a.set_style(style);
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            continue;
+        };
+        dst_key.span = src_key.span;
+
+        let item_full = reproject_item(index, &src_item, dst_item, items);
+        if !item_full {
+            all_matched = false;
+        }
+        if ignore_style {
+            continue;
+        }
+        let mut src_is_sub = false;
+
+        if let Some(st) = src_item.as_table() {
+            let mut kind = st.style();
+            src_is_sub = matches!(kind, TableStyle::Header | TableStyle::Implicit);
+
+            if let Some(dt) = dst_item.as_table_mut() {
+                let dest_kind = dt.style();
+                let dest_is_body =
+                    dest_kind == TableStyle::Dotted || dest_kind == TableStyle::Inline;
+                if dest_is_body && src_is_sub {
+                    kind = dest_kind;
+                }
+                dt.set_style(kind);
+            }
+
+            if !first_table_matched {
+                first_table_matched = true;
+                for (key, item) in &mut entries[..i] {
+                    if key.span.is_empty() {
+                        if let Some(dt) = item.as_table_mut() {
+                            dt.set_style(kind);
+                        }
                     }
                 }
-                if let Some(kind) = last_array_kind {
-                    if let Some(da) = entries[i].1.as_array_mut() {
+                // Make borrow check happy
+                dst_item = &mut entries[i].1;
+            }
+            last_table_kind = Some(kind);
+        } else if let Some(sa) = src_item.as_array() {
+            let kind = sa.style();
+            if kind == ArrayStyle::Header {
+                src_is_sub = true;
+            }
+
+            if let Some(da) = dst_item.as_array_mut() {
+                if kind == ArrayStyle::Header && da.style() == ArrayStyle::Inline {
+                    let mut has_non_frozen = false;
+                    for e in da.iter() {
+                        if let Some(t) = e.as_table() {
+                            if t.style() != TableStyle::Inline {
+                                has_non_frozen = true;
+                                break;
+                            }
+                        }
+                    }
+                    if has_non_frozen {
                         da.set_style(kind);
                     }
+                } else {
+                    da.set_style(kind);
                 }
+            }
+
+            if !first_array_matched {
+                first_array_matched = true;
+                for (key, item) in &mut entries[..i] {
+                    if key.span.is_empty() {
+                        if let Some(dt) = item.as_array_mut() {
+                            dt.set_style(kind);
+                        }
+                    }
+                }
+                // Make borrow check happy, this is the same as
+                // what dst_item already was but the the above loop,
+                // invalidated it entries.
+                dst_item = &mut entries[i].1;
+            }
+            last_array_kind = Some(kind);
+        }
+
+        // When the source is not a table but dest is: the source
+        // was a body entry, so demote subsection-style dest tables
+        // to body-level to preserve ordering. But if the dest is
+        // already body-level (Inline/Dotted), keep its style —
+        // it reflects user intent and the source has no structural
+        // opinion about the new container.
+        if src_item.as_table().is_none() {
+            if let Some(dt) = dst_item.as_table_mut() {
+                let dest_kind = dt.style();
+                if dest_kind != TableStyle::Inline && dest_kind != TableStyle::Dotted {
+                    dt.set_style(if dt.is_empty() {
+                        TableStyle::Inline
+                    } else {
+                        TableStyle::Dotted
+                    });
+                }
+            }
+        }
+        if src_item.as_array().is_none() {
+            if let Some(da) = dst_item.as_array_mut() {
+                da.set_style(ArrayStyle::Inline);
+            }
+        }
+
+        if src_is_sub {
+            let is_stuck = if let Some(dt) = dst_item.as_table() {
+                let body = matches!(dt.style(), TableStyle::Dotted | TableStyle::Inline);
+                // Stuck if it is a non-empty body table, or an empty body table with non-table source
+                body && !(dt.is_empty() && src_item.as_table().is_some())
+            } else if let Some(da) = dst_item.as_array() {
+                da.style() == ArrayStyle::Inline
+            } else {
+                true // Scalar type mismatch
+            };
+
+            if is_stuck {
+                has_stuck = true;
+                max_stuck_src_pos = max_stuck_src_pos.max(src_key.span.start);
             }
         }
     }
 
-    // Pass 2: Source-ordering fixes (Demotions + Promotions).
-    // Skip in body-level parents: promoting creates subsections that sort
-    // after all body items at the parent level, breaking source order.
     if !ignore_style {
-        for i in 0..entries.len() {
-            if entries[i].0.span.is_empty() {
-                continue;
-            }
+        ensure_valid_subsection_ordering(
+            index,
+            src,
+            is_body_parent,
+            entries,
+            max_stuck_src_pos,
+            has_stuck,
+        );
+    }
 
-            if has_stuck {
-                let src_pos = entries[i].0.span.start;
-                // Demote subsections before the stuck point to body-level.
-                if src_pos < max_stuck_src_pos {
-                    if let Some(dt) = entries[i].1.as_table_mut() {
-                        if dt.style() == TableStyle::Header {
-                            dt.set_style(TableStyle::Inline);
-                        }
-                    }
-                    if let Some(da) = entries[i].1.as_array_mut() {
+    all_matched
+}
+
+fn ensure_valid_subsection_ordering(
+    index: &TableIndex<'_>,
+    src: &'_ Table<'_>,
+    is_body_parent: bool,
+    entries: &mut [(crate::Key<'_>, Item<'_>)],
+    max_stuck_src_pos: u32,
+    has_stuck: bool,
+) {
+    for (dst_key, dst_item) in entries {
+        // Ignore unprojected items
+        if dst_key.span.is_empty() {
+            continue;
+        }
+
+        if has_stuck {
+            let src_pos = dst_key.span.start;
+            // Demote subsections before the stuck point to body-level.
+            if src_pos < max_stuck_src_pos {
+                match dst_item.value_mut() {
+                    ValueMut::Array(da) => {
                         if da.style() == ArrayStyle::Header {
                             da.set_style(ArrayStyle::Inline);
                             for elem in da.as_mut_slice() {
@@ -300,20 +297,38 @@ fn reproject_table<'de>(
                             }
                         }
                     }
-                    continue;
+                    ValueMut::Table(dt) => {
+                        if dt.style() == TableStyle::Header {
+                            dt.set_style(TableStyle::Inline);
+                        }
+                    }
+                    _ => (),
                 }
-            }
-
-            // Promote empty body-level tables to Header.
-            if !is_body_parent && is_promotable(&entries[i], src, index) {
-                if let Some(dt) = entries[i].1.as_table_mut() {
-                    dt.set_style(TableStyle::Header);
-                }
+                continue;
             }
         }
-    }
 
-    all_matched
+        // Promote empty body-level tables to Header.
+        if is_body_parent {
+            continue;
+        }
+
+        let Some(dt) = dst_item.as_table_mut() else {
+            continue;
+        };
+        if !dt.is_empty() || !matches!(dt.style(), TableStyle::Dotted | TableStyle::Inline) {
+            continue;
+        }
+        let Some((_, src_item)) = src.value.get_entry_with_index(dst_key.name, index) else {
+            continue;
+        };
+        let Some(st) = src_item.as_table() else {
+            continue;
+        };
+        if matches!(st.style(), TableStyle::Header | TableStyle::Implicit) {
+            dt.set_style(TableStyle::Header);
+        }
+    }
 }
 
 /// Clears reprojection data from an unmatched item and all its descendants.
@@ -334,46 +349,6 @@ fn clear_stale_spans(table: &mut Table<'_>) {
     for (key, item) in table.entries_mut() {
         key.span = Span::default();
         clear_stale_item(item);
-    }
-}
-
-/// Side-effect-free recursive value comparison for aligning array elements.
-/// Table comparison is order-independent (looks up by key name).
-fn indexed_eq(a: &Item<'_>, b: &Item<'_>, index: &TableIndex<'_>) -> bool {
-    match (a.value(), b.value()) {
-        (Value::String(a), Value::String(b)) => *a == *b,
-        (Value::Integer(a), Value::Integer(b)) => *a == *b,
-        (Value::Float(a), Value::Float(b)) => a.to_bits() == b.to_bits(),
-        (Value::Boolean(a), Value::Boolean(b)) => *a == *b,
-        (Value::DateTime(a), Value::DateTime(b)) => {
-            a.date() == b.date() && a.time() == b.time() && a.offset() == b.offset()
-        }
-        (Value::Table(st), Value::Table(dt)) => {
-            if st.len() != dt.len() {
-                return false;
-            }
-            for (key, val) in st.entries() {
-                let Some((_, dv)) = dt.value.get_entry_with_index(key.name, index) else {
-                    return false;
-                };
-                if !indexed_eq(val, dv, index) {
-                    return false;
-                }
-            }
-            true
-        }
-        (Value::Array(sa), Value::Array(da)) => {
-            if sa.len() != da.len() {
-                return false;
-            }
-            for (s, d) in sa.iter().zip(da.iter()) {
-                if !indexed_eq(s, d, index) {
-                    return false;
-                }
-            }
-            true
-        }
-        _ => false,
     }
 }
 
@@ -491,7 +466,7 @@ fn reproject_array<'de>(
     let mut prefix = 0;
 
     while let (Some(src_head), Some(dst_head)) = (src.get(prefix), dest.get_mut(prefix)) {
-        if indexed_eq(src_head, dst_head, index) {
+        if crate::item::equal_items(src_head, dst_head, Some(index)) {
             reproject_item(index, src_head, dst_head, items);
             prefix += 1;
         } else {
@@ -558,7 +533,8 @@ fn reproject_array<'de>(
             for k in 0..prefix_len {
                 let src_idx = (src_sorted[si_start + k] & INDEX_MASK) as usize;
                 let dest_idx = (dest_sorted[di_start + k] & INDEX_MASK) as usize;
-                if indexed_eq(src.get(src_idx).unwrap(), &dest[dest_idx], index) {
+                if crate::item::equal_items(src.get(src_idx).unwrap(), &dest[dest_idx], Some(index))
+                {
                     dest_sorted[di_start + k] =
                         MATCHED_BIT | ((src_idx as u64) << HASH_SHIFT) | (dest_idx as u64);
                     src_sorted[si_start + k] |= MATCHED_BIT;
@@ -584,7 +560,11 @@ fn reproject_array<'de>(
                         continue;
                     }
                     let src_idx = (*src_entry & INDEX_MASK) as usize;
-                    if indexed_eq(src.get(src_idx).unwrap(), &dest[dest_idx], index) {
+                    if crate::item::equal_items(
+                        src.get(src_idx).unwrap(),
+                        &dest[dest_idx],
+                        Some(index),
+                    ) {
                         dest_sorted[d] =
                             MATCHED_BIT | ((src_idx as u64) << HASH_SHIFT) | (dest_idx as u64);
                         *src_entry |= MATCHED_BIT;
