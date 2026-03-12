@@ -1,0 +1,455 @@
+#--- add_key_preserves_comments
+#-- SOURCE
+
+[package]
+name = "foo"
+
+# Some comment
+# Another comment
+
+
+[data]
+value = 32
+#-- MODIFIED
+
+[package]
+name = "foo"
+added = true
+
+# Some comment
+# Another comment
+
+
+[data]
+value = 32
+#--- add_key_preserves_trailing_whitespace
+#-- SOURCE
+
+[package]
+name = "foo"
+
+# Some comment
+# Another comment
+
+
+[data]
+value = 32
+#-- MODIFIED
+
+[package]
+name = "foo"
+added = true
+
+# Some comment
+# Another comment
+
+
+[data]
+value = 32
+#--- identity_round_trip
+#-- SOURCE
+
+[package]
+name = "test"
+version = "1.0"
+
+# Dependencies
+[dependencies]
+serde = "1"
+#--- remove_key_preserves_comments
+#-- SOURCE
+
+[package]
+name = "foo"
+version = "1.0"
+
+# Build settings
+[build]
+target = "x86"
+#trailing comment
+#-- MODIFIED
+
+[package]
+name = "foo"
+
+# Build settings
+[build]
+target = "x86"
+#trailing comment
+#--- multiple_comment_blocks
+#-- SOURCE
+
+# File header
+# Second line
+
+[a]
+x = 1
+
+# Between a and b
+
+[b]
+y = 2
+
+# Trailing comment
+#-- MODIFIED
+
+# File header
+# Second line
+
+[a]
+x = 1
+z = 3
+
+# Between a and b
+
+[b]
+y = 2
+
+# Trailing comment
+#--- add_section_preserves_comments
+#-- SOURCE
+
+[package]
+name = "foo"
+
+# End of file comment
+#-- MODIFIED
+
+[package]
+name = "foo"
+
+[new_section]
+key = true
+
+# End of file comment
+#--- aot_with_comments
+#-- SOURCE
+
+# Server list
+
+[[servers]]
+name = "alpha"
+
+# Second server
+[[servers]]
+name = "beta"
+#-- MODIFIED
+
+# Server list
+
+[[servers]]
+name = "alpha"
+port = 8080
+
+# Second server
+[[servers]]
+name = "beta"
+#--- dotted_inline_table_split
+#-- SOURCE
+
+a = {
+    b.c.d = 4,
+    s = 4, # comment
+    b.f = [1, 2],
+}
+#-- MODIFIED
+
+a = {
+    b.c.d = 4,
+    s = 4, # comment
+    b.f = [1, 2, 3],
+}
+#--- dotted_inline_table_split_nx
+#-- SOURCE
+
+a = {
+    b.c.d = { x = 1, z = 3 },
+    s = 4, # comment
+    b.f = [1, 2],
+}
+#-- MODIFIED
+
+a = {
+    b.c.d.x = 1,
+    b.c.d.y.y = 2,
+    b.c.d.z = 3,
+    s = 4, # comment
+    b.f = [1, 2, 3],
+}
+#-- EXPECTED
+
+a = {
+    b.c.d = { x = 1, y.y = 2, z = 3 },
+    s = 4, # comment
+    b.f = [1, 2, 3],
+}
+#--- dotted_inline_table_split_inline
+#-- SOURCE
+
+a = {
+    b.c.d = { x = 1, z = 3 },
+    s = 4, # comment
+    b.f = [1, 2],
+}
+#-- MODIFIED
+
+a = {
+    b.c.d.x = 1,
+    b.c.d.y = { y = 2 },
+    b.c.d.z = 3,
+    s = 4, # comment
+    b.f = [1, 2, 3],
+}
+#-- EXPECTED
+
+a = {
+    b.c.d = { x = 1, y = { y = 2 }, z = 3 },
+    s = 4, # comment
+    b.f = [1, 2, 3],
+}
+#--- interleaved_table_headers
+#-- SOURCE
+
+[a.b]
+x = 0
+[a.c]
+y = 1
+[a.b.d]
+z = 2
+#--- indented_tables
+#-- SOURCE
+
+[a]
+  [a.b]
+  x = 0
+  [a.c]
+  y = 0
+#--- indented_tables_interleaved
+#-- SOURCE
+
+[a]
+  [a.b]
+  x = 0
+  [a.c]
+  y = 1
+  [a.b.d]
+  z.w = 2
+#--- indented_tables_tab
+#-- SOURCE
+
+[a]
+	[a.b]
+	x = 0
+	[a.c]
+	y = 0
+#--- implicit_sub_table_comment
+#-- SOURCE
+
+[a.b.c]
+v = 1
+[a.b]
+v = 1
+#--- array_removal
+#-- SOURCE
+
+[a]
+c = 1
+[[a.b]]
+id = 1 # First entry
+[[a.b]]
+id = 2 # Item to be removed
+[[a.b]]
+id = 3 # Last Item to be kep
+#-- MODIFIED
+
+[a]
+c = 1
+[[a.b]]
+id = 1 # First entry
+[[a.b]]
+id = 3 # Last Item to be kep
+#--- array_reordering
+#-- SOURCE
+
+[a]
+c = 1
+[[a.b]]
+id = 1 # First entry
+values = [1,2,3]
+[[a.b]]
+id = 2 # Item to be removed
+[[a.b]]
+id = 3 # Last Item to be kep
+#-- MODIFIED
+
+[a]
+c = 1
+[[a.b]]
+id = 2 # Item to be removed
+[[a.b]]
+id = 1 # First entry
+values = [1,2,3]
+[[a.b]]
+id = 3 # Last Item to be kep
+#--- partial_array_reordering_and_modification
+#-- SOURCE
+
+[a]
+c = 1
+[[a.b]]
+id = 1 # First entry
+values = [1,2,3]
+[[a.b]]
+id = 2 # Item to be removed
+[[a.b]]
+id = 3 # Last Item to be kep
+#-- MODIFIED
+
+[a]
+c = 1
+[[a.b]]
+id = 2 # Item to be removed
+[[a.b]]
+id = 1 # First entry
+values = [1,2]
+[[a.b]]
+id = 3 # Last Item to be kep
+#-- EXPECTED
+
+[a]
+c = 1
+[[a.b]]
+id = 2 # Item to be removed
+[[a.b]]
+id = 1 # First entry
+values = [1, 2]
+[[a.b]]
+id = 3 # Last Item to be kep
+#--- reordered_aot_preserves_outer_comments
+#-- SOURCE
+
+[a]
+c = 1
+
+# Preserve this
+[[a.b]]
+id = 1 # First entry
+
+# Preserve this too
+[[a.b]]
+id = 2 # Item to be removed
+#-- MODIFIED
+
+[a]
+c = 1
+
+# Preserve this too
+[[a.b]]
+id = 2 # Item to be removed
+
+# Preserve this
+[[a.b]]
+id = 1 # First entry
+#--- reordered_inline_array_preserves_comments_scalars
+#-- SOURCE
+
+a = [
+    1, # Alpha
+    2, # Beta
+    3, # Canary
+]
+#-- MODIFIED
+
+a = [
+    2, # Beta
+    1, # Alpha
+    3, # Canary
+]
+#--- reordered_inline_array_preserves_comments_complex
+#-- SOURCE
+
+a = [
+    { b.c = 4 }, # Alpha
+    { x = 1, y = 2 }, # Beta
+    [1, 2, 3], # Canary
+]
+#-- MODIFIED
+
+a = [
+    [1, 2, 3], # Canary
+    { y = 2, x = 1 }, # Beta
+    { b.c = 4 }, # Alpha
+]
+#-- EXPECTED
+
+a = [
+    [1, 2, 3], # Canary
+    { x = 1, y = 2 }, # Beta
+    { b.c = 4 }, # Alpha
+]
+#--- normalization_preserves_introduced_inline_array
+#-- SOURCE
+
+a = 1
+b = 1
+#-- MODIFIED
+
+a = { x = 1 }
+b = 1
+#--- reordered_aot_preserves_child_source_order
+#-- SOURCE
+
+[[arr]]
+a = 1
+b = 2
+c = 3
+
+[[arr]]
+x = 10
+y = 20
+z = 30
+#-- MODIFIED
+
+[[arr]]
+x = 10
+y = 20
+z = 30
+
+[[arr]]
+a = 1
+c = 3
+b = 2
+#-- EXPECTED
+
+[[arr]]
+x = 10
+y = 20
+z = 30
+
+[[arr]]
+a = 1
+b = 2
+c = 3
+#--- spacing_above_and_below_preserved
+#-- SOURCE
+
+
+# above
+
+
+a = 1
+b = 1
+
+# below
+
+#-- MODIFIED
+
+
+# above
+
+
+a = 2
+b = 2
+
+# below
+

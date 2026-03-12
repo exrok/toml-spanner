@@ -1,0 +1,90 @@
+#--- prefix_key_not_leaked
+#-- SOURCE
+"a-b" = []
+"a" = []
+"b" = []
+"c" = []
+"d" = []
+#-- DEST
+"a" = []
+#--- unmatched_parent_clears_child_spans
+#-- SOURCE
+a = 0
+#-- DEST
+[b]
+a = 0
+#--- type_mismatch_clears_child_spans
+#-- SOURCE
+a=0
+#-- DEST
+[a]
+b=0
+#--- array_excess_element_clears_child_spans
+#-- SOURCE
+a=[]
+#-- DEST
+[[a]]
+b=0
+#--- container_element_partial_not_verbatim
+#-- SOURCE
+a=[{}]
+#-- DEST
+a=[{b=0}]
+#--- multiline_array_partial_element
+#-- SOURCE
+a = [
+{},
+]
+#-- DEST
+a = [{b = 0}]
+#--- multiline_array_element_on_opening_line
+#-- SOURCE
+a = [{
+},]
+#-- DEST
+a = [{b = 0}]
+#--- aot_source_inline_dest
+#-- SOURCE
+[[a]]
+a = []
+[[a]]
+a = []
+#-- DEST
+a = [{}, 0]
+#--- array_trailing_comment_with_commas
+#-- SOURCE
+a = [
+"b" # ,,,
+,
+]
+#-- DEST
+a = ["b", 0]
+#--- nested_array_clears_stale_spans
+#-- SOURCE
+a=[]
+#-- DEST
+a=[[{b=0}]]
+#--- body_entry_not_captured_by_aot
+#-- SOURCE
+[[a.a.z]]
+[a]
+x=0
+a.c=0
+#-- DEST
+[[a.a.z]]
+[a]
+x=0
+a.c=0
+#--- body_entry_not_captured_by_aot_with_sibling
+#-- SOURCE
+[[b]]
+[[a.a.z]]
+[a]
+x=0
+a.c=0
+#-- DEST
+[[b]]
+[[a.a.z]]
+[a]
+x=0
+a.c=0

@@ -1,0 +1,266 @@
+#--- dotted_to_implicit_new_leaf_not_lost
+#-- SOURCE
+[zA.4.4]
+[zA]
+5.28=126
+#-- DEST
+[zA.5.4]
+[zA]
+5.29=126
+#--- implicit_leaf_diff_preserves_parent_prefix
+#-- SOURCE
+[zA.0.48.44]
+[zA]
+0.s.8ssl8wb8=1
+#-- DEST
+[zA.0.48.44]
+[zA]
+0.s.8ssl8wb9=1
+#--- new_section_with_implicit_dotted_body_not_lost
+#-- SOURCE
+
+#-- DEST
+[A.b.c]
+[A]
+b.x=1
+#--- dotted_leaf_lost_on_second_patch_with_renamed_subsection
+#-- SOURCE
+[a.b.c.x]
+[a]
+b.c.d=1
+#-- DEST
+[a.b.c.y]
+[a]
+b.c.d=1
+#--- deep_implicit_leaf_key_rename
+#-- SOURCE
+[a.b.c.x]
+[a]
+b.c.old=1
+#-- DEST
+[a.b.c.x]
+[a]
+b.c.new=1
+#--- implicit_to_dotted_leaf_value_change_in_body
+#-- SOURCE
+[a.b.b.x]
+[a]
+b.b.c=0
+#-- DEST
+[a.b.y.x]
+[a]
+b.b.c=1
+#--- header_child_renamed_to_leaf_in_body
+#-- SOURCE
+[a.b.c]
+[a]
+b.d=1
+#-- DEST
+[a]
+b.c=1
+#--- doubly_nested_body_leaf_across_section_rename
+#-- SOURCE
+[zA.0.48.4]
+[zA]
+0.2.28=1
+#-- DEST
+[zA.0.4.4]
+[zA.0.4.5]
+[zA]
+0.4.28=1
+#--- dotted_scalar_replaced_by_section_no_inline_dup
+#-- SOURCE
+a.b=0
+#-- DEST
+a.z=0
+[a.b.x]
+#--- header_to_dotted_key_no_duplicate
+#-- SOURCE
+[a.b.c]
+e=1
+#-- DEST
+a.b.z=1
+#--- deleted_implicit_body_leaf_is_removed
+#-- SOURCE
+[a.b.c.d]
+[a]
+b.c.e=1
+#-- DEST
+[a.b.f.d]
+[a]
+g.e=1
+#--- new_implicit_with_nested_implicit_emits_body_leaves
+#-- SOURCE
+[a.b.c.d]
+[a]
+b.c.e=1
+#-- DEST
+[a.f.c.d]
+[a]
+f.c.e=1
+#--- header_replaced_by_dotted_no_duplicate
+#-- SOURCE
+[a.b]
+[a]
+c.d=1
+#-- DEST
+[e.b]
+[a]
+b.d=1
+#--- deep_implicit_header_child_becomes_leaf
+#-- SOURCE
+[a.b.c.d.e]
+[a]
+b.c.d.f=1
+#-- DEST
+[a.g.c.d.e]
+[a]
+b.c.d.e=1
+#--- deep_implicit_leaf_rename_to_header_key_in_body
+#-- SOURCE
+[zA.0.27z4.e.p1.4]
+[zA]
+0.27z4.e.p41=1
+#-- DEST
+[zA.027z4.e.p1.4]
+[zA]
+0.27z4.e.p1=1
+#--- implicit_to_dotted_transition_depth3_emits_new_leaf
+#-- SOURCE
+[a.b.c.d.e]
+[a]
+b.c.d.f=1
+#-- DEST
+[a.h.c.d.e]
+[a]
+b.c.d.e=1
+#--- implicit_body_leaf_new_key_when_implicit_child_renamed
+#-- SOURCE
+[A.b.c.d]
+[A]
+b.e=1
+#-- DEST
+[A.b.z.y]
+[A]
+b.c=1
+#--- scalar_to_dotted_under_implicit_at_depth1
+#-- SOURCE
+[zA.0.4]
+[zA]
+0.1.-=19
+0.2=0
+#-- DEST
+[zA.0.4]
+[zA]
+0.2.-=19
+#--- dotted_to_scalar_under_implicit_at_depth1
+#-- SOURCE
+[zA.0.4]
+[zA]
+0.2.-=19
+#-- DEST
+[zA.0.4]
+[zA]
+0.2=0
+#--- aot_header_to_inline_array
+#-- SOURCE
+[[A]]
+b = []
+
+#-- DEST
+A = [{}]
+
+#--- aot_sub_section_placed_with_correct_entry
+#-- SOURCE
+[[z]]
+a = 1
+[z.s]
+b = 2
+[[z.e]]
+c = 3
+
+#-- DEST
+[[z]]
+a = 1
+[[z.e]]
+c = 3
+[z.s]
+b = 2
+[[z]]
+d = 4
+
+#--- new_sub_section_under_first_aot_entry_with_reordered_siblings
+#-- SOURCE
+[[z]]
+[[z.a]]
+x = 1
+[[z.a]]
+y = 2
+[[z.b]]
+w = 3
+
+#-- DEST
+[[z]]
+[[z.b]]
+w = 3
+[[z.a]]
+x = 1
+[[z.a.c]]
+v = 4
+[[z.a]]
+y = 2
+
+#--- audit_new_header_with_sub_header
+#-- SOURCE
+name = "foo"
+
+#-- DEST
+name = "foo"
+
+[a]
+x = 1
+
+[a.b]
+y = 2
+
+#--- audit_new_aot_with_nested_aot
+#-- SOURCE
+name = "foo"
+
+#-- DEST
+name = "foo"
+
+[[x]]
+a = 1
+
+[[x.y]]
+b = 2
+
+#--- audit_inline_to_header_transition
+#-- SOURCE
+deps = {foo = "1.0"}
+
+#-- DEST
+[deps]
+foo = "2.0"
+
+#--- dotted_key_inline_to_header_transition
+#-- SOURCE
+deps.second = {foo = "1.0"}
+
+#-- DEST
+[deps.second]
+foo = "2.0"
+
+#--- dotted_key_inline_to_header_transition_slurp
+#-- SOURCE
+deps.second = {foo.bar = "1.0", baz = {key.naro = 32, lax=1}}
+
+#-- DEST
+[deps.second]
+baz.key = 1
+baz.lax = 1
+
+[deps.second.foo]
+bar = "2.0"
+

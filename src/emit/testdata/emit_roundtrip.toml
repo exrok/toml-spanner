@@ -1,0 +1,313 @@
+#--- empty_document
+#-- SOURCE
+
+#--- simple_string
+#-- SOURCE
+name = "hello"
+#--- simple_integer
+#-- SOURCE
+x = 42
+#--- simple_float
+#-- SOURCE
+pi = 3.14
+#--- simple_boolean
+#-- SOURCE
+flag = true
+#--- multiple_scalars
+#-- SOURCE
+a = 1
+b = 2
+c = 3
+#--- inline_array
+#-- SOURCE
+colors = ["red", "green", "blue"]
+#--- empty_array
+#-- SOURCE
+a = []
+#--- nested_array
+#-- SOURCE
+a = [[1, 2], [3, 4]]
+#--- inline_table
+#-- SOURCE
+point = {x = 1, y = 2}
+#-- EXPECTED
+point = { x = 1, y = 2 }
+#--- empty_inline_table
+#-- SOURCE
+t = {}
+#--- nested_inline_table
+#-- SOURCE
+a = {b = {c = 1}}
+#-- EXPECTED
+a = { b = { c = 1 } }
+#--- inline_table_with_dotted_keys
+#-- SOURCE
+t = {a.b = 1, a.c = 2}
+#-- EXPECTED
+t = { a.b = 1, a.c = 2 }
+#--- simple_header
+#-- SOURCE
+[server]
+host = "localhost"
+port = 8080
+#-- EXPECTED
+
+[server]
+host = "localhost"
+port = 8080
+#--- multiple_headers
+#-- SOURCE
+[a]
+x = 1
+
+[b]
+y = 2
+#-- EXPECTED
+
+[a]
+x = 1
+
+[b]
+y = 2
+#--- nested_headers
+#-- SOURCE
+[a]
+x = 1
+
+[a.b]
+y = 2
+#-- EXPECTED
+
+[a]
+x = 1
+
+[a.b]
+y = 2
+#--- root_values_with_headers
+#-- SOURCE
+name = "test"
+
+[server]
+port = 8080
+#--- dotted_key_simple
+#-- SOURCE
+a.b = 1
+#--- dotted_key_deep
+#-- SOURCE
+a.b.c.d = 1
+#--- dotted_key_multiple_leaves
+#-- SOURCE
+a.b = 1
+a.c = 2
+#--- implicit_intermediate
+#-- SOURCE
+[a.b.c]
+x = 1
+#-- EXPECTED
+
+[a.b.c]
+x = 1
+#--- simple_aot
+#-- SOURCE
+[[fruit]]
+name = "apple"
+
+[[fruit]]
+name = "banana"
+#-- EXPECTED
+
+[[fruit]]
+name = "apple"
+
+[[fruit]]
+name = "banana"
+#--- aot_with_sub_headers
+#-- SOURCE
+[[fruit]]
+name = "apple"
+
+[fruit.physical]
+color = "red"
+
+[[fruit]]
+name = "banana"
+#-- EXPECTED
+
+[[fruit]]
+name = "apple"
+
+[fruit.physical]
+color = "red"
+
+[[fruit]]
+name = "banana"
+#--- dotted_with_sub_header
+#-- SOURCE
+[fruit.apple.texture]
+smooth = true
+
+[fruit]
+apple.color = "red"
+apple.taste.sweet = true
+#-- EXPECTED
+
+[fruit]
+apple.color = "red"
+apple.taste.sweet = true
+
+[fruit.apple.texture]
+smooth = true
+#--- header_promoted_from_implicit
+#-- SOURCE
+[a.b]
+val = 1
+
+[a]
+val = 2
+#-- EXPECTED
+
+[a]
+val = 2
+
+[a.b]
+val = 1
+#--- dotted_promoted_from_implicit
+#-- SOURCE
+[a.b.c]
+x = 1
+
+[a]
+b.d = 1
+#-- EXPECTED
+
+[a]
+b.d = 1
+
+[a.b.c]
+x = 1
+#--- dotted_body_with_header_section
+#-- SOURCE
+[a]
+b.c = 1
+
+[a.b.d]
+val = 2
+#-- EXPECTED
+
+[a]
+b.c = 1
+
+[a.b.d]
+val = 2
+#--- cross_section_implicit_dotted
+#-- SOURCE
+[zA.4.4]
+
+[zA]
+3.28 = 12
+#-- EXPECTED
+
+[zA]
+3.28 = 12
+
+[zA.4.4]
+#--- string_with_escapes
+#-- SOURCE
+s = "hello\nworld"
+#--- string_with_quotes
+#-- SOURCE
+s = "say \"hello\""
+#--- quoted_key
+#-- SOURCE
+"hello world" = 1
+#--- bare_key_with_dashes
+#-- SOURCE
+my-key = 1
+#--- empty_key
+#-- SOURCE
+"" = 1
+#--- float_nan
+#-- SOURCE
+x = nan
+#--- float_inf
+#-- SOURCE
+x = inf
+#--- float_neg_inf
+#-- SOURCE
+x = -inf
+#--- full_document
+#-- SOURCE
+title = "TOML Example"
+
+[owner]
+name = "Tom"
+
+[database]
+server = "192.168.1.1"
+ports = [8001, 8001, 8002]
+enabled = true
+
+[[servers]]
+name = "alpha"
+ip = "10.0.0.1"
+
+[[servers]]
+name = "beta"
+ip = "10.0.0.2"
+#--- array_of_inline_tables
+#-- SOURCE
+items = [{name = "a", val = 1}, {name = "b", val = 2}]
+#-- EXPECTED
+items = [{ name = "a", val = 1 }, { name = "b", val = 2 }]
+#--- deeply_nested_headers
+#-- SOURCE
+[a.b.c.d]
+x = 1
+#-- EXPECTED
+
+[a.b.c.d]
+x = 1
+#--- empty_header_section
+#-- SOURCE
+[a]
+
+[b]
+val = 1
+#-- EXPECTED
+
+[a]
+
+[b]
+val = 1
+#--- header_with_quoted_key
+#-- SOURCE
+["hello world"]
+val = 1
+#-- EXPECTED
+
+["hello world"]
+val = 1
+#--- literal_string_roundtrip
+#-- SOURCE
+s = 'hello'
+#-- EXPECTED
+s = "hello"
+#--- super_table_stays_header
+#-- SOURCE
+[a]
+[a.b]
+c = 1
+d=2
+#-- EXPECTED
+
+[a]
+
+[a.b]
+c = 1
+d = 2
+#--- order_main
+#-- SOURCE
+a.b = 0
+
+[a.c]
+d = 1

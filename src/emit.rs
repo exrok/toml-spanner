@@ -5,6 +5,8 @@ pub(crate) mod reprojection;
 #[cfg(not(fuzzing))]
 mod reprojection;
 #[cfg(test)]
+pub(crate) mod test_data;
+#[cfg(test)]
 #[path = "emit_tests.rs"]
 mod tests;
 

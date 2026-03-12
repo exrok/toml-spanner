@@ -1,0 +1,119 @@
+#--- interleaved_dotted_keys
+#-- SOURCE
+[A]
+b.c = 1
+e.f = 2
+b.g = 3
+#-- EXPECTED
+
+[A]
+b.c = 1
+e.f = 2
+b.g = 3
+#--- interleaved_headers
+#-- SOURCE
+[A.b.c]
+x = 1
+
+[A.e.f]
+y = 2
+
+[A.b.g]
+z = 3
+#-- EXPECTED
+
+[A.b.c]
+x = 1
+
+[A.e.f]
+y = 2
+
+[A.b.g]
+z = 3
+#--- inline_table_dotted_keys
+#-- SOURCE
+t = { b.c = 1, e.f = 2, b.g = 3 }
+#-- EXPECTED
+t = { b.c = 1, e.f = 2, b.g = 3 }
+#--- new_key_between_projected
+#-- SOURCE
+a = 1
+c = 3
+#-- DEST
+a = 1
+b = 2
+c = 3
+#-- EXPECTED
+a = 1
+b = 2
+c = 3
+#--- mixed_dotted_and_headers
+#-- SOURCE
+a.b = 1
+
+[c]
+x = 2
+
+[a.d]
+y = 3
+#-- EXPECTED
+a.b = 1
+
+[c]
+x = 2
+
+[a.d]
+y = 3
+#--- no_interleaving_identity
+#-- SOURCE
+[A]
+x = 1
+y = 2
+
+[B]
+z = 3
+#-- EXPECTED
+
+[A]
+x = 1
+y = 2
+
+[B]
+z = 3
+#--- interleaved_aot
+#-- SOURCE
+[[a]]
+x = 1
+
+[[b]]
+y = 2
+
+[[a]]
+z = 3
+#-- EXPECTED
+
+[[a]]
+x = 1
+
+[[b]]
+y = 2
+
+[[a]]
+z = 3
+#--- root_body_with_headers
+#-- SOURCE
+name = 'test'
+
+[pkg]
+version = '1.0'
+
+[deps]
+serde = '1'
+#-- EXPECTED
+name = 'test'
+
+[pkg]
+version = '1.0'
+
+[deps]
+serde = '1'

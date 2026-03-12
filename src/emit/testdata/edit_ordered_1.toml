@@ -1,0 +1,294 @@
+#--- body_reorder_source_order
+#-- SOURCE
+a = 0
+b = 0
+#-- DEST
+b = 0
+a = 0
+#--- dotted_unmatched_sort_position
+#-- SOURCE
+a = []
+b = []
+d = []
+#-- DEST
+d.x = []
+a = []
+b = []
+#--- type_mismatch_body_to_header_ordering
+#-- SOURCE
+a = 0
+b = 0
+c = 0
+#-- DEST
+a = 0
+c = 0
+[b]
+x = 0
+#--- type_mismatch_empty_table_stays_inline
+#-- SOURCE
+a = []
+b = []
+c = []
+#-- DEST
+a = {}
+b = []
+c = []
+#--- dotted_container_plus_body_reorder
+#-- SOURCE
+a = []
+b = []
+#-- DEST
+b = []
+[a]
+a = []
+#--- type_mismatch_aot_demoted_to_inline
+#-- SOURCE
+e = {}
+a = 0
+#-- DEST
+a = 0
+[[e]]
+a = 0
+#--- empty_table_mismatch_ordering
+#-- SOURCE
+b.a = []
+a = []
+c = []
+#-- DEST
+a = {}
+b = []
+c = []
+#--- dotted_kind_on_empty_dest_becomes_inline
+#-- SOURCE
+a.x = []
+b = []
+#-- DEST
+a = {}
+b = []
+#--- keep_dotted_when_src_is_header
+#-- SOURCE
+[a]
+a = []
+[b]
+a = []
+#-- DEST
+a.a = []
+b = []
+#--- keep_inline_array_when_src_is_aot
+#-- SOURCE
+[[d]]
+a = []
+[[e]]
+a = []
+#-- DEST
+d = [{}]
+e = []
+#--- empty_frozen_inherits_header_kind_from_source
+#-- SOURCE
+[b]
+x = 0
+[a]
+x = 0
+#-- DEST
+a = {}
+[b]
+x = 0
+#--- aot_demoted_when_sibling_stuck_as_body
+#-- SOURCE
+[[b]]
+x = 0
+[[d]]
+x = 0
+#-- DEST
+d = []
+[[b]]
+x = 0
+#--- header_demoted_when_type_mismatch_sibling
+#-- SOURCE
+[z]
+a = 0
+[a]
+a = 0
+#-- DEST
+a = []
+[z]
+a = 0
+#--- aot_to_empty_table_is_stuck
+#-- SOURCE
+[a-b]
+a = 0
+[[a]]
+a = 0
+#-- DEST
+a-b = {}
+a = {}
+#--- inline_table_partial_reorder_bail
+#-- SOURCE
+b = {
+a = 0,
+b = 0,
+}
+#-- DEST
+[b]
+b = 0
+a = 0
+c = 0
+#--- order_violation_aot_body_before_header
+#-- SOURCE
+a = 0
+b = 0
+#-- DEST
+[a]
+[[a.d]]
+[[b]]
+#--- promotable_entry_not_promoted_when_stuck_exists
+#-- SOURCE
+[a]
+k=0
+[x]
+k=0
+[b]
+k=0
+#-- DEST
+a=0
+b={}
+[x]
+k=0
+#--- inline_table_reorder_type_mismatch_entry
+#-- SOURCE
+a = {
+b = 0,
+c = 0,
+}
+#-- DEST
+a.c = 0
+a.b = ""
+#--- inline_table_dotted_child_inherits_parent_position
+#-- SOURCE
+e = {
+a = 0,
+b = 0,
+}
+#-- DEST
+[e]
+b = 0
+[e.a]
+a = 0
+#--- dotted_parent_with_header_child_stays_body
+#-- SOURCE
+c.a=0
+d=0
+e=0
+#-- DEST
+[c.b]
+a=0
+[d]
+a=0
+[e]
+a=0
+#--- empty_frozen_not_promoted_in_body_parent
+#-- SOURCE
+[x.a]
+[a]
+#-- DEST
+x.a={}
+x.b=0
+a=0
+#--- dotted_key_order_preserved
+#-- SOURCE
+hello.world = "a"
+goodbye = "b"
+hello.moon = "c"
+#-- DEST
+hello.world = "a"
+goodbye = "b"
+hello.moon = "c"
+nitro = false
+#--- extending_explicit_table
+#-- SOURCE
+[fruit.apple.texture]
+smooth = true
+
+[fruit]
+apple.color = "red"
+apple.taste.sweet = true
+#-- DEST
+[fruit.apple.texture]
+smooth = true
+
+[fruit]
+apple.color = "red"
+apple.taste.sweet = true
+apple.size = "large"
+#--- dotted_root_rename
+#-- SOURCE
+a.b.c=22
+#-- DEST
+ax.b.c = 22
+#--- empty_table_header_child_rename
+#-- SOURCE
+[a.b]
+#-- DEST
+[a.c]
+#--- empty_table_header_root_rename
+#-- SOURCE
+[x.b]
+#-- DEST
+[y.b]
+#--- empty_tables_rename_first
+#-- SOURCE
+[A]
+[B]
+#-- DEST
+[X]
+
+[B]
+#--- empty_tables_rename_second
+#-- SOURCE
+[A]
+[B]
+#-- DEST
+[A]
+
+[Y]
+#--- table_insertion_order_preserved_1
+#-- SOURCE
+[A]
+[C]
+#-- DEST
+[A]
+
+[B]
+
+[C]
+#--- table_insertion_order_preserved_2
+#-- SOURCE
+[A]
+[C]
+[E]
+#-- DEST
+[B]
+
+[A]
+[C]
+#--- table_insertion_order_preserved_3
+#-- SOURCE
+[A]
+[C]
+[E]
+#-- DEST
+[A]
+[C]
+
+[B]
+#--- table_insertion_order_preserved_4
+#-- SOURCE
+[A]
+[C]
+[E]
+#-- DEST
+[A]
+
+[B]
+
+[C]

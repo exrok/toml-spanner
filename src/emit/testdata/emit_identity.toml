@@ -1,0 +1,169 @@
+#--- preserves_literal_string
+name = 'hello'
+#--- preserves_basic_string
+name = "hello"
+#--- preserves_multiline_basic_string
+bio = """
+hello
+world"""
+#--- preserves_multiline_literal_string
+bio = '''
+hello
+world'''
+#--- preserves_string_with_escapes
+path = "C:\\Users\\test"
+#--- preserves_hex_integer
+color = 0xFF0000
+#--- preserves_octal_integer
+perm = 0o755
+#--- preserves_binary_integer
+mask = 0b11010110
+#--- preserves_underscored_integer
+big = 1_000_000
+#--- preserves_hex_with_underscores
+addr = 0xdead_beef
+#--- preserves_underscored_float
+val = 1_000.5
+#--- preserves_exponent_float
+val = 5e+22
+#--- preserves_boolean
+flag = true
+#--- preserves_datetime
+dt = 2024-01-15T10:30:00Z
+#--- preserves_literal_quoted_key
+'hello world' = 1
+#--- preserves_basic_quoted_key
+"hello world" = 1
+#--- preserves_bare_key
+my-key = 1
+#--- preserves_quoted_key_in_dotted
+'a b'.c = 1
+#--- preserves_inline_table_whitespace
+t = {  x = 1 ,  y = 2  }
+#--- preserves_inline_array_whitespace
+a = [  1 ,  2 ,  3  ]
+#--- preserves_inline_table_with_comment
+t = {
+  x = 1, # comment
+  y = 2,
+}
+#--- preserves_multiline_inline_array
+a = [
+  1,
+  2,
+  3,
+]
+#--- preserves_inline_array_trailing_comma
+a = [1, 2, 3,]
+#--- preserves_inline_table_trailing_comma
+t = { x = 1, y = 2, }
+#--- preserves_trailing_comment
+x = 1 # my comment
+#--- preserves_equals_whitespace
+x  =  1
+#--- preserves_no_spaces_around_equals
+x=1
+#--- preserves_blank_lines_between_entries
+a = 1
+
+b = 2
+
+c = 3
+#--- preserves_standalone_comments_between_entries
+a = 1
+# standalone comment
+b = 2
+#--- preserves_multiple_comment_lines
+a = 1
+# line 1
+# line 2
+b = 2
+#--- preserves_blank_lines_and_comments_mixed
+a = 1
+
+# comment
+
+b = 2
+#--- preserves_dotted_entry_comment
+a.b = 1 # dotted comment
+#--- preserves_dotted_entry_whitespace
+a.b  =  1
+#--- preserves_trailing_comment_in_section
+#-- SOURCE
+[pkg]
+name = 'test' # the name
+version = '1.0' # the version
+#-- EXPECTED
+
+[pkg]
+name = 'test' # the name
+version = '1.0' # the version
+#--- preserves_quoted_key_in_header
+#-- SOURCE
+['my section']
+val = 1
+#-- EXPECTED
+
+['my section']
+val = 1
+#--- preserves_aot_header_comment
+#-- SOURCE
+[[ servers ]] # server list
+name = 'alpha'
+#-- EXPECTED
+
+[[ servers ]] # server list
+name = 'alpha'
+#--- preserves_section_body_comments
+#-- SOURCE
+[pkg]
+# name of package
+name = 'test'
+# version
+version = '1.0'
+#-- EXPECTED
+
+[pkg]
+# name of package
+name = 'test'
+# version
+version = '1.0'
+#--- preserves_section_body_blank_lines
+#-- SOURCE
+[pkg]
+name = 'test'
+
+version = '1.0'
+#-- EXPECTED
+
+[pkg]
+name = 'test'
+
+version = '1.0'
+#--- preserves_header_comment
+#-- SOURCE
+[pkg] # package section
+name = 'test'
+#-- EXPECTED
+
+[pkg] # package section
+name = 'test'
+#--- preserves_header_whitespace
+#-- SOURCE
+[  pkg  ]
+name = 'test'
+#-- EXPECTED
+
+[  pkg  ]
+name = 'test'
+#--- full_document_whitespace_preservation
+# Config file
+
+title = 'My App'
+
+[package] # package info
+name = 'test'
+version = '1.0' # semver
+
+[dependencies]
+serde = { version = '1', features = ['derive'] }

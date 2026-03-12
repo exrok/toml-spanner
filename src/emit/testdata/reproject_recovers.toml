@@ -1,0 +1,37 @@
+#--- header_sections
+[package]
+name = "test"
+version = "1.0"
+
+[dependencies]
+serde = "1"
+#--- dotted_keys
+[a]
+b.c = 1
+b.d = 2
+#--- inline_tables
+[dependencies]
+foo = { version = "1" }
+bar = { version = "2" }
+#--- array_of_tables
+[[servers]]
+name = "alpha"
+port = 8080
+
+[[servers]]
+name = "beta"
+port = 9090
+#--- mixed_structure
+[package]
+name = "demo"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+
+[[bin]]
+name = "main"
+path = "src/main.rs"
+
+[[bin]]
+name = "alt"
+path = "src/alt.rs"

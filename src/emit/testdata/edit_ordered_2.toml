@@ -1,0 +1,234 @@
+#--- replace_full_dotted_key_table
+#-- SOURCE
+A.b=0
+D=1
+A.c=2
+#-- DEST
+Z.y = 0
+D=1
+A.c=2
+#--- multi_key_change
+#-- SOURCE
+A.b.c=2
+D=0
+#-- DEST
+A.z.y = 2
+D=0
+#--- headed_table_to_scalar
+#-- SOURCE
+[A]
+b=0
+#-- DEST
+A = 1
+#--- remove_dotted_replace_with_distinct_header
+#-- SOURCE
+A.b=0
+#-- DEST
+[Z.y]
+#--- dotted_header_with_separate_parent_leaf_change
+#-- SOURCE
+[A]
+[A.b.c]
+#-- DEST
+[A]
+[A.b.z]
+#--- double_header_to_scalar
+#-- SOURCE
+[A.b]
+c=1
+#-- DEST
+A = 2
+#--- header_to_dotted_key_scalar
+#-- SOURCE
+[C]
+#-- DEST
+C.z = 2
+#--- header_to_inline_table
+#-- SOURCE
+[C]
+z = 1
+#-- DEST
+C = { z = 2 }
+#--- subsection_to_scalar_inside_section
+#-- SOURCE
+[a]
+x = 1
+[a.b]
+y = 2
+#-- DEST
+[a]
+x = 1
+b = 42
+#--- subsection_to_dotted_inside_section
+#-- SOURCE
+[a]
+x = 1
+[a.b]
+y = 2
+#-- DEST
+[a]
+x = 1
+b.z = 3
+#--- deep_dotted_header_key_change
+#-- SOURCE
+[A.b.c.d]
+[A]
+#-- DEST
+[A.b.x.y]
+[A]
+#--- double_dotted_header_complete_replace
+#-- SOURCE
+[7.2A.A]
+[M]
+#-- DEST
+[2.2A.A]
+[2]
+#--- dotted_key_rename_with_sibling_header_section
+#-- SOURCE
+A.b=0
+[A.c]
+#-- DEST
+A.z=0
+[A.c]
+#--- new_root_entry_inserted_before_nested_section
+#-- SOURCE
+
+A.b.c=0
+[A.d.e]
+
+#-- DEST
+
+A.b.c=0
+Z.y=0
+[A.d.e]
+
+#--- new_dotted_sibling_inserted_before_nested_section_deep
+#-- SOURCE
+A.b.c=0
+[A.b.d.e]
+#-- DEST
+A.z.y=0
+A.b.c=0
+[A.b.d.e]
+#--- inline_table_dotted_depth_reduced
+#-- SOURCE
+A={b.c.d=4}
+
+#-- DEST
+Z={y.x.w=4}
+A={b.c=4}
+
+#--- section_child_replaced_by_scalar_in_dotted_intermediate
+#-- SOURCE
+A.b.c=0
+[A.d]
+#-- DEST
+A.d=0
+[A.z]
+#--- implicit_becomes_dotted_with_section_child_no_duplicate_entry
+#-- SOURCE
+A.b=0
+[C.d]
+#-- DEST
+C.z=0
+[C.d]
+#--- section_renamed_inside_dotted_intermediate
+#-- SOURCE
+A.b=0
+[A.c]
+#-- DEST
+A.b=0
+[A.z]
+#--- deep_dotted_key_value_change_inside_inline_table
+#-- SOURCE
+A={b=1,c.d.e=0,c.g=1,c.d.f=5}
+#-- DEST
+A={b=1,c.d.e=2,c.g=1,c.d.f=5}
+#--- header_to_nested_inline_table
+#-- SOURCE
+[A.b.c]
+[A]
+d={c={}}
+#-- DEST
+[A.e.c]
+[A]
+b={c={}}
+#--- leaf_becomes_implicit_table_via_section_header
+#-- SOURCE
+A=[1.2]
+#-- DEST
+[A.z]
+#--- section_leaf_in_implicit_intermediate_removed
+#-- SOURCE
+[zA.0.4]
+[zA]
+0.A=1
+#-- DEST
+[zA.0.4]
+[zA]
+#--- implicit_with_in_region_leaf_becomes_dotted_no_duplicate
+#-- SOURCE
+[zA.0.4]
+[zA]
+0.0=1
+#-- DEST
+[zA]
+0.0=1
+#--- deeply_nested_implicit_leaf_removed
+#-- SOURCE
+[zA.0.0.8]
+[zA]
+0.0.4=0
+#-- DEST
+[zA.0.0.8]
+[zA]
+#--- rename_nested_section_sibling_preserved
+#-- SOURCE
+[A.b.c]
+[A]
+b.d=0
+#-- DEST
+[A.b.z]
+[A]
+b.d=0
+#--- rename_deep_section_with_dotted_sibling
+#-- SOURCE
+[zA.0.4.RRfalse4]
+[zA]
+0.s=1
+#-- DEST
+[zA.0.4.RRflse4]
+[zA]
+0.s=1
+#--- implicit_to_dotted_no_in_region_leaves_no_dup
+#-- SOURCE
+[zA.4.4]
+[zA]
+3.28=12
+#-- DEST
+[zA]
+4.28=12
+#--- new_implicit_with_dotted_leaves_not_lost
+#-- SOURCE
+[zA.4.4]
+[zA]
+4.28=1
+#-- DEST
+[zA.5.4]
+[zA]
+5.28=1
+#--- cross_section_sub_key_replaces_header_entry
+#-- SOURCE
+[zA.4.4]
+[zA]
+4.14=1
+#-- DEST
+[zA]
+4.4=1
+#--- dotted_sub_key_scalar_to_header_no_dup
+#-- SOURCE
+A.b=0
+[C.d]
+#-- DEST
+A.z=0
+[A.b]
