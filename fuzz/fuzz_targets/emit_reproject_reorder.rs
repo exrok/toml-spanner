@@ -20,7 +20,7 @@ use libfuzzer_sys::{Corpus, fuzz_target};
 //   5. Projected entries preserve their source-relative ordering in the output
 fuzz_target!(|data: &[u8]| -> Corpus {
     let mut buffer = String::new();
-    let split = fuzz::gen_toml::random_double_toml(&mut buffer, data);
+    let split = fuzz::gen_toml::random_reorder_pair(&mut buffer, data);
     let src_text = &buffer[..split];
     let dest_text = &buffer[split..];
 
@@ -119,8 +119,9 @@ fn hash_segment(parent: u64, bytes: &[u8]) -> u64 {
 }
 
 /// Collects (path_hash, key_span_start) for projected entries.
-/// Uses incremental foldhash instead of `Vec<String>` paths,
-/// eliminating all per-entry String allocations.
+/// Recurses into nested tables and single-element arrays (where the
+/// src→dest element mapping is unambiguous). Multi-element arrays are
+/// skipped — positional fallback makes cross-document identity arbitrary.
 fn collect_projected_positions(
     table: &toml_spanner::Table<'_>,
     parent_hash: u64,
@@ -136,12 +137,10 @@ fn collect_projected_positions(
             toml_spanner::Value::Table(sub) => {
                 collect_projected_positions(sub, h, out);
             }
-            toml_spanner::Value::Array(arr) => {
-                for (i, elem) in arr.iter().enumerate() {
-                    if let Some(sub) = elem.as_table() {
-                        let ah = hash_segment(h, &(i as u32).to_le_bytes());
-                        collect_projected_positions(sub, ah, out);
-                    }
+            toml_spanner::Value::Array(arr) if arr.len() == 1 => {
+                if let Some(sub) = arr.iter().next().unwrap().as_table() {
+                    let ah = hash_segment(h, &0u32.to_le_bytes());
+                    collect_projected_positions(sub, ah, out);
                 }
             }
             _ => {}

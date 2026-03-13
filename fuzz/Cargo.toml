@@ -99,3 +99,10 @@ path = "fuzz_targets/emit_roundtrip.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "emit_reproject_exact"
+path = "fuzz_targets/emit_reproject_exact.rs"
+test = false
+doc = false
+bench = false

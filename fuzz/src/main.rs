@@ -3,7 +3,7 @@ fn main() {
     if args.len() < 3 {
         eprintln!("usage: fuzz <target> <artifact_path>");
         eprintln!(
-            "targets: normalize, emit_roundtrip, emit_reproject_identity, emit_reproject_edit, emit_reproject_reorder"
+            "targets: normalize, emit_roundtrip, emit_reproject_identity, emit_reproject_edit, emit_reproject_reorder, emit_reproject_exact"
         );
         std::process::exit(1);
     }
@@ -16,10 +16,11 @@ fn main() {
         "emit_reproject_identity" => run_reproject_identity(path),
         "emit_reproject_edit" => run_reproject_edit(path),
         "emit_reproject_reorder" => run_reproject_reorder(path),
+        "emit_reproject_exact" => run_reproject_exact(path),
         _ => {
             eprintln!("unknown target: {target}");
             eprintln!(
-                "targets: normalize, emit_roundtrip, emit_reproject_identity, emit_reproject_edit, emit_reproject_reorder"
+                "targets: normalize, emit_roundtrip, emit_reproject_identity, emit_reproject_edit, emit_reproject_reorder, emit_reproject_exact"
             );
             std::process::exit(1);
         }
@@ -115,10 +116,7 @@ fn run_emit_roundtrip(path: &str) {
     fuzz::gen_toml::random_roundtrip_toml(&mut buffer, &data);
     let text = &buffer;
 
-    println!(
-        "── generated text ({} bytes) ──\n{text:?}\n",
-        text.len()
-    );
+    println!("── generated text ({} bytes) ──\n{text:?}\n", text.len());
 
     let arena = toml_spanner::Arena::new();
     let root = match toml_spanner::parse(text, &arena) {
@@ -555,7 +553,7 @@ fn run_reproject_reorder(path: &str) {
     println!("bytes ({len}): {data:?}\n", len = data.len());
 
     let mut buffer = String::new();
-    let split = fuzz::gen_toml::random_double_toml(&mut buffer, &data);
+    let split = fuzz::gen_toml::random_reorder_pair(&mut buffer, &data);
     let src_text = buffer[..split].to_owned();
     let dest_text = buffer[split..].to_owned();
 
@@ -604,7 +602,7 @@ fn run_reproject_reorder(path: &str) {
 
     // Collect projected source key positions before reproject mutates things.
     let mut src_positions: Vec<(Vec<String>, u32)> = Vec::new();
-    collect_key_positions(src_root.table(), &mut Vec::new(), &mut src_positions);
+    collect_table_key_positions(src_root.table(), &mut Vec::new(), &mut src_positions);
     println!("── source key positions ({}) ──", src_positions.len());
     for (path, pos) in &src_positions {
         println!("  {} @ {pos}", path.join("."));
@@ -708,7 +706,7 @@ fn run_reproject_reorder(path: &str) {
 
     // Invariant 5: projected entries preserve their source-relative ordering.
     let mut out_positions: Vec<(Vec<String>, u32)> = Vec::new();
-    collect_key_positions(out_root.table(), &mut Vec::new(), &mut out_positions);
+    collect_table_key_positions(out_root.table(), &mut Vec::new(), &mut out_positions);
     println!("── output key positions ({}) ──", out_positions.len());
     for (path, pos) in &out_positions {
         println!("  {} @ {pos}", path.join("."));
@@ -725,8 +723,11 @@ fn run_reproject_reorder(path: &str) {
     println!("── order_preserved: OK ──");
 }
 
-/// Collects (key_path, key_span_start) for all entries with non-empty key spans.
-fn collect_key_positions(
+/// Collects (key_path, key_span_start) for table entries with non-empty key spans.
+/// Recurses into nested tables and single-element arrays (where the
+/// src→dest element mapping is unambiguous). Multi-element arrays are
+/// skipped — positional fallback makes cross-document identity arbitrary.
+fn collect_table_key_positions(
     table: &toml_spanner::Table<'_>,
     path: &mut Vec<String>,
     out: &mut Vec<(Vec<String>, u32)>,
@@ -740,15 +741,13 @@ fn collect_key_positions(
 
         match item.value() {
             toml_spanner::Value::Table(sub) => {
-                collect_key_positions(sub, path, out);
+                collect_table_key_positions(sub, path, out);
             }
-            toml_spanner::Value::Array(arr) => {
-                for (i, elem) in arr.iter().enumerate() {
-                    if let Some(sub) = elem.as_table() {
-                        path.push(format!("[{i}]"));
-                        collect_key_positions(sub, path, out);
-                        path.pop();
-                    }
+            toml_spanner::Value::Array(arr) if arr.len() == 1 => {
+                if let Some(sub) = arr.iter().next().unwrap().as_table() {
+                    path.push("[0]".to_string());
+                    collect_table_key_positions(sub, path, out);
+                    path.pop();
                 }
             }
             _ => {}
@@ -796,5 +795,297 @@ fn check_order_preserved(
             );
             std::process::exit(1);
         }
+    }
+}
+
+// ── reproject_exact ──
+
+fn run_reproject_exact(path: &str) {
+    let data = std::fs::read(path).expect("failed to read artifact");
+
+    println!("artifact: {path}");
+    println!("bytes ({len}): {data:?}\n", len = data.len());
+
+    if data.len() < 4 {
+        println!("artifact too short (< 4 bytes), fuzzer would reject");
+        return;
+    }
+
+    let gen_data = &data[..data.len() - 2];
+    let mod_selector = data[data.len() - 2];
+    let entry_selector = data[data.len() - 1];
+
+    // Generate source TOML.
+    let mut buffer = String::new();
+    fuzz::gen_toml::random_roundtrip_toml(&mut buffer, gen_data);
+    let source_text = &buffer;
+
+    println!(
+        "── source text ({} bytes) ──\n{source_text:?}\n",
+        source_text.len()
+    );
+
+    if source_text.is_empty() {
+        println!("empty source, fuzzer would reject");
+        return;
+    }
+
+    let arena = toml_spanner::Arena::new();
+    let src_root = match toml_spanner::parse(source_text, &arena) {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("source does not parse: {e:?}");
+            std::process::exit(1);
+        }
+    };
+
+    fuzz::gen_tree::print_table(src_root.table(), "parsed source");
+    println!();
+
+    if src_root.table().try_as_normalized().is_none() {
+        println!("table is not normalizable, skipping");
+        return;
+    }
+
+    let source_bytes = source_text.as_bytes();
+
+    // Collect body entries.
+    let mut entries = Vec::new();
+    fuzz::exact::collect_body_entries(
+        src_root.table(),
+        source_bytes,
+        &mut Vec::new(),
+        &mut entries,
+        false,
+        false,
+    );
+
+    println!("── body entries ({}) ──", entries.len());
+    for (i, e) in entries.iter().enumerate() {
+        println!(
+            "  [{i}] path={:?} key={}..{} line={}..{} in_inline={} in_dotted={} kind={:?}",
+            e.path,
+            e.key_start,
+            e.key_end,
+            e.line_start,
+            e.line_end,
+            e.in_inline,
+            e.in_dotted,
+            e.kind
+        );
+    }
+    println!();
+
+    if entries.is_empty() {
+        println!("no body entries, fuzzer would reject");
+        return;
+    }
+
+    let mod_kind = match mod_selector % 3 {
+        0 => fuzz::exact::ModKind::EditScalar,
+        1 => fuzz::exact::ModKind::Remove,
+        _ => fuzz::exact::ModKind::Insert,
+    };
+    println!("── modification: {mod_kind:?} ──\n");
+
+    match mod_kind {
+        fuzz::exact::ModKind::EditScalar => {
+            let editable = fuzz::exact::editable_entries(&entries);
+            if editable.is_empty() {
+                println!("no editable entries, fuzzer would reject");
+                return;
+            }
+            let idx = editable[entry_selector as usize % editable.len()];
+            let entry = &entries[idx];
+            println!("editing entry [{idx}]: path={:?}", entry.path);
+
+            let (new_item, new_value_bytes) = match &entry.kind {
+                fuzz::exact::ScalarKind::Integer(v) => {
+                    let new_v = v ^ 1;
+                    println!("  integer {v} -> {new_v}");
+                    (
+                        toml_spanner::Item::from(new_v),
+                        fuzz::exact::format_canonical_integer(new_v),
+                    )
+                }
+                fuzz::exact::ScalarKind::Boolean(v) => {
+                    let new_v = !v;
+                    println!("  boolean {v} -> {new_v}");
+                    (
+                        toml_spanner::Item::from(new_v),
+                        fuzz::exact::format_canonical_bool(new_v),
+                    )
+                }
+                _ => {
+                    println!("  non-editable kind, fuzzer would reject");
+                    return;
+                }
+            };
+
+            let mut dest_table = src_root.table().clone_in(&arena);
+            fuzz::exact::set_at_path(&mut dest_table, &entry.path, new_item);
+
+            let mut items = Vec::new();
+            toml_spanner::reproject(&src_root, &mut dest_table, &mut items);
+            let norm = dest_table.normalize();
+            let config = toml_spanner::EmitConfig {
+                projected_source_text: source_text,
+                projected_source_items: &items,
+                reprojected_order: false,
+            };
+            let mut buf = Vec::new();
+            toml_spanner::emit_with_config(norm, &config, &mut buf);
+
+            let output = String::from_utf8_lossy(&buf);
+            println!("── output ({} bytes) ──\n{output:?}\n", buf.len());
+
+            match fuzz::exact::check_edit_preservation(source_bytes, &buf, entry, &new_value_bytes)
+            {
+                Ok(()) => println!("── edit preservation: OK ──"),
+                Err(msg) => {
+                    eprintln!("FAILURE: edit preservation: {msg}");
+                    std::process::exit(1);
+                }
+            }
+
+            // Semantic check.
+            let out_root = toml_spanner::parse(&output, &arena).unwrap();
+            if dest_table.as_item() != out_root.table().as_item() {
+                eprintln!("FAILURE: semantic mismatch after edit");
+                std::process::exit(1);
+            }
+            println!("── semantic: OK ──");
+
+            // Idempotency.
+            check_idempotency_verbose(&output, &buf, source_text);
+        }
+
+        fuzz::exact::ModKind::Remove => {
+            let removable = fuzz::exact::removable_entries(&entries, source_bytes);
+            if removable.is_empty() {
+                println!("no removable entries, fuzzer would reject");
+                return;
+            }
+            let idx = removable[entry_selector as usize % removable.len()];
+            let entry = &entries[idx];
+            println!(
+                "removing entry [{idx}]: path={:?} line={}..{}",
+                entry.path, entry.line_start, entry.line_end
+            );
+
+            let mut dest_table = src_root.table().clone_in(&arena);
+            fuzz::exact::remove_at_path(&mut dest_table, &entry.path);
+
+            let mut items = Vec::new();
+            toml_spanner::reproject(&src_root, &mut dest_table, &mut items);
+            let norm = dest_table.normalize();
+            let config = toml_spanner::EmitConfig {
+                projected_source_text: source_text,
+                projected_source_items: &items,
+                reprojected_order: false,
+            };
+            let mut buf = Vec::new();
+            toml_spanner::emit_with_config(norm, &config, &mut buf);
+
+            let output = String::from_utf8_lossy(&buf);
+            println!("── output ({} bytes) ──\n{output:?}\n", buf.len());
+
+            match fuzz::exact::check_remove_preservation(source_bytes, &buf, entry) {
+                Ok(()) => println!("── remove preservation: OK ──"),
+                Err(msg) => {
+                    eprintln!("FAILURE: remove preservation: {msg}");
+                    std::process::exit(1);
+                }
+            }
+
+            // Semantic check.
+            let out_root = toml_spanner::parse(&output, &arena).unwrap();
+            if dest_table.as_item() != out_root.table().as_item() {
+                eprintln!("FAILURE: semantic mismatch after remove");
+                std::process::exit(1);
+            }
+            println!("── semantic: OK ──");
+
+            check_idempotency_verbose(&output, &buf, source_text);
+        }
+
+        fuzz::exact::ModKind::Insert => {
+            let mut targets = Vec::new();
+            fuzz::exact::insertable_targets(src_root.table(), &mut Vec::new(), &mut targets);
+            if targets.is_empty() {
+                println!("no insertable targets, fuzzer would reject");
+                return;
+            }
+            let (table_path, fresh_key) = &targets[entry_selector as usize % targets.len()];
+            println!(
+                "inserting key {:?} into table at path {:?}",
+                fresh_key, table_path
+            );
+
+            let mut dest_table = src_root.table().clone_in(&arena);
+            let target = fuzz::exact::table_at_path_mut(&mut dest_table, table_path);
+            let new_item = toml_spanner::Item::from(42i64);
+            target.insert(toml_spanner::Key::anon(fresh_key), new_item, &arena);
+
+            let mut items = Vec::new();
+            toml_spanner::reproject(&src_root, &mut dest_table, &mut items);
+            let norm = dest_table.normalize();
+            let config = toml_spanner::EmitConfig {
+                projected_source_text: source_text,
+                projected_source_items: &items,
+                reprojected_order: false,
+            };
+            let mut buf = Vec::new();
+            toml_spanner::emit_with_config(norm, &config, &mut buf);
+
+            let output = String::from_utf8_lossy(&buf);
+            println!("── output ({} bytes) ──\n{output:?}\n", buf.len());
+
+            match fuzz::exact::check_insert_preservation(source_text, &buf, table_path, fresh_key) {
+                Ok(()) => println!("── insert preservation: OK ──"),
+                Err(msg) => {
+                    eprintln!("FAILURE: insert preservation: {msg}");
+                    std::process::exit(1);
+                }
+            }
+
+            // Semantic check.
+            let out_root = toml_spanner::parse(&output, &arena).unwrap();
+            if dest_table.as_item() != out_root.table().as_item() {
+                eprintln!("FAILURE: semantic mismatch after insert");
+                std::process::exit(1);
+            }
+            println!("── semantic: OK ──");
+
+            check_idempotency_verbose(&output, &buf, source_text);
+        }
+    }
+}
+
+fn check_idempotency_verbose(output: &str, buf: &[u8], source_text: &str) {
+    let arena = toml_spanner::Arena::new();
+    let src2 = toml_spanner::parse(output, &arena).unwrap();
+    let mut dest2 = src2.table().clone_in(&arena);
+    let mut items2 = Vec::new();
+    toml_spanner::reproject(&src2, &mut dest2, &mut items2);
+    let norm2 = dest2.normalize();
+    let cfg2 = toml_spanner::EmitConfig {
+        projected_source_text: output,
+        projected_source_items: &items2,
+        reprojected_order: false,
+    };
+    let mut buf2 = Vec::new();
+    toml_spanner::emit_with_config(norm2, &cfg2, &mut buf2);
+    if buf == buf2.as_slice() {
+        println!("── idempotency: OK ──");
+    } else {
+        let output2 = String::from_utf8_lossy(&buf2);
+        eprintln!(
+            "FAILURE: not idempotent!\n\
+             source:\n{source_text:?}\n\
+             first:\n{output:?}\n\
+             second:\n{output2:?}"
+        );
+        std::process::exit(1);
     }
 }

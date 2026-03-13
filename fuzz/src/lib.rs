@@ -1,9 +1,10 @@
+pub mod exact;
 pub mod gen_toml;
 pub mod gen_tree;
 
 pub struct Gen<'a> {
     data: &'a [u8],
-    pos: usize,
+    pub pos: usize,
 }
 
 impl<'a> Gen<'a> {

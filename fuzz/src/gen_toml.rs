@@ -752,6 +752,234 @@ pub fn random_roundtrip_toml(buffer: &mut String, random: &[u8]) {
     gen_rt_section(&mut g, buffer, &mut path, 0);
 }
 
+pub fn random_reorder_pair(buffer: &mut String, random: &[u8]) -> usize {
+    if random.len() < 4 {
+        return 0;
+    }
+    let mut key_used = [false; N_KEYS];
+    let mut g_setup = Gen::new(random);
+
+    // Select 2-5 shared root keys (present in both documents).
+    let shared_count = g_setup.range(2, 5) as usize;
+    let mut shared_keys = [0u8; N_KEYS];
+    let mut n_shared = 0;
+    for _ in 0..shared_count {
+        let Some(ki) = pick_unique_idx(&mut g_setup, &mut key_used) else {
+            break;
+        };
+        shared_keys[n_shared] = ki as u8;
+        n_shared += 1;
+    }
+    if n_shared < 2 {
+        return 0;
+    }
+
+    // Select 0-2 src-only keys (absent in dest = removals).
+    let mut src_extras = [0u8; N_KEYS];
+    let mut n_src_extra = 0;
+    for _ in 0..g_setup.next() % 3 {
+        let Some(ki) = pick_unique_idx(&mut g_setup, &mut key_used) else {
+            break;
+        };
+        src_extras[n_src_extra] = ki as u8;
+        n_src_extra += 1;
+    }
+
+    // Select 0-2 dest-only keys (absent in src = insertions).
+    let mut dest_extras = [0u8; N_KEYS];
+    let mut n_dest_extra = 0;
+    for _ in 0..g_setup.next() % 3 {
+        let Some(ki) = pick_unique_idx(&mut g_setup, &mut key_used) else {
+            break;
+        };
+        dest_extras[n_dest_extra] = ki as u8;
+        n_dest_extra += 1;
+    }
+
+    // Split remaining bytes between src and dest generators.
+    let rest = &random[g_setup.pos..];
+    let split_byte = if rest.is_empty() { 128 } else { rest[0] };
+    let rest = if rest.is_empty() { rest } else { &rest[1..] };
+    let split = (rest.len() * split_byte as usize) / 255;
+    let (src_bytes, dest_bytes) = rest.split_at(split);
+
+    // Src keys: shared (original order) + src-only appended.
+    let mut src_keys = [0u8; N_KEYS];
+    src_keys[..n_shared].copy_from_slice(&shared_keys[..n_shared]);
+    src_keys[n_shared..n_shared + n_src_extra].copy_from_slice(&src_extras[..n_src_extra]);
+    let n_src = n_shared + n_src_extra;
+
+    // Generate src document.
+    let mut path = String::new();
+    {
+        let mut g = Gen::new(src_bytes);
+        gen_shared_section(&mut g, buffer, &mut path, &src_keys[..n_src], 0);
+    }
+    let output_split = buffer.len();
+
+    // Dest: single Gen for shuffle, insertion positions, and content.
+    let mut g_dest = Gen::new(dest_bytes);
+
+    // Fisher-Yates shuffle shared keys for dest ordering.
+    let mut dest_keys = [0u8; N_KEYS];
+    dest_keys[..n_shared].copy_from_slice(&shared_keys[..n_shared]);
+    for i in (1..n_shared).rev() {
+        let j = g_dest.next() as usize % (i + 1);
+        dest_keys.swap(i, j);
+    }
+
+    // Insert dest-only extras at random positions among shuffled shared keys.
+    let mut n_dest = n_shared;
+    for e in 0..n_dest_extra {
+        let pos = g_dest.next() as usize % (n_dest + 1);
+        // Shift right to make room.
+        for j in (pos..n_dest).rev() {
+            dest_keys[j + 1] = dest_keys[j];
+        }
+        dest_keys[pos] = dest_extras[e];
+        n_dest += 1;
+    }
+
+    // Generate dest document.
+    {
+        path.clear();
+        gen_shared_section(&mut g_dest, buffer, &mut path, &dest_keys[..n_dest], 0);
+    }
+    output_split
+}
+
+fn gen_shared_section(
+    g: &mut Gen<'_>,
+    out: &mut String,
+    path: &mut String,
+    key_indices: &[u8],
+    depth: u8,
+) {
+    let mut plan = [(0u8, 0u8); N_KEYS];
+    let n = key_indices.len();
+    for (i, &ki) in key_indices.iter().enumerate() {
+        let cat = if depth >= 4 {
+            LEAF
+        } else {
+            match g.next() % 5 {
+                0..=1 => LEAF,
+                2..=3 => match g.next() % 3 {
+                    0 => TABLE_INLINE,
+                    1 => TABLE_DOTTED,
+                    _ => TABLE_SECTION,
+                },
+                _ => {
+                    if g.next() % 3 == 0 {
+                        AOT_INLINE
+                    } else {
+                        AOT_SECTION
+                    }
+                }
+            }
+        };
+        plan[i] = (ki, cat);
+    }
+
+    // Body entries (inline values, dotted keys).
+    for &(ki, cat) in &plan[..n] {
+        let key = KEYS[ki as usize];
+        match cat {
+            LEAF => {
+                maybe_comment_line(g, out);
+                fmt_key(g, key, out);
+                sp(g, out);
+                out.push('=');
+                sp(g, out);
+                gen_inline_value(g, out, depth);
+                maybe_comment_eol(g, out);
+                out.push('\n');
+            }
+            TABLE_INLINE => {
+                maybe_comment_line(g, out);
+                fmt_key(g, key, out);
+                sp(g, out);
+                out.push('=');
+                sp(g, out);
+                gen_inline_table(g, out, depth + 1);
+                maybe_comment_eol(g, out);
+                out.push('\n');
+            }
+            TABLE_DOTTED => {
+                gen_dotted_keys(g, out, key, depth + 1);
+            }
+            AOT_INLINE => {
+                maybe_comment_line(g, out);
+                fmt_key(g, key, out);
+                sp(g, out);
+                out.push('=');
+                sp(g, out);
+                out.push('[');
+                let aot_count = g.range(1, 3);
+                let ml = aot_count > 1 && g.next() % 3 == 0;
+                if ml {
+                    nasty_gap(g, out);
+                }
+                for i in 0..aot_count {
+                    if i > 0 {
+                        if ml {
+                            nasty_gap(g, out);
+                            out.push(',');
+                            nasty_gap(g, out);
+                        } else {
+                            out.push(',');
+                            sp(g, out);
+                        }
+                    }
+                    gen_inline_table(g, out, depth + 1);
+                }
+                if g.next() % 3 == 0 {
+                    out.push(',');
+                }
+                if ml {
+                    nasty_gap(g, out);
+                }
+                out.push(']');
+                maybe_comment_eol(g, out);
+                out.push('\n');
+            }
+            _ => {}
+        }
+    }
+
+    // Subsections (headers, AOT headers).
+    for &(ki, cat) in &plan[..n] {
+        let key = KEYS[ki as usize];
+        match cat {
+            TABLE_SECTION => {
+                maybe_comment_line(g, out);
+                let path_len = path.len();
+                if !path.is_empty() {
+                    path.push('.');
+                }
+                path.push_str(key);
+                writeln!(out, "[{path}]").unwrap();
+                gen_section(g, out, path, depth + 1);
+                path.truncate(path_len);
+            }
+            AOT_SECTION => {
+                let aot_count = g.range(1, 3);
+                let path_len = path.len();
+                if !path.is_empty() {
+                    path.push('.');
+                }
+                path.push_str(key);
+                for _ in 0..aot_count {
+                    maybe_comment_line(g, out);
+                    writeln!(out, "[[{path}]]").unwrap();
+                    gen_section(g, out, path, depth + 1);
+                }
+                path.truncate(path_len);
+            }
+            _ => {}
+        }
+    }
+}
+
 pub fn random_double_toml(buffer: &mut String, random: &[u8]) -> usize {
     let [split, rest @ ..] = random else {
         return 0;

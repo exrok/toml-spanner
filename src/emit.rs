@@ -219,7 +219,11 @@ fn emit_ordered<'a, 'b, 'de: 'b>(
                 // was emitted, but only if the output doesn't already
                 // end with a newline (i.e. there was skipped source
                 // content, not just adjacent segments).
-                if out.len() == pre_len && is_header && !out.is_empty() && out.last() != Some(&b'\n') {
+                if out.len() == pre_len
+                    && is_header
+                    && !out.is_empty()
+                    && out.last() != Some(&b'\n')
+                {
                     out.push(b'\n');
                 }
                 *cursor = target;
@@ -364,6 +368,11 @@ fn collect_segments<'a, 'b, 'de: 'b>(
                 continue;
             };
             let node = alloc_prefix(emit.arena, key.name, key.span, section_prefix);
+            // Anchor unprojected elements near this AOT's source position.
+            if !key.span.is_empty() {
+                *last_projected = key.span.start;
+            }
+            let mut prev_aot_pos: u32 = 0;
             for arr_entry in arr {
                 let Some(sub_table) = arr_entry.as_table() else {
                     continue;
@@ -374,7 +383,14 @@ fn collect_segments<'a, 'b, 'de: 'b>(
                     projected_span(arr_entry, emit).map(|s| s.start)
                 };
                 let elem_source_start = elem_sort.unwrap_or(u32::MAX);
-                let sp = pack_sort_pos(elem_sort, last_projected);
+                let mut sp = pack_sort_pos(elem_sort, last_projected);
+                // AOT element order is semantic: ensure sort positions are
+                // monotonically non-decreasing so that content-based array
+                // matching doesn't reorder elements during source-ordered emit.
+                if sp < prev_aot_pos {
+                    sp = prev_aot_pos;
+                }
+                prev_aot_pos = sp;
 
                 segments.push(Segment {
                     sort_pos: sp,

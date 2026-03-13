@@ -88,3 +88,14 @@ a.c=0
 [a]
 x=0
 a.c=0
+#--- aot_element_order_preserved
+#-- SOURCE
+[[a]]
+x = 0
+[[b]]
+#-- DEST
+[[b]]
+[[a]]
+[[a.c]]
+[[a]]
+x = 0

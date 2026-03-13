@@ -24,8 +24,8 @@ fuzz_target!(|data: &[u8]| -> Corpus {
 
     // Parse the emitted output.
     let arena2 = toml_spanner::Arena::new();
-    let root2 = toml_spanner::parse(emitted, &arena2)
-        .expect("emitted output must parse as valid TOML");
+    let root2 =
+        toml_spanner::parse(emitted, &arena2).expect("emitted output must parse as valid TOML");
 
     // Items must be semantically equal with matching flags.
     assert_items_equal_with_flags(
@@ -55,13 +55,7 @@ fn assert_items_equal_with_flags(a: &Item<'_>, b: &Item<'_>, input: &str, emitte
     items_eq(a, b, &mut Vec::new(), input, emitted);
 }
 
-fn items_eq(
-    a: &Item<'_>,
-    b: &Item<'_>,
-    path: &mut Vec<String>,
-    input: &str,
-    emitted: &str,
-) {
+fn items_eq(a: &Item<'_>, b: &Item<'_>, path: &mut Vec<String>, input: &str, emitted: &str) {
     let p = || {
         if path.is_empty() {
             "<root>".to_string()
@@ -125,7 +119,13 @@ fn items_eq(
             );
             for i in 0..arr_a.len() {
                 path.push(format!("[{i}]"));
-                items_eq(&arr_a.as_slice()[i], &arr_b.as_slice()[i], path, input, emitted);
+                items_eq(
+                    &arr_a.as_slice()[i],
+                    &arr_b.as_slice()[i],
+                    path,
+                    input,
+                    emitted,
+                );
                 path.pop();
             }
         }
