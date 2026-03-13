@@ -143,8 +143,6 @@ mod ser;
 mod span;
 mod time;
 
-pub use item::owned::{OwnedItem, OwnedTable};
-
 pub use arena::Arena;
 #[cfg(feature = "from-toml")]
 pub use de::{Context, Failed, FromFlattened, FromToml, TableHelper};

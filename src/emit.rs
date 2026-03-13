@@ -153,6 +153,12 @@ fn alloc_prefix<'b, 'de>(
     key_span: Span,
     parent: Option<&'b Prefix<'b, 'de>>,
 ) -> &'b Prefix<'b, 'de> {
+    // SAFETY:
+    // - `arena.alloc(size_of::<Prefix>())` returns memory suitably sized.
+    //   Prefix contains &str (align 8) + Span (align 4) + Option<&Prefix>
+    //   (align 8), so max field align is 8 which matches ALLOC_ALIGN.
+    // - `ptr::write` initializes the allocation with a valid Prefix.
+    // - The resulting &'b reference is valid for the arena's lifetime 'b.
     unsafe {
         let ptr = arena
             .alloc(std::mem::size_of::<Prefix<'b, 'de>>())
@@ -1200,6 +1206,13 @@ fn arena_extend_prefix<'a, 'de>(
     let byte_size = new_len * std::mem::size_of::<(&str, Span)>();
     let ptr = arena.alloc(byte_size);
     let slice_ptr = ptr.as_ptr() as *mut (&'de str, Span);
+    // SAFETY:
+    // - `byte_size` is `new_len * size_of::<(&str, Span)>()`, so the arena
+    //   allocation is large enough for `new_len` elements.
+    // - `(&str, Span)` has align <= 8, matching ALLOC_ALIGN.
+    // - The copy writes `prefix.len()` elements from the old slice (disjoint
+    //   from the fresh arena allocation), then one more element at the end.
+    // - After both writes, all `new_len` elements are initialized.
     unsafe {
         std::ptr::copy_nonoverlapping(prefix.as_ptr(), slice_ptr, prefix.len());
         std::ptr::write(slice_ptr.add(prefix.len()), (name, span));

@@ -514,18 +514,21 @@ impl<'de> Table<'de> {
 
     /// Converts this `Table` into an [`Item`] with the same span and payload.
     pub fn as_item(&self) -> &Item<'de> {
-        unsafe {
-            // SAFETY: Table and Item have the same layout and alignment, so this
-            // is safe as long as we don't mutate through the Item reference.
-            &*(self as *const Table<'de>).cast::<Item<'de>>()
-        }
+        // SAFETY: Table is #[repr(C)] { InnerTable, ItemMetadata }.
+        // Item  is #[repr(C)] { Payload,    ItemMetadata }.
+        // Payload is a union whose `table` field is ManuallyDrop<InnerTable>
+        // (#[repr(transparent)]). Both types are 24 bytes, align 8 (verified
+        // by const assertions). The field offsets match (data at 0..16,
+        // metadata at 16..24). Only a shared reference is returned, so no
+        // mutation can change the tag.
+        unsafe { &*(self as *const Table<'de>).cast::<Item<'de>>() }
     }
 
     /// Converts this `Table` into an [`Item`] with the same span and payload.
     pub fn into_item(self) -> Item<'de> {
-        // SAFETY: Table and Item have the same repr(C) layout, size, and
-        // alignment (verified by const assertions below). Transmute preserves
-        // the kind flag that Item::table() would discard.
+        // SAFETY: Same layout argument as as_item(). Size and alignment
+        // equality verified by const assertions below. The tag in
+        // ItemMetadata is preserved unchanged through the transmute.
         unsafe { std::mem::transmute(self) }
     }
 }

@@ -14,14 +14,26 @@ unsafe fn stable_partition_linear<T, F>(slice: &mut [T], mut predicate: F) -> us
 where
     F: FnMut(&T) -> bool,
 {
+    // SAFETY: All pointer arithmetic below stays within the slice (length `len`)
+    // and the false_buf (capacity `len`).
+    //
+    // Loop invariant: at iteration i, slice[0..true_idx] contains compacted
+    // true-predicate elements, and false_buf[0..false_idx] contains the
+    // false-predicate elements seen so far. true_idx + false_idx == i, so
+    // true_idx <= i, ensuring the copy-within-slice from position i to
+    // true_idx never overlaps (single-element copies, distinct positions).
+    //
+    // After the loop, true_idx + false_idx == len, so the final copy from
+    // false_buf to slice[true_idx..] fills exactly the remaining space.
+    // false_buf is a Vec<MaybeUninit<T>> — its drop does not run destructors
+    // on the moved-out elements. Since T is !Drop (caller guarantee), no
+    // double-free occurs from the bitwise duplication during compaction.
     unsafe {
         let len = slice.len();
         if len == 0 {
             return 0;
         }
 
-        // Allocate an uninitialized buffer large enough to hold all elements
-        // in the worst-case scenario (all elements evaluate to `false`).
         let mut false_buf = Vec::<MaybeUninit<T>>::with_capacity(len);
 
         let slice_ptr = slice.as_mut_ptr();
@@ -33,7 +45,6 @@ where
         for i in 0..len {
             let item_ptr = slice_ptr.add(i);
 
-            // SAFETY: The caller guarantees `predicate` will not panic.
             if predicate(&*item_ptr) {
                 if i != true_idx {
                     std::ptr::copy_nonoverlapping(item_ptr, slice_ptr.add(true_idx), 1);
@@ -45,10 +56,7 @@ where
             }
         }
 
-        // Append the `false` elements right after the `true` elements.
         std::ptr::copy_nonoverlapping(false_ptr, slice_ptr.add(true_idx), false_idx);
-
-        // false_buf is dropped here without dropping its inner MaybeUninit<T> elements.
 
         true_idx
     }
@@ -71,6 +79,10 @@ pub(crate) fn ensure_body_order(entries: &mut [(Key<'_>, Item<'_>)]) {
         return;
     }
 
+    // SAFETY:
+    // - (Key, Item) has no Drop impl: Key is Copy, Item has no custom Drop.
+    // - The predicate `!item.is_subsection()` calls only simple flag-check
+    //   methods (has_header_bit, is_implicit_table, is_aot) that cannot panic.
     unsafe {
         stable_partition_linear(entries, |(_, item)| !item.is_subsection());
     }

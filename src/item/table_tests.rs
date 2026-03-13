@@ -15,8 +15,6 @@ fn ival(i: i64) -> Item<'static> {
     Item::integer_spanned(i, sp())
 }
 
-// == InnerTable tests ========================================================
-
 #[test]
 fn inner_insert_and_realloc() {
     let arena = Arena::new();
@@ -172,8 +170,6 @@ fn inner_iterators() {
     iter.next();
     assert_eq!(iter.size_hint(), (1, Some(1)));
 }
-
-// == Table wrapper tests =====================================================
 
 fn make_table<'a>(arena: &'a Arena) -> Table<'a> {
     let mut table = Table::new_spanned(Span::new(0, 100));

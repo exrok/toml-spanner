@@ -690,7 +690,7 @@ x = { y = 2 }";
     );
 }
 
-// ==== Scalar format preservation via emit_with_config ====
+
 
 /// Parse input, reproject identity (same src and dest), emit with config,
 /// and return the output. Unchanged scalars should be preserved verbatim.
@@ -913,7 +913,7 @@ fn plain_emit_ignores_whitespace() {
 
 // full_document_whitespace_preservation: moved to testdata/emit_identity.toml
 
-// ==== Cross-document reprojection (edit scenario) ====
+
 
 fn flag_name(flag: u32) -> &'static str {
     match flag {
@@ -1131,7 +1131,7 @@ fn aot_body_entry_at_eof_is_idempotent() {
     assert_eq!(first, second, "emit_with_config must be idempotent");
 }
 
-// ==== Fragment-based reordering (reprojected_order) ====
+
 
 /// Parse input, self-reproject, emit with `reprojected_order: true`.
 fn emit_with_reorder(input: &str) -> String {
@@ -1721,7 +1721,7 @@ eta = "0.1"
     }
 }
 
-// ==== Forced hash collision tests ====
+
 //
 // These set FORCE_HASH_COLLISIONS so that every array element hashes to the
 // same value, forcing the collision-group cross-product code path.

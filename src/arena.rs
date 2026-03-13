@@ -20,8 +20,10 @@ struct SlabHeader {
     size: usize,
 }
 
-// Safety: EMPTY_SLAB is an immutable sentinel (prev=None, size=0). SlabHeaders
-// on the heap are only reachable through Arena, which is !Sync due to Cell.
+// SAFETY: The only `SlabHeader` that needs `Sync` is the static `EMPTY_SLAB`
+// sentinel. It is immutable (prev=None, size=0) and never written through the
+// pointer. Heap-allocated SlabHeaders are only reachable through `Arena`, which
+// is `!Sync` (contains `Cell`), so they are never shared across threads.
 unsafe impl Sync for SlabHeader {}
 
 static EMPTY_SLAB: SlabHeader = SlabHeader {
@@ -86,7 +88,7 @@ impl Arena {
         let needed = padding.saturating_add(size);
         let remaining = self.end.get().as_ptr() as usize - addr;
 
-        if needed <= remaining {
+        let result = if needed <= remaining {
             // Safety: needed bytes fit within the current slab (end >= ptr is
             // invariant, so remaining cannot underflow). Using add() from ptr
             // preserves provenance.
@@ -97,7 +99,23 @@ impl Arena {
             }
         } else {
             self.alloc_slow(size)
+        };
+
+        // Tag pointer for MIRI
+        #[cfg(test)]
+        if true {
+            use std::mem::MaybeUninit;
+
+            unsafe {
+                return NonNull::new_unchecked(
+                    std::slice::from_raw_parts_mut(result.cast::<MaybeUninit<u8>>().as_ptr(), size)
+                        .as_mut_ptr()
+                        .cast(),
+                );
+            }
         }
+
+        result
     }
 
     /// Grow an existing allocation in place when possible, otherwise allocate
@@ -107,8 +125,10 @@ impl Arena {
     ///
     /// # Safety
     ///
-    /// `ptr` must have been returned by a prior `alloc` on this arena whose
-    /// size was `old_size`. `new_size` must be `>= old_size`.
+    /// - `ptr` must have been returned by a prior `alloc` on this arena whose
+    ///   size was `old_size`.
+    /// - `new_size` must be `>= old_size`. Violating this causes wrapping
+    ///   underflow in the in place growth path or an out of bounds copy.
     pub(crate) unsafe fn realloc(
         &self,
         ptr: NonNull<u8>,
@@ -131,16 +151,39 @@ impl Arena {
                 // pointer by the growth delta, preserving provenance via add().
                 let extra = new_size - old_size;
                 unsafe {
+                    let head_ptr = self.ptr.get().as_ptr();
                     self.ptr
-                        .set(NonNull::new_unchecked(self.ptr.get().as_ptr().add(extra)));
+                        .set(NonNull::new_unchecked(head_ptr.add(extra)));
+                    // Re-derive from the bump pointer (which carries full slab
+                    // provenance) instead of returning `ptr` directly, because
+                    // the MIRI tagging in alloc() restricts `ptr`'s Stacked
+                    // Borrows tag to old_size bytes.
+                    let result = NonNull::new_unchecked(head_ptr.sub(old_size));
+
+                    #[cfg(test)]
+                    if true {
+                        use std::mem::MaybeUninit;
+                        return NonNull::new_unchecked(
+                            std::slice::from_raw_parts_mut(
+                                result.cast::<MaybeUninit<u8>>().as_ptr(),
+                                new_size,
+                            )
+                            .as_mut_ptr()
+                            .cast(),
+                        );
+                    }
+
+                    return result;
                 }
-                return ptr;
             }
         }
 
         let new_ptr = self.alloc(new_size);
-        // Safety: old and new regions are non-overlapping arena allocations,
-        // and old_size <= new_size <= new allocation size.
+        // SAFETY:
+        // - Source (`ptr`) is from a prior alloc of `old_size` bytes, valid to read.
+        // - Destination (`new_ptr`) is a fresh alloc of `new_size >= old_size` bytes.
+        // - The regions do not overlap because `new_ptr` comes from a subsequent
+        //   bump (same or different slab) so it cannot alias the `ptr` region.
         unsafe { ptr::copy_nonoverlapping(ptr.as_ptr(), new_ptr.as_ptr(), old_size) };
         new_ptr
     }

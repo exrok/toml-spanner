@@ -65,14 +65,20 @@ struct FixedBitset([u64]);
 impl FixedBitset {
     #[allow(clippy::mut_from_ref)]
     pub fn new(capacity: usize, arena: &Arena) -> &mut FixedBitset {
-        let bitset_len = capacity.div_ceil(64);
-        let bitset = arena.alloc(bitset_len).cast::<u64>();
-        for offset in 0..bitset_len {
+        let bitset_bucket_count = capacity.div_ceil(64);
+        let bitset = arena
+            .alloc(bitset_bucket_count * std::mem::size_of::<u64>())
+            .cast::<u64>();
+        for offset in 0..bitset_bucket_count {
+            // SAFETY: `bitset_len * size_of::<u64>()` bytes were allocated above,
+            // so `bitset.add(offset)` for offset in 0..bitset_len is within bounds.
             unsafe {
                 bitset.add(offset).write(0);
             }
         }
-        let slice = unsafe { std::slice::from_raw_parts_mut(bitset.as_ptr(), bitset_len) };
+        // SAFETY: bitset points to `bitset_len` initialized u64 values in the arena.
+        let slice = unsafe { std::slice::from_raw_parts_mut(bitset.as_ptr(), bitset_bucket_count) };
+        // SAFETY: FixedBitset is #[repr(transparent)] over [u64].
         unsafe { &mut *(slice as *mut [u64] as *mut FixedBitset) }
     }
 
@@ -278,6 +284,12 @@ impl<'ctx, 't, 'de> TableHelper<'ctx, 't, 'de> {
     /// the value. The field is marked as consumed.
     pub fn optional_entry(&mut self, key: &str) -> Option<&'t (Key<'de>, Item<'de>)> {
         let entry = self.get_entry(key)?;
+        // SAFETY: `entry` was returned by get_entry(), which either performs a
+        // linear scan of self.table.entries() or indexes into that same slice
+        // via the hash index. In both cases `entry` points to an element within
+        // the slice whose base pointer is `base`. offset_from is valid because
+        // both pointers derive from the same allocation and the result is a
+        // non-negative element index (< table.len()).
         let index = unsafe {
             let ptr = entry as *const (Key<'de>, Item<'de>);
             let base = self.table.entries().as_ptr();

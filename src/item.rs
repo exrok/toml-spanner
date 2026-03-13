@@ -4,7 +4,6 @@
 mod tests;
 
 pub(crate) mod array;
-pub(crate) mod owned;
 pub(crate) mod table;
 use crate::arena::Arena;
 use crate::item::table::TableIndex;
@@ -602,8 +601,12 @@ impl<'de> Item<'de> {
     #[inline]
     pub fn kind(&self) -> Kind {
         debug_assert!((self.meta.start_and_tag & TAG_MASK) as u8 <= Kind::Array as u8);
-        // SAFETY: tag bits 0-2 are always in 0..=6 (set only by pub(crate)
-        // constructors). All values are valid Kind discriminants.
+        // SAFETY: Kind is #[repr(u8)] with discriminants 0..=6. The tag bits
+        // (bits 0 to 2 of start_and_tag) are set exclusively by pub(crate)
+        // constructors which only use TAG_STRING(0)..TAG_ARRAY(6). TAG_NONE(7)
+        // is only used for MaybeItem, which has its own tag() method returning
+        // u32. kind() is never called on a NONE tagged value. Therefore the
+        // masked value is always a valid Kind discriminant.
         unsafe { std::mem::transmute::<u8, Kind>(self.meta.start_and_tag as u8 & 0x7) }
     }
     #[inline]
@@ -709,14 +712,20 @@ impl<'de> Item<'de> {
     ///
     /// # Safety
     ///
-    /// The caller must ensure `self.is_array()` is true.
+    /// - `self.is_array()` must be true (i.e. the payload union holds `array`).
     #[inline]
     pub(crate) unsafe fn split_array_end_flag(&mut self) -> (&mut u32, &mut InternalArray<'de>) {
         debug_assert!(self.is_array());
         let ptr = self as *mut Item<'de>;
-        // SAFETY: meta.end_and_flag and payload.array are at disjoint offsets within
-        // the repr(C) layout. addr_of_mut! creates derived pointers without
-        // intermediate references, avoiding aliasing violations.
+        // SAFETY:
+        // - Caller guarantees this is an array item, so `payload.array` is the
+        //   active union field.
+        // - `payload.array` occupies bytes 0..16 (ManuallyDrop<InternalArray>).
+        //   `meta.end_and_flag` occupies bytes 20..24. These do not overlap.
+        // - `addr_of_mut!` derives raw pointers without creating intermediate
+        //   references, avoiding aliasing violations.
+        // - The `.cast::<InternalArray>()` strips ManuallyDrop, which is
+        //   #[repr(transparent)] and therefore has identical layout.
         unsafe {
             let end_flag = &mut *std::ptr::addr_of_mut!((*ptr).meta.end_and_flag);
             let array =
@@ -923,12 +932,16 @@ impl<'de> Item<'de> {
     ///
     /// # Safety
     ///
-    /// The caller must ensure `self.tag() == TAG_ARRAY`.
+    /// - `self.tag()` must be `TAG_ARRAY`.
     #[inline]
     pub(crate) unsafe fn as_array_unchecked(&self) -> &Array<'de> {
         debug_assert!(self.tag() == TAG_ARRAY);
-        // SAFETY: Both types are `#[repr(C)]` with identical layout when the
-        // payload is an array.
+        // SAFETY: Item is #[repr(C)] { payload: Payload, meta: ItemMetadata }.
+        // Array is #[repr(C)] { value: InternalArray, meta: ItemMetadata }.
+        // Payload is a union whose `array` field is ManuallyDrop<InternalArray>
+        // (#[repr(transparent)]). Both types are 24 bytes, align 8 (verified by
+        // const assertions). Field offsets match: data at 0..16, metadata at 16..24.
+        // Caller guarantees the active union field is `array`.
         unsafe { &*(self as *const Item<'de>).cast::<Array<'de>>() }
     }
 
@@ -936,27 +949,40 @@ impl<'de> Item<'de> {
     ///
     /// # Safety
     ///
-    /// The caller must ensure `self.tag() == TAG_ARRAY`.
+    /// - `self.tag()` must be `TAG_ARRAY`.
     #[inline]
     pub(crate) unsafe fn as_array_mut_unchecked(&mut self) -> &mut Array<'de> {
         debug_assert!(self.tag() == TAG_ARRAY);
+        // SAFETY: Same layout argument as as_array_unchecked.
         unsafe { &mut *(self as *mut Item<'de>).cast::<Array<'de>>() }
     }
 
-    /// Returns a mutable table pointer (parser-internal).
+    /// Returns a mutable reference to the inner table payload (parser-internal).
+    ///
+    /// # Safety
+    ///
+    /// - `self.is_table()` must be true.
     #[inline]
     pub(crate) unsafe fn as_inner_table_mut_unchecked(&mut self) -> &mut InnerTable<'de> {
         debug_assert!(self.is_table());
+        // SAFETY: Caller guarantees the active union field is `table`.
+        // ManuallyDrop<InnerTable> dereferences to &mut InnerTable.
         unsafe { &mut self.payload.table }
     }
 
-    /// Reinterprets this [`Item`] as a [`Table`].
+    /// Reinterprets this [`Item`] as a [`Table`] (mutable reference).
     ///
-    /// SAFETY: The caller must ensure `self.is_table()` is true. Both types
-    /// are `#[repr(C)]` with identical layout when the payload is a table.
+    /// # Safety
+    ///
+    /// - `self.is_table()` must be true.
     #[inline]
     pub(crate) unsafe fn as_table_mut_unchecked(&mut self) -> &mut Table<'de> {
         debug_assert!(self.is_table());
+        // SAFETY: Item is #[repr(C)] { payload: Payload, meta: ItemMetadata }.
+        // Table is #[repr(C)] { value: InnerTable, meta: ItemMetadata }.
+        // Payload's `table` field is ManuallyDrop<InnerTable> (#[repr(transparent)]).
+        // Both are 24 bytes, align 8 (const assertions). Field offsets match.
+        // Caller guarantees the active union field is `table`.
         unsafe { &mut *(self as *mut Item<'de>).cast::<Table<'de>>() }
     }
 
@@ -964,11 +990,11 @@ impl<'de> Item<'de> {
     ///
     /// # Safety
     ///
-    /// The caller must ensure `self.is_table()` is true.
+    /// - `self.is_table()` must be true.
     #[inline]
     pub(crate) unsafe fn as_table_unchecked(&self) -> &Table<'de> {
         debug_assert!(self.is_table());
-        // SAFETY: Both types are `#[repr(C)]` with identical layout when the payload is a table.
+        // SAFETY: Same layout argument as as_table_mut_unchecked.
         unsafe { &*(self as *const Item<'de>).cast::<Table<'de>>() }
     }
 
@@ -988,12 +1014,15 @@ impl<'de> Item<'de> {
     /// with the source.
     pub fn clone_in(&self, arena: &'de Arena) -> Item<'de> {
         if self.is_scalar() {
-            // SAFETY: Scalar items (string, integer, float, boolean, datetime)
-            // contain no arena-allocated pointers. Bitwise copy is correct.
-            // Item is non-Drop.
+            // SAFETY: Scalar items have tags 0..=4 (STRING, INTEGER, FLOAT,
+            // BOOLEAN, DATETIME). None of these own arena-allocated children.
+            // STRING contains a &'de str (shared reference to input/arena data)
+            // which is safe to duplicate. Item has no Drop impl, so ptr::read
+            // is a plain bitwise copy with no double-free risk.
             unsafe { std::ptr::read(self) }
         } else if self.tag() == TAG_ARRAY {
-            // SAFETY: tag == TAG_ARRAY guarantees the payload is an array.
+            // SAFETY: tag == TAG_ARRAY guarantees payload.array is the active
+            // union field.
             let cloned = unsafe { self.payload.array.clone_in(arena) };
             Item {
                 payload: Payload {
@@ -1002,7 +1031,9 @@ impl<'de> Item<'de> {
                 meta: self.meta,
             }
         } else {
-            // SAFETY: !is_scalar() && tag != TAG_ARRAY → tag == TAG_TABLE.
+            // SAFETY: Tags are 0..=6. is_scalar() is false (tag >= 5) and
+            // tag != TAG_ARRAY (6), so tag must be TAG_TABLE (5). Therefore
+            // payload.table is the active union field.
             let cloned = unsafe { self.payload.table.clone_in(arena) };
             Item {
                 payload: Payload {
@@ -1198,9 +1229,10 @@ pub(crate) fn equal_items(a: &Item<'_>, b: &Item<'_>, index: Option<&TableIndex<
     if a.kind() != b.kind() {
         return false;
     }
-    // SAFETY: kind check above guarantees both payloads hold the same union
-    // variant. Each arm reads only the field that corresponds to that variant.
-    // Righting this way generates the minimal LLVM lines and the fastest impl
+    // SAFETY: The kind() equality check above guarantees both items hold the
+    // same union variant. Each match arm reads only the union field that
+    // corresponds to the matched Kind discriminant. Since both a and b have
+    // the same kind, both payload accesses read the active field.
     unsafe {
         match a.kind() {
             Kind::String => a.payload.string == b.payload.string,

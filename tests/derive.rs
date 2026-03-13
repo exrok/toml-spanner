@@ -943,8 +943,6 @@ fn alias_optional_absent() {
     assert_eq!(v.name, None);
 }
 
-// ==== to_string_preserving_formatting tests ====
-
 #[derive(Toml, Debug, PartialEq)]
 #[toml(FromToml, ToToml)]
 struct ServerConfig {
@@ -1693,39 +1691,6 @@ fn ser_hashmap_as_table() {
     let v = WithMap { data };
     let toml_str = toml_spanner::to_string(&v).unwrap();
     assert!(toml_str.contains("key1 = \"val1\""), "got: {toml_str}");
-}
-
-// OwnedItem with deeply nested array-of-tables containing strings
-#[test]
-fn owned_item_aot_with_strings() {
-    let toml = r#"
-name = "project"
-
-[[items]]
-key = "first"
-tags = ["a", "b"]
-
-[[items]]
-key = "second"
-tags = ["c"]
-"#;
-    let arena = toml_spanner::Arena::new();
-    let root = toml_spanner::parse(toml, &arena).unwrap();
-    let owned = toml_spanner::OwnedItem::from(root.table().as_item());
-    let tbl = owned.as_ref().as_table().unwrap();
-    assert_eq!(tbl["name"].as_str(), Some("project"));
-    let items = tbl["items"].as_array().unwrap();
-    assert_eq!(items.len(), 2);
-    assert_eq!(items[0].as_table().unwrap()["key"].as_str(), Some("first"));
-    let tags = items[0].as_table().unwrap()["tags"].as_array().unwrap();
-    assert_eq!(tags[0].as_str(), Some("a"));
-    assert_eq!(tags[1].as_str(), Some("b"));
-    assert_eq!(items[1].as_table().unwrap()["key"].as_str(), Some("second"));
-
-    // Clone preserves all data
-    let cloned = owned.clone();
-    let tbl2 = cloned.as_ref().as_table().unwrap();
-    assert_eq!(tbl2["items"][0]["key"].as_str(), Some("first"));
 }
 
 // Exercises to_string_preserving_formatting with nested tables and dotted keys

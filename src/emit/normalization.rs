@@ -13,12 +13,12 @@ impl<'de> Table<'de> {
             normalize_item(item, true);
         }
         ensure_body_order(self.value.entries_mut());
-        unsafe {
-            // SAFETY: Normalization only changes table and array kinds, not
-            // the structure of the tree or any references. The NormalizedTable
-            // wrapper is just a marker for "this table has been normalized".
-            &*(self as *const Table<'de> as *const NormalizedTable<'de>)
-        }
+        // SAFETY: NormalizedTable is #[repr(transparent)] over Table, so the
+        // cast preserves layout. The normalize_item calls above have ensured
+        // every item in the tree is reachable by the emit algorithm. The
+        // NormalizedTable wrapper is a marker type that encodes this guarantee
+        // at the type level.
+        unsafe { &*(self as *const Table<'de> as *const NormalizedTable<'de>) }
     }
 
     /// Checks whether this table tree is already valid for emission

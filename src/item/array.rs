@@ -433,16 +433,20 @@ impl<'de> Array<'de> {
 
     /// Converts this `Array` into an [`Item`] with the same span and payload.
     pub fn as_item(&self) -> &Item<'de> {
-        // SAFETY: Array and Item have the same repr(C) layout (verified by
-        // const assertions above).
+        // SAFETY: Array is #[repr(C)] { InternalArray, ItemMetadata }.
+        // Item  is #[repr(C)] { Payload,       ItemMetadata }.
+        // Payload is a union whose `array` field is ManuallyDrop<InternalArray>
+        // (#[repr(transparent)]). Both types are 24 bytes, align 8 (verified
+        // by const assertions). The field offsets match (data at 0..16,
+        // metadata at 16..24). Only a shared reference is returned.
         unsafe { &*(self as *const Array<'de>).cast::<Item<'de>>() }
     }
 
     /// Converts this `Array` into an [`Item`] with the same span and payload.
     pub fn into_item(self) -> Item<'de> {
-        // SAFETY: Array and Item have the same repr(C) layout, size, and
-        // alignment (verified by const assertions below). Transmute preserves
-        // the kind flag that Item::array() would discard.
+        // SAFETY: Same layout argument as as_item(). Size and alignment
+        // equality verified by const assertions. The tag in ItemMetadata is
+        // preserved unchanged through the transmute.
         unsafe { std::mem::transmute(self) }
     }
 

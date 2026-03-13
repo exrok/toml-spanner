@@ -217,8 +217,6 @@ fn index_operator() {
     assert!(a[99]["key"].item().is_none());
 }
 
-// == clone_in tests ===========================================================
-
 #[test]
 fn clone_in_basic() {
     let arena = Arena::new();

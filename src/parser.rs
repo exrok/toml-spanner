@@ -157,8 +157,13 @@ impl<'de> Parser<'de> {
     }
 
     /// Get a `&str` slice from the underlying bytes.
-    /// SAFETY: `self.bytes` is always valid UTF-8, and callers must ensure
-    /// `start..end` falls on UTF-8 char boundaries.
+    ///
+    /// # Safety
+    ///
+    /// - `start <= end <= self.bytes.len()`.
+    /// - `start` and `end` must lie on UTF-8 character boundaries within
+    ///   `self.bytes` (which is always valid UTF-8 because it was derived
+    ///   from a `&str`).
     #[inline]
     unsafe fn str_slice(&self, start: usize, end: usize) -> &'de str {
         #[cfg(not(debug_assertions))]
