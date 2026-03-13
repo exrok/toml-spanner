@@ -4,6 +4,8 @@
 mod ast;
 mod case;
 mod codegen;
+#[cfg(test)]
+mod derive_tests;
 mod lit;
 mod template;
 #[allow(unused)]

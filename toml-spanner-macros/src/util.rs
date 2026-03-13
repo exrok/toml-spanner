@@ -3,6 +3,7 @@ use std::mem::MaybeUninit;
 
 const FREAKY_BUCKET_SIZE: usize = 32;
 
+#[repr(C)]
 struct Bucket<T> {
     data: [MaybeUninit<T>; FREAKY_BUCKET_SIZE],
     next: *mut Bucket<T>,

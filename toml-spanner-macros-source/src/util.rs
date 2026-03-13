@@ -1,81 +1,6 @@
-use std::alloc::Layout;
+include!("../../toml-spanner-macros/src/util.rs");
+
 use std::io::Write;
-use std::mem::MaybeUninit;
-
-const FREAKY_BUCKET_SIZE: usize = 32;
-
-struct Bucket<T> {
-    data: [MaybeUninit<T>; FREAKY_BUCKET_SIZE],
-    next: *mut Bucket<T>,
-}
-
-pub struct MemoryPool<T> {
-    current_bucket: *mut Bucket<T>,
-    current_size: usize,
-}
-
-impl<T> MemoryPool<T> {
-    pub fn new() -> Self {
-        Self {
-            current_size: 0,
-            current_bucket: std::ptr::null_mut(),
-        }
-    }
-    pub fn allocator<'a>(&'a mut self) -> Allocator<'a, T> {
-        Allocator { inner: self }
-    }
-}
-
-impl<T> Drop for MemoryPool<T> {
-    fn drop(&mut self) {
-        let mut current_bucket = self.current_bucket;
-        let mut current_size = self.current_size;
-        while current_bucket != std::ptr::null_mut() {
-            unsafe {
-                let bucket = &mut *current_bucket;
-                std::ptr::drop_in_place(std::slice::from_raw_parts_mut(
-                    &mut bucket.data as *mut _ as *mut T,
-                    current_size,
-                ) as *mut [T]);
-                let to_dealloc = current_bucket;
-                current_bucket = bucket.next;
-                current_size = FREAKY_BUCKET_SIZE;
-                std::alloc::dealloc(to_dealloc as *mut u8, Layout::new::<Bucket<T>>());
-            }
-        }
-    }
-}
-
-pub struct Allocator<'a, T> {
-    inner: &'a mut MemoryPool<T>,
-}
-impl<'a, T: Default> Allocator<'a, T> {
-    pub fn alloc_default(&mut self) -> &'a mut T {
-        if self.inner.current_bucket == std::ptr::null_mut()
-            || self.inner.current_size >= FREAKY_BUCKET_SIZE
-        {
-            unsafe {
-                let ptr = std::alloc::alloc(Layout::new::<Bucket<T>>()) as *mut Bucket<T>;
-                if ptr.is_null() {
-                    panic!();
-                }
-                ptr.byte_add(std::mem::offset_of!(Bucket<T>, next))
-                    .cast::<*mut Bucket<T>>()
-                    .write(self.inner.current_bucket);
-
-                self.inner.current_bucket = ptr;
-                self.inner.current_size = 0;
-            }
-        }
-        unsafe {
-            let entries = self.inner.current_bucket as *mut T;
-            let tail = entries.add(self.inner.current_size);
-            tail.write(<T as Default>::default());
-            self.inner.current_size += 1;
-            return unsafe { &mut *tail };
-        }
-    }
-}
 
 use proc_macro2::token_stream::IntoIter as Tokens;
 use proc_macro2::{self as proc_macro, Spacing, TokenStream};
@@ -441,4 +366,152 @@ pub fn print_pretty(tokens: TokenStream) {
     };
     buffer.rec(0, tokens.into_iter(), false);
     let _ = std::io::stdout().write_all(&buffer.output);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    #[test]
+    fn pool_single_alloc() {
+        let mut pool = MemoryPool::<u32>::new();
+        let mut alloc = pool.allocator();
+        let val = alloc.alloc_default();
+        assert_eq!(*val, 0);
+        *val = 42;
+        assert_eq!(*val, 42);
+    }
+
+    #[test]
+    fn pool_multiple_allocs_are_independent() {
+        let mut pool = MemoryPool::<u32>::new();
+        let mut alloc = pool.allocator();
+        let a = alloc.alloc_default();
+        *a = 1;
+        let b = alloc.alloc_default();
+        *b = 2;
+        let c = alloc.alloc_default();
+        *c = 3;
+        assert_eq!(*a, 1);
+        assert_eq!(*b, 2);
+        assert_eq!(*c, 3);
+    }
+
+    #[test]
+    fn pool_fill_one_bucket() {
+        let mut pool = MemoryPool::<u64>::new();
+        let mut alloc = pool.allocator();
+        let mut refs = Vec::new();
+        for i in 0..FREAKY_BUCKET_SIZE {
+            let r = alloc.alloc_default();
+            *r = i as u64;
+            refs.push(r as *mut u64);
+        }
+        // SAFETY: all pointers are still valid, pool is alive
+        for (i, ptr) in refs.iter().enumerate() {
+            assert_eq!(unsafe { **ptr }, i as u64);
+        }
+    }
+
+    #[test]
+    fn pool_cross_bucket_boundary() {
+        let mut pool = MemoryPool::<u64>::new();
+        let mut alloc = pool.allocator();
+        let mut refs = Vec::new();
+        for i in 0..FREAKY_BUCKET_SIZE + 1 {
+            let r = alloc.alloc_default();
+            *r = i as u64;
+            refs.push(r as *mut u64);
+        }
+        for (i, ptr) in refs.iter().enumerate() {
+            assert_eq!(unsafe { **ptr }, i as u64);
+        }
+    }
+
+    #[test]
+    fn pool_many_buckets() {
+        let mut pool = MemoryPool::<u32>::new();
+        let mut alloc = pool.allocator();
+        let mut refs = Vec::new();
+        let count = FREAKY_BUCKET_SIZE * 5 + 7;
+        for i in 0..count {
+            let r = alloc.alloc_default();
+            *r = i as u32;
+            refs.push(r as *mut u32);
+        }
+        for (i, ptr) in refs.iter().enumerate() {
+            assert_eq!(unsafe { **ptr }, i as u32);
+        }
+    }
+
+    static DROP_COUNT: AtomicUsize = AtomicUsize::new(0);
+
+    #[derive(Debug)]
+    struct Dropper(u32);
+    impl Default for Dropper {
+        fn default() -> Self {
+            Dropper(0)
+        }
+    }
+    impl Drop for Dropper {
+        fn drop(&mut self) {
+            DROP_COUNT.fetch_add(1, Ordering::Relaxed);
+        }
+    }
+
+    #[test]
+    fn pool_drops_all_items() {
+        DROP_COUNT.store(0, Ordering::Relaxed);
+        let count = FREAKY_BUCKET_SIZE * 3 + 11;
+        {
+            let mut pool = MemoryPool::<Dropper>::new();
+            let mut alloc = pool.allocator();
+            for i in 0..count {
+                let r = alloc.alloc_default();
+                r.0 = i as u32;
+            }
+        }
+        assert_eq!(DROP_COUNT.load(Ordering::Relaxed), count);
+    }
+
+    #[test]
+    fn pool_drops_partial_bucket() {
+        DROP_COUNT.store(0, Ordering::Relaxed);
+        {
+            let mut pool = MemoryPool::<Dropper>::new();
+            let mut alloc = pool.allocator();
+            for i in 0..5 {
+                alloc.alloc_default().0 = i;
+            }
+        }
+        assert_eq!(DROP_COUNT.load(Ordering::Relaxed), 5);
+    }
+
+    #[test]
+    fn pool_empty_drop() {
+        let _pool = MemoryPool::<String>::new();
+    }
+
+    #[test]
+    fn pool_with_string_type() {
+        let mut pool = MemoryPool::<String>::new();
+        let mut alloc = pool.allocator();
+        let s = alloc.alloc_default();
+        s.push_str("hello");
+        let t = alloc.alloc_default();
+        t.push_str("world");
+        assert_eq!(s.as_str(), "hello");
+        assert_eq!(t.as_str(), "world");
+    }
+
+    #[test]
+    fn pool_with_vec_type() {
+        let mut pool = MemoryPool::<Vec<u8>>::new();
+        let mut alloc = pool.allocator();
+        for i in 0..FREAKY_BUCKET_SIZE + 5 {
+            let v = alloc.alloc_default();
+            v.push(i as u8);
+        }
+    }
 }
