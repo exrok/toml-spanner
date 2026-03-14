@@ -1827,8 +1827,6 @@ impl<'de> Parser<'de> {
 /// ```
 pub struct Root<'de> {
     pub(crate) table: Table<'de>,
-    #[cfg(all(not(feature = "from-toml"), feature = "to-toml"))]
-    index: foldhash::HashMap<KeyRef<'de>, usize>,
     #[cfg(feature = "from-toml")]
     pub ctx: crate::de::Context<'de>,
 }
@@ -1889,14 +1887,14 @@ impl<'de> Root<'de> {
     ///
     /// Returns [`FromTomlError`](crate::FromTomlError) containing all
     /// accumulated errors.
-    pub fn to<T>(&mut self) -> Result<T, crate::error::FromTomlError>
+    pub fn to<T>(&mut self) -> Result<T, crate::de::FromTomlError>
     where
         T: crate::de::FromToml<'de>,
     {
         let result = T::from_toml(&mut self.ctx, self.table.as_item());
         match result {
             Ok(v) if self.ctx.errors.is_empty() => Ok(v),
-            _ => Err(crate::error::FromTomlError {
+            _ => Err(crate::de::FromTomlError {
                 errors: std::mem::take(&mut self.ctx.errors),
             }),
         }
@@ -1918,16 +1916,6 @@ impl<'de> std::ops::Index<&str> for Root<'de> {
 
     fn index(&self, key: &str) -> &Self::Output {
         &self.table[key]
-    }
-}
-
-#[cfg(feature = "serde")]
-impl serde::Serialize for Root<'_> {
-    fn serialize<S>(&self, ser: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        self.table.serialize(ser)
     }
 }
 
@@ -1981,8 +1969,6 @@ pub fn parse<'de>(document: &'de str, arena: &'de Arena) -> Result<Root<'de>, Er
     // todo don't do this
     Ok(Root {
         table: root_st,
-        #[cfg(all(not(feature = "from-toml"), feature = "to-toml"))]
-        index: parser.index,
         #[cfg(feature = "from-toml")]
         ctx: crate::de::Context {
             errors: Vec::new(),

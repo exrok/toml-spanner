@@ -9,6 +9,8 @@ use std::{collections::BTreeMap, hash::Hash};
 
 use foldhash::HashMap;
 
+use std::fmt::{self, Debug, Display};
+
 use crate::{
     Arena, Error, ErrorKind, Key, Span, Table,
     item::{self, Item},
@@ -915,5 +917,67 @@ impl<'de> Item<'de> {
             return Err(ctx.error_expected_but_found("a table", self));
         };
         Ok(TableHelper::new(ctx, table))
+    }
+}
+
+/// Collects all errors encountered during parsing and conversion.
+///
+/// Returned by [`from_str`](crate::from_str) and [`Root::to`](crate::Root::to).
+/// Contains one or more [`Error`] values, each with its own source span.
+///
+/// # Examples
+///
+/// ```
+/// let result = toml_spanner::from_str::<std::collections::HashMap<String, String>>(
+///     "bad toml {"
+/// );
+/// assert!(result.is_err());
+/// let err = result.unwrap_err();
+/// assert!(!err.errors.is_empty());
+/// ```
+pub struct FromTomlError {
+    /// The accumulated errors.
+    pub errors: Vec<Error>,
+}
+
+impl Display for FromTomlError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let Some(first) = self.errors.first() else {
+            return f.write_str("deserialization failed");
+        };
+        Display::fmt(first, f)?;
+        let remaining = self.errors.len() - 1;
+        if remaining > 0 {
+            write!(
+                f,
+                " (+{remaining} more error{})",
+                if remaining == 1 { "" } else { "s" }
+            )?;
+        }
+        Ok(())
+    }
+}
+
+impl Debug for FromTomlError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("FromTomlError")
+            .field("errors", &self.errors)
+            .finish()
+    }
+}
+
+impl std::error::Error for FromTomlError {}
+
+impl From<Error> for FromTomlError {
+    fn from(error: Error) -> Self {
+        Self {
+            errors: vec![error],
+        }
+    }
+}
+
+impl From<Vec<Error>> for FromTomlError {
+    fn from(errors: Vec<Error>) -> Self {
+        Self { errors }
     }
 }

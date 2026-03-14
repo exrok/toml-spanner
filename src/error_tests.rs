@@ -312,7 +312,7 @@ fn duplicate_field_display() {
 #[cfg(feature = "from-toml")]
 #[test]
 fn from_toml_error_display_and_debug() {
-    use crate::error::FromTomlError;
+    use crate::FromTomlError;
 
     // Single error
     let err = FromTomlError {
@@ -388,7 +388,7 @@ fn from_toml_error_display_and_debug() {
 #[cfg(feature = "to-toml")]
 #[test]
 fn to_toml_error_display_and_debug() {
-    use crate::error::ToTomlError;
+    use crate::ToTomlError;
 
     let err = ToTomlError {
         message: "something went wrong".into(),

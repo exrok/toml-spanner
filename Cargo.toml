@@ -54,3 +54,7 @@ zmij = { version = "1.0.21", optional = true }
 [dev-dependencies]
 oorandom = "11"
 toml-spanner-macros = { path = "toml-spanner-macros" }
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]

@@ -603,35 +603,6 @@ impl<'de> Table<'de> {
         self.meta.set_flag(flag);
     }
 
-    /// Disables source-position reordering for this table's immediate entries
-    /// during emission. Non-recursive: child tables are unaffected.
-    #[cfg(feature = "to-toml")]
-    pub fn set_ignore_source_order(&mut self) {
-        self.meta.set_ignore_source_order();
-    }
-
-    /// Returns `true` if source-position reordering is disabled for this table.
-    #[cfg(feature = "to-toml")]
-    #[must_use]
-    pub fn ignore_source_order(&self) -> bool {
-        self.meta.ignore_source_order()
-    }
-
-    /// Disables copying structural styles (TableStyle/ArrayStyle) from source
-    /// during reprojection for this table's immediate entries. Key spans and
-    /// reprojection indices are still copied. Non-recursive.
-    #[cfg(feature = "to-toml")]
-    pub fn set_ignore_source_style(&mut self) {
-        self.meta.set_ignore_source_style();
-    }
-
-    /// Returns `true` if source-style copying is disabled for this table.
-    #[cfg(feature = "to-toml")]
-    #[must_use]
-    pub fn ignore_source_style(&self) -> bool {
-        self.meta.ignore_source_style()
-    }
-
     /// Deep-clones this table into `arena`. Keys and strings are shared
     /// with the source.
     pub fn clone_in(&self, arena: &'de Arena) -> Table<'de> {

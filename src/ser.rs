@@ -1,11 +1,12 @@
 use std::{
     borrow::Cow,
     collections::{BTreeMap, BTreeSet, HashMap},
+    fmt::{self, Debug, Display},
     rc::Rc,
     sync::Arc,
 };
 
-use crate::{Arena, Array, Item, Key, Table, error::ToTomlError, item::Value};
+use crate::{Arena, Array, Item, Key, Table, item::Value};
 
 /// extracted out to avoid code bloat
 fn optional_to_required<'a>(
@@ -348,4 +349,54 @@ fn length_of_table_exceeded_maximum<T>() -> Result<T, ToTomlError> {
     Err(ToTomlError::from(
         "length of table exceeded maximum capacity",
     ))
+}
+
+/// An error produced during [`ToToml`] conversion or TOML emission.
+///
+/// Returned by [`to_string`](crate::to_string),
+/// [`to_string_with_config`](crate::to_string_with_config), and
+/// [`ToToml::to_toml`].
+pub struct ToTomlError {
+    /// The error message.
+    pub message: Cow<'static, str>,
+}
+
+impl ToTomlError {
+    /// Returns `Err(ToTomlError)` with the given static message.
+    #[cold]
+    pub fn msg<T>(msg: &'static str) -> Result<T, Self> {
+        Err(Self {
+            message: Cow::Borrowed(msg),
+        })
+    }
+}
+
+impl Display for ToTomlError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.message)
+    }
+}
+
+impl Debug for ToTomlError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ToTomlError")
+            .field("message", &self.message)
+            .finish()
+    }
+}
+
+impl std::error::Error for ToTomlError {}
+
+impl From<Cow<'static, str>> for ToTomlError {
+    fn from(message: Cow<'static, str>) -> Self {
+        Self { message }
+    }
+}
+
+impl From<&'static str> for ToTomlError {
+    fn from(message: &'static str) -> Self {
+        Self {
+            message: Cow::Borrowed(message),
+        }
+    }
 }

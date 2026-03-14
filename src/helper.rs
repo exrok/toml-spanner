@@ -83,7 +83,7 @@ pub mod parse_string {
 /// [`SocketAddr`]: std::net::SocketAddr
 #[cfg(feature = "to-toml")]
 pub mod display {
-    use crate::{Arena, Item, error::ToTomlError};
+    use crate::{Arena, Item, ToTomlError};
 
     /// Converts a value to a TOML string [`Item`] via [`Display`].
     ///

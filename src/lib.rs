@@ -129,6 +129,8 @@
 //! ```
 //!
 //! </details>
+//!
+#![cfg_attr(docsrs, feature(doc_cfg))]
 mod arena;
 #[cfg(feature = "from-toml")]
 mod de;
@@ -154,6 +156,8 @@ pub struct Failed;
 
 pub use arena::Arena;
 #[cfg(feature = "from-toml")]
+pub use de::FromTomlError;
+#[cfg(feature = "from-toml")]
 pub use de::{Context, FromFlattened, FromToml, TableHelper};
 #[cfg(all(feature = "to-toml", fuzzing))]
 pub use emit::reproject;
@@ -163,15 +167,13 @@ use emit::reproject;
 pub use emit::{EmitConfig, NormalizedTable, emit, emit_with_config};
 #[cfg(all(feature = "to-toml", not(fuzzing)))]
 use emit::{EmitConfig, emit, emit_with_config};
-#[cfg(feature = "from-toml")]
-pub use error::FromTomlError;
-#[cfg(feature = "to-toml")]
-pub use error::ToTomlError;
 pub use error::{Error, ErrorKind};
 pub use item::array::Array;
 pub use item::table::Table;
 pub use item::{ArrayStyle, Item, Key, Kind, MaybeItem, TableStyle, Value, ValueMut};
 pub use parser::{Root, parse};
+#[cfg(feature = "to-toml")]
+pub use ser::ToTomlError;
 #[cfg(feature = "to-toml")]
 pub use ser::{ToFlattened, ToToml};
 pub use span::{Span, Spanned};
@@ -268,11 +270,13 @@ pub fn to_string(value: &dyn ToToml) -> Result<String, ToTomlError> {
 /// let output = to_string_with_config(&map, config).unwrap();
 /// assert!(output.contains("key = \"updated\""));
 /// ```
+#[cfg(feature = "to-toml")]
 #[derive(Default)]
 pub struct TomlConfig<'a> {
     formatting_from: Option<&'a Root<'a>>,
 }
 
+#[cfg(feature = "to-toml")]
 impl<'a> TomlConfig<'a> {
     /// Sets a parsed [`Root`] as the formatting template.
     ///
