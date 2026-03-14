@@ -1,5 +1,5 @@
 use std::collections::BTreeMap;
-use toml_spanner::{Arena, FromToml, to_string_preserving_formatting};
+use toml_spanner::{Arena, FromToml, TomlConfig, to_string_with_config};
 use toml_spanner_macros::Toml;
 
 #[derive(Toml, Debug, PartialEq)]
@@ -958,7 +958,8 @@ fn preserving_formatting_identity_roundtrip() {
     let arena = Arena::new();
     let root = toml_spanner::parse(input, &arena).unwrap();
     let config: ServerConfig = toml_spanner::from_str(input).unwrap();
-    let output = to_string_preserving_formatting(&config, &root).unwrap();
+    let output =
+        to_string_with_config(&config, TomlConfig::default().with_formatting_from(&root)).unwrap();
     assert_eq!(output, input);
 }
 
@@ -974,7 +975,8 @@ debug = true
     let arena = Arena::new();
     let root = toml_spanner::parse(input, &arena).unwrap();
     let config: ServerConfig = toml_spanner::from_str(input).unwrap();
-    let output = to_string_preserving_formatting(&config, &root).unwrap();
+    let output =
+        to_string_with_config(&config, TomlConfig::default().with_formatting_from(&root)).unwrap();
     assert!(output.contains("# Server configuration"), "got: {output}");
     assert!(output.contains("# Enable debug mode"), "got: {output}");
 }
@@ -998,7 +1000,8 @@ fn preserving_formatting_keeps_inline_table_style() {
     let arena = Arena::new();
     let root = toml_spanner::parse(input, &arena).unwrap();
     let val: WithNested = toml_spanner::from_str(input).unwrap();
-    let output = to_string_preserving_formatting(&val, &root).unwrap();
+    let output =
+        to_string_with_config(&val, TomlConfig::default().with_formatting_from(&root)).unwrap();
     assert!(
         output.contains("point = {"),
         "inline table style should be preserved, got: {output}"
@@ -1030,7 +1033,8 @@ port = 443
     let arena = Arena::new();
     let root = toml_spanner::parse(input, &arena).unwrap();
     let val: WithSection = toml_spanner::from_str(input).unwrap();
-    let output = to_string_preserving_formatting(&val, &root).unwrap();
+    let output =
+        to_string_with_config(&val, TomlConfig::default().with_formatting_from(&root)).unwrap();
     assert!(
         output.contains("[server]"),
         "header style should be preserved, got: {output}"
@@ -1052,7 +1056,8 @@ debug = false
         port: 9090,
         debug: false,
     };
-    let output = to_string_preserving_formatting(&config, &root).unwrap();
+    let output =
+        to_string_with_config(&config, TomlConfig::default().with_formatting_from(&root)).unwrap();
     assert!(
         output.contains("port = 9090"),
         "modified value should appear, got: {output}"
@@ -1076,7 +1081,8 @@ fn preserving_formatting_hex_integers() {
     let arena = Arena::new();
     let root = toml_spanner::parse(input, &arena).unwrap();
     let val: HexConfig = toml_spanner::from_str(input).unwrap();
-    let output = to_string_preserving_formatting(&val, &root).unwrap();
+    let output =
+        to_string_with_config(&val, TomlConfig::default().with_formatting_from(&root)).unwrap();
     assert!(
         output.contains("0xFF00FF"),
         "hex format should be preserved, got: {output}"
@@ -1096,7 +1102,8 @@ fn preserving_formatting_literal_strings() {
     let arena = Arena::new();
     let root = toml_spanner::parse(input, &arena).unwrap();
     let val: PathConfig = toml_spanner::from_str(input).unwrap();
-    let output = to_string_preserving_formatting(&val, &root).unwrap();
+    let output =
+        to_string_with_config(&val, TomlConfig::default().with_formatting_from(&root)).unwrap();
     assert!(
         output.contains("'C:\\Users\\test'"),
         "literal string format should be preserved, got: {output}"
@@ -1239,14 +1246,14 @@ fn to_string_with_float_types() {
 }
 
 mod flatten_key_helper {
-    use toml_spanner::{Context, Failed, Item, Key, Table, ToContext};
+    use toml_spanner::{Failed, FromContext, Item, Key, Table, ToContext};
 
     pub fn init() -> Vec<String> {
         Vec::new()
     }
 
     pub fn insert<'de>(
-        _ctx: &mut Context<'de>,
+        _ctx: &mut FromContext<'de>,
         key: &Key<'de>,
         _item: &Item<'de>,
         partial: &mut Vec<String>,
@@ -1256,7 +1263,7 @@ mod flatten_key_helper {
     }
 
     pub fn finish<'de>(
-        _ctx: &mut Context<'de>,
+        _ctx: &mut FromContext<'de>,
         partial: Vec<String>,
     ) -> Result<Vec<String>, Failed> {
         Ok(partial)
@@ -1377,7 +1384,8 @@ y = 20
     let arena = Arena::new();
     let root = toml_spanner::parse(input, &arena).unwrap();
     let val: DiverseValues = toml_spanner::from_str(input).unwrap();
-    let output = to_string_preserving_formatting(&val, &root).unwrap();
+    let output =
+        to_string_with_config(&val, TomlConfig::default().with_formatting_from(&root)).unwrap();
     assert!(output.contains("ratio = 3.14"), "got: {output}");
     assert!(output.contains("enabled = true"), "got: {output}");
     assert!(output.contains("[nested]"), "got: {output}");
@@ -1398,7 +1406,8 @@ port = 8080
         port: 8080,
         debug: true, // new field not in source
     };
-    let output = to_string_preserving_formatting(&config, &root).unwrap();
+    let output =
+        to_string_with_config(&config, TomlConfig::default().with_formatting_from(&root)).unwrap();
     assert!(output.contains("host = \"localhost\""), "got: {output}");
     assert!(output.contains("port = 8080"), "got: {output}");
     assert!(output.contains("debug = true"), "got: {output}");
@@ -1435,7 +1444,8 @@ val = 2
     let arena = Arena::new();
     let root = toml_spanner::parse(input, &arena).unwrap();
     let val: WithAot = toml_spanner::from_str(input).unwrap();
-    let output = to_string_preserving_formatting(&val, &root).unwrap();
+    let output =
+        to_string_with_config(&val, TomlConfig::default().with_formatting_from(&root)).unwrap();
     assert!(output.contains("[[items]]"), "got: {output}");
     assert!(output.contains("key = \"first\""), "got: {output}");
     assert!(output.contains("key = \"second\""), "got: {output}");
@@ -1460,7 +1470,8 @@ ints = [10, 20, 30]
     let arena = Arena::new();
     let root = toml_spanner::parse(input, &arena).unwrap();
     let val: WithDiverseArrays = toml_spanner::from_str(input).unwrap();
-    let output = to_string_preserving_formatting(&val, &root).unwrap();
+    let output =
+        to_string_with_config(&val, TomlConfig::default().with_formatting_from(&root)).unwrap();
     assert!(output.contains("floats = [1.5, 2.5, 3.5]"), "got: {output}");
     assert!(
         output.contains("bools = [true, false, true]"),
@@ -1483,7 +1494,9 @@ ints = [10, 20, 30]
         bools: vec![true],                // removed element
         ints: vec![10, 20, 30],
     };
-    let output = to_string_preserving_formatting(&modified, &root).unwrap();
+    let output =
+        to_string_with_config(&modified, TomlConfig::default().with_formatting_from(&root))
+            .unwrap();
     assert!(output.contains("floats"), "got: {output}");
     assert!(output.contains("bools"), "got: {output}");
 
@@ -1505,7 +1518,11 @@ fn preserving_formatting_reordered_array() {
         bools: vec![true, false, false],
         ints: vec![10, 20, 30],
     };
-    let output = to_string_preserving_formatting(&reordered, &root).unwrap();
+    let output = to_string_with_config(
+        &reordered,
+        TomlConfig::default().with_formatting_from(&root),
+    )
+    .unwrap();
     let restored: WithDiverseArrays = toml_spanner::from_str(&output).unwrap();
     assert_eq!(reordered.floats, restored.floats);
     assert_eq!(reordered.ints, restored.ints);
@@ -1693,7 +1710,7 @@ fn ser_hashmap_as_table() {
     assert!(toml_str.contains("key1 = \"val1\""), "got: {toml_str}");
 }
 
-// Exercises to_string_preserving_formatting with nested tables and dotted keys
+// Exercises to_string_with_config with nested tables and dotted keys
 #[test]
 fn preserving_formatting_dotted_keys() {
     #[derive(Toml, Debug, PartialEq)]
@@ -1719,7 +1736,8 @@ port = 8080
     let arena = Arena::new();
     let root = toml_spanner::parse(input, &arena).unwrap();
     let val: AppConfig = toml_spanner::from_str(input).unwrap();
-    let output = to_string_preserving_formatting(&val, &root).unwrap();
+    let output =
+        to_string_with_config(&val, TomlConfig::default().with_formatting_from(&root)).unwrap();
     assert!(output.contains("[server]"), "got: {output}");
     assert!(output.contains("host = \"localhost\""), "got: {output}");
 
@@ -1731,12 +1749,14 @@ port = 8080
             port: 9090,
         },
     };
-    let output2 = to_string_preserving_formatting(&modified, &root).unwrap();
+    let output2 =
+        to_string_with_config(&modified, TomlConfig::default().with_formatting_from(&root))
+            .unwrap();
     let restored: AppConfig = toml_spanner::from_str(&output2).unwrap();
     assert_eq!(modified, restored);
 }
 
-// Exercises preserving_formatting with removed nested table
+// Exercises to_string_with_config with removed nested table
 #[test]
 fn preserving_formatting_optional_nested_removed() {
     #[derive(Toml, Debug, PartialEq)]
@@ -1761,13 +1781,15 @@ y = 2
         name: "test".to_string(),
         extra: None,
     };
-    let output = to_string_preserving_formatting(&modified, &root).unwrap();
+    let output =
+        to_string_with_config(&modified, TomlConfig::default().with_formatting_from(&root))
+            .unwrap();
     assert!(output.contains("name = \"test\""), "got: {output}");
     let restored: WithOptNested = toml_spanner::from_str(&output).unwrap();
     assert_eq!(modified, restored);
 }
 
-// Exercises preserving_formatting with inline tables
+// Exercises to_string_with_config with inline tables
 #[test]
 fn preserving_formatting_inline_table() {
     let input = "point = { x = 1, y = 2 }\nlabel = \"origin\"\n";
@@ -1787,7 +1809,8 @@ fn preserving_formatting_inline_table() {
         label: String,
     }
     let val: WithInline = toml_spanner::from_str(input).unwrap();
-    let output = to_string_preserving_formatting(&val, &root).unwrap();
+    let output =
+        to_string_with_config(&val, TomlConfig::default().with_formatting_from(&root)).unwrap();
     assert!(output.contains("point = { x = 1, y = 2 }"), "got: {output}");
 
     // Modified inline table
@@ -1795,7 +1818,9 @@ fn preserving_formatting_inline_table() {
         point: Point { x: 10, y: 20 },
         label: "origin".to_string(),
     };
-    let output2 = to_string_preserving_formatting(&modified, &root).unwrap();
+    let output2 =
+        to_string_with_config(&modified, TomlConfig::default().with_formatting_from(&root))
+            .unwrap();
     let restored: WithInline = toml_spanner::from_str(&output2).unwrap();
     assert_eq!(modified, restored);
 }
@@ -1845,7 +1870,7 @@ fn to_string_non_table_error() {
     assert!(err.is_err());
 }
 
-// Exercises preserving_formatting with comments in source
+// Exercises to_string_with_config with comments in source
 #[test]
 fn preserving_formatting_with_comments() {
     let input = "\
@@ -1864,7 +1889,8 @@ port = 8080
         port: i64,
     }
     let val: SimpleConf = toml_spanner::from_str(input).unwrap();
-    let output = to_string_preserving_formatting(&val, &root).unwrap();
+    let output =
+        to_string_with_config(&val, TomlConfig::default().with_formatting_from(&root)).unwrap();
     // Comments should be preserved in source-ordered mode
     assert!(output.contains("# This is a config file"), "got: {output}");
     assert!(output.contains("name = \"myapp\""), "got: {output}");

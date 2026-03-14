@@ -15,16 +15,8 @@ use std::ptr::NonNull;
 use crate::arena::Arena;
 
 #[cfg(feature = "to-toml")]
-#[repr(transparent)]
-pub struct TableIndex<'de>(foldhash::HashMap<KeyRef<'de>, usize>);
+use crate::parser::TableIndex;
 
-#[cfg(feature = "to-toml")]
-impl<'de> TableIndex<'de> {
-    pub(crate) fn from_ref<'a>(map: &'a foldhash::HashMap<KeyRef<'de>, usize>) -> &'a Self {
-        // SAFETY: TableIndex is #[repr(transparent)] around the HashMap.
-        unsafe { &*(map as *const foldhash::HashMap<KeyRef<'de>, usize>).cast::<Self>() }
-    }
-}
 type TableEntry<'de> = (Key<'de>, Item<'de>);
 
 const MIN_CAP: u32 = 2;
@@ -102,7 +94,7 @@ impl<'de> InnerTable<'de> {
         if self.len() > crate::parser::INDEXED_TABLE_THRESHOLD {
             // SAFETY: len > INDEXED_TABLE_THRESHOLD (> 6), so the table is non-empty.
             let first_key_span = unsafe { self.first_key_span_start_unchecked() };
-            let i = *index.0.get(&KeyRef::new(key, first_key_span))?;
+            let i = *index.get(&KeyRef::new(key, first_key_span))?;
             self.entries().get(i)
         } else {
             for entry in self.entries() {
@@ -123,7 +115,7 @@ impl<'de> InnerTable<'de> {
             if let Some(index) = index {
                 // SAFETY: len > INDEXED_TABLE_THRESHOLD (> 6), so the table is non-empty.
                 let first_key_span = unsafe { self.first_key_span_start_unchecked() };
-                let i = *index.0.get(&KeyRef::new(key, first_key_span))?;
+                let i = *index.get(&KeyRef::new(key, first_key_span))?;
                 return self.entries().get(i);
             }
         }
@@ -379,7 +371,7 @@ impl ExactSizeIterator for IntoIter<'_> {}
 /// [`TableHelper`](crate::de::TableHelper) via
 /// [`Root::helper`](crate::Root::helper) or
 /// [`Item::table_helper`](crate::Item::table_helper). The
-/// [`Context`](crate::de::Context) returned by [`parse`](crate::parse)
+/// [`FromContext`](crate::de::FromContext) returned by [`parse`](crate::parse)
 /// carries the parser's hash index.
 ///
 /// # Constructing tables

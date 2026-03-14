@@ -6,7 +6,7 @@ mod tests;
 pub(crate) mod array;
 pub(crate) mod table;
 use crate::arena::Arena;
-use crate::item::table::TableIndex;
+use crate::parser::TableIndex;
 use crate::{DateTime, Error, ErrorKind, Span, Table};
 use std::fmt;
 use std::mem::ManuallyDrop;
@@ -322,7 +322,7 @@ union Payload<'de> {
 /// typical in TOML, this is well fast enough.
 ///
 /// For structured deserialization of larger tables, use
-/// [`TableHelper`](crate::de::TableHelper) with the [`Context`](crate::de::Context)
+/// [`TableHelper`](crate::de::TableHelper) with the [`FromContext`](crate::de::FromContext)
 /// returned by [`parse`](crate::parse).
 ///
 /// # Examples

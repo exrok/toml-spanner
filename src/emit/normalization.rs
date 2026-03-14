@@ -1,14 +1,7 @@
 use crate::emit::partition::ensure_body_order;
 use crate::{Array, ArrayStyle, Item, Kind, Table, TableStyle, ValueMut};
 impl<'de> Table<'de> {
-    /// Recursively corrects table and array kinds so the tree is valid
-    /// for [`emit`](crate::emit).
-    ///
-    /// Promotes implicit tables to headers when they contain values that
-    /// would otherwise be unreachable, downgrades invalid
-    /// array-of-tables to inline arrays, and fixes kind mismatches in
-    /// nested contexts (e.g. a header table inside an inline table).
-    pub fn normalize(&mut self) -> &'de NormalizedTable<'de> {
+    fn normalize_inner(&mut self) -> &'de NormalizedTable<'de> {
         for (_, item) in self.value.entries_mut().iter_mut() {
             normalize_item(item, true);
         }
@@ -21,12 +14,55 @@ impl<'de> Table<'de> {
         unsafe { &*(self as *const Table<'de> as *const NormalizedTable<'de>) }
     }
 
+    /// Recursively corrects table and array kinds so the tree is valid
+    /// for emission.
+    ///
+    /// Promotes implicit tables to headers when they contain values that
+    /// would otherwise be unreachable, downgrades invalid
+    /// array-of-tables to inline arrays, and fixes kind mismatches in
+    /// nested contexts (e.g. a header table inside an inline table).
+    #[cfg(not(fuzzing))]
+    pub(crate) fn normalize(&mut self) -> &'de NormalizedTable<'de> {
+        self.normalize_inner()
+    }
+
+    /// Recursively corrects table and array kinds so the tree is valid
+    /// for emission.
+    ///
+    /// Promotes implicit tables to headers when they contain values that
+    /// would otherwise be unreachable, downgrades invalid
+    /// array-of-tables to inline arrays, and fixes kind mismatches in
+    /// nested contexts (e.g. a header table inside an inline table).
+    #[cfg(fuzzing)]
+    pub fn normalize(&mut self) -> &'de NormalizedTable<'de> {
+        self.normalize_inner()
+    }
+
     /// Checks whether this table tree is already valid for emission
     /// without modifying it.
     ///
     /// Returns `Some` if every item is reachable by the emit algorithm,
     /// `None` otherwise. Use [`normalize`](Self::normalize) to fix an
     /// invalid tree instead.
+    #[cfg(not(fuzzing))]
+    #[allow(dead_code)]
+    pub(crate) fn try_as_normalized(&self) -> Option<&NormalizedTable<'de>> {
+        if is_valid(self, true) {
+            // SAFETY: NormalizedTable is #[repr(transparent)] over Table.
+            // The validation confirmed the tree is emit-safe.
+            Some(unsafe { &*(self as *const Table<'de> as *const NormalizedTable<'de>) })
+        } else {
+            None
+        }
+    }
+
+    /// Checks whether this table tree is already valid for emission
+    /// without modifying it.
+    ///
+    /// Returns `Some` if every item is reachable by the emit algorithm,
+    /// `None` otherwise. Use [`normalize`](Self::normalize) to fix an
+    /// invalid tree instead.
+    #[cfg(fuzzing)]
     pub fn try_as_normalized(&self) -> Option<&NormalizedTable<'de>> {
         if is_valid(self, true) {
             // SAFETY: NormalizedTable is #[repr(transparent)] over Table.
@@ -96,6 +132,7 @@ fn normalize_inline(item: &mut Item<'_>, allow_dotted: bool) {
 
 /// Returns `true` if every item in the table tree is reachable by the
 /// emit algorithm. Mirror of the old `validate_table` but returns bool.
+#[allow(dead_code)]
 fn is_valid(table: &Table<'_>, body_emitted: bool) -> bool {
     for (_, item) in table {
         if item.has_dotted_bit() {

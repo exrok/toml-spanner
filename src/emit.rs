@@ -1,4 +1,4 @@
-pub mod normalization;
+mod normalization;
 mod partition;
 #[cfg(fuzzing)]
 pub(crate) mod reprojection;

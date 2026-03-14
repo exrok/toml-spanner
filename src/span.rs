@@ -278,7 +278,7 @@ where
 {
     #[inline]
     fn from_toml(
-        ctx: &mut crate::de::Context<'de>,
+        ctx: &mut crate::de::FromContext<'de>,
         value: &crate::item::Item<'de>,
     ) -> Result<Self, crate::de::Failed> {
         let span = value.span_unchecked();

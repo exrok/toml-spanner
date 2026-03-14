@@ -8,8 +8,6 @@ mod tests;
 
 #[cfg(feature = "from-toml")]
 use crate::de::TableHelper;
-#[cfg(feature = "to-toml")]
-use crate::item::table::TableIndex;
 use crate::{
     Failed, MaybeItem, Span,
     arena::Arena,
@@ -117,6 +115,9 @@ impl<'de> PartialEq for KeyRef<'de> {
 }
 
 impl<'de> Eq for KeyRef<'de> {}
+
+#[cfg(feature = "to-toml")]
+pub(crate) type TableIndex<'de> = foldhash::HashMap<KeyRef<'de>, usize>;
 
 struct Parser<'de> {
     /// Raw bytes of the input. Always valid UTF-8 (derived from `&str`).
@@ -1819,7 +1820,7 @@ pub struct Root<'de> {
     #[cfg(all(not(feature = "from-toml"), feature = "to-toml"))]
     index: foldhash::HashMap<KeyRef<'de>, usize>,
     #[cfg(feature = "from-toml")]
-    pub ctx: crate::de::Context<'de>,
+    pub ctx: crate::de::FromContext<'de>,
 }
 
 impl<'de> Root<'de> {
@@ -1841,7 +1842,7 @@ impl<'de> Root<'de> {
 
     /// Access the root table immutably.
     #[cfg(feature = "from-toml")]
-    pub fn split(&mut self) -> (&mut crate::de::Context<'de>, &Table<'de>) {
+    pub fn split(&mut self) -> (&mut crate::de::FromContext<'de>, &Table<'de>) {
         (&mut self.ctx, &self.table)
     }
 
@@ -1851,7 +1852,7 @@ impl<'de> Root<'de> {
     #[cfg(feature = "to-toml")]
     pub(crate) fn table_index(&self) -> &TableIndex<'de> {
         // `to-toml` implies `from-toml`, so ctx is always available here.
-        TableIndex::from_ref(&self.ctx.index)
+        &self.ctx.index
     }
 }
 
@@ -1958,7 +1959,7 @@ pub fn parse<'de>(document: &'de str, arena: &'de Arena) -> Result<Root<'de>, Er
         #[cfg(all(not(feature = "from-toml"), feature = "to-toml"))]
         index: parser.index,
         #[cfg(feature = "from-toml")]
-        ctx: crate::de::Context {
+        ctx: crate::de::FromContext {
             errors: Vec::new(),
             index: parser.index,
             arena,

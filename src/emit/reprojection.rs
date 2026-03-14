@@ -2,7 +2,7 @@
 #[path = "reprojection_tests.rs"]
 mod tests;
 
-use crate::item::table::TableIndex;
+use crate::parser::TableIndex;
 use crate::item::{ArrayStyle, Item, TableStyle, Value, ValueMut};
 use crate::parser::Root;
 use crate::span::Span;

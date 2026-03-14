@@ -1,5 +1,5 @@
 #![allow(dead_code)]
-use toml_spanner::{Arena, Context, Failed, FromToml, Item, Value};
+use toml_spanner::{Arena, FromContext, Failed, FromToml, Item, Value};
 
 const TOML_DOCUMENT: &str = r#"
 enabled = false
@@ -21,7 +21,7 @@ struct Config {
 }
 
 impl<'de> FromToml<'de> for Config {
-    fn from_toml(ctx: &mut Context<'de>, item: &Item<'de>) -> Result<Self, Failed> {
+    fn from_toml(ctx: &mut FromContext<'de>, item: &Item<'de>) -> Result<Self, Failed> {
         let mut th = item.table_helper(ctx)?;
         let config = Config {
             enabled: th.optional("enabled").unwrap_or(false),

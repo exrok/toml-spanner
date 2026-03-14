@@ -374,9 +374,9 @@ fn expect_custom_string_and_context_errors() {
         assert!(val_item.table_helper(helper.ctx).is_err());
     }
 
-    // Context::error_message_at and push_error
+    // FromContext::error_message_at and push_error
     let span = crate::Span::new(0, 5);
-    let mut ctx = super::Context {
+    let mut ctx = super::FromContext {
         arena: &arena,
         index: Default::default(),
         errors: Vec::new(),
@@ -908,11 +908,15 @@ fn from_str_and_to_string_roundtrip() {
     assert_eq!(restored["name"], "test");
     assert_eq!(restored["value"], "42");
 
-    // to_string_preserving_formatting
+    // to_string_with_config preserving formatting
     let source = "name = \"test\"\nvalue = \"42\"\n";
     let arena = crate::Arena::new();
     let root = crate::parse(source, &arena).unwrap();
-    let output = crate::to_string_preserving_formatting(&map, &root).unwrap();
+    let output = crate::to_string_with_config(
+        &map,
+        crate::TomlConfig::default().with_formatting_from(&root),
+    )
+    .unwrap();
     assert!(output.contains("name = \"test\""), "got: {output}");
 
     // to_string with non-table value should error
@@ -923,8 +927,12 @@ fn from_str_and_to_string_roundtrip() {
         err.message
     );
 
-    // to_string_preserving_formatting with non-table value should error
-    let err = crate::to_string_preserving_formatting(&42i64, &root).unwrap_err();
+    // to_string_with_config with non-table value should error
+    let err = crate::to_string_with_config(
+        &42i64,
+        crate::TomlConfig::default().with_formatting_from(&root),
+    )
+    .unwrap_err();
     assert!(
         err.message.contains("Top-level item must be a table"),
         "got: {}",

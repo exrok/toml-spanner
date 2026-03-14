@@ -71,7 +71,7 @@
 //! <summary>Toggle More Extensive Example</summary>
 //!
 //! ```
-//! use toml_spanner::{Arena, FromToml, Item, Context, Failed, TableHelper};
+//! use toml_spanner::{Arena, FromToml, Item, FromContext, Failed, TableHelper};
 //!
 //! #[derive(Debug)]
 //! struct Things {
@@ -81,7 +81,7 @@
 //! }
 //!
 //! impl<'de> FromToml<'de> for Things {
-//!     fn from_toml(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
+//!     fn from_toml(ctx: &mut FromContext<'de>, value: &Item<'de>) -> Result<Self, Failed> {
 //!         let Some(table) = value.as_table() else {
 //!             return Err(ctx.error_expected_but_found("a table", value));
 //!         };
@@ -145,13 +145,15 @@ mod time;
 
 pub use arena::Arena;
 #[cfg(feature = "from-toml")]
-pub use de::{Context, Failed, FromFlattened, FromToml, TableHelper};
+pub use de::{Failed, FromContext, FromFlattened, FromToml, TableHelper};
 #[cfg(all(feature = "to-toml", fuzzing))]
 pub use emit::reproject;
 #[cfg(all(feature = "to-toml", not(fuzzing)))]
 use emit::reproject;
-#[cfg(feature = "to-toml")]
+#[cfg(all(feature = "to-toml", fuzzing))]
 pub use emit::{EmitConfig, NormalizedTable, emit, emit_with_config};
+#[cfg(all(feature = "to-toml", not(fuzzing)))]
+use emit::{EmitConfig, emit, emit_with_config};
 #[cfg(feature = "from-toml")]
 pub use error::FromTomlError;
 #[cfg(feature = "to-toml")]
@@ -191,10 +193,10 @@ pub mod impl_serde;
 /// # }
 /// ```
 ///
-/// Note that [`to_string_preserving_formatting`] requires a [`Root`]
-/// to reproject formatting from, but it does not have to be the
-/// same `Root` that produced the deserialized value, any parsed
-/// TOML tree can serve as a formatting template.
+/// Note that [`to_string_with_config`] with [`TomlConfig::with_formatting_from`]
+/// requires a [`Root`] to reproject formatting from, but it does not
+/// have to be the same `Root` that produced the deserialized value,
+/// any parsed TOML tree can serve as a formatting template.
 ///
 /// # Errors
 ///
@@ -209,40 +211,27 @@ pub fn from_str<T: for<'a> FromToml<'a>>(document: &str) -> Result<T, FromTomlEr
 
 #[cfg(feature = "to-toml")]
 pub fn to_string(value: &dyn ToToml) -> Result<String, ToTomlError> {
-    let arena = Arena::new();
-    let mut context = ToContext {
-        arena: &arena,
-        error: None,
-    };
-    let mut item = match value.to_toml(&mut context) {
-        Ok(item) => item,
-        Err(_) => {
-            return Err(ToTomlError {
-                message: context
-                    .error
-                    .unwrap_or_else(|| "Failed to convert into item".into()),
-            });
-        }
-    };
-    let Some(table) = item.as_table_mut() else {
-        return Err(ToTomlError {
-            message: "Top-level item must be a table".into(),
-        });
-    };
-    let mut buffer = Vec::new();
-    emit(table.normalize(), &mut buffer);
-    match String::from_utf8(buffer) {
-        Ok(s) => Ok(s),
-        Err(_) => Err(ToTomlError {
-            message: "Failed to convert emitted bytes into a UTF-8 string".into(),
-        }),
+    to_string_with_config(value, TomlConfig::default())
+}
+
+// Exists for semver safe extension to configuration, in the future
+// could indention settings, comment injection, etc.
+#[derive(Default)]
+pub struct TomlConfig<'a> {
+    formatting_from: Option<&'a Root<'a>>,
+}
+
+impl<'a> TomlConfig<'a> {
+    pub fn with_formatting_from(mut self, root: &'a Root<'a>) -> Self {
+        self.formatting_from = Some(root);
+        self
     }
 }
 
 #[cfg(feature = "to-toml")]
-pub fn to_string_preserving_formatting(
+pub fn to_string_with_config(
     value: &dyn ToToml,
-    formatting_reference: &Root<'_>,
+    config: TomlConfig<'_>,
 ) -> Result<String, ToTomlError> {
     let arena = Arena::new();
     let mut context = ToContext {
@@ -265,17 +254,21 @@ pub fn to_string_preserving_formatting(
         });
     };
     let mut items = Vec::new();
-    reproject(formatting_reference, table, &mut items);
     let mut buffer = Vec::new();
-    emit_with_config(
-        table.normalize(),
-        &EmitConfig {
-            projected_source_items: &items,
-            projected_source_text: formatting_reference.ctx.source(),
-            reprojected_order: true,
-        },
-        &mut buffer,
-    );
+    if let Some(formatting_from) = config.formatting_from {
+        reproject(formatting_from, table, &mut items);
+        emit_with_config(
+            table.normalize(),
+            &EmitConfig {
+                projected_source_items: &items,
+                projected_source_text: formatting_from.ctx.source(),
+                reprojected_order: true,
+            },
+            &mut buffer,
+        );
+    } else {
+        emit(table.normalize(), &mut buffer);
+    }
     match String::from_utf8(buffer) {
         Ok(s) => Ok(s),
         Err(_) => Err(ToTomlError {
