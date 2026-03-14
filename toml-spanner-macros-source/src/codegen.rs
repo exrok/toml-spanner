@@ -480,7 +480,7 @@ fn emit_table_field_deser(
             splat!(out; let Some([#: field.name]) = [#: field.name].take() else);
             let else_at = out.buf.len();
             splat!(out;
-                return Err(__ctx.report_missing_field([@name_lit.into()], __item.span_unchecked()));
+                return Err(__ctx.report_missing_field([@name_lit.into()], __item.span()));
             );
             out.tt_group(Delimiter::Brace, else_at);
             splat!(out; ;);
@@ -747,9 +747,16 @@ enum TagMode<'a> {
 }
 
 /// Emit a table.insert call for a tag key
-fn emit_tag_insert(out: &mut RustWriter, ctx: &Ctx, tag_lit: &Literal, name_lit: Literal) {
+fn emit_tag_insert(
+    out: &mut RustWriter,
+    ctx: &Ctx,
+    table_var: &str,
+    tag_lit: &Literal,
+    name_lit: Literal,
+) {
+    let table_id = Ident::new(table_var, Span::mixed_site());
     splat!(out;
-        table.insert(
+        [#: &table_id].insert(
             [#ctx.crate_path]::Key::anon([@tag_lit.clone().into()]),
             [#ctx.crate_path]::Item::string([@name_lit.into()]),
             __arena,
@@ -815,7 +822,7 @@ fn enum_to_toml(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVariant], mode:
                     splat!(out;
                         Self::[#: variant.name] => {
                             [emit_table_alloc(out, ctx, "table", 1)]
-                            [emit_tag_insert(out, ctx, tag, name_lit)]
+                            [emit_tag_insert(out, ctx, "table", tag, name_lit)]
                             Ok(table.into_item())
                         }
                     );
@@ -841,7 +848,7 @@ fn enum_to_toml(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVariant], mode:
                         Self::[#: variant.name](inner) => {
                             [emit_table_alloc(out, ctx, "table", cap)]
                             [if let Some(tag) = tag_lit {
-                                emit_tag_insert(out, ctx, tag, name_lit.clone());
+                                emit_tag_insert(out, ctx, "table", tag, name_lit.clone());
                             }]
                             table.insert(
                                 [#ctx.crate_path]::Key::anon([match mode {
@@ -884,7 +891,7 @@ fn enum_to_toml(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVariant], mode:
                     }
                     TagMode::Internal(tag) => {
                         emit_table_alloc(out, ctx, "table", n + 1);
-                        emit_tag_insert(out, ctx, tag, name_lit);
+                        emit_tag_insert(out, ctx, "table", tag, name_lit);
                         emit_table_field_ser(
                             out,
                             ctx,
@@ -906,7 +913,7 @@ fn enum_to_toml(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVariant], mode:
                             false,
                         );
                         emit_table_alloc(out, ctx, "outer", 2);
-                        emit_tag_insert(out, ctx, tag, name_lit);
+                        emit_tag_insert(out, ctx, "outer", tag, name_lit);
                         splat!(out;
                             outer.insert(
                                 [#ctx.crate_path]::Key::anon([@TokenTree::Literal((*content).clone())]),
@@ -1075,7 +1082,7 @@ fn enum_from_toml_internal(
     splat!(out; let Some(__tag) = __tag else);
     let else_at = out.buf.len();
     splat!(out;
-        return Err(__ctx.report_missing_field([@tag_lit.clone().into()], __item.span_unchecked()));
+        return Err(__ctx.report_missing_field([@tag_lit.clone().into()], __item.span()));
     );
     out.tt_group(Delimiter::Brace, else_at);
     splat!(out; ;);
@@ -1178,7 +1185,7 @@ fn enum_from_toml_adjacent(
     splat!(out; let Some(__tag) = __tag else);
     let else_at = out.buf.len();
     splat!(out;
-        return Err(__ctx.report_missing_field([@tag_lit.clone().into()], __item.span_unchecked()));
+        return Err(__ctx.report_missing_field([@tag_lit.clone().into()], __item.span()));
     );
     out.tt_group(Delimiter::Brace, else_at);
     splat!(out; ;);
@@ -1200,7 +1207,7 @@ fn enum_from_toml_adjacent(
                 splat!(out; let Some(__content) = __content else);
                 let ce_at = out.buf.len();
                 splat!(out;
-                    return Err(__ctx.report_missing_field([@content_lit.clone().into()], __item.span_unchecked()));
+                    return Err(__ctx.report_missing_field([@content_lit.clone().into()], __item.span()));
                 );
                 out.tt_group(Delimiter::Brace, ce_at);
                 splat!(out; ;);

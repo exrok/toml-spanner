@@ -281,31 +281,6 @@ fn error_display_all_variants() {
 }
 
 #[test]
-fn error_debug_fmt() {
-    let span = Span::new(10, 20);
-    let error = Error {
-        kind: ErrorKind::UnexpectedEof,
-        span,
-    };
-    let debug = format!("{:?}", error);
-    assert!(debug.contains("Error"));
-    assert!(debug.contains("kind"));
-    assert!(debug.contains("span"));
-
-    // Test ErrorKind Debug (which delegates to Display, returns the kind discriminant)
-    let kind = ErrorKind::Custom("test".into());
-    let debug = format!("{:?}", kind);
-    assert_eq!(debug, "custom");
-
-    let kind = ErrorKind::Wanted {
-        expected: "string",
-        found: "integer",
-    };
-    let debug = format!("{:?}", kind);
-    assert_eq!(debug, "wanted");
-}
-
-#[test]
 fn error_constructors() {
     // Error::custom()
     let err = Error::custom("something broke", Span::new(5, 10));

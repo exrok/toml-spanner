@@ -424,7 +424,7 @@ impl<'de> Table<'de> {
 
     /// Returns the byte-offset span of this table in the source document.
     /// Only valid on parser-produced tables (span mode).
-    pub fn span_unchecked(&self) -> Span {
+    pub(crate) fn span_unchecked(&self) -> Span {
         self.meta.span_unchecked()
     }
 

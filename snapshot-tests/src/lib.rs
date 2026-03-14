@@ -179,7 +179,7 @@ pub fn collect_spans(key: &str, val: &toml_spanner::Item<'_>, diags: &mut Vec<Di
         Diagnostic::note()
             .with_code(code)
             .with_message(key)
-            .with_labels(vec![Label::primary((), val.span_unchecked())]),
+            .with_labels(vec![Label::primary((), val.span())]),
     );
 }
 

@@ -361,7 +361,8 @@ impl<'de> Array<'de> {
 
     /// Returns the byte-offset span of this array in the source document.
     /// Only valid on parser-produced arrays (span mode).
-    pub fn span_unchecked(&self) -> Span {
+    #[cfg_attr(not(test), allow(dead_code))]
+    pub(crate) fn span_unchecked(&self) -> Span {
         self.meta.span_unchecked()
     }
 

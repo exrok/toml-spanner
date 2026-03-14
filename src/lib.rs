@@ -36,7 +36,7 @@
 //!      Value::DateTime(date_time) => {},
 //! }
 //! // Get byte offset of where item was defined in the source.
-//! let Span{start, end} = item.span_unchecked();
+//! let Span{start, end} = item.span();
 //! ```
 //!
 //! ## Deserialization
@@ -129,13 +129,14 @@
 //! ```
 //!
 //! </details>
-
 mod arena;
 #[cfg(feature = "from-toml")]
 mod de;
 #[cfg(feature = "to-toml")]
 mod emit;
 mod error;
+#[cfg(feature = "from-toml")]
+pub mod helper;
 mod item;
 mod parser;
 #[cfg(feature = "to-toml")]

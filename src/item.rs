@@ -635,7 +635,7 @@ impl<'de> Item<'de> {
     /// Returns the byte-offset span of this value in the source document.
     /// Only valid on parser-produced items (span mode).
     #[inline]
-    pub fn span_unchecked(&self) -> Span {
+    pub(crate) fn span_unchecked(&self) -> Span {
         self.meta.span_unchecked()
     }
 
@@ -912,6 +912,19 @@ impl<'de> Item<'de> {
         if self.tag() == TAG_ARRAY {
             // SAFETY: tag check guarantees this item is an array variant.
             Some(unsafe { self.as_array_mut_unchecked() })
+        } else {
+            None
+        }
+    }
+
+    /// Consumes this item, returning the table if it is one.
+    #[inline]
+    pub fn into_table(self) -> Option<Table<'de>> {
+        if self.is_table() {
+            // SAFETY: is_table() guarantees the active union field is `table`.
+            // Item and Table have identical size, alignment, and repr(C) layout
+            // (verified by const assertions on Table). Item has no Drop impl.
+            Some(unsafe { std::mem::transmute(self) })
         } else {
             None
         }

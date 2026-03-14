@@ -531,6 +531,18 @@ pub trait FromToml<'de>: Sized {
     fn from_toml(ctx: &mut Context<'de>, item: &Item<'de>) -> Result<Self, Failed>;
 }
 
+/// Trait for types that can be deserialized from flattened TOML table entries.
+///
+/// Used with `#[toml(flatten)]` on struct fields. Built-in implementations
+/// exist for `HashMap` and `BTreeMap`.
+///
+/// If your type already implements [`FromToml`], you do not need to implement
+/// this trait. Use `#[toml(flatten, with = flatten_any)]` in your derive
+/// instead. See [`helper::flatten_any`](crate::helper::flatten_any).
+#[diagnostic::on_unimplemented(
+    message = "`{Self}` does not implement `FromFlattened`",
+    note = "if `{Self}` implements `FromToml`, you can use `#[toml(flatten, with = flatten_any)]` instead of a manual `FromFlattened` impl"
+)]
 pub trait FromFlattened<'de>: Sized {
     type Partial;
     fn init() -> Self::Partial;

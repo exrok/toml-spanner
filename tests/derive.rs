@@ -1880,3 +1880,467 @@ port = 8080
     assert!(output.contains("# This is a config file"), "got: {output}");
     assert!(output.contains("name = \"myapp\""), "got: {output}");
 }
+
+// -- flatten_any tests -------------------------------------------------------
+
+use toml_spanner::helper::flatten_any;
+
+// Basic struct flatten (FromToml + ToToml)
+#[derive(Toml, Debug, PartialEq)]
+#[toml(FromToml, ToToml)]
+struct FaPoint {
+    x: i64,
+    y: i64,
+}
+
+#[derive(Toml, Debug, PartialEq)]
+#[toml(FromToml, ToToml)]
+struct FaBasic {
+    name: String,
+    #[toml(flatten, with = flatten_any)]
+    point: FaPoint,
+}
+
+#[test]
+fn flatten_any_basic() {
+    let input = r#"
+        name = "origin"
+        x = 10
+        y = 20
+    "#;
+    let v: FaBasic = toml_spanner::from_str(input).unwrap();
+    assert_eq!(v.name, "origin");
+    assert_eq!(v.point, FaPoint { x: 10, y: 20 });
+}
+
+#[test]
+fn flatten_any_basic_to_toml() {
+    let v = FaBasic {
+        name: "origin".into(),
+        point: FaPoint { x: 10, y: 20 },
+    };
+    let s = toml_spanner::to_string(&v).unwrap();
+    assert!(s.contains("name = \"origin\""), "got: {s}");
+    assert!(s.contains("x = 10"), "got: {s}");
+    assert!(s.contains("y = 20"), "got: {s}");
+}
+
+#[test]
+fn flatten_any_basic_roundtrip() {
+    let v = FaBasic {
+        name: "rt".into(),
+        point: FaPoint { x: -1, y: 99 },
+    };
+    let s = toml_spanner::to_string(&v).unwrap();
+    let v2: FaBasic = toml_spanner::from_str(&s).unwrap();
+    assert_eq!(v, v2);
+}
+
+// Internally-tagged enum
+#[derive(Toml, Debug, PartialEq)]
+#[toml(FromToml, ToToml, tag = "kind")]
+enum FaShape {
+    Circle { radius: f64 },
+    Rect { w: f64, h: f64 },
+}
+
+#[derive(Toml, Debug, PartialEq)]
+#[toml(FromToml, ToToml)]
+struct FaDrawing {
+    label: String,
+    #[toml(flatten, with = flatten_any)]
+    shape: FaShape,
+}
+
+#[test]
+fn flatten_any_tagged_enum() {
+    let input = r#"
+        label = "big circle"
+        kind = "Circle"
+        radius = 5.0
+    "#;
+    let v: FaDrawing = toml_spanner::from_str(input).unwrap();
+    assert_eq!(v.label, "big circle");
+    assert_eq!(v.shape, FaShape::Circle { radius: 5.0 });
+}
+
+#[test]
+fn flatten_any_tagged_enum_to_toml() {
+    let v = FaDrawing {
+        label: "circle".into(),
+        shape: FaShape::Circle { radius: 2.5 },
+    };
+    let s = toml_spanner::to_string(&v).unwrap();
+    assert!(s.contains("label = \"circle\""), "got: {s}");
+    assert!(s.contains("kind = \"Circle\""), "got: {s}");
+    assert!(s.contains("radius = 2.5"), "got: {s}");
+}
+
+#[test]
+fn flatten_any_tagged_enum_roundtrip() {
+    let v = FaDrawing {
+        label: "rect".into(),
+        shape: FaShape::Rect { w: 1.0, h: 2.0 },
+    };
+    let s = toml_spanner::to_string(&v).unwrap();
+    let v2: FaDrawing = toml_spanner::from_str(&s).unwrap();
+    assert_eq!(v, v2);
+}
+
+// Adjacently-tagged enum
+#[derive(Toml, Debug, PartialEq)]
+#[toml(FromToml, ToToml, tag = "type", content = "payload")]
+enum FaAction {
+    Log(String),
+    Move { dx: i64, dy: i64 },
+    Noop,
+}
+
+#[derive(Toml, Debug, PartialEq)]
+#[toml(FromToml, ToToml)]
+struct FaStep {
+    id: i64,
+    #[toml(flatten, with = flatten_any)]
+    action: FaAction,
+}
+
+#[test]
+fn flatten_any_adjacent_enum() {
+    let input = r#"
+        id = 1
+        type = "Move"
+        payload = { dx = 5, dy = -3 }
+    "#;
+    let v: FaStep = toml_spanner::from_str(input).unwrap();
+    assert_eq!(v.id, 1);
+    assert_eq!(v.action, FaAction::Move { dx: 5, dy: -3 });
+}
+
+#[test]
+fn flatten_any_adjacent_enum_unit() {
+    let input = r#"
+        id = 99
+        type = "Noop"
+    "#;
+    let v: FaStep = toml_spanner::from_str(input).unwrap();
+    assert_eq!(v.id, 99);
+    assert_eq!(v.action, FaAction::Noop);
+}
+
+#[test]
+fn flatten_any_adjacent_enum_to_toml() {
+    let v = FaStep {
+        id: 7,
+        action: FaAction::Move { dx: 1, dy: -1 },
+    };
+    let s = toml_spanner::to_string(&v).unwrap();
+    assert!(s.contains("id = 7"), "got: {s}");
+    assert!(s.contains("type = \"Move\""), "got: {s}");
+}
+
+#[test]
+fn flatten_any_adjacent_enum_roundtrip() {
+    for action in [
+        FaAction::Log("hello".into()),
+        FaAction::Move { dx: 3, dy: 4 },
+        FaAction::Noop,
+    ] {
+        let v = FaStep { id: 1, action };
+        let s = toml_spanner::to_string(&v).unwrap();
+        let v2: FaStep = toml_spanner::from_str(&s)
+            .unwrap_or_else(|e| panic!("failed to roundtrip:\n{s}\nerror: {e:?}"));
+        assert_eq!(v, v2);
+    }
+}
+
+// Borrowed lifetimes via &'de str
+#[derive(Toml, Debug, PartialEq)]
+#[toml(FromToml, ToToml)]
+struct FaBorrowedInner<'de> {
+    tag: &'de str,
+    value: &'de str,
+}
+
+#[derive(Toml, Debug, PartialEq)]
+#[toml(FromToml, ToToml)]
+struct FaBorrowedOuter<'de> {
+    id: i64,
+    #[toml(flatten, with = flatten_any)]
+    inner: FaBorrowedInner<'de>,
+}
+
+#[test]
+fn flatten_any_borrowed_lifetime() {
+    let arena = Arena::new();
+    let input = r#"
+        id = 42
+        tag = "hello"
+        value = "world"
+    "#;
+    let mut root = toml_spanner::parse(input, &arena).unwrap();
+    let v: FaBorrowedOuter<'_> = root.to().unwrap();
+    assert_eq!(v.id, 42);
+    assert_eq!(v.inner.tag, "hello");
+    assert_eq!(v.inner.value, "world");
+}
+
+#[test]
+fn flatten_any_borrowed_roundtrip() {
+    let arena = Arena::new();
+    let v = FaBorrowedOuter {
+        id: 1,
+        inner: FaBorrowedInner {
+            tag: "a",
+            value: "b",
+        },
+    };
+    let s = toml_spanner::to_string(&v).unwrap();
+    let mut root = toml_spanner::parse(&s, &arena).unwrap();
+    let v2: FaBorrowedOuter<'_> = root.to().unwrap();
+    assert_eq!(v2.id, 1);
+    assert_eq!(v2.inner.tag, "a");
+    assert_eq!(v2.inner.value, "b");
+}
+
+// Large table exceeding INDEXED_TABLE_THRESHOLD (6) to exercise
+// the is_span_mode guard in TableHelper::new.
+#[derive(Toml, Debug, PartialEq)]
+#[toml(FromToml, ToToml)]
+struct FaBigInner {
+    f1: i64,
+    f2: i64,
+    f3: i64,
+    f4: i64,
+    f5: i64,
+    f6: i64,
+    f7: i64,
+    f8: i64,
+}
+
+#[derive(Toml, Debug, PartialEq)]
+#[toml(FromToml, ToToml)]
+struct FaBigOuter {
+    name: String,
+    #[toml(flatten, with = flatten_any)]
+    big: FaBigInner,
+}
+
+#[test]
+fn flatten_any_exceeds_index_threshold() {
+    let input = r#"
+        name = "large"
+        f1 = 1
+        f2 = 2
+        f3 = 3
+        f4 = 4
+        f5 = 5
+        f6 = 6
+        f7 = 7
+        f8 = 8
+    "#;
+    let v: FaBigOuter = toml_spanner::from_str(input).unwrap();
+    assert_eq!(v.name, "large");
+    assert_eq!(
+        v.big,
+        FaBigInner {
+            f1: 1,
+            f2: 2,
+            f3: 3,
+            f4: 4,
+            f5: 5,
+            f6: 6,
+            f7: 7,
+            f8: 8,
+        }
+    );
+}
+
+#[test]
+fn flatten_any_big_roundtrip() {
+    let v = FaBigOuter {
+        name: "big".into(),
+        big: FaBigInner {
+            f1: 1,
+            f2: 2,
+            f3: 3,
+            f4: 4,
+            f5: 5,
+            f6: 6,
+            f7: 7,
+            f8: 8,
+        },
+    };
+    let s = toml_spanner::to_string(&v).unwrap();
+    let v2: FaBigOuter = toml_spanner::from_str(&s).unwrap();
+    assert_eq!(v, v2);
+}
+
+// Nested tables (shallow copy of table-valued Items)
+#[derive(Toml, Debug, PartialEq)]
+#[toml(FromToml, ToToml)]
+struct FaSubTable {
+    a: i64,
+    b: i64,
+}
+
+#[derive(Toml, Debug, PartialEq)]
+#[toml(FromToml, ToToml)]
+struct FaNestedInner {
+    sub: FaSubTable,
+    extra: String,
+}
+
+#[derive(Toml, Debug, PartialEq)]
+#[toml(FromToml, ToToml)]
+struct FaNestedOuter {
+    id: i64,
+    #[toml(flatten, with = flatten_any)]
+    nested: FaNestedInner,
+}
+
+#[test]
+fn flatten_any_nested_tables() {
+    let input = r#"
+        id = 1
+        extra = "stuff"
+        [sub]
+        a = 10
+        b = 20
+    "#;
+    let v: FaNestedOuter = toml_spanner::from_str(input).unwrap();
+    assert_eq!(v.id, 1);
+    assert_eq!(v.nested.extra, "stuff");
+    assert_eq!(v.nested.sub, FaSubTable { a: 10, b: 20 });
+}
+
+#[test]
+fn flatten_any_nested_roundtrip() {
+    let v = FaNestedOuter {
+        id: 42,
+        nested: FaNestedInner {
+            sub: FaSubTable { a: 10, b: 20 },
+            extra: "yes".into(),
+        },
+    };
+    let s = toml_spanner::to_string(&v).unwrap();
+    let v2: FaNestedOuter = toml_spanner::from_str(&s).unwrap();
+    assert_eq!(v, v2);
+}
+
+// Arrays (shallow copy of array-valued Items)
+#[derive(Toml, Debug, PartialEq)]
+#[toml(FromToml, ToToml)]
+struct FaWithArrayInner {
+    tags: Vec<String>,
+    count: i64,
+}
+
+#[derive(Toml, Debug, PartialEq)]
+#[toml(FromToml, ToToml)]
+struct FaWithArrayOuter {
+    name: String,
+    #[toml(flatten, with = flatten_any)]
+    data: FaWithArrayInner,
+}
+
+#[test]
+fn flatten_any_with_arrays() {
+    let input = r#"
+        name = "tagged"
+        tags = ["a", "b", "c"]
+        count = 3
+    "#;
+    let v: FaWithArrayOuter = toml_spanner::from_str(input).unwrap();
+    assert_eq!(v.name, "tagged");
+    assert_eq!(v.data.tags, vec!["a", "b", "c"]);
+    assert_eq!(v.data.count, 3);
+}
+
+#[test]
+fn flatten_any_arrays_roundtrip() {
+    let v = FaWithArrayOuter {
+        name: "arr".into(),
+        data: FaWithArrayInner {
+            tags: vec!["x".into(), "y".into()],
+            count: 2,
+        },
+    };
+    let s = toml_spanner::to_string(&v).unwrap();
+    let v2: FaWithArrayOuter = toml_spanner::from_str(&s).unwrap();
+    assert_eq!(v, v2);
+}
+
+// Kitchen sink: lifetimes + >6 fields + arrays + mixed types
+#[derive(Toml, Debug, PartialEq)]
+#[toml(FromToml, ToToml)]
+struct FaKitchenSinkInner<'de> {
+    f1: &'de str,
+    f2: &'de str,
+    f3: i64,
+    f4: i64,
+    f5: bool,
+    f6: bool,
+    f7: f64,
+    f8: Vec<i64>,
+}
+
+#[derive(Toml, Debug, PartialEq)]
+#[toml(FromToml, ToToml)]
+struct FaKitchenSinkOuter<'de> {
+    id: i64,
+    #[toml(flatten, with = flatten_any)]
+    rest: FaKitchenSinkInner<'de>,
+}
+
+#[test]
+fn flatten_any_kitchen_sink() {
+    let arena = Arena::new();
+    let input = r#"
+        id = 0
+        f1 = "alpha"
+        f2 = "beta"
+        f3 = 100
+        f4 = 200
+        f5 = true
+        f6 = false
+        f7 = 3.14
+        f8 = [1, 2, 3]
+    "#;
+    let mut root = toml_spanner::parse(input, &arena).unwrap();
+    let v: FaKitchenSinkOuter<'_> = root.to().unwrap();
+    assert_eq!(v.id, 0);
+    assert_eq!(v.rest.f1, "alpha");
+    assert_eq!(v.rest.f2, "beta");
+    assert_eq!(v.rest.f3, 100);
+    assert_eq!(v.rest.f4, 200);
+    assert!(v.rest.f5);
+    assert!(!v.rest.f6);
+    assert!((v.rest.f7 - 3.14).abs() < f64::EPSILON);
+    assert_eq!(v.rest.f8, vec![1, 2, 3]);
+}
+
+#[test]
+fn flatten_any_kitchen_sink_roundtrip() {
+    let arena = Arena::new();
+    let v = FaKitchenSinkOuter {
+        id: 99,
+        rest: FaKitchenSinkInner {
+            f1: "one",
+            f2: "two",
+            f3: 3,
+            f4: 4,
+            f5: true,
+            f6: false,
+            f7: 1.5,
+            f8: vec![10, 20],
+        },
+    };
+    let s = toml_spanner::to_string(&v).unwrap();
+    let mut root = toml_spanner::parse(&s, &arena).unwrap();
+    let v2: FaKitchenSinkOuter<'_> = root.to().unwrap();
+    assert_eq!(v2.id, 99);
+    assert_eq!(v2.rest.f1, "one");
+    assert_eq!(v2.rest.f2, "two");
+    assert_eq!(v2.rest.f3, 3);
+    assert_eq!(v2.rest.f8, vec![10, 20]);
+}

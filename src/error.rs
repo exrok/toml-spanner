@@ -33,10 +33,11 @@ impl Error {
 
 impl Debug for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Error")
-            .field("kind", &self.kind)
-            .field("span", &self.span)
-            .finish()
+        <Error as std::fmt::Display>::fmt(self, f)
+        // f.debug_struct("Error")
+        //     .field("kind", &self.kind)
+        //     .field("span", &self.span)
+        //     .finish()
     }
 }
 
