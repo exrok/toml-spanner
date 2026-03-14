@@ -817,8 +817,12 @@ fn emit_tag_insert(
 
 fn enum_from_toml_string(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVariant]) {
     let start = out.buf.len();
+    let other_variant = variants.iter().find(|v| v.other);
     let mut expected_msg = String::from("one of: ");
     for (i, v) in variants.iter().enumerate() {
+        if v.other {
+            continue;
+        }
         if i > 0 {
             expected_msg.push_str(", ");
         }
@@ -830,11 +834,18 @@ fn enum_from_toml_string(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVarian
         let s = __item.expect_string(__ctx)?;
         match s {
             [for variant in variants {
+                if variant.other { continue; }
                 let name_lit = variant_name_literal(ctx, variant);
                 splat!(out; [@name_lit.into()] => Ok(Self::[#: variant.name]),);
             }]
-            _ => Err(__ctx.error_expected_but_found(
-                [@TokenTree::Literal(Literal::string(&expected_msg))], __item))
+            [if let Some(ov) = other_variant {
+                splat!(out; _ => Ok(Self::[#: ov.name]),);
+            } else {
+                splat!(out;
+                    _ => Err(__ctx.error_expected_but_found(
+                        [@TokenTree::Literal(Literal::string(&expected_msg))], __item)),
+                );
+            }]
         }
     );
     let body = out.split_off_stream(start);
@@ -1002,6 +1013,7 @@ fn enum_from_toml_external(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVari
     let has_unit = ctx.target.enum_flags & ENUM_CONTAINS_UNIT_VARIANT != 0;
     let has_complex =
         ctx.target.enum_flags & (ENUM_CONTAINS_STRUCT_VARIANT | ENUM_CONTAINS_TUPLE_VARIANT) != 0;
+    let other_variant = variants.iter().find(|v| v.other);
 
     let start = out.buf.len();
 
@@ -1010,13 +1022,19 @@ fn enum_from_toml_external(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVari
         splat!(out;
             return match s {
                 [for variant in variants {
-                    if matches!(variant.kind, EnumKind::None) {
+                    if matches!(variant.kind, EnumKind::None) && !variant.other {
                         let name_lit = variant_name_literal(ctx, variant);
                         splat!(out; [@name_lit.into()] => Ok(Self::[#: variant.name]),);
                     }
                 }]
-                _ => Err(__ctx.error_expected_but_found(
-                    [@TokenTree::Literal(Literal::string("a known variant"))], __item))
+                [if let Some(ov) = other_variant {
+                    splat!(out; _ => Ok(Self::[#: ov.name]),);
+                } else {
+                    splat!(out;
+                        _ => Err(__ctx.error_expected_but_found(
+                            [@TokenTree::Literal(Literal::string("a known variant"))], __item)),
+                    );
+                }]
             };
         );
         let if_body = out.split_off_stream(if_body_start);
@@ -1051,7 +1069,7 @@ fn enum_from_toml_external(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVari
         splat!(out; match key . name);
         let arms_at = out.buf.len();
         for variant in variants {
-            if matches!(variant.kind, EnumKind::None) {
+            if matches!(variant.kind, EnumKind::None) || variant.other {
                 continue;
             }
             let name_lit = variant_name_literal(ctx, variant);
@@ -1084,10 +1102,14 @@ fn enum_from_toml_external(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVari
                 EnumKind::None => {}
             }
         }
-        splat!(out;
-            _ => Err(__ctx.error_expected_but_found(
-                [@TokenTree::Literal(Literal::string("a known variant"))], __item)),
-        );
+        if let Some(ov) = other_variant {
+            splat!(out; _ => Ok(Self::[#: ov.name]),);
+        } else {
+            splat!(out;
+                _ => Err(__ctx.error_expected_but_found(
+                    [@TokenTree::Literal(Literal::string("a known variant"))], __item)),
+            );
+        }
         out.tt_group(Delimiter::Brace, arms_at);
     } else if !has_unit {
         splat!(out;
@@ -1139,9 +1161,11 @@ fn enum_from_toml_internal(
     splat!(out; ;);
 
     // Second pass: dispatch to variant
+    let other_variant = variants.iter().find(|v| v.other);
     splat!(out; match __tag);
     let arms_at = out.buf.len();
     for variant in variants {
+        if variant.other { continue; }
         let name_lit = variant_name_literal(ctx, variant);
         match variant.kind {
             EnumKind::None => {
@@ -1182,10 +1206,14 @@ fn enum_from_toml_internal(
             EnumKind::Tuple => {}
         }
     }
-    splat!(out;
-        _ => Err(__ctx.error_expected_but_found(
-            [@TokenTree::Literal(Literal::string("a known variant"))], __item)),
-    );
+    if let Some(ov) = other_variant {
+        splat!(out; _ => Ok(Self::[#: ov.name]),);
+    } else {
+        splat!(out;
+            _ => Err(__ctx.error_expected_but_found(
+                [@TokenTree::Literal(Literal::string("a known variant"))], __item)),
+        );
+    }
     out.tt_group(Delimiter::Brace, arms_at);
 
     let body = out.split_off_stream(start);
@@ -1242,9 +1270,11 @@ fn enum_from_toml_adjacent(
     splat!(out; ;);
 
     // Dispatch on tag
+    let other_variant = variants.iter().find(|v| v.other);
     splat!(out; match __tag);
     let arms_at = out.buf.len();
     for variant in variants {
+        if variant.other { continue; }
         let name_lit = variant_name_literal(ctx, variant);
         match variant.kind {
             EnumKind::None => {
@@ -1293,10 +1323,14 @@ fn enum_from_toml_adjacent(
             }
         }
     }
-    splat!(out;
-        _ => Err(__ctx.error_expected_but_found(
-            [@TokenTree::Literal(Literal::string("a known variant"))], __item)),
-    );
+    if let Some(ov) = other_variant {
+        splat!(out; _ => Ok(Self::[#: ov.name]),);
+    } else {
+        splat!(out;
+            _ => Err(__ctx.error_expected_but_found(
+                [@TokenTree::Literal(Literal::string("a known variant"))], __item)),
+        );
+    }
     out.tt_group(Delimiter::Brace, arms_at);
 
     let body = out.split_off_stream(start);
@@ -1431,6 +1465,24 @@ fn handle_enum(output: &mut RustWriter, target: &DeriveTargetInner, variants: &[
             if variant.try_if.is_some() || variant.final_if.is_some() {
                 throw!("try_if/final_if can only be used on untagged enums" @ variant.name.span())
             }
+        }
+    }
+
+    {
+        let mut other_count = 0u32;
+        for variant in variants {
+            if variant.other {
+                other_count += 1;
+                if !matches!(variant.kind, EnumKind::None) {
+                    throw!("#[toml(other)] can only be used on unit variants" @ variant.name.span())
+                }
+                if target.untagged {
+                    throw!("#[toml(other)] cannot be used on untagged enums" @ variant.name.span())
+                }
+            }
+        }
+        if other_count > 1 {
+            throw!("only one variant can be marked #[toml(other)]")
         }
     }
 

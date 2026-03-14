@@ -187,6 +187,7 @@ pub struct EnumVariant<'a> {
     pub rename_all: RenameRule,
     pub try_if: Option<Vec<TokenTree>>,
     pub final_if: Option<Vec<TokenTree>>,
+    pub other: bool,
 }
 pub enum EnumKind {
     Tuple,
@@ -785,6 +786,7 @@ struct VariantTemp<'a> {
     rename_all: RenameRule,
     try_if: Option<Vec<TokenTree>>,
     final_if: Option<Vec<TokenTree>>,
+    other: bool,
 }
 pub fn scan_fields<'a>(target: &mut DeriveTargetInner<'a>, fields: &mut Vec<Field<'a>>) {
     let type_generic_names: Vec<_> = target
@@ -894,6 +896,7 @@ pub fn parse_enum<'a>(
             attr: var.attr,
             try_if: var.try_if,
             final_if: var.final_if,
+            other: var.other,
         })
         .collect()
 }
@@ -908,6 +911,7 @@ fn parse_inner_enum_variants<'a>(
     let mut next_rename_all = RenameRule::None;
     let mut next_try_if: Option<Vec<TokenTree>> = None;
     let mut next_final_if: Option<Vec<TokenTree>> = None;
+    let mut next_other = false;
     loop {
         let i = if let Some((i, tok)) = f.next() {
             let TokenTree::Punct(punct) = tok else {
@@ -958,6 +962,10 @@ fn parse_inner_enum_variants<'a>(
                                 Error::span_msg("final_if requires a predicate", ident.span())
                             }
                             next_final_if = Some(std::mem::take(buf));
+                            return;
+                        }
+                        if name == "other" {
+                            next_other = true;
                             return;
                         }
                         let attr = next_attr.get_or_insert_with(|| attr_buffer.alloc_default());
@@ -1050,6 +1058,7 @@ fn parse_inner_enum_variants<'a>(
             rename_all: std::mem::replace(&mut next_rename_all, RenameRule::None),
             try_if: next_try_if.take(),
             final_if: next_final_if.take(),
+            other: std::mem::replace(&mut next_other, false),
         });
         if f.len() == 0 {
             break;

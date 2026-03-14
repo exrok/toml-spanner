@@ -1882,8 +1882,6 @@ port = 8080
     assert!(output.contains("name = \"myapp\""), "got: {output}");
 }
 
-// -- flatten_any tests -------------------------------------------------------
-
 use toml_spanner::helper::flatten_any;
 
 // Basic struct flatten (FromToml + ToToml)
@@ -2346,8 +2344,6 @@ fn flatten_any_kitchen_sink_roundtrip() {
     assert_eq!(v2.rest.f8, vec![10, 20]);
 }
 
-// -- parse_string / display tests --------------------------------------------
-
 use toml_spanner::helper::display;
 use toml_spanner::helper::parse_string;
 
@@ -2497,8 +2493,6 @@ fn parse_string_display_optional_absent() {
     .unwrap();
     assert_eq!(v.addr, None);
 }
-
-// --- from / try_from container attributes ---
 
 #[test]
 fn from_attribute_roundtrip() {
@@ -2695,4 +2689,140 @@ fn from_attribute_enum() {
     let mut th = table.as_item().table_helper(ctx).unwrap();
     let v: Color = th.required("val").unwrap();
     assert_eq!(v, Color::Red);
+}
+
+// String enum with other
+#[derive(Toml, Debug, PartialEq)]
+#[toml(FromToml, ToToml)]
+enum OtherStatus {
+    Active,
+    Inactive,
+    #[toml(other)]
+    Unknown,
+}
+
+#[test]
+fn other_string_enum_known() {
+    let v = toml_spanner::from_str::<OtherStatusWrap>(r#"status = "Active""#)
+        .unwrap()
+        .status;
+    assert_eq!(v, OtherStatus::Active);
+}
+
+#[test]
+fn other_string_enum_unknown() {
+    let v = toml_spanner::from_str::<OtherStatusWrap>(r#"status = "Pending""#)
+        .unwrap()
+        .status;
+    assert_eq!(v, OtherStatus::Unknown);
+}
+
+#[test]
+fn other_string_enum_roundtrip_known() {
+    let w = OtherStatusWrap {
+        status: OtherStatus::Active,
+    };
+    let s = toml_spanner::to_string(&w).unwrap();
+    let w2: OtherStatusWrap = toml_spanner::from_str(&s).unwrap();
+    assert_eq!(w, w2);
+}
+
+#[derive(Toml, Debug, PartialEq)]
+#[toml(FromToml, ToToml)]
+struct OtherStatusWrap {
+    status: OtherStatus,
+}
+
+// Internally tagged enum with other
+#[derive(Toml, Debug, PartialEq)]
+#[toml(FromToml, ToToml, tag = "type")]
+enum Command {
+    Start,
+    Stop,
+    Restart {
+        delay: i64,
+    },
+    #[toml(other)]
+    Unknown,
+}
+
+#[test]
+fn other_internal_known_unit() {
+    let v: Command = toml_spanner::from_str(r#"type = "Start""#).unwrap();
+    assert_eq!(v, Command::Start);
+}
+
+#[test]
+fn other_internal_known_struct() {
+    let v: Command = toml_spanner::from_str("type = \"Restart\"\ndelay = 5").unwrap();
+    assert_eq!(v, Command::Restart { delay: 5 });
+}
+
+#[test]
+fn other_internal_unknown() {
+    let v: Command = toml_spanner::from_str(r#"type = "Pause""#).unwrap();
+    assert_eq!(v, Command::Unknown);
+}
+
+// Adjacently tagged enum with other
+#[derive(Toml, Debug, PartialEq)]
+#[toml(FromToml, ToToml, tag = "kind", content = "data")]
+enum Action {
+    Click(String),
+    Close,
+    #[toml(other)]
+    Unrecognized,
+}
+
+#[test]
+fn other_adjacent_known_tuple() {
+    let v: Action = toml_spanner::from_str("kind = \"Click\"\ndata = \"btn\"").unwrap();
+    assert_eq!(v, Action::Click("btn".to_string()));
+}
+
+#[test]
+fn other_adjacent_known_unit() {
+    let v: Action = toml_spanner::from_str(r#"kind = "Close""#).unwrap();
+    assert_eq!(v, Action::Close);
+}
+
+#[test]
+fn other_adjacent_unknown() {
+    let v: Action = toml_spanner::from_str(r#"kind = "Hover""#).unwrap();
+    assert_eq!(v, Action::Unrecognized);
+}
+
+// External tagging with other
+#[derive(Toml, Debug, PartialEq)]
+#[toml(FromToml, ToToml)]
+enum Animal {
+    Cat,
+    Dog,
+    Fish {
+        color: String,
+    },
+    #[toml(other)]
+    Unknown,
+}
+
+#[test]
+fn other_external_known_unit() {
+    #[derive(Toml, Debug, PartialEq)]
+    #[toml(FromToml)]
+    struct W {
+        animal: Animal,
+    }
+    let v: W = toml_spanner::from_str(r#"animal = "Cat""#).unwrap();
+    assert_eq!(v.animal, Animal::Cat);
+}
+
+#[test]
+fn other_external_unknown_string() {
+    #[derive(Toml, Debug, PartialEq)]
+    #[toml(FromToml)]
+    struct W {
+        animal: Animal,
+    }
+    let v: W = toml_spanner::from_str(r#"animal = "Parrot""#).unwrap();
+    assert_eq!(v.animal, Animal::Unknown);
 }

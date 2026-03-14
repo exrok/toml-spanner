@@ -1,7 +1,5 @@
 use toml_spanner_macros::Toml;
 
-// --- Style attribute tests ---
-
 #[derive(Toml, Debug, PartialEq)]
 #[toml(Toml)]
 struct StyleInner {
@@ -229,7 +227,6 @@ fn style_combined_with_with_attr() {
     assert!(s.contains("y = 20"), "got:\n{s}");
 }
 
-// --- Nested style tests ---
 //
 // All tests serialize the same logical data: a.b.c.d = 4
 // Different style combinations at each nesting level produce
