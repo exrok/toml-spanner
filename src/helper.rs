@@ -2,6 +2,106 @@
 
 use crate::{Item, Table};
 
+/// Deserializes a TOML string value into any type that implements
+/// [`FromStr`].
+///
+/// Pair this with the `with` field attribute to store types like
+/// [`IpAddr`], [`Url`], or [`SocketAddr`] as plain TOML strings.
+/// At parse time the string is passed through [`str::parse`], and any
+/// [`FromStr::Err`] is reported as a custom deserialization error with the
+/// span of the original value.
+///
+/// For the serialization direction, see [`display`].
+///
+/// # Examples
+///
+/// ```rust,ignore
+/// use std::net::IpAddr;
+/// use toml_spanner::Toml;
+/// use toml_spanner::helper::parse_string;
+///
+/// #[derive(Toml)]
+/// #[toml(FromToml)]
+/// struct Server {
+///     #[toml(with = parse_string)]
+///     addr: IpAddr,
+/// }
+/// ```
+///
+/// [`FromStr`]: std::str::FromStr
+/// [`IpAddr`]: std::net::IpAddr
+/// [`SocketAddr`]: std::net::SocketAddr
+pub mod parse_string {
+    use crate::{Context, Error, Failed, Item};
+
+    /// Parses a TOML string value into `T` via [`FromStr`].
+    ///
+    /// Returns [`Failed`] when the item is not a string or when
+    /// [`str::parse`] returns an error.
+    ///
+    /// [`FromStr`]: std::str::FromStr
+    pub fn from_toml<'de, T>(ctx: &mut Context<'de>, item: &Item<'de>) -> Result<T, Failed>
+    where
+        T: std::str::FromStr,
+        T::Err: std::fmt::Display,
+    {
+        let Some(s) = item.as_str() else {
+            return Err(ctx.error_expected_but_found("a string", item));
+        };
+        match s.parse::<T>() {
+            Ok(val) => Ok(val),
+            Err(e) => Err(ctx.push_error(Error::custom(e, item.span()))),
+        }
+    }
+}
+
+/// Serializes any type that implements [`Display`] as a TOML string.
+///
+/// Pair this with the `with` field attribute to emit types like
+/// [`IpAddr`], [`Url`], or [`SocketAddr`] as plain TOML strings.
+/// The value is formatted with [`Display`] and the resulting string is
+/// allocated in the arena.
+///
+/// For the deserialization direction, see [`parse_string`].
+///
+/// # Examples
+///
+/// ```rust,ignore
+/// use std::net::IpAddr;
+/// use toml_spanner::Toml;
+/// use toml_spanner::helper::display;
+///
+/// #[derive(Toml)]
+/// #[toml(ToToml)]
+/// struct Server {
+///     #[toml(with = display)]
+///     addr: IpAddr,
+/// }
+/// ```
+///
+/// [`Display`]: std::fmt::Display
+/// [`IpAddr`]: std::net::IpAddr
+/// [`SocketAddr`]: std::net::SocketAddr
+#[cfg(feature = "to-toml")]
+pub mod display {
+    use crate::{Arena, Item, error::ToTomlError};
+
+    /// Converts a value to a TOML string [`Item`] via [`Display`].
+    ///
+    /// The formatted string is allocated in the arena so it lives as long
+    /// as other parsed data.
+    ///
+    /// [`Item`]: crate::Item
+    /// [`Display`]: std::fmt::Display
+    pub fn to_toml<'a>(
+        value: &impl std::fmt::Display,
+        arena: &'a Arena,
+    ) -> Result<Item<'a>, ToTomlError> {
+        let s = value.to_string();
+        Ok(Item::string(arena.alloc_str(&s)))
+    }
+}
+
 #[doc(hidden)]
 pub struct ShallowTable<'de, 'b> {
     table: Table<'de>,

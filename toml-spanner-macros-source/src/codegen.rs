@@ -550,16 +550,29 @@ fn emit_table_field_ser(
             [?(!self_access) [#: field.name]]
         );
 
+        let is_option = first_ty_ident == "Option";
+
         let emit_start = out.buf.len();
         if let Some(with) = with_path {
+            let val_expr = if is_option {
+                splat!(out; if let Some(__val) = [@TokenTree::Group(Group::new(Delimiter::None, field_ref.clone()))]);
+                token_stream!(out; __val)
+            } else {
+                field_ref.clone()
+            };
+            let insert_start = out.buf.len();
             splat!(out;
                 [#table_id].insert(
                     [#ctx.crate_path]::Key::anon([@name_lit.into()]),
-                    [~with]::to_toml([@TokenTree::Group(Group::new(Delimiter::None, field_ref.clone()))], __arena)?,
+                    [~with]::to_toml([@TokenTree::Group(Group::new(Delimiter::None, val_expr))], __arena)?,
                     __arena,
                 );
             );
-        } else if first_ty_ident == "Option" {
+            if is_option {
+                let insert_body = out.split_off_stream(insert_start);
+                out.buf.push(TokenTree::Group(Group::new(Delimiter::Brace, insert_body)));
+            }
+        } else if is_option {
             splat!(out;
                 if let Some(__val) = [#ctx.crate_path]::ToToml::to_optional_toml(
                     [@TokenTree::Group(Group::new(Delimiter::None, field_ref.clone()))], __arena)? {

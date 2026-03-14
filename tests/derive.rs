@@ -1,4 +1,5 @@
 use std::collections::BTreeMap;
+use std::net::IpAddr;
 use toml_spanner::{Arena, FromToml, TomlConfig, to_string_with_config};
 use toml_spanner_macros::Toml;
 
@@ -2343,4 +2344,156 @@ fn flatten_any_kitchen_sink_roundtrip() {
     assert_eq!(v2.rest.f2, "two");
     assert_eq!(v2.rest.f3, 3);
     assert_eq!(v2.rest.f8, vec![10, 20]);
+}
+
+// -- parse_string / display tests --------------------------------------------
+
+use toml_spanner::helper::display;
+use toml_spanner::helper::parse_string;
+
+#[derive(Toml, Debug, PartialEq)]
+#[toml(FromToml)]
+struct ParseStringOnly {
+    host: String,
+    #[toml(with = parse_string)]
+    addr: IpAddr,
+}
+
+#[test]
+fn parse_string_ipv4() {
+    let v: ParseStringOnly = toml_spanner::from_str(
+        r#"
+        host = "example.com"
+        addr = "127.0.0.1"
+    "#,
+    )
+    .unwrap();
+    assert_eq!(v.host, "example.com");
+    assert_eq!(v.addr, IpAddr::from([127, 0, 0, 1]));
+}
+
+#[test]
+fn parse_string_ipv6() {
+    let v: ParseStringOnly = toml_spanner::from_str(
+        r#"
+        host = "example.com"
+        addr = "::1"
+    "#,
+    )
+    .unwrap();
+    assert_eq!(v.addr, IpAddr::from([0, 0, 0, 0, 0, 0, 0, 1]));
+}
+
+#[test]
+fn parse_string_invalid_value() {
+    let result = toml_spanner::from_str::<ParseStringOnly>(
+        r#"
+        host = "example.com"
+        addr = "not-an-ip"
+    "#,
+    );
+    assert!(result.is_err());
+}
+
+#[test]
+fn parse_string_wrong_type() {
+    let result = toml_spanner::from_str::<ParseStringOnly>(
+        r#"
+        host = "example.com"
+        addr = 42
+    "#,
+    );
+    assert!(result.is_err());
+}
+
+#[derive(Toml, Debug, PartialEq)]
+#[toml(ToToml)]
+struct DisplayOnly {
+    host: String,
+    #[toml(with = display)]
+    addr: IpAddr,
+}
+
+#[test]
+fn display_to_toml() {
+    let v = DisplayOnly {
+        host: "example.com".into(),
+        addr: IpAddr::from([10, 0, 0, 1]),
+    };
+    let s = toml_spanner::to_string(&v).unwrap();
+    assert!(s.contains("addr = \"10.0.0.1\""));
+}
+
+#[test]
+fn display_to_toml_ipv6() {
+    let v = DisplayOnly {
+        host: "example.com".into(),
+        addr: IpAddr::from([0, 0, 0, 0, 0, 0, 0, 1]),
+    };
+    let s = toml_spanner::to_string(&v).unwrap();
+    assert!(s.contains("addr = \"::1\""));
+}
+
+#[derive(Toml, Debug, PartialEq)]
+#[toml(FromToml, ToToml)]
+struct ParseStringDisplay {
+    host: String,
+    #[toml(FromToml with = parse_string, ToToml with = display)]
+    addr: IpAddr,
+}
+
+#[test]
+fn parse_string_display_roundtrip() {
+    let v = ParseStringDisplay {
+        host: "example.com".into(),
+        addr: IpAddr::from([192, 168, 1, 1]),
+    };
+    let s = toml_spanner::to_string(&v).unwrap();
+    let restored: ParseStringDisplay = toml_spanner::from_str(&s).unwrap();
+    assert_eq!(v, restored);
+}
+
+#[test]
+fn parse_string_display_roundtrip_ipv6() {
+    let v = ParseStringDisplay {
+        host: "localhost".into(),
+        addr: "fe80::1".parse().unwrap(),
+    };
+    let s = toml_spanner::to_string(&v).unwrap();
+    let restored: ParseStringDisplay = toml_spanner::from_str(&s).unwrap();
+    assert_eq!(v, restored);
+}
+
+#[derive(Toml, Debug, PartialEq)]
+#[toml(FromToml, ToToml)]
+struct OptionalAddr {
+    host: String,
+    #[toml(FromToml with = parse_string, ToToml with = display)]
+    addr: Option<IpAddr>,
+}
+
+#[test]
+fn parse_string_display_optional_present() {
+    let v: OptionalAddr = toml_spanner::from_str(
+        r#"
+        host = "example.com"
+        addr = "10.0.0.1"
+    "#,
+    )
+    .unwrap();
+    assert_eq!(v.addr, Some(IpAddr::from([10, 0, 0, 1])));
+    let s = toml_spanner::to_string(&v).unwrap();
+    let restored: OptionalAddr = toml_spanner::from_str(&s).unwrap();
+    assert_eq!(v, restored);
+}
+
+#[test]
+fn parse_string_display_optional_absent() {
+    let v: OptionalAddr = toml_spanner::from_str(
+        r#"
+        host = "example.com"
+    "#,
+    )
+    .unwrap();
+    assert_eq!(v.addr, None);
 }
