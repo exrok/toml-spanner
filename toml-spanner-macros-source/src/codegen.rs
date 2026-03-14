@@ -255,7 +255,7 @@ fn impl_from_toml(output: &mut RustWriter, ctx: &Ctx, inner: TokenStream) {
             }] [~&target.where_clauses] ]
         {
             fn from_toml(
-                __ctx: &mut [#ctx.crate_path]::FromContext<#[#: &ctx.lifetime]>,
+                __ctx: &mut [#ctx.crate_path]::Context<#[#: &ctx.lifetime]>,
                 __item: &[#ctx.crate_path]::Item<#[#: &ctx.lifetime]>,
             ) -> ::std::result::Result<Self, [#ctx.crate_path]::Failed> [@TokenTree::Group(Group::new(Delimiter::Brace, inner))]
         }
@@ -1343,7 +1343,7 @@ fn enum_from_toml_untagged(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVari
             let pred_stream: TokenStream = predicate.iter().cloned().collect();
             let pred_group = TokenTree::Group(Group::new(Delimiter::Parenthesis, pred_stream));
             splat!(out; {
-                let __pred: fn(& mut [#ctx.crate_path]::FromContext<#[#: &ctx.lifetime]>, & [#ctx.crate_path]::Item<#[#: &ctx.lifetime]>) -> bool = [@pred_group];
+                let __pred: fn(& mut [#ctx.crate_path]::Context<#[#: &ctx.lifetime]>, & [#ctx.crate_path]::Item<#[#: &ctx.lifetime]>) -> bool = [@pred_group];
                 if __pred(__ctx, __item) [@inner_group]
             });
         }

@@ -71,7 +71,7 @@
 //! <summary>Toggle More Extensive Example</summary>
 //!
 //! ```
-//! use toml_spanner::{Arena, FromToml, Item, FromContext, Failed, TableHelper};
+//! use toml_spanner::{Arena, FromToml, Item, Context, Failed, TableHelper};
 //!
 //! #[derive(Debug)]
 //! struct Things {
@@ -81,7 +81,7 @@
 //! }
 //!
 //! impl<'de> FromToml<'de> for Things {
-//!     fn from_toml(ctx: &mut FromContext<'de>, value: &Item<'de>) -> Result<Self, Failed> {
+//!     fn from_toml(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
 //!         let Some(table) = value.as_table() else {
 //!             return Err(ctx.error_expected_but_found("a table", value));
 //!         };
@@ -145,7 +145,7 @@ mod time;
 
 pub use arena::Arena;
 #[cfg(feature = "from-toml")]
-pub use de::{Failed, FromContext, FromFlattened, FromToml, TableHelper};
+pub use de::{Context, Failed, FromFlattened, FromToml, TableHelper};
 #[cfg(all(feature = "to-toml", fuzzing))]
 pub use emit::reproject;
 #[cfg(all(feature = "to-toml", not(fuzzing)))]

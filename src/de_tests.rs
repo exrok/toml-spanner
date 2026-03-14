@@ -374,9 +374,9 @@ fn expect_custom_string_and_context_errors() {
         assert!(val_item.table_helper(helper.ctx).is_err());
     }
 
-    // FromContext::error_message_at and push_error
+    // Context::error_message_at and push_error
     let span = crate::Span::new(0, 5);
-    let mut ctx = super::FromContext {
+    let mut ctx = super::Context {
         arena: &arena,
         index: Default::default(),
         errors: Vec::new(),

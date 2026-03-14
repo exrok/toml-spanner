@@ -371,7 +371,7 @@ impl ExactSizeIterator for IntoIter<'_> {}
 /// [`TableHelper`](crate::de::TableHelper) via
 /// [`Root::helper`](crate::Root::helper) or
 /// [`Item::table_helper`](crate::Item::table_helper). The
-/// [`FromContext`](crate::de::FromContext) returned by [`parse`](crate::parse)
+/// [`Context`](crate::de::Context) returned by [`parse`](crate::parse)
 /// carries the parser's hash index.
 ///
 /// # Constructing tables

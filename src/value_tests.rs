@@ -316,7 +316,7 @@ fn type_error_helpers() {
 #[test]
 fn expect_helpers() {
     let arena = Arena::new();
-    let mut ctx = crate::de::FromContext {
+    let mut ctx = crate::de::Context {
         arena: &arena,
         index: Default::default(),
         errors: Vec::new(),

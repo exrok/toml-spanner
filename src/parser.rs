@@ -1820,7 +1820,7 @@ pub struct Root<'de> {
     #[cfg(all(not(feature = "from-toml"), feature = "to-toml"))]
     index: foldhash::HashMap<KeyRef<'de>, usize>,
     #[cfg(feature = "from-toml")]
-    pub ctx: crate::de::FromContext<'de>,
+    pub ctx: crate::de::Context<'de>,
 }
 
 impl<'de> Root<'de> {
@@ -1842,7 +1842,7 @@ impl<'de> Root<'de> {
 
     /// Access the root table immutably.
     #[cfg(feature = "from-toml")]
-    pub fn split(&mut self) -> (&mut crate::de::FromContext<'de>, &Table<'de>) {
+    pub fn split(&mut self) -> (&mut crate::de::Context<'de>, &Table<'de>) {
         (&mut self.ctx, &self.table)
     }
 
@@ -1959,7 +1959,7 @@ pub fn parse<'de>(document: &'de str, arena: &'de Arena) -> Result<Root<'de>, Er
         #[cfg(all(not(feature = "from-toml"), feature = "to-toml"))]
         index: parser.index,
         #[cfg(feature = "from-toml")]
-        ctx: crate::de::FromContext {
+        ctx: crate::de::Context {
             errors: Vec::new(),
             index: parser.index,
             arena,

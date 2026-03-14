@@ -322,7 +322,7 @@ union Payload<'de> {
 /// typical in TOML, this is well fast enough.
 ///
 /// For structured deserialization of larger tables, use
-/// [`TableHelper`](crate::de::TableHelper) with the [`FromContext`](crate::de::FromContext)
+/// [`TableHelper`](crate::de::TableHelper) with the [`Context`](crate::de::Context)
 /// returned by [`parse`](crate::parse).
 ///
 /// # Examples

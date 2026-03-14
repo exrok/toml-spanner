@@ -308,7 +308,7 @@ impl Time {
 ///
 /// impl<'de> FromToml<'de> for TimeConfig {
 ///     fn from_toml(
-///         ctx: &mut toml_spanner::FromContext<'de>,
+///         ctx: &mut toml_spanner::Context<'de>,
 ///         value: &toml_spanner::Item<'de>,
 ///     ) -> Result<Self, toml_spanner::Failed> {
 ///         let mut th = value.table_helper(ctx)?;

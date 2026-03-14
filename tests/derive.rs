@@ -1246,14 +1246,14 @@ fn to_string_with_float_types() {
 }
 
 mod flatten_key_helper {
-    use toml_spanner::{Arena, Failed, FromContext, Item, Key, Table, ToTomlError};
+    use toml_spanner::{Arena, Context, Failed, Item, Key, Table, ToTomlError};
 
     pub fn init() -> Vec<String> {
         Vec::new()
     }
 
     pub fn insert<'de>(
-        _ctx: &mut FromContext<'de>,
+        _ctx: &mut Context<'de>,
         key: &Key<'de>,
         _item: &Item<'de>,
         partial: &mut Vec<String>,
@@ -1263,7 +1263,7 @@ mod flatten_key_helper {
     }
 
     pub fn finish<'de>(
-        _ctx: &mut FromContext<'de>,
+        _ctx: &mut Context<'de>,
         partial: Vec<String>,
     ) -> Result<Vec<String>, Failed> {
         Ok(partial)

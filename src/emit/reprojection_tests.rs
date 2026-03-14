@@ -1566,7 +1566,7 @@ fn ignore_source_style_per_table() {
         "section 'b' without ignore_source_style: inner 'w' should get Dotted from source"
     );
 }
-// todo should put text in FromContext.
+// todo should put text in Context.
 fn to_toml(reference: &Root<'_>, text: &str, mut table: Table<'_>) -> String {
     let mut buf = Vec::new();
     reproject(&reference, &mut table, &mut buf);
