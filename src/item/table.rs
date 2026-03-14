@@ -367,7 +367,7 @@ impl ExactSizeIterator for IntoIter<'_> {}
 ///
 /// For structured conversion of larger tables, use
 /// [`TableHelper`](crate::de::TableHelper) via
-/// [`Root::helper`](crate::Root::helper) or
+/// [`Document::helper`](crate::Document::helper) or
 /// [`Item::table_helper`](crate::Item::table_helper). The
 /// [`Context`](crate::de::Context) returned by [`parse`](crate::parse)
 /// carries the parser's hash index.

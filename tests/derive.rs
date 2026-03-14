@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 use std::net::IpAddr;
-use toml_spanner::{Arena, FromToml, TomlConfig, to_string_with_config};
+use toml_spanner::{Arena, Formatting, FromToml, to_string_with};
 use toml_spanner_macros::Toml;
 
 #[derive(Toml, Debug, PartialEq)]
@@ -21,8 +21,8 @@ fn derive_from_item_basic() {
             debug = true
             tags = ["web", "api"]
         "#;
-    let mut root = toml_spanner::parse(input, &arena).unwrap();
-    let (ctx, table) = root.split();
+    let mut doc = toml_spanner::parse(input, &arena).unwrap();
+    let (ctx, table) = doc.split();
     let config: Config = {
         let result = Config::from_toml(ctx, table.as_item());
         result.unwrap()
@@ -43,9 +43,9 @@ fn derive_from_item_defaults() {
             name = "minimal"
             port = 3000
         "#;
-    let mut root = toml_spanner::parse(input, &arena).unwrap();
+    let mut doc = toml_spanner::parse(input, &arena).unwrap();
 
-    let (ctx, table) = root.split();
+    let (ctx, table) = doc.split();
     let config: Config = {
         let result = Config::from_toml(ctx, table.as_item());
         result.unwrap()
@@ -169,9 +169,9 @@ enum Color {
 fn enum_string_from_toml() {
     let arena = Arena::new();
     let input = r#"color = "Red""#;
-    let mut root = toml_spanner::parse(input, &arena).unwrap();
-    let (ctx, doc) = root.split();
-    let mut th = doc.as_item().table_helper(ctx).unwrap();
+    let mut doc = toml_spanner::parse(input, &arena).unwrap();
+    let (ctx, table) = doc.split();
+    let mut th = table.as_item().table_helper(ctx).unwrap();
     let color: Color = th.required("color").unwrap();
     assert_eq!(color, Color::Red);
 }
@@ -231,9 +231,9 @@ enum Shape {
 fn enum_external_unit_from_toml() {
     let arena = Arena::new();
     let input = r#"shape = "Circle""#;
-    let mut root = toml_spanner::parse(input, &arena).unwrap();
-    let (ctx, doc) = root.split();
-    let mut th = doc.as_item().table_helper(ctx).unwrap();
+    let mut doc = toml_spanner::parse(input, &arena).unwrap();
+    let (ctx, table) = doc.split();
+    let mut th = table.as_item().table_helper(ctx).unwrap();
     let shape: Shape = th.required("shape").unwrap();
     assert_eq!(shape, Shape::Circle);
 }
@@ -452,9 +452,9 @@ enum Untagged {
 fn untagged_tuple_int() {
     let arena = Arena::new();
     let input = r#"val = 42"#;
-    let mut root = toml_spanner::parse(input, &arena).unwrap();
-    let (ctx, doc) = root.split();
-    let mut th = doc.as_item().table_helper(ctx).unwrap();
+    let mut doc = toml_spanner::parse(input, &arena).unwrap();
+    let (ctx, table) = doc.split();
+    let mut th = table.as_item().table_helper(ctx).unwrap();
     let v: Untagged = th.required("val").unwrap();
     assert_eq!(v, Untagged::Num(42));
 }
@@ -463,9 +463,9 @@ fn untagged_tuple_int() {
 fn untagged_tuple_string() {
     let arena = Arena::new();
     let input = r#"val = "hello""#;
-    let mut root = toml_spanner::parse(input, &arena).unwrap();
-    let (ctx, doc) = root.split();
-    let mut th = doc.as_item().table_helper(ctx).unwrap();
+    let mut doc = toml_spanner::parse(input, &arena).unwrap();
+    let (ctx, table) = doc.split();
+    let mut th = table.as_item().table_helper(ctx).unwrap();
     let v: Untagged = th.required("val").unwrap();
     // i64 fails, then String succeeds
     assert_eq!(v, Untagged::Text("hello".to_string()));
@@ -516,9 +516,9 @@ fn untagged_fallback_to_later_variant() {
     // A plain string can't be parsed as Structured, so falls through to Simple
     let arena = Arena::new();
     let input = r#"val = "just a string""#;
-    let mut root = toml_spanner::parse(input, &arena).unwrap();
-    let (ctx, doc) = root.split();
-    let mut th = doc.as_item().table_helper(ctx).unwrap();
+    let mut doc = toml_spanner::parse(input, &arena).unwrap();
+    let (ctx, table) = doc.split();
+    let mut th = table.as_item().table_helper(ctx).unwrap();
     let v: UntaggedMixed = th.required("val").unwrap();
     assert_eq!(v, UntaggedMixed::Simple("just a string".to_string()));
 }
@@ -550,9 +550,9 @@ enum UntaggedWithUnit {
 fn untagged_unit_variant() {
     let arena = Arena::new();
     let input = r#"val = "Empty""#;
-    let mut root = toml_spanner::parse(input, &arena).unwrap();
-    let (ctx, doc) = root.split();
-    let mut th = doc.as_item().table_helper(ctx).unwrap();
+    let mut doc = toml_spanner::parse(input, &arena).unwrap();
+    let (ctx, table) = doc.split();
+    let mut th = table.as_item().table_helper(ctx).unwrap();
     let v: UntaggedWithUnit = th.required("val").unwrap();
     // "Empty" matches Named(String) first since it comes before the unit variant
     assert_eq!(v, UntaggedWithUnit::Named("Empty".to_string()));
@@ -563,16 +563,16 @@ fn untagged_unit_variant() {
 fn untagged_no_error_leakage() {
     let arena = Arena::new();
     let input = r#"val = "hello""#;
-    let mut root = toml_spanner::parse(input, &arena).unwrap();
-    let (ctx, doc) = root.split();
-    let mut th = doc.as_item().table_helper(ctx).unwrap();
+    let mut doc = toml_spanner::parse(input, &arena).unwrap();
+    let (ctx, table) = doc.split();
+    let mut th = table.as_item().table_helper(ctx).unwrap();
     let v: Untagged = th.required("val").unwrap();
     assert_eq!(v, Untagged::Text("hello".to_string()));
     // Num attempt failed but errors should have been truncated
     assert!(
-        root.errors().is_empty(),
+        doc.errors().is_empty(),
         "errors should be empty but got: {:?}",
-        root.errors()
+        doc.errors()
     );
 }
 
@@ -588,9 +588,9 @@ enum TryIfEnum {
 fn try_if_matches() {
     let arena = Arena::new();
     let input = r#"val = ["a", "b"]"#;
-    let mut root = toml_spanner::parse(input, &arena).unwrap();
-    let (ctx, doc) = root.split();
-    let mut th = doc.as_item().table_helper(ctx).unwrap();
+    let mut doc = toml_spanner::parse(input, &arena).unwrap();
+    let (ctx, table) = doc.split();
+    let mut th = table.as_item().table_helper(ctx).unwrap();
     let v: TryIfEnum = th.required("val").unwrap();
     assert_eq!(v, TryIfEnum::Arr(vec!["a".to_string(), "b".to_string()]));
 }
@@ -599,9 +599,9 @@ fn try_if_matches() {
 fn try_if_skips() {
     let arena = Arena::new();
     let input = r#"val = "hello""#;
-    let mut root = toml_spanner::parse(input, &arena).unwrap();
-    let (ctx, doc) = root.split();
-    let mut th = doc.as_item().table_helper(ctx).unwrap();
+    let mut doc = toml_spanner::parse(input, &arena).unwrap();
+    let (ctx, table) = doc.split();
+    let mut th = table.as_item().table_helper(ctx).unwrap();
     let v: TryIfEnum = th.required("val").unwrap();
     // Predicate is false for strings, so Arr is skipped, falls through to Text
     assert_eq!(v, TryIfEnum::Text("hello".to_string()));
@@ -619,9 +619,9 @@ enum FinalIfEnum {
 fn final_if_matches() {
     let arena = Arena::new();
     let input = r#"val = "committed""#;
-    let mut root = toml_spanner::parse(input, &arena).unwrap();
-    let (ctx, doc) = root.split();
-    let mut th = doc.as_item().table_helper(ctx).unwrap();
+    let mut doc = toml_spanner::parse(input, &arena).unwrap();
+    let (ctx, table) = doc.split();
+    let mut th = table.as_item().table_helper(ctx).unwrap();
     let v: FinalIfEnum = th.required("val").unwrap();
     assert_eq!(v, FinalIfEnum::Text("committed".to_string()));
 }
@@ -630,9 +630,9 @@ fn final_if_matches() {
 fn final_if_skips_to_next() {
     let arena = Arena::new();
     let input = r#"val = 42"#;
-    let mut root = toml_spanner::parse(input, &arena).unwrap();
-    let (ctx, doc) = root.split();
-    let mut th = doc.as_item().table_helper(ctx).unwrap();
+    let mut doc = toml_spanner::parse(input, &arena).unwrap();
+    let (ctx, table) = doc.split();
+    let mut th = table.as_item().table_helper(ctx).unwrap();
     let v: FinalIfEnum = th.required("val").unwrap();
     // Predicate false for integers, so Text is skipped, falls through to Num
     assert_eq!(v, FinalIfEnum::Num(42));
@@ -652,9 +652,9 @@ enum MixedHints {
 fn mixed_hints_final_if() {
     let arena = Arena::new();
     let input = r#"val = true"#;
-    let mut root = toml_spanner::parse(input, &arena).unwrap();
-    let (ctx, doc) = root.split();
-    let mut th = doc.as_item().table_helper(ctx).unwrap();
+    let mut doc = toml_spanner::parse(input, &arena).unwrap();
+    let (ctx, table) = doc.split();
+    let mut th = table.as_item().table_helper(ctx).unwrap();
     let v: MixedHints = th.required("val").unwrap();
     assert_eq!(v, MixedHints::Flag(true));
 }
@@ -663,9 +663,9 @@ fn mixed_hints_final_if() {
 fn mixed_hints_try_if() {
     let arena = Arena::new();
     let input = r#"val = 99"#;
-    let mut root = toml_spanner::parse(input, &arena).unwrap();
-    let (ctx, doc) = root.split();
-    let mut th = doc.as_item().table_helper(ctx).unwrap();
+    let mut doc = toml_spanner::parse(input, &arena).unwrap();
+    let (ctx, table) = doc.split();
+    let mut th = table.as_item().table_helper(ctx).unwrap();
     let v: MixedHints = th.required("val").unwrap();
     assert_eq!(v, MixedHints::Num(99));
 }
@@ -674,9 +674,9 @@ fn mixed_hints_try_if() {
 fn mixed_hints_fallback_unhinted() {
     let arena = Arena::new();
     let input = r#"val = "hello""#;
-    let mut root = toml_spanner::parse(input, &arena).unwrap();
-    let (ctx, doc) = root.split();
-    let mut th = doc.as_item().table_helper(ctx).unwrap();
+    let mut doc = toml_spanner::parse(input, &arena).unwrap();
+    let (ctx, table) = doc.split();
+    let mut th = table.as_item().table_helper(ctx).unwrap();
     let v: MixedHints = th.required("val").unwrap();
     assert_eq!(v, MixedHints::Text("hello".to_string()));
 }
@@ -694,9 +694,9 @@ enum AllHinted {
 fn all_hinted_no_match_gives_error() {
     let arena = Arena::new();
     let input = r#"val = "nope""#;
-    let mut root = toml_spanner::parse(input, &arena).unwrap();
-    let (ctx, doc) = root.split();
-    let mut th = doc.as_item().table_helper(ctx).unwrap();
+    let mut doc = toml_spanner::parse(input, &arena).unwrap();
+    let (ctx, table) = doc.split();
+    let mut th = table.as_item().table_helper(ctx).unwrap();
     let result: Result<AllHinted, _> = th.required("val");
     assert!(result.is_err(), "expected error when no variant matches");
 }
@@ -714,17 +714,17 @@ fn try_if_no_error_leakage() {
 
     let arena = Arena::new();
     let input = r#"val = "not_a_number""#;
-    let mut root = toml_spanner::parse(input, &arena).unwrap();
-    let (ctx, doc) = root.split();
-    let mut th = doc.as_item().table_helper(ctx).unwrap();
+    let mut doc = toml_spanner::parse(input, &arena).unwrap();
+    let (ctx, table) = doc.split();
+    let mut th = table.as_item().table_helper(ctx).unwrap();
     let v: TryIfLeak = th.required("val").unwrap();
     // try_if predicate matches (it's a string), but i64 deser fails →
     // errors truncated, falls through to Text
     assert_eq!(v, TryIfLeak::Text("not_a_number".to_string()));
     assert!(
-        root.errors().is_empty(),
+        doc.errors().is_empty(),
         "errors should be empty but got: {:?}",
-        root.errors()
+        doc.errors()
     );
 }
 
@@ -744,9 +744,9 @@ struct GenericOptionalField<P: Clone> {
 fn derive_generic_with_default_bound() {
     let arena = Arena::new();
     let input = r#"value = "hello""#;
-    let mut root = toml_spanner::parse(input, &arena).unwrap();
-    let (ctx, doc) = root.split();
-    let result: GenericWithDefault = GenericWithDefault::from_toml(ctx, doc.as_item()).unwrap();
+    let mut doc = toml_spanner::parse(input, &arena).unwrap();
+    let (ctx, table) = doc.split();
+    let result: GenericWithDefault = GenericWithDefault::from_toml(ctx, table.as_item()).unwrap();
     assert_eq!(result.value, "hello");
 }
 
@@ -754,10 +754,10 @@ fn derive_generic_with_default_bound() {
 fn derive_generic_with_explicit_type() {
     let arena = Arena::new();
     let input = r#"value = 42"#;
-    let mut root = toml_spanner::parse(input, &arena).unwrap();
-    let (ctx, doc) = root.split();
+    let mut doc = toml_spanner::parse(input, &arena).unwrap();
+    let (ctx, table) = doc.split();
     let result: GenericWithDefault<i64> =
-        GenericWithDefault::from_toml(ctx, doc.as_item()).unwrap();
+        GenericWithDefault::from_toml(ctx, table.as_item()).unwrap();
     assert_eq!(result.value, 42);
 }
 
@@ -957,10 +957,9 @@ struct ServerConfig {
 fn preserving_formatting_identity_roundtrip() {
     let input = "host = \"localhost\"\nport = 8080\ndebug = true\n";
     let arena = Arena::new();
-    let root = toml_spanner::parse(input, &arena).unwrap();
+    let doc = toml_spanner::parse(input, &arena).unwrap();
     let config: ServerConfig = toml_spanner::from_str(input).unwrap();
-    let output =
-        to_string_with_config(&config, TomlConfig::default().with_formatting_from(&root)).unwrap();
+    let output = to_string_with(&config, Formatting::of(&doc)).unwrap();
     assert_eq!(output, input);
 }
 
@@ -974,10 +973,9 @@ port = 8080
 debug = true
 ";
     let arena = Arena::new();
-    let root = toml_spanner::parse(input, &arena).unwrap();
+    let doc = toml_spanner::parse(input, &arena).unwrap();
     let config: ServerConfig = toml_spanner::from_str(input).unwrap();
-    let output =
-        to_string_with_config(&config, TomlConfig::default().with_formatting_from(&root)).unwrap();
+    let output = to_string_with(&config, Formatting::of(&doc)).unwrap();
     assert!(output.contains("# Server configuration"), "got: {output}");
     assert!(output.contains("# Enable debug mode"), "got: {output}");
 }
@@ -999,10 +997,9 @@ fn preserving_formatting_keeps_inline_table_style() {
 
     let input = "name = \"test\"\npoint = { x = 1, y = 2 }\n";
     let arena = Arena::new();
-    let root = toml_spanner::parse(input, &arena).unwrap();
+    let doc = toml_spanner::parse(input, &arena).unwrap();
     let val: WithNested = toml_spanner::from_str(input).unwrap();
-    let output =
-        to_string_with_config(&val, TomlConfig::default().with_formatting_from(&root)).unwrap();
+    let output = to_string_with(&val, Formatting::of(&doc)).unwrap();
     assert!(
         output.contains("point = {"),
         "inline table style should be preserved, got: {output}"
@@ -1032,10 +1029,9 @@ host = \"0.0.0.0\"
 port = 443
 ";
     let arena = Arena::new();
-    let root = toml_spanner::parse(input, &arena).unwrap();
+    let doc = toml_spanner::parse(input, &arena).unwrap();
     let val: WithSection = toml_spanner::from_str(input).unwrap();
-    let output =
-        to_string_with_config(&val, TomlConfig::default().with_formatting_from(&root)).unwrap();
+    let output = to_string_with(&val, Formatting::of(&doc)).unwrap();
     assert!(
         output.contains("[server]"),
         "header style should be preserved, got: {output}"
@@ -1051,14 +1047,13 @@ port = 8080
 debug = false
 ";
     let arena = Arena::new();
-    let root = toml_spanner::parse(input, &arena).unwrap();
+    let doc = toml_spanner::parse(input, &arena).unwrap();
     let config = ServerConfig {
         host: "localhost".to_string(),
         port: 9090,
         debug: false,
     };
-    let output =
-        to_string_with_config(&config, TomlConfig::default().with_formatting_from(&root)).unwrap();
+    let output = to_string_with(&config, Formatting::of(&doc)).unwrap();
     assert!(
         output.contains("port = 9090"),
         "modified value should appear, got: {output}"
@@ -1080,10 +1075,9 @@ fn preserving_formatting_hex_integers() {
 
     let input = "color = 0xFF00FF\nsize = 42\n";
     let arena = Arena::new();
-    let root = toml_spanner::parse(input, &arena).unwrap();
+    let doc = toml_spanner::parse(input, &arena).unwrap();
     let val: HexConfig = toml_spanner::from_str(input).unwrap();
-    let output =
-        to_string_with_config(&val, TomlConfig::default().with_formatting_from(&root)).unwrap();
+    let output = to_string_with(&val, Formatting::of(&doc)).unwrap();
     assert!(
         output.contains("0xFF00FF"),
         "hex format should be preserved, got: {output}"
@@ -1101,10 +1095,9 @@ fn preserving_formatting_literal_strings() {
 
     let input = "path = 'C:\\Users\\test'\nname = \"hello\"\n";
     let arena = Arena::new();
-    let root = toml_spanner::parse(input, &arena).unwrap();
+    let doc = toml_spanner::parse(input, &arena).unwrap();
     let val: PathConfig = toml_spanner::from_str(input).unwrap();
-    let output =
-        to_string_with_config(&val, TomlConfig::default().with_formatting_from(&root)).unwrap();
+    let output = to_string_with(&val, Formatting::of(&doc)).unwrap();
     assert!(
         output.contains("'C:\\Users\\test'"),
         "literal string format should be preserved, got: {output}"
@@ -1379,10 +1372,9 @@ x = 10
 y = 20
 ";
     let arena = Arena::new();
-    let root = toml_spanner::parse(input, &arena).unwrap();
+    let doc = toml_spanner::parse(input, &arena).unwrap();
     let val: DiverseValues = toml_spanner::from_str(input).unwrap();
-    let output =
-        to_string_with_config(&val, TomlConfig::default().with_formatting_from(&root)).unwrap();
+    let output = to_string_with(&val, Formatting::of(&doc)).unwrap();
     assert!(output.contains("ratio = 3.14"), "got: {output}");
     assert!(output.contains("enabled = true"), "got: {output}");
     assert!(output.contains("[nested]"), "got: {output}");
@@ -1397,14 +1389,13 @@ host = \"localhost\"
 port = 8080
 ";
     let arena = Arena::new();
-    let root = toml_spanner::parse(source_input, &arena).unwrap();
+    let doc = toml_spanner::parse(source_input, &arena).unwrap();
     let config = ServerConfig {
         host: "localhost".to_string(),
         port: 8080,
         debug: true, // new field not in source
     };
-    let output =
-        to_string_with_config(&config, TomlConfig::default().with_formatting_from(&root)).unwrap();
+    let output = to_string_with(&config, Formatting::of(&doc)).unwrap();
     assert!(output.contains("host = \"localhost\""), "got: {output}");
     assert!(output.contains("port = 8080"), "got: {output}");
     assert!(output.contains("debug = true"), "got: {output}");
@@ -1439,10 +1430,9 @@ key = \"second\"
 val = 2
 ";
     let arena = Arena::new();
-    let root = toml_spanner::parse(input, &arena).unwrap();
+    let doc = toml_spanner::parse(input, &arena).unwrap();
     let val: WithAot = toml_spanner::from_str(input).unwrap();
-    let output =
-        to_string_with_config(&val, TomlConfig::default().with_formatting_from(&root)).unwrap();
+    let output = to_string_with(&val, Formatting::of(&doc)).unwrap();
     assert!(output.contains("[[items]]"), "got: {output}");
     assert!(output.contains("key = \"first\""), "got: {output}");
     assert!(output.contains("key = \"second\""), "got: {output}");
@@ -1465,10 +1455,9 @@ bools = [true, false, true]
 ints = [10, 20, 30]
 ";
     let arena = Arena::new();
-    let root = toml_spanner::parse(input, &arena).unwrap();
+    let doc = toml_spanner::parse(input, &arena).unwrap();
     let val: WithDiverseArrays = toml_spanner::from_str(input).unwrap();
-    let output =
-        to_string_with_config(&val, TomlConfig::default().with_formatting_from(&root)).unwrap();
+    let output = to_string_with(&val, Formatting::of(&doc)).unwrap();
     assert!(output.contains("floats = [1.5, 2.5, 3.5]"), "got: {output}");
     assert!(
         output.contains("bools = [true, false, true]"),
@@ -1485,15 +1474,13 @@ bools = [true, false]
 ints = [10, 20, 30]
 ";
     let arena = Arena::new();
-    let root = toml_spanner::parse(input, &arena).unwrap();
+    let doc = toml_spanner::parse(input, &arena).unwrap();
     let modified = WithDiverseArrays {
         floats: vec![1.0, 2.0, 3.0, 4.0], // added element
         bools: vec![true],                // removed element
         ints: vec![10, 20, 30],
     };
-    let output =
-        to_string_with_config(&modified, TomlConfig::default().with_formatting_from(&root))
-            .unwrap();
+    let output = to_string_with(&modified, Formatting::of(&doc)).unwrap();
     assert!(output.contains("floats"), "got: {output}");
     assert!(output.contains("bools"), "got: {output}");
 
@@ -1509,17 +1496,13 @@ ints = [10, 20, 30]
 fn preserving_formatting_reordered_array() {
     let input = "ints = [30, 10, 20]\nfloats = [3.0, 1.0, 2.0]\nbools = [false, true, false]\n";
     let arena = Arena::new();
-    let root = toml_spanner::parse(input, &arena).unwrap();
+    let doc = toml_spanner::parse(input, &arena).unwrap();
     let reordered = WithDiverseArrays {
         floats: vec![1.0, 2.0, 3.0],
         bools: vec![true, false, false],
         ints: vec![10, 20, 30],
     };
-    let output = to_string_with_config(
-        &reordered,
-        TomlConfig::default().with_formatting_from(&root),
-    )
-    .unwrap();
+    let output = to_string_with(&reordered, Formatting::of(&doc)).unwrap();
     let restored: WithDiverseArrays = toml_spanner::from_str(&output).unwrap();
     assert_eq!(reordered.floats, restored.floats);
     assert_eq!(reordered.ints, restored.ints);
@@ -1642,18 +1625,18 @@ fn ser_f32_roundtrip() {
 fn ser_array_and_table_clone() {
     // Exercises ToToml for Array<'_> and Table<'_>
     let arena = toml_spanner::Arena::new();
-    let root = toml_spanner::parse("[t]\na = 1\nb = [2, 3]", &arena).unwrap();
+    let doc = toml_spanner::parse("[t]\na = 1\nb = [2, 3]", &arena).unwrap();
 
-    let table = root["t"].as_table().unwrap();
+    let table = doc["t"].as_table().unwrap();
     let item = toml_spanner::ToToml::to_toml(table, &arena).unwrap();
     assert_eq!(item.as_table().unwrap()["a"].as_i64(), Some(1));
 
-    let arr = root["t"]["b"].as_array().unwrap();
+    let arr = doc["t"]["b"].as_array().unwrap();
     let item = toml_spanner::ToToml::to_toml(arr, &arena).unwrap();
     assert_eq!(item.as_array().unwrap().len(), 2);
 
     // Item::to_toml clones the item
-    let orig = root["t"]["a"].item().unwrap();
+    let orig = doc["t"]["a"].item().unwrap();
     let cloned = toml_spanner::ToToml::to_toml(orig, &arena).unwrap();
     assert_eq!(cloned.as_i64(), Some(1));
 }
@@ -1703,7 +1686,7 @@ fn ser_hashmap_as_table() {
     assert!(toml_str.contains("key1 = \"val1\""), "got: {toml_str}");
 }
 
-// Exercises to_string_with_config with nested tables and dotted keys
+// Exercises to_string_with with nested tables and dotted keys
 #[test]
 fn preserving_formatting_dotted_keys() {
     #[derive(Toml, Debug, PartialEq)]
@@ -1727,10 +1710,9 @@ host = \"localhost\"
 port = 8080
 ";
     let arena = Arena::new();
-    let root = toml_spanner::parse(input, &arena).unwrap();
+    let doc = toml_spanner::parse(input, &arena).unwrap();
     let val: AppConfig = toml_spanner::from_str(input).unwrap();
-    let output =
-        to_string_with_config(&val, TomlConfig::default().with_formatting_from(&root)).unwrap();
+    let output = to_string_with(&val, Formatting::of(&doc)).unwrap();
     assert!(output.contains("[server]"), "got: {output}");
     assert!(output.contains("host = \"localhost\""), "got: {output}");
 
@@ -1742,14 +1724,12 @@ port = 8080
             port: 9090,
         },
     };
-    let output2 =
-        to_string_with_config(&modified, TomlConfig::default().with_formatting_from(&root))
-            .unwrap();
+    let output2 = to_string_with(&modified, Formatting::of(&doc)).unwrap();
     let restored: AppConfig = toml_spanner::from_str(&output2).unwrap();
     assert_eq!(modified, restored);
 }
 
-// Exercises to_string_with_config with removed nested table
+// Exercises to_string_with with removed nested table
 #[test]
 fn preserving_formatting_optional_nested_removed() {
     #[derive(Toml, Debug, PartialEq)]
@@ -1768,26 +1748,24 @@ x = 1
 y = 2
 ";
     let arena = Arena::new();
-    let root = toml_spanner::parse(input, &arena).unwrap();
+    let doc = toml_spanner::parse(input, &arena).unwrap();
     // Remove the nested table
     let modified = WithOptNested {
         name: "test".to_string(),
         extra: None,
     };
-    let output =
-        to_string_with_config(&modified, TomlConfig::default().with_formatting_from(&root))
-            .unwrap();
+    let output = to_string_with(&modified, Formatting::of(&doc)).unwrap();
     assert!(output.contains("name = \"test\""), "got: {output}");
     let restored: WithOptNested = toml_spanner::from_str(&output).unwrap();
     assert_eq!(modified, restored);
 }
 
-// Exercises to_string_with_config with inline tables
+// Exercises to_string_with with inline tables
 #[test]
 fn preserving_formatting_inline_table() {
     let input = "point = { x = 1, y = 2 }\nlabel = \"origin\"\n";
     let arena = Arena::new();
-    let root = toml_spanner::parse(input, &arena).unwrap();
+    let doc = toml_spanner::parse(input, &arena).unwrap();
 
     #[derive(Toml, Debug, PartialEq)]
     #[toml(FromToml, ToToml)]
@@ -1802,8 +1780,7 @@ fn preserving_formatting_inline_table() {
         label: String,
     }
     let val: WithInline = toml_spanner::from_str(input).unwrap();
-    let output =
-        to_string_with_config(&val, TomlConfig::default().with_formatting_from(&root)).unwrap();
+    let output = to_string_with(&val, Formatting::of(&doc)).unwrap();
     assert!(output.contains("point = { x = 1, y = 2 }"), "got: {output}");
 
     // Modified inline table
@@ -1811,9 +1788,7 @@ fn preserving_formatting_inline_table() {
         point: Point { x: 10, y: 20 },
         label: "origin".to_string(),
     };
-    let output2 =
-        to_string_with_config(&modified, TomlConfig::default().with_formatting_from(&root))
-            .unwrap();
+    let output2 = to_string_with(&modified, Formatting::of(&doc)).unwrap();
     let restored: WithInline = toml_spanner::from_str(&output2).unwrap();
     assert_eq!(modified, restored);
 }
@@ -1822,8 +1797,8 @@ fn preserving_formatting_inline_table() {
 #[test]
 fn array_pop_into_iter_and_as_item() {
     let arena = Arena::new();
-    let root = toml_spanner::parse("a = [1, 2, 3, 4]", &arena).unwrap();
-    let mut arr = root["a"].as_array().unwrap().clone_in(&arena);
+    let doc = toml_spanner::parse("a = [1, 2, 3, 4]", &arena).unwrap();
+    let mut arr = doc["a"].as_array().unwrap().clone_in(&arena);
 
     // pop
     let last = arr.pop().unwrap();
@@ -1843,8 +1818,8 @@ fn array_pop_into_iter_and_as_item() {
 #[test]
 fn array_index_out_of_bounds() {
     let arena = Arena::new();
-    let root = toml_spanner::parse("a = [1]", &arena).unwrap();
-    let arr = root["a"].as_array().unwrap();
+    let doc = toml_spanner::parse("a = [1]", &arena).unwrap();
+    let arr = doc["a"].as_array().unwrap();
     assert!(arr[99].as_i64().is_none());
 }
 
@@ -1856,7 +1831,7 @@ fn to_string_non_table_error() {
     assert!(result.is_err());
 }
 
-// Exercises to_string_with_config with comments in source
+// Exercises to_string_with with comments in source
 #[test]
 fn preserving_formatting_with_comments() {
     let input = "\
@@ -1866,7 +1841,7 @@ name = \"myapp\"
 port = 8080
 ";
     let arena = Arena::new();
-    let root = toml_spanner::parse(input, &arena).unwrap();
+    let doc = toml_spanner::parse(input, &arena).unwrap();
 
     #[derive(Toml, Debug, PartialEq)]
     #[toml(FromToml, ToToml)]
@@ -1875,8 +1850,7 @@ port = 8080
         port: i64,
     }
     let val: SimpleConf = toml_spanner::from_str(input).unwrap();
-    let output =
-        to_string_with_config(&val, TomlConfig::default().with_formatting_from(&root)).unwrap();
+    let output = to_string_with(&val, Formatting::of(&doc)).unwrap();
     // Comments should be preserved in source-ordered mode
     assert!(output.contains("# This is a config file"), "got: {output}");
     assert!(output.contains("name = \"myapp\""), "got: {output}");
@@ -2076,8 +2050,8 @@ fn flatten_any_borrowed_lifetime() {
         tag = "hello"
         value = "world"
     "#;
-    let mut root = toml_spanner::parse(input, &arena).unwrap();
-    let v: FaBorrowedOuter<'_> = root.to().unwrap();
+    let mut doc = toml_spanner::parse(input, &arena).unwrap();
+    let v: FaBorrowedOuter<'_> = doc.to().unwrap();
     assert_eq!(v.id, 42);
     assert_eq!(v.inner.tag, "hello");
     assert_eq!(v.inner.value, "world");
@@ -2094,8 +2068,8 @@ fn flatten_any_borrowed_roundtrip() {
         },
     };
     let s = toml_spanner::to_string(&v).unwrap();
-    let mut root = toml_spanner::parse(&s, &arena).unwrap();
-    let v2: FaBorrowedOuter<'_> = root.to().unwrap();
+    let mut doc = toml_spanner::parse(&s, &arena).unwrap();
+    let v2: FaBorrowedOuter<'_> = doc.to().unwrap();
     assert_eq!(v2.id, 1);
     assert_eq!(v2.inner.tag, "a");
     assert_eq!(v2.inner.value, "b");
@@ -2305,8 +2279,8 @@ fn flatten_any_kitchen_sink() {
         f7 = 3.14
         f8 = [1, 2, 3]
     "#;
-    let mut root = toml_spanner::parse(input, &arena).unwrap();
-    let v: FaKitchenSinkOuter<'_> = root.to().unwrap();
+    let mut doc = toml_spanner::parse(input, &arena).unwrap();
+    let v: FaKitchenSinkOuter<'_> = doc.to().unwrap();
     assert_eq!(v.id, 0);
     assert_eq!(v.rest.f1, "alpha");
     assert_eq!(v.rest.f2, "beta");
@@ -2335,8 +2309,8 @@ fn flatten_any_kitchen_sink_roundtrip() {
         },
     };
     let s = toml_spanner::to_string(&v).unwrap();
-    let mut root = toml_spanner::parse(&s, &arena).unwrap();
-    let v2: FaKitchenSinkOuter<'_> = root.to().unwrap();
+    let mut doc = toml_spanner::parse(&s, &arena).unwrap();
+    let v2: FaKitchenSinkOuter<'_> = doc.to().unwrap();
     assert_eq!(v2.id, 99);
     assert_eq!(v2.rest.f1, "one");
     assert_eq!(v2.rest.f2, "two");
@@ -2684,8 +2658,8 @@ fn from_attribute_enum() {
     }
 
     let arena = Arena::new();
-    let mut root = toml_spanner::parse(r#"val = "Red""#, &arena).unwrap();
-    let (ctx, table) = root.split();
+    let mut doc = toml_spanner::parse(r#"val = "Red""#, &arena).unwrap();
+    let (ctx, table) = doc.split();
     let mut th = table.as_item().table_helper(ctx).unwrap();
     let v: Color = th.required("val").unwrap();
     assert_eq!(v, Color::Red);
@@ -2846,8 +2820,8 @@ fn deny_unknown_fields_struct() {
         name: String,
     }
     let arena = Arena::new();
-    let mut root = toml_spanner::parse("name = \"hi\"\nextra = 42", &arena).unwrap();
-    let (ctx, table) = root.split();
+    let mut doc = toml_spanner::parse("name = \"hi\"\nextra = 42", &arena).unwrap();
+    let (ctx, table) = doc.split();
     let result = Strict::from_toml(ctx, table.as_item());
     assert!(
         result.is_ok(),
@@ -2856,7 +2830,7 @@ fn deny_unknown_fields_struct() {
     );
     assert_eq!(result.unwrap().name, "hi");
     assert!(
-        !root.errors().is_empty(),
+        !doc.errors().is_empty(),
         "should have errors for unknown field"
     );
 }
@@ -2869,15 +2843,15 @@ fn deny_unknown_fields_multiple_errors() {
         name: String,
     }
     let arena = Arena::new();
-    let mut root = toml_spanner::parse("name = \"hi\"\na = 1\nb = 2", &arena).unwrap();
-    let (ctx, table) = root.split();
+    let mut doc = toml_spanner::parse("name = \"hi\"\na = 1\nb = 2", &arena).unwrap();
+    let (ctx, table) = doc.split();
     let result = Strict::from_toml(ctx, table.as_item());
     assert!(
         result.is_ok(),
         "struct should still be constructed: {:?}",
         result
     );
-    let errors = root.errors();
+    let errors = doc.errors();
     assert_eq!(errors.len(), 2, "should have two errors, got: {:?}", errors);
 }
 
@@ -2903,13 +2877,13 @@ fn deny_unknown_fields_internal_tag_unit() {
         Go { speed: i64 },
     }
     let arena = Arena::new();
-    let mut root = toml_spanner::parse("type = \"Stop\"\nextra = true", &arena).unwrap();
-    let (ctx, table) = root.split();
+    let mut doc = toml_spanner::parse("type = \"Stop\"\nextra = true", &arena).unwrap();
+    let (ctx, table) = doc.split();
     let result = Action::from_toml(ctx, table.as_item());
     assert!(result.is_ok(), "should still construct: {:?}", result);
     assert_eq!(result.unwrap(), Action::Stop);
     assert!(
-        !root.errors().is_empty(),
+        !doc.errors().is_empty(),
         "should have error for unknown field"
     );
 }
@@ -2923,13 +2897,13 @@ fn deny_unknown_fields_internal_tag_struct() {
         Go { speed: i64 },
     }
     let arena = Arena::new();
-    let mut root = toml_spanner::parse("type = \"Go\"\nspeed = 5\nextra = true", &arena).unwrap();
-    let (ctx, table) = root.split();
+    let mut doc = toml_spanner::parse("type = \"Go\"\nspeed = 5\nextra = true", &arena).unwrap();
+    let (ctx, table) = doc.split();
     let result = Action::from_toml(ctx, table.as_item());
     assert!(result.is_ok(), "should still construct: {:?}", result);
     assert_eq!(result.unwrap(), Action::Go { speed: 5 });
     assert!(
-        !root.errors().is_empty(),
+        !doc.errors().is_empty(),
         "should have error for unknown field"
     );
 }
@@ -2943,13 +2917,13 @@ fn deny_unknown_fields_adjacent_tag() {
         Data(String),
     }
     let arena = Arena::new();
-    let mut root = toml_spanner::parse("t = \"Ping\"\nextra = 1", &arena).unwrap();
-    let (ctx, table) = root.split();
+    let mut doc = toml_spanner::parse("t = \"Ping\"\nextra = 1", &arena).unwrap();
+    let (ctx, table) = doc.split();
     let result = Msg::from_toml(ctx, table.as_item());
     assert!(result.is_ok(), "should still construct: {:?}", result);
     assert_eq!(result.unwrap(), Msg::Ping);
     assert!(
-        !root.errors().is_empty(),
+        !doc.errors().is_empty(),
         "should have error for unknown field"
     );
 }

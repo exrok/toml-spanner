@@ -329,8 +329,8 @@ impl Time {
 ///         datetime = 2066-01-30T14:45:00
 ///         timestamp = 3291-12-01T00:45:00Z
 ///     "#;
-///     let mut root = toml_spanner::parse(toml_doc, &arena).unwrap();
-///     let config: TimeConfig = root.deserialize().unwrap();
+///     let mut doc = toml_spanner::parse(toml_doc, &arena).unwrap();
+///     let config: TimeConfig = doc.deserialize().unwrap();
 ///     println!("{:#?}", config);
 /// }
 /// ```

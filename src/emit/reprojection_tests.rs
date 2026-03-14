@@ -4,7 +4,7 @@ use crate::arena::Arena;
 use crate::emit::EmitConfig;
 use crate::item::{ArrayStyle, Item, Key, TableStyle, Value};
 use crate::parser::parse;
-use crate::{Root, emit, emit_with_config};
+use crate::{Document, emit, emit_with_config};
 
 use crate::emit::test_data::{parse_test_cases, run_cases};
 
@@ -25,10 +25,10 @@ fn data_emit_identity() {
         let expected = case.expected.unwrap_or(input);
         if result != expected {
             let arena = Arena::new();
-            let src_root = parse(input, &arena).unwrap();
-            let mut dest_root = parse(input, &arena).unwrap();
+            let src_doc = parse(input, &arena).unwrap();
+            let mut dest_doc = parse(input, &arena).unwrap();
             let mut items = Vec::new();
-            reproject(&src_root, &mut dest_root.table, &mut items);
+            reproject(&src_doc, &mut dest_doc.table, &mut items);
             panic!(
                 "case {:?}: emit_with_projection mismatch\
                  \n── input ({} bytes) ──\n{input:?}\
@@ -39,8 +39,8 @@ fn data_emit_identity() {
                  \n── actual ──\n{result:?}",
                 case.name,
                 input.len(),
-                debug_table(src_root.table()),
-                debug_table(&dest_root.table),
+                debug_table(src_doc.table()),
+                debug_table(&dest_doc.table),
                 items.len(),
             );
         }
@@ -100,10 +100,10 @@ fn data_reorder_identity() {
             let expected = case.expected();
             if result != expected {
                 let arena = Arena::new();
-                let src_root = parse(input, &arena).unwrap();
-                let mut dest_root = parse(dest, &arena).unwrap();
+                let src_doc = parse(input, &arena).unwrap();
+                let mut dest_doc = parse(dest, &arena).unwrap();
                 let mut items = Vec::new();
-                reproject(&src_root, &mut dest_root.table, &mut items);
+                reproject(&src_doc, &mut dest_doc.table, &mut items);
                 panic!(
                     "case {:?}: reorder mismatch\
                      \n── source ({} bytes) ──\n{input:?}\
@@ -116,8 +116,8 @@ fn data_reorder_identity() {
                     case.name,
                     input.len(),
                     dest.len(),
-                    debug_table(src_root.table()),
-                    debug_table(&dest_root.table),
+                    debug_table(src_doc.table()),
+                    debug_table(&dest_doc.table),
                     items.len(),
                 );
             }
@@ -126,10 +126,10 @@ fn data_reorder_identity() {
             let expected = case.expected();
             if result != expected {
                 let arena = Arena::new();
-                let src_root = parse(input, &arena).unwrap();
-                let mut dest_root = parse(input, &arena).unwrap();
+                let src_doc = parse(input, &arena).unwrap();
+                let mut dest_doc = parse(input, &arena).unwrap();
                 let mut items = Vec::new();
-                reproject(&src_root, &mut dest_root.table, &mut items);
+                reproject(&src_doc, &mut dest_doc.table, &mut items);
                 panic!(
                     "case {:?}: reorder mismatch\
                      \n── input ({} bytes) ──\n{input:?}\
@@ -140,8 +140,8 @@ fn data_reorder_identity() {
                      \n── actual ──\n{result:?}",
                     case.name,
                     input.len(),
-                    debug_table(src_root.table()),
-                    debug_table(&dest_root.table),
+                    debug_table(src_doc.table()),
+                    debug_table(&dest_doc.table),
                     items.len(),
                 );
             }
@@ -191,15 +191,15 @@ fn assert_reproject_recovers(input: &str) {
     let mut ref_root = parse(input, &arena).unwrap();
     let reference = emit_table(&mut ref_root.table);
 
-    let src_root = parse(input, &arena).unwrap();
+    let src_doc = parse(input, &arena).unwrap();
 
-    let mut dest_root = parse(input, &arena).unwrap();
-    erase_kinds(&mut dest_root.table);
+    let mut dest_doc = parse(input, &arena).unwrap();
+    erase_kinds(&mut dest_doc.table);
 
     let mut items = Vec::new();
-    reproject(&src_root, &mut dest_root.table, &mut items);
+    reproject(&src_doc, &mut dest_doc.table, &mut items);
 
-    let reprojected = emit_table(&mut dest_root.table);
+    let reprojected = emit_table(&mut dest_doc.table);
     if reprojected != reference {
         panic!(
             "reprojected output should match reference\
@@ -210,8 +210,8 @@ fn assert_reproject_recovers(input: &str) {
              \n── reference emit ──\n{reference:?}\
              \n── reprojected emit ──\n{reprojected:?}",
             input.len(),
-            debug_table(src_root.table()),
-            debug_table(&dest_root.table),
+            debug_table(src_doc.table()),
+            debug_table(&dest_doc.table),
             items.len(),
         );
     }
@@ -232,23 +232,23 @@ fn make_nested<'de>(
     (Key::anon(outer), t.into_item())
 }
 
-/// Parses `input`, applies `mutate` to the dest root, reprojects from
+/// Parses `input`, applies `mutate` to the dest document, reprojects from
 /// the original, normalizes, and emits.
 fn reproject_after_mutation(
     input: &str,
     mutate: impl for<'a> FnOnce(&mut Table<'a>, &'a Arena),
 ) -> String {
     let arena = Arena::new();
-    let src_root = parse(input, &arena).unwrap();
+    let src_doc = parse(input, &arena).unwrap();
 
-    let mut dest_root = parse(input, &arena).unwrap();
+    let mut dest_doc = parse(input, &arena).unwrap();
 
-    mutate(&mut dest_root.table, &arena);
+    mutate(&mut dest_doc.table, &arena);
 
     let mut items = Vec::new();
-    reproject(&src_root, &mut dest_root.table, &mut items);
+    reproject(&src_doc, &mut dest_doc.table, &mut items);
 
-    emit_table(&mut dest_root.table)
+    emit_table(&mut dest_doc.table)
 }
 
 #[test]
@@ -331,7 +331,7 @@ fn new_sibling_inherits_last_match_inline_after_dotted() {
 fn new_sibling_before_match_backfills_dotted() {
     // Construct dest manually so new entries come before the matched entry.
     let arena = Arena::new();
-    let src_root = parse("[A]\nb.c = 1", &arena).unwrap();
+    let src_doc = parse("[A]\nb.c = 1", &arena).unwrap();
 
     // Build dest: A = { d.e=2, b.c=1 } — d is new (before matched b)
     let mut section_a = Table::new();
@@ -344,7 +344,7 @@ fn new_sibling_before_match_backfills_dotted() {
     dest.insert(Key::anon("A"), section_a.into_item(), &arena);
 
     let mut items = Vec::new();
-    reproject(&src_root, &mut dest, &mut items);
+    reproject(&src_doc, &mut dest, &mut items);
 
     let result = emit_table(&mut dest);
     // d should be backfilled with dotted kind from b (first match)
@@ -354,7 +354,7 @@ fn new_sibling_before_match_backfills_dotted() {
 #[test]
 fn new_sibling_before_match_backfills_inline() {
     let arena = Arena::new();
-    let src_root = parse("[A]\nb = { c = 1 }", &arena).unwrap();
+    let src_doc = parse("[A]\nb = { c = 1 }", &arena).unwrap();
 
     let mut section_a = Table::new();
     section_a.set_style(TableStyle::Header);
@@ -366,7 +366,7 @@ fn new_sibling_before_match_backfills_inline() {
     dest.insert(Key::anon("A"), section_a.into_item(), &arena);
 
     let mut items = Vec::new();
-    reproject(&src_root, &mut dest, &mut items);
+    reproject(&src_doc, &mut dest, &mut items);
 
     let result = emit_table(&mut dest);
     assert_eq!(result, "[A]\nd = { e = 2 }\nb = { c = 1 }\n");
@@ -492,7 +492,7 @@ fn new_array_sibling_before_match_backfills_aot() {
     // Dest has new array `jobs` before matched `servers`. The backfill
     // should apply AOT style from the first matched array.
     let arena = Arena::new();
-    let src_root = parse(
+    let src_doc = parse(
         "[[servers]]\nname = \"a\"\n\n[[servers]]\nname = \"b\"",
         &arena,
     )
@@ -516,7 +516,7 @@ fn new_array_sibling_before_match_backfills_aot() {
     dest.insert(Key::anon("servers"), arr2.into_item(), &arena);
 
     let mut items = Vec::new();
-    reproject(&src_root, &mut dest, &mut items);
+    reproject(&src_doc, &mut dest, &mut items);
 
     let result = emit_table(&mut dest);
     assert!(
@@ -694,14 +694,14 @@ x = { y = 2 }";
 /// and return the output. Unchanged scalars should be preserved verbatim.
 fn emit_with_projection(input: &str) -> String {
     let arena = Arena::new();
-    let src_root = parse(input, &arena).unwrap();
+    let src_doc = parse(input, &arena).unwrap();
 
-    let mut dest_root = parse(input, &arena).unwrap();
+    let mut dest_doc = parse(input, &arena).unwrap();
 
     let mut items = Vec::new();
-    reproject(&src_root, &mut dest_root.table, &mut items);
+    reproject(&src_doc, &mut dest_doc.table, &mut items);
 
-    let normalized = dest_root.table.normalize();
+    let normalized = dest_doc.table.normalize();
     let config = EmitConfig {
         projected_source_text: input,
         projected_source_items: &items,
@@ -718,16 +718,16 @@ fn emit_projected_after_mutation(
     mutate: impl for<'a> FnOnce(&mut Table<'a>, &'a Arena),
 ) -> String {
     let arena = Arena::new();
-    let src_root = parse(input, &arena).unwrap();
+    let src_doc = parse(input, &arena).unwrap();
 
-    let mut dest_root = parse(input, &arena).unwrap();
+    let mut dest_doc = parse(input, &arena).unwrap();
 
-    mutate(&mut dest_root.table, &arena);
+    mutate(&mut dest_doc.table, &arena);
 
     let mut items = Vec::new();
-    reproject(&src_root, &mut dest_root.table, &mut items);
+    reproject(&src_doc, &mut dest_doc.table, &mut items);
 
-    let normalized = dest_root.table.normalize();
+    let normalized = dest_doc.table.normalize();
     let config = EmitConfig {
         projected_source_text: input,
         projected_source_items: &items,
@@ -901,8 +901,8 @@ fn array_remove_element_preserves_comment() {
 fn plain_emit_ignores_whitespace() {
     // Without reprojection, extra whitespace is normalized
     let arena = Arena::new();
-    let root = parse("x  =  1 # comment", &arena).unwrap();
-    let normalized = root.table().try_as_normalized().unwrap();
+    let doc = parse("x  =  1 # comment", &arena).unwrap();
+    let normalized = doc.table().try_as_normalized().unwrap();
     let mut buf = Vec::new();
     emit::emit(normalized, &mut buf);
     let result = String::from_utf8(buf).unwrap();
@@ -1008,7 +1008,7 @@ fn debug_table(table: &Table<'_>) -> String {
 fn assert_reproject_edit(src_text: &str, dest_text: &str) {
     // Parse source.
     let arena = Arena::new();
-    let src_root = parse(src_text, &arena).unwrap_or_else(|e| {
+    let src_doc = parse(src_text, &arena).unwrap_or_else(|e| {
         panic!("src failed to parse: {e:?}\nsrc: {src_text:?}");
     });
 
@@ -1018,16 +1018,16 @@ fn assert_reproject_edit(src_text: &str, dest_text: &str) {
     });
 
     // Parse dest (working copy for reproject + normalize).
-    let mut dest_root = parse(dest_text, &arena).unwrap_or_else(|e| {
+    let mut dest_doc = parse(dest_text, &arena).unwrap_or_else(|e| {
         panic!("dest failed to parse: {e:?}\ndest: {dest_text:?}");
     });
 
     // Reproject source structure onto dest.
     let mut items = Vec::new();
-    reproject(&src_root, &mut dest_root.table, &mut items);
+    reproject(&src_doc, &mut dest_doc.table, &mut items);
 
     // Normalize and emit with reprojection config.
-    let norm = dest_root.table.normalize();
+    let norm = dest_doc.table.normalize();
     let config = EmitConfig {
         projected_source_text: src_text,
         projected_source_items: &items,
@@ -1059,7 +1059,7 @@ fn assert_reproject_edit(src_text: &str, dest_text: &str) {
              \n── parse error ──\n{e:?}",
             src_text.len(),
             dest_text.len(),
-            debug_table(src_root.table()),
+            debug_table(src_doc.table()),
             debug_table(ref_root.table()),
             items.len(),
             output.len(),
@@ -1079,7 +1079,7 @@ fn assert_reproject_edit(src_text: &str, dest_text: &str) {
              \n── re-parsed output ──\n{}",
             src_text.len(),
             dest_text.len(),
-            debug_table(src_root.table()),
+            debug_table(src_doc.table()),
             debug_table(ref_root.table()),
             items.len(),
             output.len(),
@@ -1093,14 +1093,14 @@ fn assert_reproject_edit(src_text: &str, dest_text: &str) {
 /// Reprojects `src_text` onto `dest_text` and emits with config, returning the output string.
 fn reproject_edit_output(src_text: &str, dest_text: &str) -> String {
     let arena = Arena::new();
-    let src_root = parse(src_text, &arena).unwrap();
+    let src_doc = parse(src_text, &arena).unwrap();
 
-    let mut dest_root = parse(dest_text, &arena).unwrap();
+    let mut dest_doc = parse(dest_text, &arena).unwrap();
 
     let mut items = Vec::new();
-    reproject(&src_root, &mut dest_root.table, &mut items);
+    reproject(&src_doc, &mut dest_doc.table, &mut items);
 
-    let norm = dest_root.table.normalize();
+    let norm = dest_doc.table.normalize();
     let config = EmitConfig {
         projected_source_text: src_text,
         projected_source_items: &items,
@@ -1125,14 +1125,14 @@ fn aot_body_entry_at_eof_is_idempotent() {
 /// Parse input, self-reproject, emit with `reprojected_order: true`.
 fn emit_with_reorder(input: &str) -> String {
     let arena = Arena::new();
-    let src_root = parse(input, &arena).unwrap();
+    let src_doc = parse(input, &arena).unwrap();
 
-    let mut dest_root = parse(input, &arena).unwrap();
+    let mut dest_doc = parse(input, &arena).unwrap();
 
     let mut items = Vec::new();
-    reproject(&src_root, &mut dest_root.table, &mut items);
+    reproject(&src_doc, &mut dest_doc.table, &mut items);
 
-    let normalized = dest_root.table.normalize();
+    let normalized = dest_doc.table.normalize();
     let config = EmitConfig {
         projected_source_text: input,
         projected_source_items: &items,
@@ -1146,14 +1146,14 @@ fn emit_with_reorder(input: &str) -> String {
 /// Reprojects `src_text` onto `dest_text` with `reprojected_order: true`.
 fn reproject_edit_reorder(src_text: &str, dest_text: &str) -> String {
     let arena = Arena::new();
-    let src_root = parse(src_text, &arena).unwrap();
+    let src_doc = parse(src_text, &arena).unwrap();
 
-    let mut dest_root = parse(dest_text, &arena).unwrap();
+    let mut dest_doc = parse(dest_text, &arena).unwrap();
 
     let mut items = Vec::new();
-    reproject(&src_root, &mut dest_root.table, &mut items);
+    reproject(&src_doc, &mut dest_doc.table, &mut items);
 
-    let norm = dest_root.table.normalize();
+    let norm = dest_doc.table.normalize();
     let config = EmitConfig {
         projected_source_text: src_text,
         projected_source_items: &items,
@@ -1172,7 +1172,7 @@ fn reproject_edit_reorder(src_text: &str, dest_text: &str) -> String {
 fn run_edit_ordered(src_text: &str, dest_text: &str) {
     // Parse source.
     let arena = Arena::new();
-    let src_root = parse(src_text, &arena).unwrap_or_else(|e| {
+    let src_doc = parse(src_text, &arena).unwrap_or_else(|e| {
         panic!("src failed to parse: {e:?}\nsrc: {src_text:?}");
     });
 
@@ -1182,20 +1182,20 @@ fn run_edit_ordered(src_text: &str, dest_text: &str) {
     });
 
     // Parse dest (working copy for reproject + normalize).
-    let mut dest_root = parse(dest_text, &arena).unwrap_or_else(|e| {
+    let mut dest_doc = parse(dest_text, &arena).unwrap_or_else(|e| {
         panic!("dest failed to parse: {e:?}\ndest: {dest_text:?}");
     });
 
     // Collect projected source key positions before reproject.
     let mut src_positions: Vec<(Vec<String>, u32)> = Vec::new();
-    collect_key_positions(src_root.table(), &mut Vec::new(), &mut src_positions);
+    collect_key_positions(src_doc.table(), &mut Vec::new(), &mut src_positions);
 
     // Reproject source structure onto dest.
     let mut items = Vec::new();
-    reproject(&src_root, &mut dest_root.table, &mut items);
+    reproject(&src_doc, &mut dest_doc.table, &mut items);
 
     // Normalize and emit with reprojected order.
-    let norm = dest_root.table.normalize();
+    let norm = dest_doc.table.normalize();
     let config = EmitConfig {
         projected_source_text: src_text,
         projected_source_items: &items,
@@ -1221,7 +1221,7 @@ fn run_edit_ordered(src_text: &str, dest_text: &str) {
              \n── parse error ──\n{e:?}",
             src_text.len(),
             dest_text.len(),
-            debug_table(src_root.table()),
+            debug_table(src_doc.table()),
             debug_table(ref_root.table()),
             items.len(),
             output.len(),
@@ -1241,7 +1241,7 @@ fn run_edit_ordered(src_text: &str, dest_text: &str) {
              \n── re-parsed output ──\n{}",
             src_text.len(),
             dest_text.len(),
-            debug_table(src_root.table()),
+            debug_table(src_doc.table()),
             debug_table(ref_root.table()),
             items.len(),
             output.len(),
@@ -1275,7 +1275,7 @@ fn run_edit_ordered(src_text: &str, dest_text: &str) {
              \n── second emit ──\n{output2:?}",
             src_text.len(),
             dest_text.len(),
-            debug_table(src_root.table()),
+            debug_table(src_doc.table()),
             debug_table(ref_root.table()),
             items.len(),
         );
@@ -1375,17 +1375,17 @@ fn edit_bom_preserved_when_new_entry_inserted_first() {
 #[track_caller]
 fn assert_reproject_exact(source: &str, modified: &str, expected: &str) {
     let arena = Arena::new();
-    let src_root = parse(source, &arena).unwrap();
+    let src_doc = parse(source, &arena).unwrap();
 
-    let mut dest_root = parse(modified, &arena).unwrap();
+    let mut dest_doc = parse(modified, &arena).unwrap();
     // Some tests are actually testing the dest style are being
     // preserved as well, when they are new
-    // erase_kinds(&mut dest_root.table);
+    // erase_kinds(&mut dest_doc.table);
 
     let mut items = Vec::new();
-    reproject(&src_root, &mut dest_root.table, &mut items);
+    reproject(&src_doc, &mut dest_doc.table, &mut items);
 
-    let norm = dest_root.table.normalize();
+    let norm = dest_doc.table.normalize();
     let config = EmitConfig {
         projected_source_text: source,
         projected_source_items: &items,
@@ -1396,11 +1396,11 @@ fn assert_reproject_exact(source: &str, modified: &str, expected: &str) {
     let output = String::from_utf8(buf).unwrap();
 
     if output != expected {
-        // Re-parse to get trees for debug (norm consumed dest_root.table)
-        let src_root2 = parse(source, &arena).unwrap();
-        let mut dest_root2 = parse(modified, &arena).unwrap();
+        // Re-parse to get trees for debug (norm consumed dest_doc.table)
+        let src_doc2 = parse(source, &arena).unwrap();
+        let mut dest_doc2 = parse(modified, &arena).unwrap();
         let mut items2 = Vec::new();
-        reproject(&src_root2, &mut dest_root2.table, &mut items2);
+        reproject(&src_doc2, &mut dest_doc2.table, &mut items2);
         panic!(
             "reproject_exact mismatch\
              \n── source ({} bytes) ──\n{source:?}\
@@ -1412,8 +1412,8 @@ fn assert_reproject_exact(source: &str, modified: &str, expected: &str) {
              \n── actual ──\n{output:?}",
             source.len(),
             modified.len(),
-            debug_table(src_root2.table()),
-            debug_table(&dest_root2.table),
+            debug_table(src_doc2.table()),
+            debug_table(&dest_doc2.table),
             items2.len(),
         );
     }
@@ -1430,18 +1430,18 @@ fn ignore_source_order_skips_reordering() {
     let src_text = "c = 3\nb = 2\na = 1\n";
 
     let arena = Arena::new();
-    let src_root = parse(src_text, &arena).unwrap();
+    let src_doc = parse(src_text, &arena).unwrap();
 
     // Build dest with reversed key order.
-    let mut dest_root = parse("a = 1\nb = 2\nc = 3\n", &arena).unwrap();
+    let mut dest_doc = parse("a = 1\nb = 2\nc = 3\n", &arena).unwrap();
 
     let mut items = Vec::new();
-    reproject(&src_root, &mut dest_root.table, &mut items);
+    reproject(&src_doc, &mut dest_doc.table, &mut items);
 
     // Set the flag on the root table.
-    dest_root.table.set_ignore_source_order();
+    dest_doc.table.set_ignore_source_order();
 
-    let norm = dest_root.table.normalize();
+    let norm = dest_doc.table.normalize();
     let config = EmitConfig {
         projected_source_text: src_text,
         projected_source_items: &items,
@@ -1460,19 +1460,19 @@ fn ignore_source_order_skips_reordering() {
 fn hints_survive_reprojection() {
     let src_text = "[package]\nname = \"test\"\nversion = \"1.0\"\n";
     let arena = Arena::new();
-    let src_root = parse(src_text, &arena).unwrap();
-    let mut dest_root = parse(src_text, &arena).unwrap();
+    let src_doc = parse(src_text, &arena).unwrap();
+    let mut dest_doc = parse(src_text, &arena).unwrap();
 
     // Set hint flag BEFORE reprojection.
-    dest_root.table.set_ignore_source_order();
-    assert!(dest_root.table.ignore_source_order());
+    dest_doc.table.set_ignore_source_order();
+    assert!(dest_doc.table.ignore_source_order());
 
     let mut items = Vec::new();
-    reproject(&src_root, &mut dest_root.table, &mut items);
+    reproject(&src_doc, &mut dest_doc.table, &mut items);
 
     // The flag must survive reprojection (hints_preserve_mask fix).
     assert!(
-        dest_root.table.ignore_source_order(),
+        dest_doc.table.ignore_source_order(),
         "ignore_source_order hint was destroyed by reprojection"
     );
 }
@@ -1482,7 +1482,7 @@ fn ignore_source_style_uses_dest_structure() {
     // Source uses header sections.
     let src_text = "[package]\nname = \"test\"\nversion = \"1.0\"\n";
     let arena = Arena::new();
-    let src_root = parse(src_text, &arena).unwrap();
+    let src_doc = parse(src_text, &arena).unwrap();
 
     // Dest: build programmatically with dotted keys (body-level style).
     let mut pkg = Table::new();
@@ -1497,7 +1497,7 @@ fn ignore_source_style_uses_dest_structure() {
     dest.set_ignore_source_style();
 
     let mut items = Vec::new();
-    reproject(&src_root, &mut dest, &mut items);
+    reproject(&src_doc, &mut dest, &mut items);
 
     // After reprojection, package should still be Dotted (dest's style),
     // not Header (source's style).
@@ -1524,7 +1524,7 @@ fn ignore_source_style_per_table() {
     // Source: dotted keys inside each header section.
     let src_text = "[a]\nw.x = 1\n\n[b]\nw.x = 2\n";
     let arena = Arena::new();
-    let src_root = parse(src_text, &arena).unwrap();
+    let src_doc = parse(src_text, &arena).unwrap();
 
     // Dest: sections as Header (matching source), but inner tables as Inline
     // (different from source's Dotted).
@@ -1555,7 +1555,7 @@ fn ignore_source_style_per_table() {
         .set_ignore_source_style();
 
     let mut items = Vec::new();
-    reproject(&src_root, &mut dest, &mut items);
+    reproject(&src_doc, &mut dest, &mut items);
 
     assert_eq!(
         dest["a"]["w"].as_table().unwrap().style(),
@@ -1570,7 +1570,7 @@ fn ignore_source_style_per_table() {
     );
 }
 // todo should put text in Context.
-fn to_toml(reference: &Root<'_>, text: &str, mut table: Table<'_>) -> String {
+fn to_toml(reference: &Document<'_>, text: &str, mut table: Table<'_>) -> String {
     let mut buf = Vec::new();
     reproject(&reference, &mut table, &mut buf);
     let emit_config = EmitConfig {
@@ -1603,12 +1603,12 @@ vim = { workspace = true, features = ["spelling"] }
 "#;
 
     let arena = Arena::new();
-    let src_root = parse(src_text, &arena).unwrap();
+    let src_doc = parse(src_text, &arena).unwrap();
     // let expected_preserve_style = parse(expected_ignored_source_style_text, &arena).unwrap();
     let expected_ignore_style = parse(expected_ignored_source_style_text, &arena).unwrap();
 
     let output = to_toml(
-        &src_root,
+        &src_doc,
         src_text,
         expected_ignore_style.table().clone_in(&arena),
     );
@@ -1622,7 +1622,7 @@ vim = { workspace = true, features = ["spelling"] }
         .unwrap()
         .set_ignore_source_style();
 
-    let output = to_toml(&src_root, src_text, table);
+    let output = to_toml(&src_doc, src_text, table);
     assert_eq!(output, expected_ignored_source_style_text);
 }
 
@@ -1669,8 +1669,8 @@ eta = "0.1"
 "#;
 
     let arena = Arena::new();
-    let src_root = parse(src_text, &arena).unwrap();
-    let mut copy = src_root.table().clone_in(&arena);
+    let src_doc = parse(src_text, &arena).unwrap();
+    let mut copy = src_doc.table().clone_in(&arena);
     let dep_table = copy
         .get_mut("dependencies")
         .unwrap()
@@ -1683,7 +1683,7 @@ eta = "0.1"
 
     dep_table.set_ignore_source_order();
 
-    let output = to_toml(&src_root, src_text, copy.clone_in(&arena));
+    let output = to_toml(&src_doc, src_text, copy.clone_in(&arena));
     if output != sorted_by_style_kept {
         println!("=== Expected ===\n {}", sorted_by_style_kept);
         println!("=== Got ===\n {}", output);
@@ -1702,7 +1702,7 @@ eta = "0.1"
             table.set_ignore_source_style();
         }
     }
-    let output = to_toml(&src_root, src_text, copy);
+    let output = to_toml(&src_doc, src_text, copy);
     if output != sorted_by_style_discarded {
         println!("=== Expected ===\n {}", sorted_by_style_discarded);
         println!("=== Got ===\n {}", output);
@@ -1805,14 +1805,14 @@ fn positional_fallback_large_array() {
     let src_text = format!("a = [{}]", src_parts.join(", "));
     let dest_text = format!("a = [{}]", dest_parts.join(", "));
 
-    let src_root = parse(&src_text, &arena).unwrap();
-    let mut dest_root = parse(&dest_text, &arena).unwrap();
+    let src_doc = parse(&src_text, &arena).unwrap();
+    let mut dest_doc = parse(&dest_text, &arena).unwrap();
     let mut items = Vec::new();
-    reproject(&src_root, &mut dest_root.table, &mut items);
+    reproject(&src_doc, &mut dest_doc.table, &mut items);
 
     // Positional fallback: each dest[i] pairs with src[i].
     // Result should be valid TOML and semantically equal to dest.
-    let norm = dest_root.table.normalize();
+    let norm = dest_doc.table.normalize();
     let mut buf = Vec::new();
     emit::emit(norm, &mut buf);
     let output = String::from_utf8(buf).unwrap();

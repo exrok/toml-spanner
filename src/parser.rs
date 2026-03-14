@@ -1810,10 +1810,10 @@ impl<'de> Parser<'de> {
 
 /// The result of parsing a TOML document.
 ///
-/// A `Root` wraps the parsed [`Table`] tree and, when the `from-toml` feature
-/// is enabled, a [`Context`](crate::Context) that accumulates errors.
+/// A `Document` wraps the parsed [`Table`] tree and, when the `from-toml`
+/// feature is enabled, a [`Context`](crate::Context) that accumulates errors.
 ///
-/// Access values via index operators (`root["key"]`) which return
+/// Access values via index operators (`doc["key"]`) which return
 /// [`MaybeItem`](crate::MaybeItem), or use [`helper`](Self::helper) /
 /// [`to`](Self::to) for typed conversion.
 ///
@@ -1821,18 +1821,18 @@ impl<'de> Parser<'de> {
 ///
 /// ```
 /// let arena = toml_spanner::Arena::new();
-/// let root = toml_spanner::parse("name = 'world'", &arena)?;
-/// assert_eq!(root["name"].as_str(), Some("world"));
+/// let doc = toml_spanner::parse("name = 'world'", &arena)?;
+/// assert_eq!(doc["name"].as_str(), Some("world"));
 /// # Ok::<(), toml_spanner::Error>(())
 /// ```
-pub struct Root<'de> {
+pub struct Document<'de> {
     pub(crate) table: Table<'de>,
     #[cfg(feature = "from-toml")]
     pub ctx: crate::de::Context<'de>,
 }
 
-impl<'de> Root<'de> {
-    /// Consumes the root and returns the underlying [`Table`].
+impl<'de> Document<'de> {
+    /// Consumes the document and returns the underlying [`Table`].
     pub fn into_table(self) -> Table<'de> {
         self.table
     }
@@ -1869,7 +1869,7 @@ impl<'de> Root<'de> {
 }
 
 #[cfg(feature = "from-toml")]
-impl<'de> Root<'de> {
+impl<'de> Document<'de> {
     /// Creates a [`TableHelper`] for the root table.
     ///
     /// This is the typical entry point for typed extraction. Extract fields
@@ -1911,7 +1911,7 @@ impl<'de> Root<'de> {
     }
 }
 
-impl<'de> std::ops::Index<&str> for Root<'de> {
+impl<'de> std::ops::Index<&str> for Document<'de> {
     type Output = MaybeItem<'de>;
 
     fn index(&self, key: &str) -> &Self::Output {
@@ -1919,15 +1919,15 @@ impl<'de> std::ops::Index<&str> for Root<'de> {
     }
 }
 
-impl std::fmt::Debug for Root<'_> {
+impl std::fmt::Debug for Document<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         self.table.fmt(f)
     }
 }
 
-/// Parses a TOML document and returns a [`Root`] containing the parsed tree.
+/// Parses a TOML document and returns a [`Document`] containing the parsed tree.
 ///
-/// Both `s` and `arena` must outlive the returned [`Root`] because parsed
+/// Both `s` and `arena` must outlive the returned [`Document`] because parsed
 /// values borrow directly from the input string and allocate escaped strings
 /// into the arena.
 ///
@@ -1939,12 +1939,12 @@ impl std::fmt::Debug for Root<'_> {
 ///
 /// ```
 /// let arena = toml_spanner::Arena::new();
-/// let root = toml_spanner::parse("key = 'value'", &arena)?;
-/// assert_eq!(root["key"].as_str(), Some("value"));
+/// let doc = toml_spanner::parse("key = 'value'", &arena)?;
+/// assert_eq!(doc["key"].as_str(), Some("value"));
 /// # Ok::<(), toml_spanner::Error>(())
 /// ```
 #[inline(never)]
-pub fn parse<'de>(document: &'de str, arena: &'de Arena) -> Result<Root<'de>, Error> {
+pub fn parse<'de>(document: &'de str, arena: &'de Arena) -> Result<Document<'de>, Error> {
     // Tag bits use the low 3 bits of start_and_tag, limiting span.start to
     // 28 bits (256 MiB). The flag state uses the low 3 bits of end_and_flag,
     // and bit 31 is the variant discriminator, limiting span.end to 28 bits
@@ -1967,7 +1967,7 @@ pub fn parse<'de>(document: &'de str, arena: &'de Arena) -> Result<Root<'de>, Er
     // Note that root is about the drop (but doesn't implement drop), so we can take
     // ownership of this table.
     // todo don't do this
-    Ok(Root {
+    Ok(Document {
         table: root_st,
         #[cfg(feature = "from-toml")]
         ctx: crate::de::Context {

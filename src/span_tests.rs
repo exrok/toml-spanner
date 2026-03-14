@@ -206,9 +206,9 @@ fn extract_header_span_empty_section() {
 fn spanned_deserialize() {
     let arena = crate::arena::Arena::new();
     let input = "v = 42";
-    let mut root = crate::parser::parse(input, &arena).unwrap();
+    let mut doc = crate::parser::parse(input, &arena).unwrap();
     let val: Spanned<i64> = {
-        let mut helper = root.helper();
+        let mut helper = doc.helper();
         helper.required("v").unwrap()
     };
     assert_eq!(val.value, 42);

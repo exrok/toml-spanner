@@ -33,9 +33,9 @@ macro_rules! table {
 #[track_caller]
 fn run_emit(input: &str) -> String {
     let arena = Arena::new();
-    let root = parse(input, &arena).unwrap();
+    let doc = parse(input, &arena).unwrap();
 
-    let normalized = root
+    let normalized = doc
         .table()
         .try_as_normalized()
         .expect("parsed table should be valid for emission");
@@ -51,7 +51,7 @@ fn run_emit(input: &str) -> String {
     });
 
     assert_items_equal_with_flags(
-        root.table().as_item(),
+        doc.table().as_item(),
         root2.table().as_item(),
         &mut Vec::new(),
         input,

@@ -4,14 +4,14 @@ use crate::arena::Arena;
 use crate::span::Spanned;
 
 fn parse_val<'a, T: FromToml<'a>>(input: &'a str, arena: &'a Arena) -> Result<T, crate::Error> {
-    let mut root = crate::parser::parse(input, arena).unwrap();
+    let mut doc = crate::parser::parse(input, arena).unwrap();
     let result = {
-        let mut helper = root.helper();
+        let mut helper = doc.helper();
         helper.required::<T>("v")
     };
     match result {
         Ok(val) => Ok(val),
-        Err(_) => Err(root.ctx.errors.remove(0)),
+        Err(_) => Err(doc.ctx.errors.remove(0)),
     }
 }
 
@@ -147,9 +147,9 @@ fn deser_vecs() {
 fn deser_spanned() {
     let arena = Arena::new();
     let input = "v = 42";
-    let mut root = crate::parser::parse(input, &arena).unwrap();
+    let mut doc = crate::parser::parse(input, &arena).unwrap();
     let val: Spanned<i64> = {
-        let mut helper = root.helper();
+        let mut helper = doc.helper();
         helper.required("v").unwrap()
     };
     assert_eq!(val.value, 42);
@@ -167,8 +167,8 @@ fn into_remaining() {
             toml.push_str(&format!("k{i} = {i}"));
         }
         let arena = Arena::new();
-        let mut root = crate::parser::parse(&toml, &arena).unwrap();
-        let mut helper = root.helper();
+        let mut doc = crate::parser::parse(&toml, &arena).unwrap();
+        let mut helper = doc.helper();
 
         let mut expected_remaining = Vec::new();
         for i in 0..key_count {
@@ -216,49 +216,49 @@ fn table_helper_workflows() {
     let arena = Arena::new();
 
     // expect_empty succeeds when all fields are consumed
-    let mut root = crate::parser::parse("a = 1\nb = 2", &arena).unwrap();
+    let mut doc = crate::parser::parse("a = 1\nb = 2", &arena).unwrap();
     {
-        let mut helper = root.helper();
+        let mut helper = doc.helper();
         let _: i64 = helper.required("a").unwrap();
         let _: i64 = helper.required("b").unwrap();
         assert_eq!(helper.remaining_count(), 0);
         helper.expect_empty().unwrap();
     }
-    assert!(root.ctx.errors.is_empty());
+    assert!(doc.ctx.errors.is_empty());
 
     // expect_empty fails with unexpected keys when fields are not consumed
-    let mut root = crate::parser::parse("a = 1\nb = 2\nc = 3", &arena).unwrap();
+    let mut doc = crate::parser::parse("a = 1\nb = 2\nc = 3", &arena).unwrap();
     {
-        let mut helper = root.helper();
+        let mut helper = doc.helper();
         let _: i64 = helper.required("a").unwrap();
         assert_eq!(helper.remaining_count(), 2);
         assert!(helper.expect_empty().is_err());
     }
     assert!(matches!(
-        root.ctx.errors[0].kind,
+        doc.ctx.errors[0].kind,
         crate::ErrorKind::UnexpectedKeys { .. }
     ));
 
     // required() returns MissingField error for nonexistent key
-    let mut root = crate::parser::parse("a = 1", &arena).unwrap();
+    let mut doc = crate::parser::parse("a = 1", &arena).unwrap();
     {
-        let mut helper = root.helper();
+        let mut helper = doc.helper();
         assert!(helper.required::<i64>("nonexistent").is_err());
     }
     assert!(matches!(
-        root.ctx.errors[0].kind,
+        doc.ctx.errors[0].kind,
         crate::ErrorKind::MissingField("nonexistent")
     ));
 
     // optional() returns None for missing key (no error) and None with
     // error on type mismatch
-    let mut root = crate::parser::parse(r#"a = "string""#, &arena).unwrap();
+    let mut doc = crate::parser::parse(r#"a = "string""#, &arena).unwrap();
     {
-        let mut helper = root.helper();
+        let mut helper = doc.helper();
         assert!(helper.optional::<i64>("nonexistent").is_none());
         assert!(helper.optional::<i64>("a").is_none());
     }
-    assert_eq!(root.ctx.errors.len(), 1);
+    assert_eq!(doc.ctx.errors.len(), 1);
 
     // Indexed table (7+ entries) exercises get_entry hash path
     let mut lines = Vec::new();
@@ -266,9 +266,9 @@ fn table_helper_workflows() {
         lines.push(format!("k{i} = {i}"));
     }
     let input = lines.join("\n");
-    let mut root = crate::parser::parse(&input, &arena).unwrap();
+    let mut doc = crate::parser::parse(&input, &arena).unwrap();
     {
-        let mut helper = root.helper();
+        let mut helper = doc.helper();
         let v: i64 = helper.required("k0").unwrap();
         assert_eq!(v, 0);
         let v: i64 = helper.required("k7").unwrap();
@@ -319,13 +319,13 @@ fn deser_boxed_and_array_types() {
     assert!(matches!(err.kind, crate::ErrorKind::Wanted { .. }));
 
     // Vec<T> with element type errors
-    let mut root = crate::parser::parse(r#"v = [1, "bad", 3, "worse"]"#, &arena).unwrap();
+    let mut doc = crate::parser::parse(r#"v = [1, "bad", 3, "worse"]"#, &arena).unwrap();
     let result = {
-        let mut helper = root.helper();
+        let mut helper = doc.helper();
         helper.required::<Vec<i64>>("v")
     };
     assert!(result.is_err());
-    assert_eq!(root.ctx.errors.len(), 2);
+    assert_eq!(doc.ctx.errors.len(), 2);
 }
 
 #[test]
@@ -333,9 +333,9 @@ fn expect_custom_string_and_context_errors() {
     let arena = Arena::new();
 
     // expect_custom_string via parse and helper
-    let mut root = crate::parser::parse("ip = \"127.0.0.1\"\nport = 8080", &arena).unwrap();
+    let mut doc = crate::parser::parse("ip = \"127.0.0.1\"\nport = 8080", &arena).unwrap();
     {
-        let helper = root.helper();
+        let helper = doc.helper();
         let (_, ip_item) = helper.get_entry("ip").unwrap();
         assert_eq!(
             ip_item
@@ -351,7 +351,7 @@ fn expect_custom_string_and_context_errors() {
         );
     }
     assert!(matches!(
-        root.ctx.errors[0].kind,
+        doc.ctx.errors[0].kind,
         crate::ErrorKind::Wanted {
             expected: "an IPv4 address",
             ..
@@ -359,17 +359,17 @@ fn expect_custom_string_and_context_errors() {
     ));
 
     // table_helper() on table vs non-table items
-    let mut root = crate::parser::parse("[sub]\na = 1\nval = 42", &arena).unwrap();
+    let mut doc = crate::parser::parse("[sub]\na = 1\nval = 42", &arena).unwrap();
     {
-        let helper = root.helper();
+        let helper = doc.helper();
         let (_, sub_item) = helper.get_entry("sub").unwrap();
         let mut th = sub_item.table_helper(helper.ctx).unwrap();
         let v: i64 = th.required("a").unwrap();
         assert_eq!(v, 1);
     }
-    let mut root = crate::parser::parse("val = 42", &arena).unwrap();
+    let mut doc = crate::parser::parse("val = 42", &arena).unwrap();
     {
-        let helper = root.helper();
+        let helper = doc.helper();
         let (_, val_item) = helper.get_entry("val").unwrap();
         assert!(val_item.table_helper(helper.ctx).is_err());
     }
@@ -400,22 +400,22 @@ fn root_methods() {
     let arena = Arena::new();
 
     // table(), errors(), has_errors(), Debug, Index
-    let root = crate::parser::parse("a = 1\nb = 2", &arena).unwrap();
-    assert_eq!(root.table().len(), 2);
-    assert_eq!(root["a"].as_i64(), Some(1));
-    assert!(root.errors().is_empty());
-    assert!(!root.has_errors());
-    let debug = format!("{:?}", root);
+    let doc = crate::parser::parse("a = 1\nb = 2", &arena).unwrap();
+    assert_eq!(doc.table().len(), 2);
+    assert_eq!(doc["a"].as_i64(), Some(1));
+    assert!(doc.errors().is_empty());
+    assert!(!doc.has_errors());
+    let debug = format!("{:?}", doc);
     assert!(debug.contains("a"));
 
     // into_item() converts root table to item
-    let root = crate::parser::parse("x = 42", &arena).unwrap();
-    let item = root.into_item();
+    let doc = crate::parser::parse("x = 42", &arena).unwrap();
+    let item = doc.into_item();
     assert_eq!(item.as_table().unwrap().len(), 1);
 
     // deserialize() on root (type mismatch: root is table, asking for i64)
-    let mut root = crate::parser::parse("a = 1", &arena).unwrap();
-    let err = root.to::<i64>().unwrap_err();
+    let mut doc = crate::parser::parse("a = 1", &arena).unwrap();
+    let err = doc.to::<i64>().unwrap_err();
     assert!(!err.errors.is_empty());
 }
 
@@ -424,7 +424,7 @@ fn required_item_and_optional_item() {
     let arena = Arena::new();
 
     // required_item succeeds for each value kind
-    let mut root = crate::parser::parse(
+    let mut doc = crate::parser::parse(
         r#"
 s = "hello"
 i = 42
@@ -439,7 +439,7 @@ x = 1
     )
     .unwrap();
     {
-        let mut h = root.helper();
+        let mut h = doc.helper();
 
         let item = h.required_item("s").unwrap();
         assert_eq!(item.as_str(), Some("hello"));
@@ -462,23 +462,23 @@ x = 1
         assert_eq!(h.remaining_count(), 0);
         h.expect_empty().unwrap();
     }
-    assert!(root.ctx.errors.is_empty());
+    assert!(doc.ctx.errors.is_empty());
 
     // required_item fails for missing key
-    let mut root = crate::parser::parse("a = 1", &arena).unwrap();
+    let mut doc = crate::parser::parse("a = 1", &arena).unwrap();
     {
-        let mut h = root.helper();
+        let mut h = doc.helper();
         assert!(h.required_item("missing").is_err());
     }
     assert!(matches!(
-        root.ctx.errors[0].kind,
+        doc.ctx.errors[0].kind,
         crate::ErrorKind::MissingField("missing")
     ));
 
     // optional_item returns Some for present key, None for absent
-    let mut root = crate::parser::parse("x = 99\ny = true", &arena).unwrap();
+    let mut doc = crate::parser::parse("x = 99\ny = true", &arena).unwrap();
     {
-        let mut h = root.helper();
+        let mut h = doc.helper();
 
         let item = h.optional_item("x");
         assert!(item.is_some());
@@ -492,39 +492,39 @@ x = 1
         assert_eq!(h.remaining_count(), 0);
         h.expect_empty().unwrap();
     }
-    assert!(root.ctx.errors.is_empty());
+    assert!(doc.ctx.errors.is_empty());
 
     // optional_item does not record an error for missing keys
-    let mut root = crate::parser::parse("a = 1", &arena).unwrap();
+    let mut doc = crate::parser::parse("a = 1", &arena).unwrap();
     {
-        let mut h = root.helper();
+        let mut h = doc.helper();
         assert!(h.optional_item("nope").is_none());
         let _ = h.optional_item("a");
         h.expect_empty().unwrap();
     }
-    assert!(root.ctx.errors.is_empty());
+    assert!(doc.ctx.errors.is_empty());
 
     // Consuming with required_item/optional_item makes expect_empty pass
-    let mut root = crate::parser::parse("a = 1\nb = 2\nc = 3", &arena).unwrap();
+    let mut doc = crate::parser::parse("a = 1\nb = 2\nc = 3", &arena).unwrap();
     {
-        let mut h = root.helper();
+        let mut h = doc.helper();
         h.required_item("a").unwrap();
         h.optional_item("b");
         h.required_item("c").unwrap();
         h.expect_empty().unwrap();
     }
-    assert!(root.ctx.errors.is_empty());
+    assert!(doc.ctx.errors.is_empty());
 
     // Unconsumed fields after required_item cause expect_empty to fail
-    let mut root = crate::parser::parse("a = 1\nb = 2\nc = 3", &arena).unwrap();
+    let mut doc = crate::parser::parse("a = 1\nb = 2\nc = 3", &arena).unwrap();
     {
-        let mut h = root.helper();
+        let mut h = doc.helper();
         h.required_item("a").unwrap();
         assert_eq!(h.remaining_count(), 2);
         assert!(h.expect_empty().is_err());
     }
     assert!(matches!(
-        root.ctx.errors[0].kind,
+        doc.ctx.errors[0].kind,
         crate::ErrorKind::UnexpectedKeys { .. }
     ));
 
@@ -534,9 +534,9 @@ x = 1
         lines.push(format!("k{i} = {i}"));
     }
     let input = lines.join("\n");
-    let mut root = crate::parser::parse(&input, &arena).unwrap();
+    let mut doc = crate::parser::parse(&input, &arena).unwrap();
     {
-        let mut h = root.helper();
+        let mut h = doc.helper();
         let item = h.required_item("k0").unwrap();
         assert_eq!(item.as_i64(), Some(0));
         let item = h.required_item("k9").unwrap();
@@ -549,15 +549,15 @@ x = 1
 
     // Duplicate calls to optional_item on the same key return the item but
     // don't double-count consumption.
-    let mut root = crate::parser::parse("only = 1", &arena).unwrap();
+    let mut doc = crate::parser::parse("only = 1", &arena).unwrap();
     {
-        let mut h = root.helper();
+        let mut h = doc.helper();
         h.optional_item("only");
         h.optional_item("only");
         assert_eq!(h.remaining_count(), 0);
         h.expect_empty().unwrap();
     }
-    assert!(root.ctx.errors.is_empty());
+    assert!(doc.ctx.errors.is_empty());
 }
 
 #[test]
@@ -566,9 +566,9 @@ fn required_entry_and_optional_entry() {
 
     // required_entry returns both key and item
     let input = "name = \"alice\"\nage = 30";
-    let mut root = crate::parser::parse(input, &arena).unwrap();
+    let mut doc = crate::parser::parse(input, &arena).unwrap();
     {
-        let mut h = root.helper();
+        let mut h = doc.helper();
 
         let (key, item) = h.required_entry("name").unwrap();
         assert_eq!(key.name, "name");
@@ -583,24 +583,24 @@ fn required_entry_and_optional_entry() {
 
         h.expect_empty().unwrap();
     }
-    assert!(root.ctx.errors.is_empty());
+    assert!(doc.ctx.errors.is_empty());
 
     // required_entry fails for missing key
-    let mut root = crate::parser::parse("x = 1", &arena).unwrap();
+    let mut doc = crate::parser::parse("x = 1", &arena).unwrap();
     {
-        let mut h = root.helper();
+        let mut h = doc.helper();
         assert!(h.required_entry("missing").is_err());
     }
     assert!(matches!(
-        root.ctx.errors[0].kind,
+        doc.ctx.errors[0].kind,
         crate::ErrorKind::MissingField("missing")
     ));
 
     // optional_entry returns Some with key+item for present key
     let input = "color = \"red\"";
-    let mut root = crate::parser::parse(input, &arena).unwrap();
+    let mut doc = crate::parser::parse(input, &arena).unwrap();
     {
-        let mut h = root.helper();
+        let mut h = doc.helper();
 
         let entry = h.optional_entry("color");
         assert!(entry.is_some());
@@ -610,29 +610,29 @@ fn required_entry_and_optional_entry() {
 
         h.expect_empty().unwrap();
     }
-    assert!(root.ctx.errors.is_empty());
+    assert!(doc.ctx.errors.is_empty());
 
     // optional_entry returns None for absent key without error
-    let mut root = crate::parser::parse("a = 1", &arena).unwrap();
+    let mut doc = crate::parser::parse("a = 1", &arena).unwrap();
     {
-        let mut h = root.helper();
+        let mut h = doc.helper();
         assert!(h.optional_entry("nope").is_none());
         h.optional_entry("a");
         h.expect_empty().unwrap();
     }
-    assert!(root.ctx.errors.is_empty());
+    assert!(doc.ctx.errors.is_empty());
 
     // Entries are marked consumed correctly
-    let mut root = crate::parser::parse("a = 1\nb = 2\nc = 3", &arena).unwrap();
+    let mut doc = crate::parser::parse("a = 1\nb = 2\nc = 3", &arena).unwrap();
     {
-        let mut h = root.helper();
+        let mut h = doc.helper();
         h.optional_entry("a");
         h.required_entry("c").unwrap();
         assert_eq!(h.remaining_count(), 1);
         assert!(h.expect_empty().is_err());
     }
     assert!(matches!(
-        root.ctx.errors[0].kind,
+        doc.ctx.errors[0].kind,
         crate::ErrorKind::UnexpectedKeys { .. }
     ));
 
@@ -642,9 +642,9 @@ fn required_entry_and_optional_entry() {
         lines.push(format!("field{i} = \"{i}\""));
     }
     let input = lines.join("\n");
-    let mut root = crate::parser::parse(&input, &arena).unwrap();
+    let mut doc = crate::parser::parse(&input, &arena).unwrap();
     {
-        let mut h = root.helper();
+        let mut h = doc.helper();
         let (key, item) = h.required_entry("field0").unwrap();
         assert_eq!(key.name, "field0");
         assert_eq!(item.as_str(), Some("0"));
@@ -656,9 +656,9 @@ fn required_entry_and_optional_entry() {
 
     // Key span is valid for quoted keys
     let input = r#""quoted-key" = 42"#;
-    let mut root = crate::parser::parse(input, &arena).unwrap();
+    let mut doc = crate::parser::parse(input, &arena).unwrap();
     {
-        let mut h = root.helper();
+        let mut h = doc.helper();
         let (key, item) = h.required_entry("quoted-key").unwrap();
         assert_eq!(key.name, "quoted-key");
         assert_eq!(item.as_i64(), Some(42));
@@ -688,10 +688,10 @@ fn required_mapped_and_optional_mapped() {
     let arena = Arena::new();
 
     // required_mapped succeeds with a valid mapping function
-    let mut root =
+    let mut doc =
         crate::parser::parse("ip = \"192.168.1.1\"\ncount = 5\nname = \"hello\"", &arena).unwrap();
     {
-        let mut h = root.helper();
+        let mut h = doc.helper();
 
         let ip: Ipv4Addr = h.required_mapped("ip", Item::parse::<Ipv4Addr>).unwrap();
         assert_eq!(ip, Ipv4Addr::new(192, 168, 1, 1));
@@ -704,43 +704,43 @@ fn required_mapped_and_optional_mapped() {
 
         h.expect_empty().unwrap();
     }
-    assert!(root.ctx.errors.is_empty());
+    assert!(doc.ctx.errors.is_empty());
 
     // required_mapped fails for missing key
-    let mut root = crate::parser::parse("a = 1", &arena).unwrap();
+    let mut doc = crate::parser::parse("a = 1", &arena).unwrap();
     {
-        let mut h = root.helper();
+        let mut h = doc.helper();
         assert!(h.required_mapped("missing", parse_positive_int).is_err());
     }
     assert!(matches!(
-        root.ctx.errors[0].kind,
+        doc.ctx.errors[0].kind,
         crate::ErrorKind::MissingField("missing")
     ));
 
     // required_mapped fails when the mapping function returns an error
-    let mut root = crate::parser::parse("ip = \"not-an-ip\"", &arena).unwrap();
+    let mut doc = crate::parser::parse("ip = \"not-an-ip\"", &arena).unwrap();
     {
-        let mut h = root.helper();
+        let mut h = doc.helper();
         assert!(h.required_mapped("ip", Item::parse::<Ipv4Addr>).is_err());
     }
-    assert_eq!(root.ctx.errors.len(), 1);
+    assert_eq!(doc.ctx.errors.len(), 1);
     assert!(matches!(
-        root.ctx.errors[0].kind,
+        doc.ctx.errors[0].kind,
         crate::ErrorKind::Custom(..)
     ));
 
     // required_mapped fails when item is wrong type for mapping
-    let mut root = crate::parser::parse("count = -5", &arena).unwrap();
+    let mut doc = crate::parser::parse("count = -5", &arena).unwrap();
     {
-        let mut h = root.helper();
+        let mut h = doc.helper();
         assert!(h.required_mapped("count", parse_positive_int).is_err());
     }
-    assert_eq!(root.ctx.errors.len(), 1);
+    assert_eq!(doc.ctx.errors.len(), 1);
 
     // optional_mapped returns Some for valid mapping
-    let mut root = crate::parser::parse("ip = \"10.0.0.1\"\nport = 8080", &arena).unwrap();
+    let mut doc = crate::parser::parse("ip = \"10.0.0.1\"\nport = 8080", &arena).unwrap();
     {
-        let mut h = root.helper();
+        let mut h = doc.helper();
 
         let ip = h.optional_mapped("ip", Item::parse::<Ipv4Addr>);
         assert_eq!(ip, Some(Ipv4Addr::new(10, 0, 0, 1)));
@@ -750,12 +750,12 @@ fn required_mapped_and_optional_mapped() {
 
         h.expect_empty().unwrap();
     }
-    assert!(root.ctx.errors.is_empty());
+    assert!(doc.ctx.errors.is_empty());
 
     // optional_mapped returns None for missing key without recording an error
-    let mut root = crate::parser::parse("a = 1", &arena).unwrap();
+    let mut doc = crate::parser::parse("a = 1", &arena).unwrap();
     {
-        let mut h = root.helper();
+        let mut h = doc.helper();
         assert!(
             h.optional_mapped("absent", Item::parse::<Ipv4Addr>)
                 .is_none()
@@ -763,38 +763,38 @@ fn required_mapped_and_optional_mapped() {
         h.optional_mapped("a", parse_positive_int);
         h.expect_empty().unwrap();
     }
-    assert!(root.ctx.errors.is_empty());
+    assert!(doc.ctx.errors.is_empty());
 
     // optional_mapped returns None when mapping fails, records error
-    let mut root = crate::parser::parse("ip = \"bad\"", &arena).unwrap();
+    let mut doc = crate::parser::parse("ip = \"bad\"", &arena).unwrap();
     {
-        let mut h = root.helper();
+        let mut h = doc.helper();
         assert!(h.optional_mapped("ip", Item::parse::<Ipv4Addr>).is_none());
         h.expect_empty().unwrap();
     }
-    assert_eq!(root.ctx.errors.len(), 1);
+    assert_eq!(doc.ctx.errors.len(), 1);
     assert!(matches!(
-        root.ctx.errors[0].kind,
+        doc.ctx.errors[0].kind,
         crate::ErrorKind::Custom(..)
     ));
 
     // optional_mapped returns None when item is wrong type, records error
-    let mut root = crate::parser::parse("name = 42", &arena).unwrap();
+    let mut doc = crate::parser::parse("name = 42", &arena).unwrap();
     {
-        let mut h = root.helper();
+        let mut h = doc.helper();
         assert!(h.optional_mapped("name", parse_uppercase).is_none());
         h.expect_empty().unwrap();
     }
-    assert_eq!(root.ctx.errors.len(), 1);
+    assert_eq!(doc.ctx.errors.len(), 1);
 
     // Both mark fields as consumed: mixing mapped with other helpers
-    let mut root = crate::parser::parse(
+    let mut doc = crate::parser::parse(
         "ip = \"1.2.3.4\"\nname = \"test\"\ncount = 7\nextra = true",
         &arena,
     )
     .unwrap();
     {
-        let mut h = root.helper();
+        let mut h = doc.helper();
         let _: Ipv4Addr = h.required_mapped("ip", Item::parse::<Ipv4Addr>).unwrap();
         let _: String = h.required("name").unwrap();
         let _ = h.optional_mapped("count", parse_positive_int);
@@ -802,7 +802,7 @@ fn required_mapped_and_optional_mapped() {
         assert_eq!(h.remaining_count(), 0);
         h.expect_empty().unwrap();
     }
-    assert!(root.ctx.errors.is_empty());
+    assert!(doc.ctx.errors.is_empty());
 
     // Works with indexed tables (7+ entries)
     let mut lines = Vec::new();
@@ -810,9 +810,9 @@ fn required_mapped_and_optional_mapped() {
         lines.push(format!("n{i} = \"{i}\""));
     }
     let input = lines.join("\n");
-    let mut root = crate::parser::parse(&input, &arena).unwrap();
+    let mut doc = crate::parser::parse(&input, &arena).unwrap();
     {
-        let mut h = root.helper();
+        let mut h = doc.helper();
         let v: String = h.required_mapped("n0", parse_uppercase).unwrap();
         assert_eq!(v, "0");
         let v = h.optional_mapped("n7", parse_uppercase);
@@ -908,15 +908,11 @@ fn from_str_and_to_string_roundtrip() {
     assert_eq!(restored["name"], "test");
     assert_eq!(restored["value"], "42");
 
-    // to_string_with_config preserving formatting
+    // to_string_with preserving formatting
     let source = "name = \"test\"\nvalue = \"42\"\n";
     let arena = crate::Arena::new();
-    let root = crate::parse(source, &arena).unwrap();
-    let output = crate::to_string_with_config(
-        &map,
-        crate::TomlConfig::default().with_formatting_from(&root),
-    )
-    .unwrap();
+    let doc = crate::parse(source, &arena).unwrap();
+    let output = crate::to_string_with(&map, crate::Formatting::of(&doc)).unwrap();
     assert!(output.contains("name = \"test\""), "got: {output}");
 
     // to_string with non-table value should error
@@ -927,12 +923,8 @@ fn from_str_and_to_string_roundtrip() {
         err.message
     );
 
-    // to_string_with_config with non-table value should error
-    let err = crate::to_string_with_config(
-        &42i64,
-        crate::TomlConfig::default().with_formatting_from(&root),
-    )
-    .unwrap_err();
+    // to_string_with non-table value should error
+    let err = crate::to_string_with(&42i64, crate::Formatting::of(&doc)).unwrap_err();
     assert!(
         err.message.contains("Top-level item must be a table"),
         "got: {}",

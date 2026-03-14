@@ -34,7 +34,7 @@ static EMPTY_SLAB: SlabHeader = SlabHeader {
 /// Bump allocator backing all data structures produced by the parser.
 ///
 /// Create an `Arena` before calling [`parse`](crate::parse) and pass it by
-/// reference. The arena must outlive the returned [`Root`](crate::Root)
+/// reference. The arena must outlive the returned [`Document`](crate::Document)
 /// because parsed values borrow from it.
 ///
 /// All memory is freed when the arena is dropped.

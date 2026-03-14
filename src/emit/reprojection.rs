@@ -4,7 +4,7 @@ mod tests;
 
 use crate::item::table::TableIndex;
 use crate::item::{ArrayStyle, Item, TableStyle, Value, ValueMut};
-use crate::parser::Root;
+use crate::parser::Document;
 use crate::span::Span;
 use crate::{Array, Table};
 use std::hash::{BuildHasher, Hasher};
@@ -25,7 +25,7 @@ fn maybe_force_collision(hash: u64) -> u64 {
 
 /// Reprojects structural kinds from a parsed source onto a destination table.
 ///
-/// Takes a [`Root`] to statically enforce that the source was produced by
+/// Takes a [`Document`] to statically enforce that the source was produced by
 /// [`parse`](crate::parse). Walks the dest tree, matching entries against
 /// src by key name (tables) or position (arrays). For each matched pair,
 /// copies the src item's structural kind onto dest and records the src item
@@ -40,7 +40,11 @@ fn maybe_force_collision(hash: u64) -> u64 {
 ///
 /// Note: This invalidates span information in dest, but is fine because this
 /// is only used for serialization where we ignore dest spans.
-pub fn reproject<'de>(src: &'de Root<'de>, dest: &mut Table<'_>, items: &mut Vec<&'de Item<'de>>) {
+pub fn reproject<'de>(
+    src: &'de Document<'de>,
+    dest: &mut Table<'_>,
+    items: &mut Vec<&'de Item<'de>>,
+) {
     let index = src.table_index();
     let src_table = src.table();
     reproject_table(index, src_table, dest, items);

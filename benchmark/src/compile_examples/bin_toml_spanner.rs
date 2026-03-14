@@ -139,11 +139,11 @@ impl<'de> FromToml<'de> for Metadata {
 #[inline(never)]
 fn run(input: &str) -> Project {
     let arena = toml_spanner::Arena::new();
-    let mut root = toml_spanner::parse(input, &arena).unwrap();
+    let mut doc = toml_spanner::parse(input, &arena).unwrap();
     // Need to match the behaviour of toml-span, panic with errors not just
     // sentinel.
-    match root.to::<Project>() {
+    match doc.to::<Project>() {
         Ok(project) => project,
-        Err(_) => panic!("{:?}", root.errors()),
+        Err(_) => panic!("{:?}", doc.errors()),
     }
 }

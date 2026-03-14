@@ -36,17 +36,17 @@ impl<'de> FromToml<'de> for Config {
 fn main() {
     let arena = Arena::new();
 
-    let mut root = toml_spanner::parse(TOML_DOCUMENT, &arena).unwrap();
+    let mut doc = toml_spanner::parse(TOML_DOCUMENT, &arena).unwrap();
 
-    assert_eq!(root["nested"][1]["enabled"].as_bool(), Some(true));
+    assert_eq!(doc["nested"][1]["enabled"].as_bool(), Some(true));
 
-    match root["nested"].value() {
+    match doc["nested"].value() {
         Some(Value::Array(array)) => assert_eq!(array.len(), 2),
         Some(other) => panic!("Expected Array but found: {:#?}", other),
         None => panic!("Expected value but found nothing"),
     }
 
-    match root.to::<Config>() {
+    match doc.to::<Config>() {
         Ok(config) => println!("parsed: {:#?}", config),
         Err(e) => {
             println!("Deserialization Failure");

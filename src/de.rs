@@ -20,7 +20,7 @@ use crate::{
 /// Guides extraction from a [`Table`] by tracking which fields have been
 /// consumed.
 ///
-/// Create one via [`Root::helper`](crate::Root::helper) for the root table,
+/// Create one via [`Document::helper`](crate::Document::helper) for the root table,
 /// or [`Item::table_helper`] / [`TableHelper::new`] for nested tables.
 /// Then extract fields with [`required`](Self::required) and
 /// [`optional`](Self::optional), and finish with
@@ -145,7 +145,7 @@ impl<'ctx, 't, 'de> TableHelper<'ctx, 't, 'de> {
     /// Creates a new helper for the given table.
     ///
     /// Prefer [`Item::table_helper`] when implementing [`FromToml`], or
-    /// [`Root::helper`](crate::Root::helper) for the root table.
+    /// [`Document::helper`](crate::Document::helper) for the root table.
     pub fn new(ctx: &'ctx mut Context<'de>, table: &'t Table<'de>) -> Self {
         let table_id = if table.len() > INDEXED_TABLE_THRESHOLD {
             // Note due to 512MB limit this will fit in i32.
@@ -407,11 +407,11 @@ impl<'ctx, 't, 'de> TableHelper<'ctx, 't, 'de> {
 /// Shared state that accumulates errors and holds the arena.
 ///
 /// A `Context` is created by [`parse`](crate::parse) and lives inside
-/// [`Root`](crate::Root). Pass it into [`TableHelper::new`] or
+/// [`Document`](crate::Document). Pass it into [`TableHelper::new`] or
 /// [`Item::table_helper`] when implementing [`FromToml`].
 ///
 /// Multiple errors can be recorded during a single conversion pass;
-/// inspect them afterwards via [`Root::errors`](crate::Root::errors).
+/// inspect them afterwards via [`Document::errors`](crate::Document::errors).
 pub struct Context<'de> {
     pub arena: &'de Arena,
     pub(crate) index: HashMap<KeyRef<'de>, usize>,
@@ -922,7 +922,7 @@ impl<'de> Item<'de> {
 
 /// Collects all errors encountered during parsing and conversion.
 ///
-/// Returned by [`from_str`](crate::from_str) and [`Root::to`](crate::Root::to).
+/// Returned by [`from_str`](crate::from_str) and [`Document::to`](crate::Document::to).
 /// Contains one or more [`Error`] values, each with its own source span.
 ///
 /// # Examples

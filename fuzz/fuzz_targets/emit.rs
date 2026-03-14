@@ -10,12 +10,12 @@ fuzz_target!(|data: &[u8]| -> Corpus {
 
     // Parse the raw input.
     let arena = toml_spanner::Arena::new();
-    let Ok(root) = toml_spanner::parse(text, &arena) else {
+    let Ok(doc) = toml_spanner::parse(text, &arena) else {
         return Corpus::Keep;
     };
 
     // Emit.
-    let Some(normalized) = root.table().try_as_normalized() else {
+    let Some(normalized) = doc.table().try_as_normalized() else {
         return Corpus::Keep;
     };
     let mut buf = Vec::new();
@@ -24,19 +24,19 @@ fuzz_target!(|data: &[u8]| -> Corpus {
 
     // Parse the emitted output.
     let arena2 = toml_spanner::Arena::new();
-    let root2 =
+    let doc2 =
         toml_spanner::parse(emitted, &arena2).expect("emitted output must parse as valid TOML");
 
     // Items must be semantically equal with matching flags.
     assert_items_equal_with_flags(
-        root.table().as_item(),
-        root2.table().as_item(),
+        doc.table().as_item(),
+        doc2.table().as_item(),
         text,
         emitted,
     );
 
     // Idempotency: emitting the re-parsed output must produce identical bytes.
-    let normalized2 = root2
+    let normalized2 = doc2
         .table()
         .try_as_normalized()
         .expect("round-tripped table should be valid");

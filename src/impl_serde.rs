@@ -8,7 +8,7 @@
 use crate::Spanned;
 use crate::item::Value;
 use crate::item::table::InnerTable;
-use crate::parser::Root;
+use crate::parser::Document;
 use crate::{Item, Table};
 
 impl<T> serde::Serialize for Spanned<T>
@@ -80,7 +80,7 @@ impl serde::Serialize for Table<'_> {
     }
 }
 
-impl serde::Serialize for Root<'_> {
+impl serde::Serialize for Document<'_> {
     fn serialize<S>(&self, ser: S) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer,

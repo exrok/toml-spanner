@@ -654,10 +654,10 @@ fn datetime_items() {
 
     // Parse a TOML document with datetime values to get real datetime Items
     let input = "dt = 2023-06-15T12:30:45Z\nd = 2023-06-15\nt = 12:30:45";
-    let root = crate::parser::parse(input, &arena).unwrap();
+    let doc = crate::parser::parse(input, &arena).unwrap();
 
     // as_datetime succeeds on datetime item
-    let dt_item = root.table().get("dt").unwrap();
+    let dt_item = doc.table().get("dt").unwrap();
     let dt = dt_item.as_datetime().unwrap();
     assert_eq!(dt.date().unwrap().year, 2023);
 
@@ -771,8 +771,8 @@ fn clone_in_scalars() {
 fn clone_in_datetime() {
     let arena = Arena::new();
     let input = "dt = 2023-06-15T12:30:45Z";
-    let root = crate::parser::parse(input, &arena).unwrap();
-    let dt_item = root.table().get("dt").unwrap();
+    let doc = crate::parser::parse(input, &arena).unwrap();
+    let dt_item = doc.table().get("dt").unwrap();
 
     let cloned = dt_item.clone_in(&arena);
     assert_eq!(cloned.as_datetime().unwrap().date().unwrap().year, 2023);

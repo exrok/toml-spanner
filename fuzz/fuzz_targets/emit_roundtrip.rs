@@ -18,22 +18,22 @@ fuzz_target!(|data: &[u8]| -> Corpus {
     let text = &buffer;
 
     let arena = toml_spanner::Arena::new();
-    let Ok(root) = toml_spanner::parse(text, &arena) else {
+    let Ok(doc) = toml_spanner::parse(text, &arena) else {
         return Corpus::Keep;
     };
 
-    if root.table().try_as_normalized().is_none() {
+    if doc.table().try_as_normalized().is_none() {
         return Corpus::Keep;
     }
 
-    let mut dest = root.table().clone_in(&arena);
+    let mut dest = doc.table().clone_in(&arena);
     if dest.is_empty() {
         return Corpus::Keep;
     }
     fuzz::gen_tree::erase_kinds_table(&mut dest);
 
     let mut items = Vec::new();
-    toml_spanner::reproject(&root, &mut dest, &mut items);
+    toml_spanner::reproject(&doc, &mut dest, &mut items);
 
     let norm = dest.normalize();
     let config = toml_spanner::EmitConfig {

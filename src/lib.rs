@@ -3,27 +3,27 @@
 //!
 //! # Parsing and Traversal
 //!
-//! Use [`parse`] with a TOML string and an [`Arena`] to get a [`Root`].
+//! Use [`parse`] with a TOML string and an [`Arena`] to get a [`Document`].
 //! ```
 //! # fn main() -> Result<(), toml_spanner::Error> {
 //! let arena = toml_spanner::Arena::new();
-//! let root = toml_spanner::parse("key = 'value'", &arena)?;
+//! let doc = toml_spanner::parse("key = 'value'", &arena)?;
 //! # Ok(())
 //! # }
 //! ```
 //! Traverse the tree for inspection via index operators which return a [`MaybeItem`]:
 //! ```
 //! # let arena = toml_spanner::Arena::new();
-//! # let root = toml_spanner::parse("", &arena).unwrap();
-//! let name: Option<&str> = root["name"].as_str();
-//! let numbers: Option<i64> = root["numbers"][50].as_i64();
+//! # let doc = toml_spanner::parse("", &arena).unwrap();
+//! let name: Option<&str> = doc["name"].as_str();
+//! let numbers: Option<i64> = doc["numbers"][50].as_i64();
 //! ```
 //! Use the [`MaybeItem::item()`] method get an [`Item`] which contains a [`Value`] and [`Span`].
 //! ```rust
 //! # use toml_spanner::{Value, Span};
 //! # let arena = toml_spanner::Arena::new();
-//! # let root = toml_spanner::parse("item = 0", &arena).unwrap();
-//! let Some(item) = root["item"].item() else {
+//! # let doc = toml_spanner::parse("item = 0", &arena).unwrap();
+//! let Some(item) = doc["item"].item() else {
 //!     panic!("Missing key `custom`");
 //! };
 //! match item.value() {
@@ -41,15 +41,15 @@
 //!
 //! ## Deserialization
 //!
-//! Use [`Root::helper()`] to create a [`TableHelper`] for type-safe field extraction
-//! via the [`FromToml`] trait. Errors are accumulated in the [`Root`]'s context
+//! Use [`Document::helper()`] to create a [`TableHelper`] for type-safe field extraction
+//! via the [`FromToml`] trait. Errors are accumulated in the [`Document`]'s context
 //! rather than failing on the first error.
 //!
 //! ```
 //! # fn main() -> Result<(), toml_spanner::Error> {
 //! # let arena = toml_spanner::Arena::new();
-//! # let mut root = toml_spanner::parse("name = 'hello'", &arena)?;
-//! let mut helper = root.helper();
+//! # let mut doc = toml_spanner::parse("name = 'hello'", &arena)?;
+//! let mut helper = doc.helper();
 //! let name: String = helper.required("name").ok().unwrap();
 //! # Ok(())
 //! # }
@@ -60,8 +60,8 @@
 //! ```
 //! # fn main() -> Result<(), toml_spanner::Error> {
 //! # let arena = toml_spanner::Arena::new();
-//! # let root = toml_spanner::parse("ip-address = '127.0.0.1'", &arena)?;
-//! let item = root["ip-address"].item().unwrap();
+//! # let doc = toml_spanner::parse("ip-address = '127.0.0.1'", &arena)?;
+//! let item = doc["ip-address"].item().unwrap();
 //! let ip: std::net::Ipv4Addr = item.parse()?;
 //! # Ok(())
 //! # }
@@ -108,15 +108,15 @@
 //! "#;
 //!
 //! let arena = Arena::new();
-//! let mut root = toml_spanner::parse(content, &arena)?;
+//! let mut doc = toml_spanner::parse(content, &arena)?;
 //!
 //! // Null-coalescing index operators — missing keys return a None-like
 //! // MaybeItem instead of panicking.
-//! assert_eq!(root["things"][0]["color"].as_str(), None);
-//! assert_eq!(root["things"][1]["color"].as_str(), Some("green"));
+//! assert_eq!(doc["things"][0]["color"].as_str(), None);
+//! assert_eq!(doc["things"][1]["color"].as_str(), Some("green"));
 //!
-//! // Deserialize typed values out of the root table.
-//! let mut helper = root.helper();
+//! // Deserialize typed values out of the document table.
+//! let mut helper = doc.helper();
 //! let things: Vec<Things> = helper.required("things").ok().unwrap();
 //! let dev_mode: bool = helper.optional("dev-mode").unwrap_or(false);
 //! // Error if unconsumed fields remain.
@@ -171,7 +171,7 @@ pub use error::{Error, ErrorKind};
 pub use item::array::Array;
 pub use item::table::Table;
 pub use item::{ArrayStyle, Item, Key, Kind, MaybeItem, TableStyle, Value, ValueMut};
-pub use parser::{Root, parse};
+pub use parser::{Document, parse};
 #[cfg(feature = "to-toml")]
 pub use ser::ToTomlError;
 #[cfg(feature = "to-toml")]
@@ -188,7 +188,7 @@ pub mod impl_serde;
 /// Parses and deserializes a TOML document in one step.
 ///
 /// This is a convenience wrapper that allocates its own [`Arena`] and
-/// calls [`parse`] followed by [`Root::to`]. Because the arena is
+/// calls [`parse`] followed by [`Document::to`]. Because the arena is
 /// local, the resulting type `T` cannot borrow from the input.
 ///
 /// For more control over lifetimes — for example, to borrow `&'de str`
@@ -198,15 +198,15 @@ pub mod impl_serde;
 /// ```
 /// # fn main() -> Result<(), toml_spanner::FromTomlError> {
 /// let arena = toml_spanner::Arena::new();
-/// let mut root = toml_spanner::parse("key = 'value'", &arena)?;
-/// let config = root.to::<std::collections::HashMap<String, String>>()?;
+/// let mut doc = toml_spanner::parse("key = 'value'", &arena)?;
+/// let config = doc.to::<std::collections::HashMap<String, String>>()?;
 /// # Ok(())
 /// # }
 /// ```
 ///
-/// Note that [`to_string_with_config`] with [`TomlConfig::with_formatting_from`]
-/// requires a [`Root`] to reproject formatting from, but it does not
-/// have to be the same `Root` that produced the converted value,
+/// Note that [`to_string_with`] with [`Formatting::of`]
+/// requires a [`Document`] to reproject formatting from, but it does not
+/// have to be the same `Document` that produced the converted value,
 /// any parsed TOML tree can serve as a formatting template.
 ///
 /// # Errors
@@ -216,15 +216,15 @@ pub mod impl_serde;
 #[cfg(feature = "from-toml")]
 pub fn from_str<T: for<'a> FromToml<'a>>(document: &str) -> Result<T, FromTomlError> {
     let arena = Arena::new();
-    let mut root = parse(document, &arena)?;
-    root.to()
+    let mut doc = parse(document, &arena)?;
+    doc.to()
 }
 
 /// Serializes a [`ToToml`] value into a TOML string with default formatting.
 ///
 /// The value must serialize to a table at the top level. For control over
 /// formatting (e.g. preserving the layout of a previously parsed document),
-/// use [`to_string_with_config`].
+/// use [`to_string_with`].
 ///
 /// # Errors
 ///
@@ -244,66 +244,70 @@ pub fn from_str<T: for<'a> FromToml<'a>>(document: &str) -> Result<T, FromTomlEr
 /// ```
 #[cfg(feature = "to-toml")]
 pub fn to_string(value: &dyn ToToml) -> Result<String, ToTomlError> {
-    to_string_with_config(value, TomlConfig::default())
+    to_string_with(value, Formatting::default())
 }
 
-/// Configuration for TOML serialization via [`to_string_with_config`].
+/// Controls how TOML output is formatted when serializing via [`to_string_with`].
 ///
-/// Use the builder method [`with_formatting_from`](Self::with_formatting_from)
-/// to preserve formatting from a previously parsed document. The default
-/// configuration produces clean formatted output with no source template.
+/// Use [`Formatting::of`] to preserve formatting from a previously parsed
+/// document. The default produces clean formatted output with no source
+/// template.
 ///
 /// # Examples
 ///
 /// ```
-/// use toml_spanner::{Arena, TomlConfig, to_string_with_config};
+/// use toml_spanner::{Arena, Formatting, to_string_with};
 /// use std::collections::BTreeMap;
 ///
 /// let arena = Arena::new();
 /// let source = "key = \"value\"\n";
-/// let root = toml_spanner::parse(source, &arena).unwrap();
+/// let doc = toml_spanner::parse(source, &arena).unwrap();
 ///
 /// let mut map = BTreeMap::new();
 /// map.insert("key", "updated");
 ///
-/// let config = TomlConfig::default().with_formatting_from(&root);
-/// let output = to_string_with_config(&map, config).unwrap();
+/// let output = to_string_with(&map, Formatting::of(&doc)).unwrap();
 /// assert!(output.contains("key = \"updated\""));
 /// ```
 #[cfg(feature = "to-toml")]
 #[derive(Default)]
-pub struct TomlConfig<'a> {
-    formatting_from: Option<&'a Root<'a>>,
+pub struct Formatting<'a> {
+    formatting_from: Option<&'a Document<'a>>,
 }
 
 #[cfg(feature = "to-toml")]
-impl<'a> TomlConfig<'a> {
-    /// Sets a parsed [`Root`] as the formatting template.
+impl<'a> Formatting<'a> {
+    pub fn of(doc: &'a Document<'a>) -> Self {
+        Self {
+            formatting_from: Some(doc),
+        }
+    }
+    /// Sets a parsed [`Document`] as the formatting template.
     ///
     /// When provided, the emitter reprojects structural styles, key ordering,
     /// and source positions from the template onto the serialized output. This
     /// preserves comments, blank lines, and layout from the original document
     /// where possible.
-    pub fn with_formatting_from(mut self, root: &'a Root<'a>) -> Self {
-        self.formatting_from = Some(root);
+    pub fn with_formatting_of(mut self, doc: &'a Document<'a>) -> Self {
+        self.formatting_from = Some(doc);
         self
     }
 }
 
 /// Serializes a [`ToToml`] value into a TOML string with the given configuration.
 ///
-/// When [`TomlConfig::with_formatting_from`] provides a parsed [`Root`], the
-/// emitter reprojects formatting from that template onto the output, preserving
-/// comments, blank lines, and key ordering where possible.
+/// When [`Formatting::of`] provides a parsed [`Document`], the emitter reprojects
+/// formatting from that template onto the output, preserving comments, blank
+/// lines, and key ordering where possible.
 ///
 /// # Errors
 ///
 /// Returns [`ToTomlError`] if serialization fails or the top-level value
 /// is not a table.
 #[cfg(feature = "to-toml")]
-pub fn to_string_with_config(
+pub fn to_string_with(
     value: &dyn ToToml,
-    config: TomlConfig<'_>,
+    formatting: Formatting<'_>,
 ) -> Result<String, ToTomlError> {
     let arena = Arena::new();
     let mut item = value.to_toml(&arena)?;
@@ -314,7 +318,7 @@ pub fn to_string_with_config(
     };
     let mut items = Vec::new();
     let mut buffer = Vec::new();
-    if let Some(formatting_from) = config.formatting_from {
+    if let Some(formatting_from) = formatting.formatting_from {
         reproject(formatting_from, table, &mut items);
         emit_with_config(
             table.normalize(),

@@ -580,7 +580,7 @@ fn main() {
         let (toml_text, expected) = gen_document(&mut rng);
 
         let arena = Arena::new();
-        let root = match toml_spanner::parse(&toml_text, &arena) {
+        let doc = match toml_spanner::parse(&toml_text, &arena) {
             Ok(r) => r,
             Err(e) => {
                 panic!(
@@ -595,7 +595,7 @@ fn main() {
         };
 
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            verify_table(root.table(), &expected, "");
+            verify_table(doc.table(), &expected, "");
         }));
 
         if let Err(panic_info) = result {

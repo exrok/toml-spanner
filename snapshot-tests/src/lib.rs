@@ -37,9 +37,9 @@ macro_rules! valid_de {
             let toml_str = std::fs::read_to_string(concat!("data/", stringify!($name), ".toml"))
                 .expect(concat!("failed to load ", stringify!($name), ".toml"));
             let arena = toml_spanner::Arena::new();
-            let mut root = toml_spanner::parse(&toml_str, &arena).expect("failed to parse toml");
+            let mut doc = toml_spanner::parse(&toml_str, &arena).expect("failed to parse toml");
 
-            match root.to::<$kind>() {
+            match doc.to::<$kind>() {
                 Ok(de) => {
                     insta::assert_debug_snapshot!(de);
                 }
@@ -56,9 +56,9 @@ macro_rules! valid_de {
         #[test]
         fn $name() {
             let arena = toml_spanner::Arena::new();
-            let mut root = toml_spanner::parse($toml, &arena).expect("failed to parse toml");
+            let mut doc = toml_spanner::parse($toml, &arena).expect("failed to parse toml");
 
-            match root.to::<$kind>() {
+            match doc.to::<$kind>() {
                 Ok(de) => {
                     insta::assert_debug_snapshot!(de);
                 }
@@ -83,9 +83,9 @@ macro_rules! invalid_de {
             let toml_str = std::fs::read_to_string(concat!("data/", stringify!($name), ".toml"))
                 .expect(concat!("failed to load ", stringify!($name), ".toml"));
             let arena = toml_spanner::Arena::new();
-            let mut root = toml_spanner::parse(&toml_str, &arena).expect("failed to parse toml");
+            let mut doc = toml_spanner::parse(&toml_str, &arena).expect("failed to parse toml");
 
-            match root.to::<$kind>() {
+            match doc.to::<$kind>() {
                 Ok(de) => {
                     panic!("expected errors but deserialized '{de:#?}' successfully");
                 }
@@ -100,9 +100,9 @@ macro_rules! invalid_de {
         #[test]
         fn $name() {
             let arena = toml_spanner::Arena::new();
-            let mut root = toml_spanner::parse($toml, &arena).expect("failed to parse toml");
+            let mut doc = toml_spanner::parse($toml, &arena).expect("failed to parse toml");
 
-            match root.to::<$kind>() {
+            match doc.to::<$kind>() {
                 Ok(de) => {
                     panic!("expected errors but deserialized '{de:#?}' successfully");
                 }
