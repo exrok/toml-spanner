@@ -1,5 +1,15 @@
 use crate::ErrorKind;
+use crate::Span;
 use crate::Table;
+
+macro_rules! is_number_error {
+    ($kind:expr) => {
+        matches!(
+            $kind,
+            ErrorKind::InvalidInteger(_) | ErrorKind::InvalidFloat(_) | ErrorKind::InvalidDateTime(_)
+        )
+    };
+}
 
 struct TestCtx {
     arena: crate::arena::Arena,
@@ -308,7 +318,7 @@ fn parse_errors() {
     assert!(matches!(e.kind, ErrorKind::UnexpectedEof));
 
     let e = ctx.parse_err("a = 0x");
-    assert!(matches!(e.kind, ErrorKind::InvalidNumber));
+    assert!(is_number_error!(e.kind));
 
     let e = ctx.parse_err("a = 1\n[a]\nb = 2");
     assert!(matches!(
@@ -748,7 +758,7 @@ fn number_format_errors() {
 
     for input in error_cases {
         let e = ctx.parse_err(input);
-        assert!(matches!(e.kind, ErrorKind::InvalidNumber), "input: {input}");
+        assert!(is_number_error!(e.kind), "input: {input}");
     }
 }
 
@@ -778,7 +788,7 @@ fn float_format_errors() {
     let error_cases = [
         "a = 00.5",
         "a = 1.",
-        "a = .1",
+        // "a = .1" is now Unexpected('.'), not a number error
         "a = 1.5_",
         "a = --1.0",
         "a = --1",
@@ -797,7 +807,7 @@ fn float_format_errors() {
 
     for input in error_cases {
         let e = ctx.parse_err(input);
-        assert!(matches!(e.kind, ErrorKind::InvalidNumber), "input: {input}");
+        assert!(is_number_error!(e.kind), "input: {input}");
     }
 }
 
@@ -836,7 +846,7 @@ fn structural_errors() {
 
     // unquoted string value
     let e = ctx.parse_err("a = not_a_keyword");
-    assert!(matches!(e.kind, ErrorKind::InvalidNumber));
+    assert!(matches!(e.kind, ErrorKind::UnquotedString));
 
     // missing value at EOF
     let e = ctx.parse_err("a = ");
@@ -969,7 +979,7 @@ fn integer_overflow_errors() {
 
     for input in error_cases {
         let e = ctx.parse_err(input);
-        assert!(matches!(e.kind, ErrorKind::InvalidNumber), "input: {input}");
+        assert!(is_number_error!(e.kind), "input: {input}");
     }
 }
 
@@ -987,15 +997,15 @@ fn more_parse_errors() {
 
     // expected value found ]
     let e = ctx.parse_err("a = ]");
-    assert!(matches!(e.kind, ErrorKind::InvalidNumber));
+    assert!(matches!(e.kind, ErrorKind::Unexpected(']')));
 
     // expected value found }
     let e = ctx.parse_err("a = }");
-    assert!(matches!(e.kind, ErrorKind::InvalidNumber));
+    assert!(matches!(e.kind, ErrorKind::Unexpected('}')));
 
     // dash-leading invalid number
     let e = ctx.parse_err("a = -_bad");
-    assert!(matches!(e.kind, ErrorKind::InvalidNumber));
+    assert!(is_number_error!(e.kind));
 
     // EOF in key position
     let e = ctx.parse_err("[");
@@ -1202,8 +1212,115 @@ fn number_identifier_not_inf_nan() {
     let cases = ["a = -infix", "a = -nah", "a = -infinity", "a = -nano"];
     for input in cases {
         let e = ctx.parse_err(input);
-        assert!(matches!(e.kind, ErrorKind::InvalidNumber), "input: {input}");
+        assert!(is_number_error!(e.kind), "input: {input}");
     }
+}
+
+#[test]
+fn error_messages_and_spans() {
+    let ctx = TestCtx::new();
+
+    // Signed prefixed integers
+    let e = ctx.parse_err("a = +0xFF");
+    assert!(matches!(e.kind, ErrorKind::InvalidInteger("signs are not allowed on prefixed integers")));
+
+    let e = ctx.parse_err("a = -0b1");
+    assert!(matches!(e.kind, ErrorKind::InvalidInteger("signs are not allowed on prefixed integers")));
+
+    let e = ctx.parse_err("a = -0o7");
+    assert!(matches!(e.kind, ErrorKind::InvalidInteger("signs are not allowed on prefixed integers")));
+
+    // Expected digit after sign
+    let e = ctx.parse_err("a = -.7");
+    assert!(matches!(e.kind, ErrorKind::InvalidInteger("expected digit after sign")));
+
+    let e = ctx.parse_err("a = +_2");
+    assert!(matches!(e.kind, ErrorKind::InvalidInteger("expected digit after sign")));
+
+    let e = ctx.parse_err("a = -_bad");
+    assert!(matches!(e.kind, ErrorKind::InvalidInteger("expected digit after sign")));
+
+    // Stray plus at EOF
+    let e = ctx.parse_err("key = +");
+    assert!(matches!(e.kind, ErrorKind::InvalidInteger("expected digit after sign")));
+
+    // Unexpected characters in value position
+    let e = ctx.parse_err("a = .1");
+    assert!(matches!(e.kind, ErrorKind::Unexpected('.')));
+
+    let e = ctx.parse_err("a = ]");
+    assert!(matches!(e.kind, ErrorKind::Unexpected(']')));
+
+    let e = ctx.parse_err("a = }");
+    assert!(matches!(e.kind, ErrorKind::Unexpected('}')));
+
+    // Unquoted strings
+    let e = ctx.parse_err("a = hello");
+    assert!(matches!(e.kind, ErrorKind::UnquotedString));
+
+    let e = ctx.parse_err("a = not_a_keyword");
+    assert!(matches!(e.kind, ErrorKind::UnquotedString));
+
+    let e = ctx.parse_err("a = True");
+    assert!(matches!(e.kind, ErrorKind::UnquotedString));
+
+    // Pointed span for invalid hex digit: "a = 0xABGD" → G at position 8
+    let e = ctx.parse_err("a = 0xABGD");
+    assert!(matches!(e.kind, ErrorKind::InvalidInteger("invalid digit for hexadecimal")));
+    assert_eq!(e.span, Span::new(8, 9), "should point at 'G'");
+
+    // Pointed span for invalid octal digit: "a = 0o89" → 8 at position 6
+    let e = ctx.parse_err("a = 0o89");
+    assert!(matches!(e.kind, ErrorKind::InvalidInteger("invalid digit for octal")));
+    assert_eq!(e.span, Span::new(6, 7), "should point at '8'");
+
+    // Pointed span for invalid binary digit: "a = 0b102" → 2 at position 8
+    let e = ctx.parse_err("a = 0b102");
+    assert!(matches!(e.kind, ErrorKind::InvalidInteger("invalid digit for binary")));
+    assert_eq!(e.span, Span::new(8, 9), "should point at '2'");
+
+    // Pointed span for underscore errors: "a = 1__2" → second _ at position 6
+    let e = ctx.parse_err("a = 1__2");
+    assert!(matches!(e.kind, ErrorKind::InvalidInteger("underscores must be between two digits")));
+    assert_eq!(e.span, Span::new(6, 7), "should point at second underscore");
+
+    // Trailing underscore: "a = 123_" → _ at position 7
+    let e = ctx.parse_err("a = 123_");
+    assert!(matches!(e.kind, ErrorKind::InvalidInteger("underscores must be between two digits")));
+    assert_eq!(e.span, Span::new(7, 8), "should point at trailing underscore");
+
+    // Hex trailing underscore: "a = 0xFF_" → _ at position 8
+    let e = ctx.parse_err("a = 0xFF_");
+    assert!(matches!(e.kind, ErrorKind::InvalidInteger("underscores must be between two digits")));
+    assert_eq!(e.span, Span::new(8, 9), "should point at trailing underscore in hex");
+
+    // Non-digit in decimal: "a = 1a2" → a at position 5
+    let e = ctx.parse_err("a = 1a2");
+    assert!(matches!(e.kind, ErrorKind::InvalidInteger("contains non-digit character")));
+    assert_eq!(e.span, Span::new(5, 6), "should point at 'a'");
+
+    // Leading zeros
+    let e = ctx.parse_err("a = 01");
+    assert!(matches!(e.kind, ErrorKind::InvalidInteger("leading zeros are not allowed")));
+
+    // Malformed datetimes produce datetime errors, not integer errors
+    let e = ctx.parse_err("a = 2016-9-09T09:09:09Z");
+    assert!(matches!(e.kind, ErrorKind::InvalidDateTime("expected 2-digit month")));
+
+    let e = ctx.parse_err("a = 25-01-01T00:00:00Z");
+    assert!(matches!(e.kind, ErrorKind::InvalidDateTime("expected 4-digit year")));
+
+    let e = ctx.parse_err("a = 2016-13-01");
+    assert!(matches!(e.kind, ErrorKind::InvalidDateTime("month is out of range")));
+
+    let e = ctx.parse_err("a = 2016-02-30");
+    assert!(matches!(e.kind, ErrorKind::InvalidDateTime("day is out of range")));
+
+    let e = ctx.parse_err("a = 2016-09-09T25:00:00");
+    assert!(matches!(e.kind, ErrorKind::InvalidDateTime("hour is out of range")));
+
+    let e = ctx.parse_err("a = 2016-09-09T09:60:00");
+    assert!(matches!(e.kind, ErrorKind::InvalidDateTime("minute is out of range")));
 }
 
 #[test]
@@ -1213,14 +1330,14 @@ fn integer_overflow_specific_paths() {
     // Decimal: i64::MAX + 1 overflows positive max
     let e = ctx.parse_err("a = 9223372036854775808");
     assert!(
-        matches!(e.kind, ErrorKind::InvalidNumber),
+        is_number_error!(e.kind),
         "input: i64::MAX + 1"
     );
 
     // Decimal: negative overflow past i64::MIN
     let e = ctx.parse_err("a = -9223372036854775809");
     assert!(
-        matches!(e.kind, ErrorKind::InvalidNumber),
+        is_number_error!(e.kind),
         "input: -(i64::MIN) - 1"
     );
 
@@ -1228,28 +1345,28 @@ fn integer_overflow_specific_paths() {
     let hex_invalid = ["a = 0xGG", "a = 0xZZ"];
     for input in hex_invalid {
         let e = ctx.parse_err(input);
-        assert!(matches!(e.kind, ErrorKind::InvalidNumber), "input: {input}");
+        assert!(is_number_error!(e.kind), "input: {input}");
     }
 
     // Hex: overflow via acc >> 60 != 0 (17 hex digits)
     let e = ctx.parse_err("a = 0xFFFFFFFFFFFFFFFFF");
     assert!(
-        matches!(e.kind, ErrorKind::InvalidNumber),
+        is_number_error!(e.kind),
         "input: 0x 17 F's"
     );
 
     let e = ctx.parse_err("a = 0x10000000000000000");
-    assert!(matches!(e.kind, ErrorKind::InvalidNumber), "input: 0x 2^64");
+    assert!(is_number_error!(e.kind), "input: 0x 2^64");
 
     // Octal: acc > i64::MAX (2^63 in octal, passes per-digit check)
     let e = ctx.parse_err("a = 0o1000000000000000000000");
-    assert!(matches!(e.kind, ErrorKind::InvalidNumber), "input: 0o 2^63");
+    assert!(is_number_error!(e.kind), "input: 0o 2^63");
 
     // Binary: overflow via acc >> 63 != 0 (65 binary digits)
     let e =
         ctx.parse_err("a = 0b11111111111111111111111111111111111111111111111111111111111111111");
     assert!(
-        matches!(e.kind, ErrorKind::InvalidNumber),
+        is_number_error!(e.kind),
         "input: 0b 65 ones"
     );
 }
@@ -1262,21 +1379,21 @@ fn float_validation_edge_cases() {
     let integer_part_cases = ["a = 1_.5", "a = 1__.5"];
     for input in integer_part_cases {
         let e = ctx.parse_err(input);
-        assert!(matches!(e.kind, ErrorKind::InvalidNumber), "input: {input}");
+        assert!(is_number_error!(e.kind), "input: {input}");
     }
 
     // push_strip_underscores fails on exponent part (leading/trailing underscore)
     let exponent_cases = ["a = 1e+_5", "a = 1E+_5", "a = 1e+5_"];
     for input in exponent_cases {
         let e = ctx.parse_err(input);
-        assert!(matches!(e.kind, ErrorKind::InvalidNumber), "input: {input}");
+        assert!(is_number_error!(e.kind), "input: {input}");
     }
 
     // Result overflows to infinity, rejected as non-finite
     let non_finite_cases = ["a = 1e999", "a = 1e9999", "a = 1.0e999", "a = -1e999"];
     for input in non_finite_cases {
         let e = ctx.parse_err(input);
-        assert!(matches!(e.kind, ErrorKind::InvalidNumber), "input: {input}");
+        assert!(is_number_error!(e.kind), "input: {input}");
     }
 }
 
@@ -1538,7 +1655,7 @@ fn integer_base_max_boundary() {
 
     // Hex: i64::MAX + 1 should overflow
     let e = ctx.parse_err("a = 0x8000000000000000");
-    assert!(matches!(e.kind, ErrorKind::InvalidNumber), "hex i64::MAX+1");
+    assert!(is_number_error!(e.kind), "hex i64::MAX+1");
 
     // Octal: i64::MAX = 0o777777777777777777777
     let v = ctx.parse_ok("a = 0o777777777777777777777");
@@ -1547,7 +1664,7 @@ fn integer_base_max_boundary() {
     // Octal: i64::MAX + 1 should overflow
     let e = ctx.parse_err("a = 0o1000000000000000000000");
     assert!(
-        matches!(e.kind, ErrorKind::InvalidNumber),
+        is_number_error!(e.kind),
         "octal i64::MAX+1"
     );
 
@@ -1558,7 +1675,7 @@ fn integer_base_max_boundary() {
     // Binary: i64::MAX + 1 should overflow
     let e = ctx.parse_err("a = 0b1000000000000000000000000000000000000000000000000000000000000000");
     assert!(
-        matches!(e.kind, ErrorKind::InvalidNumber),
+        is_number_error!(e.kind),
         "binary i64::MAX+1"
     );
 }
@@ -1784,10 +1901,10 @@ fn octal_digit_validation() {
 
     // Invalid octal digits (8, 9)
     let e = ctx.parse_err("a = 0o8");
-    assert!(matches!(e.kind, ErrorKind::InvalidNumber), "octal digit 8");
+    assert!(is_number_error!(e.kind), "octal digit 8");
 
     let e = ctx.parse_err("a = 0o9");
-    assert!(matches!(e.kind, ErrorKind::InvalidNumber), "octal digit 9");
+    assert!(is_number_error!(e.kind), "octal digit 9");
 }
 
 // #[test]
@@ -1981,7 +2098,7 @@ fn parse_error_token_descriptions() {
 
     // Stray plus (exercises scan_token_desc_and_end plus path)
     let e = ctx.parse_err("key = +");
-    assert!(matches!(e.kind, ErrorKind::InvalidNumber));
+    assert!(is_number_error!(e.kind));
 
     // Incomplete inline table with whitespace error
     let e = ctx.parse_err("t = { a = 1  ");

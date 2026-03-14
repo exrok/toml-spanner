@@ -2,8 +2,8 @@
 source: snapshot-tests/tests/parser.rs
 expression: error
 ---
-error[invalid-number]: 
+error[invalid-datetime]: 
   ┌─ tz_neg2:1:6
   │
 1 │ tz = 2016-09-09T09:09:09-2:00
-  │      ^^^^^^^^^^^^^ unable to parse number
+  │      ^^^^^^^^^^^^^^^^^^^^^^^^ invalid datetime: expected 2-digit offset hour

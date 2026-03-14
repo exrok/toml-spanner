@@ -790,9 +790,9 @@ impl<'de> Parser<'de> {
             && let [b'0', format, rest @ ..] = s.as_bytes()
         {
             match format {
-                b'x' => return self.integer_hex(rest, Span::new(start, end)),
-                b'o' => return self.integer_octal(rest, Span::new(start, end)),
-                b'b' => return self.integer_binary(rest, Span::new(start, end)),
+                b'x' => return self.integer_prefixed(rest, Span::new(start, end), 4),
+                b'o' => return self.integer_prefixed(rest, Span::new(start, end), 3),
+                b'b' => return self.integer_prefixed(rest, Span::new(start, end), 1),
                 _ => {}
             }
         }
@@ -807,16 +807,43 @@ impl<'de> Parser<'de> {
                         Err(e) => Err(e),
                     }
                 }
-                _ => Err(self.set_error(at, Some(end as usize), ErrorKind::InvalidNumber)),
+                _ => Err(self.set_error(at, Some(end as usize), ErrorKind::InvalidFloat("nothing after decimal point"))),
             };
         }
 
         if sign == 2 {
             let head = &self.bytes[start as usize..];
-            if let Some((consumed, moment)) = DateTime::munch(head) {
-                self.cursor = start as usize + consumed;
-                return Ok(Item::moment(moment, Span::new(start, self.cursor as u32)));
+            match DateTime::munch(head) {
+                Ok((consumed, moment)) => {
+                    self.cursor = start as usize + consumed;
+                    return Ok(Item::moment(moment, Span::new(start, self.cursor as u32)));
+                }
+                Err(reason) if !reason.is_empty() => {
+                    let rest = &self.bytes[start as usize..];
+                    let mut consumed = 0;
+                    while consumed < rest.len()
+                        && !matches!(
+                            rest[consumed],
+                            b' ' | b'\t' | b'\n' | b'\r' | b'#' | b',' | b']' | b'}'
+                        )
+                    {
+                        consumed += 1;
+                    }
+                    self.cursor = start as usize + consumed;
+                    return Err(self.set_error(start as usize, Some(self.cursor), ErrorKind::InvalidDateTime(reason)));
+                }
+                Err(_) => {}
             }
+        }
+
+        if sign != 2
+            && let [b'0', b'x' | b'o' | b'b', ..] = bytes
+        {
+            return Err(self.set_error(
+                start as usize,
+                Some(end as usize),
+                ErrorKind::InvalidInteger("signs are not allowed on prefixed integers"),
+            ));
         }
 
         if let Ok(v) = self.integer_decimal(bytes, Span::new(start, end), sign) {
@@ -844,20 +871,29 @@ impl<'de> Parser<'de> {
         let mut has_digit = false;
         let mut leading_zero = false;
         let negative = sign == 0;
-        'error: {
-            for &b in bytes {
+        let sign_len = if sign != 2 { 1u32 } else { 0u32 };
+        let mut error_span = span;
+        let reason = 'error: {
+            let mut i = 0;
+            while i < bytes.len() {
+                let b = bytes[i];
                 if b == b'_' {
                     if !has_digit || prev_underscore {
-                        break 'error;
+                        let pos = span.start + sign_len + i as u32;
+                        error_span = Span::new(pos, pos + 1);
+                        break 'error "underscores must be between two digits";
                     }
                     prev_underscore = true;
+                    i += 1;
                     continue;
                 }
                 if !b.is_ascii_digit() {
-                    break 'error;
+                    let pos = span.start + sign_len + i as u32;
+                    error_span = Span::new(pos, pos + 1);
+                    break 'error "contains non-digit character";
                 }
                 if leading_zero {
-                    break 'error;
+                    break 'error "leading zeros are not allowed";
                 }
                 if !has_digit && b == b'0' {
                     leading_zero = true;
@@ -867,12 +903,18 @@ impl<'de> Parser<'de> {
                 let digit = (b - b'0') as u64;
                 acc = match acc.checked_mul(10).and_then(|a| a.checked_add(digit)) {
                     Some(v) => v,
-                    None => break 'error,
+                    None => break 'error "integer overflow",
                 };
+                i += 1;
             }
 
-            if !has_digit || prev_underscore {
-                break 'error;
+            if !has_digit {
+                break 'error "expected at least one digit";
+            }
+            if prev_underscore {
+                let pos = span.start + sign_len + bytes.len() as u32 - 1;
+                error_span = Span::new(pos, pos + 1);
+                break 'error "underscores must be between two digits";
             }
 
             let max = if negative {
@@ -881,7 +923,7 @@ impl<'de> Parser<'de> {
                 i64::MAX as u64
             };
             if acc > max {
-                break 'error;
+                break 'error "integer overflow";
             }
 
             let val = if negative {
@@ -890,136 +932,73 @@ impl<'de> Parser<'de> {
                 acc as i64
             };
             return Ok(Item::integer_spanned(val, span));
-        }
-        self.error_span = span;
-        self.error_kind = Some(ErrorKind::InvalidNumber);
+        };
+        self.error_span = error_span;
+        self.error_kind = Some(ErrorKind::InvalidInteger(reason));
         Err(Failed)
     }
 
-    fn integer_hex(&mut self, bytes: &'de [u8], span: Span) -> Result<Item<'de>, Failed> {
+    #[inline(never)]
+    fn integer_prefixed(&mut self, bytes: &'de [u8], span: Span, shift: u32) -> Result<Item<'de>, Failed> {
+        let max_digit = (1i8 << shift) - 1;
+        let invalid_msg = match shift {
+            4 => "invalid digit for hexadecimal",
+            3 => "invalid digit for octal",
+            _ => "invalid digit for binary",
+        };
         let mut acc: u64 = 0;
         let mut prev_underscore = false;
         let mut has_digit = false;
-        'error: {
+        let mut error_span = span;
+        let reason = 'error: {
             if bytes.is_empty() {
-                break 'error;
+                break 'error "no digits after prefix";
             }
 
-            for &b in bytes {
+            let mut i = 0;
+            while i < bytes.len() {
+                let b = bytes[i];
                 if b == b'_' {
                     if !has_digit || prev_underscore {
-                        break 'error;
+                        let pos = span.start + 2 + i as u32;
+                        error_span = Span::new(pos, pos + 1);
+                        break 'error "underscores must be between two digits";
                     }
                     prev_underscore = true;
+                    i += 1;
                     continue;
                 }
                 let digit = HEX[b as usize];
-                if digit < 0 {
-                    break 'error;
+                if digit < 0 || digit > max_digit {
+                    let pos = span.start + 2 + i as u32;
+                    error_span = Span::new(pos, pos + 1);
+                    break 'error invalid_msg;
                 }
                 has_digit = true;
                 prev_underscore = false;
-                if acc >> 60 != 0 {
-                    break 'error;
+                if acc >> (64 - shift) != 0 {
+                    break 'error "integer overflow";
                 }
-                acc = (acc << 4) | digit as u64;
+                acc = (acc << shift) | digit as u64;
+                i += 1;
             }
 
-            if !has_digit || prev_underscore {
-                break 'error;
+            if !has_digit {
+                break 'error "no digits after prefix";
+            }
+            if prev_underscore {
+                let pos = span.start + 2 + bytes.len() as u32 - 1;
+                error_span = Span::new(pos, pos + 1);
+                break 'error "underscores must be between two digits";
             }
 
             if acc > i64::MAX as u64 {
-                break 'error;
+                break 'error "integer overflow";
             }
             return Ok(Item::integer_spanned(acc as i64, span));
-        }
-        self.error_span = span;
-        self.error_kind = Some(ErrorKind::InvalidNumber);
-        Err(Failed)
-    }
-
-    fn integer_octal(&mut self, bytes: &'de [u8], span: Span) -> Result<Item<'de>, Failed> {
-        let mut acc: u64 = 0;
-        let mut prev_underscore = false;
-        let mut has_digit = false;
-        'error: {
-            if bytes.is_empty() {
-                break 'error;
-            }
-
-            for &b in bytes {
-                if b == b'_' {
-                    if !has_digit || prev_underscore {
-                        break 'error;
-                    }
-                    prev_underscore = true;
-                    continue;
-                }
-                if !b.is_ascii_digit() || b > b'7' {
-                    break 'error;
-                }
-                has_digit = true;
-                prev_underscore = false;
-                if acc >> 61 != 0 {
-                    break 'error;
-                }
-                acc = (acc << 3) | (b - b'0') as u64;
-            }
-
-            if !has_digit || prev_underscore {
-                break 'error;
-            }
-
-            if acc > i64::MAX as u64 {
-                break 'error;
-            }
-            return Ok(Item::integer_spanned(acc as i64, span));
-        }
-        self.error_span = span;
-        self.error_kind = Some(ErrorKind::InvalidNumber);
-        Err(Failed)
-    }
-
-    fn integer_binary(&mut self, bytes: &'de [u8], span: Span) -> Result<Item<'de>, Failed> {
-        let mut acc: u64 = 0;
-        let mut prev_underscore = false;
-        let mut has_digit = false;
-        'error: {
-            if bytes.is_empty() {
-                break 'error;
-            }
-
-            for &b in bytes {
-                if b == b'_' {
-                    if !has_digit || prev_underscore {
-                        break 'error;
-                    }
-                    prev_underscore = true;
-                    continue;
-                }
-                if b != b'0' && b != b'1' {
-                    break 'error;
-                }
-                has_digit = true;
-                prev_underscore = false;
-                if acc >> 63 != 0 {
-                    break 'error;
-                }
-                acc = (acc << 1) | (b - b'0') as u64;
-            }
-
-            if !has_digit || prev_underscore {
-                break 'error;
-            }
-
-            if acc > i64::MAX as u64 {
-                break 'error;
-            }
-            return Ok(Item::integer_spanned(acc as i64, span));
-        }
-        self.error_span = span;
-        self.error_kind = Some(ErrorKind::InvalidNumber);
+        };
+        self.error_span = error_span;
+        self.error_kind = Some(ErrorKind::InvalidInteger(reason));
         Err(Failed)
     }
 
@@ -1036,7 +1015,7 @@ impl<'de> Parser<'de> {
 
         // TOML forbids leading zeros in the integer part (e.g. 00.5, -01.0).
         if let [b'0', b'0'..=b'9' | b'_', ..] = s.as_bytes() {
-            return Err(self.set_error(s_start, Some(s_end), ErrorKind::InvalidNumber));
+            return Err(self.set_error(s_start, Some(s_end), ErrorKind::InvalidFloat("leading zeros are not allowed")));
         }
 
         // Safety: no other Scratch or arena.alloc() is active during float parsing.
@@ -1046,18 +1025,18 @@ impl<'de> Parser<'de> {
             scratch.push(b'-');
         }
         if !scratch.push_strip_underscores(s.as_bytes()) {
-            return Err(self.set_error(s_start, Some(s_end), ErrorKind::InvalidNumber));
+            return Err(self.set_error(s_start, Some(s_end), ErrorKind::InvalidFloat("underscores must be between two digits")));
         }
 
         let mut last = s;
 
         if let Some(after) = after_decimal {
             if !matches!(after.as_bytes().first(), Some(b'0'..=b'9')) {
-                return Err(self.set_error(s_start, Some(s_end), ErrorKind::InvalidNumber));
+                return Err(self.set_error(s_start, Some(s_end), ErrorKind::InvalidFloat("nothing after decimal point")));
             }
             scratch.push(b'.');
             if !scratch.push_strip_underscores(after.as_bytes()) {
-                return Err(self.set_error(s_start, Some(s_end), ErrorKind::InvalidNumber));
+                return Err(self.set_error(s_start, Some(s_end), ErrorKind::InvalidFloat("underscores must be between two digits")));
             }
             last = after;
         }
@@ -1071,11 +1050,11 @@ impl<'de> Parser<'de> {
                 Some(b) if is_keylike_byte(b) && b != b'-' => {
                     let next = self.read_keylike();
                     if !scratch.push_strip_underscores(next.as_bytes()) {
-                        return Err(self.set_error(s_start, Some(s_end), ErrorKind::InvalidNumber));
+                        return Err(self.set_error(s_start, Some(s_end), ErrorKind::InvalidFloat("exponent requires at least one digit")));
                     }
                 }
                 _ => {
-                    return Err(self.set_error(s_start, Some(s_end), ErrorKind::InvalidNumber));
+                    return Err(self.set_error(s_start, Some(s_end), ErrorKind::InvalidFloat("exponent requires at least one digit")));
                 }
             }
         }
@@ -1086,14 +1065,15 @@ impl<'de> Parser<'de> {
         // copied from validated input via push_strip_underscores.
         let n: f64 = match unsafe { std::str::from_utf8_unchecked(scratch.as_bytes()) }.parse() {
             Ok(n) => n,
+            // std's float parse error is always just "invalid float literal"
             Err(_) => {
-                return Err(self.set_error(s_start, Some(s_end), ErrorKind::InvalidNumber));
+                return Err(self.set_error(s_start, Some(s_end), ErrorKind::InvalidFloat("")));
             }
         };
         if n.is_finite() {
             Ok(n)
         } else {
-            Err(self.set_error(s_start, Some(s_end), ErrorKind::InvalidNumber))
+            Err(self.set_error(s_start, Some(s_end), ErrorKind::InvalidFloat("float overflow")))
         }
     }
 
@@ -1210,8 +1190,24 @@ impl<'de> Parser<'de> {
             self.number(at as u32, end, key, sign)
         } else if byte == b'\r' {
             Err(self.set_error(at, None, ErrorKind::Unexpected('\r')))
+        } else if sign != 2 {
+            Err(self.set_error(
+                at,
+                Some(self.cursor),
+                ErrorKind::InvalidInteger("expected digit after sign"),
+            ))
+        } else if key.is_empty() {
+            Err(self.set_error(
+                at,
+                None,
+                ErrorKind::Unexpected(self.next_char_for_error()),
+            ))
         } else {
-            Err(self.set_error(at, Some(self.cursor), ErrorKind::InvalidNumber))
+            Err(self.set_error(
+                at,
+                Some(self.cursor),
+                ErrorKind::UnquotedString,
+            ))
         }
     }
 

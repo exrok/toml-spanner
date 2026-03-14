@@ -49,6 +49,7 @@ impl From<(ErrorKind, Span)> for Error {
 }
 
 /// The specific kind of error.
+#[non_exhaustive]
 pub enum ErrorKind {
     /// EOF was reached when looking for a value.
     UnexpectedEof,
@@ -78,8 +79,14 @@ pub enum ErrorKind {
     /// EOF mark.
     UnterminatedString,
 
-    /// A number failed to parse.
-    InvalidNumber,
+    /// An integer literal failed to parse, with an optional reason.
+    InvalidInteger(&'static str),
+
+    /// A float literal failed to parse, with an optional reason.
+    InvalidFloat(&'static str),
+
+    /// A datetime literal failed to parse, with an optional reason.
+    InvalidDateTime(&'static str),
 
     /// The number in the toml file cannot be losslessly converted to the specified
     /// number type
@@ -178,7 +185,9 @@ impl Display for ErrorKind {
             Self::InvalidHexEscape(..) => "invalid-hex-escape",
             Self::Unexpected(..) => "unexpected",
             Self::UnterminatedString => "unterminated-string",
-            Self::InvalidNumber => "invalid-number",
+            Self::InvalidInteger(_) => "invalid-integer",
+            Self::InvalidFloat(_) => "invalid-float",
+            Self::InvalidDateTime(_) => "invalid-datetime",
             Self::OutOfRange(_) => "out-of-range",
             Self::Wanted { .. } => "wanted",
             Self::MissingField(..) => "missing-field",
@@ -257,7 +266,21 @@ impl Display for Error {
                 rtry!(f.write_str(", found "));
                 f.write_str(found)
             }
-            ErrorKind::InvalidNumber => f.write_str("invalid number"),
+            ErrorKind::InvalidInteger(reason)
+            | ErrorKind::InvalidFloat(reason)
+            | ErrorKind::InvalidDateTime(reason) => {
+                rtry!(f.write_str(match &self.kind {
+                    ErrorKind::InvalidInteger(_) => "invalid integer",
+                    ErrorKind::InvalidFloat(_) => "invalid float",
+                    _ => "invalid datetime",
+                }));
+                if !reason.is_empty() {
+                    rtry!(f.write_str(": "));
+                    f.write_str(reason)
+                } else {
+                    Ok(())
+                }
+            }
             ErrorKind::OutOfRange(kind) => {
                 rtry!(f.write_str("out of range of '"));
                 rtry!(f.write_str(kind));
@@ -365,8 +388,10 @@ impl Error {
             ErrorKind::InvalidEscapeValue(_) => diag.with_labels(vec![
                 Label::primary(fid, self.span).with_message("invalid escape value"),
             ]),
-            ErrorKind::InvalidNumber => diag.with_labels(vec![
-                Label::primary(fid, self.span).with_message("unable to parse number"),
+            ErrorKind::InvalidInteger(_)
+            | ErrorKind::InvalidFloat(_)
+            | ErrorKind::InvalidDateTime(_) => diag.with_labels(vec![
+                Label::primary(fid, self.span).with_message(self.to_string()),
             ]),
             ErrorKind::OutOfRange(kind) => diag
                 .with_message(format!("number is out of range of '{kind}'"))

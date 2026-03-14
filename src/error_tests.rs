@@ -47,7 +47,12 @@ fn display_all_error_kinds() {
         (ErrorKind::InvalidHexEscape('g'), "invalid-hex-escape"),
         (ErrorKind::Unexpected('!'), "unexpected"),
         (ErrorKind::UnterminatedString, "unterminated-string"),
-        (ErrorKind::InvalidNumber, "invalid-number"),
+        (ErrorKind::InvalidInteger(""), "invalid-integer"),
+        (ErrorKind::InvalidInteger("integer overflow"), "invalid-integer"),
+        (ErrorKind::InvalidFloat(""), "invalid-float"),
+        (ErrorKind::InvalidFloat("float overflow"), "invalid-float"),
+        (ErrorKind::InvalidDateTime(""), "invalid-datetime"),
+        (ErrorKind::InvalidDateTime("month is out of range"), "invalid-datetime"),
         (ErrorKind::OutOfRange("i8"), "out-of-range"),
         (
             ErrorKind::Wanted {
@@ -161,10 +166,45 @@ fn error_display_all_variants() {
         ),
         (
             Error {
-                kind: ErrorKind::InvalidNumber,
+                kind: ErrorKind::InvalidInteger(""),
                 span,
             },
-            "invalid number",
+            "invalid integer",
+        ),
+        (
+            Error {
+                kind: ErrorKind::InvalidInteger("integer overflow"),
+                span,
+            },
+            "invalid integer: integer overflow",
+        ),
+        (
+            Error {
+                kind: ErrorKind::InvalidFloat(""),
+                span,
+            },
+            "invalid float",
+        ),
+        (
+            Error {
+                kind: ErrorKind::InvalidFloat("float overflow"),
+                span,
+            },
+            "invalid float: float overflow",
+        ),
+        (
+            Error {
+                kind: ErrorKind::InvalidDateTime(""),
+                span,
+            },
+            "invalid datetime",
+        ),
+        (
+            Error {
+                kind: ErrorKind::InvalidDateTime("month is out of range"),
+                span,
+            },
+            "invalid datetime: month is out of range",
         ),
         (
             Error {
@@ -289,9 +329,9 @@ fn error_constructors() {
     assert_eq!(format!("{err}"), "something broke");
 
     // From<(ErrorKind, Span)>
-    let err: Error = (ErrorKind::InvalidNumber, Span::new(0, 5)).into();
+    let err: Error = (ErrorKind::InvalidInteger(""), Span::new(0, 5)).into();
     assert_eq!(err.span, Span::new(0, 5));
-    assert!(matches!(err.kind, ErrorKind::InvalidNumber));
+    assert!(matches!(err.kind, ErrorKind::InvalidInteger("")));
 
     // Error is std::error::Error
     let _: &dyn std::error::Error = &err;
@@ -349,11 +389,11 @@ fn from_toml_error_display_and_debug() {
     let err = FromTomlError {
         errors: vec![
             Error {
-                kind: ErrorKind::InvalidNumber,
+                kind: ErrorKind::InvalidInteger(""),
                 span: Span::new(0, 1),
             },
             Error {
-                kind: ErrorKind::InvalidNumber,
+                kind: ErrorKind::InvalidInteger(""),
                 span: Span::new(2, 3),
             },
         ],
@@ -370,7 +410,7 @@ fn from_toml_error_display_and_debug() {
 
     // From<Error>
     let single_err = Error {
-        kind: ErrorKind::InvalidNumber,
+        kind: ErrorKind::InvalidInteger(""),
         span: Span::new(0, 1),
     };
     let from: FromTomlError = single_err.into();
@@ -378,7 +418,7 @@ fn from_toml_error_display_and_debug() {
 
     // From<Vec<Error>>
     let errors = vec![Error {
-        kind: ErrorKind::InvalidNumber,
+        kind: ErrorKind::InvalidInteger(""),
         span: Span::new(0, 1),
     }];
     let from: FromTomlError = errors.into();

@@ -1,0 +1,9 @@
+---
+source: snapshot-tests/tests/parser.rs
+expression: error
+---
+error[invalid-datetime]: 
+  ┌─ bad_day:1:5
+  │
+1 │ a = 2016-02-30
+  │     ^^^^^^^^^^ invalid datetime: day is out of range

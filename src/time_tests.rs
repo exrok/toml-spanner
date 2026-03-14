@@ -3,7 +3,8 @@ use std::mem::MaybeUninit;
 use super::*;
 
 fn roundtrip(input: &str) {
-    let (amount, result) = DateTime::munch(input.as_bytes()).unwrap();
+    let (amount, result) = DateTime::munch(input.as_bytes())
+        .unwrap_or_else(|e| panic!("munch failed for {input:?}: {e:?}"));
     assert_eq!(amount, input.len(), "consumed wrong amount for {input:?}");
     let mut buf = MaybeUninit::uninit();
     let output = result.format(&mut buf);
@@ -11,7 +12,8 @@ fn roundtrip(input: &str) {
 }
 
 fn roundtrip_lossy(input: &str, expected: &str) {
-    let (amount, result) = DateTime::munch(input.as_bytes()).unwrap();
+    let (amount, result) = DateTime::munch(input.as_bytes())
+        .unwrap_or_else(|e| panic!("munch failed for {input:?}: {e:?}"));
     assert_eq!(amount, input.len(), "consumed wrong amount for {input:?}");
     let mut buf = MaybeUninit::uninit();
     let output = result.format(&mut buf);
@@ -21,11 +23,12 @@ fn roundtrip_lossy(input: &str, expected: &str) {
 #[track_caller]
 fn expect_err(input: &str) {
     let result = DateTime::munch(input.as_bytes());
-    assert!(result.is_none(), "expected error for {input:?}");
+    assert!(result.is_err(), "expected error for {input:?}");
 }
 
 fn parse_ok(input: &str) -> (usize, DateTime) {
-    DateTime::munch(input.as_bytes()).unwrap()
+    DateTime::munch(input.as_bytes())
+        .unwrap_or_else(|e| panic!("munch failed for {input:?}: {e:?}"))
 }
 
 #[test]

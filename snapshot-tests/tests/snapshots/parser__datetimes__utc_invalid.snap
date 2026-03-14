@@ -2,8 +2,8 @@
 source: snapshot-tests/tests/parser.rs
 expression: error
 ---
-error[invalid-number]: 
+error[invalid-datetime]: 
   ┌─ utc_invalid:1:7
   │
 1 │ utc = 2016-9-09T09:09:09Z
-  │       ^^^^^^^^^^^^ unable to parse number
+  │       ^^^^^^^^^^^^^^^^^^^ invalid datetime: expected 2-digit month

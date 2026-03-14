@@ -2,8 +2,8 @@
 source: snapshot-tests/tests/parser.rs
 expression: error
 ---
-error[invalid-number]: 
+error[invalid-integer]: 
   ┌─ neg_oct:1:5
   │
 1 │ a = -0o0
-  │     ^^^^ unable to parse number
+  │     ^^^^ invalid integer: signs are not allowed on prefixed integers

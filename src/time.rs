@@ -410,6 +410,7 @@ impl FromStr for DateTime {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         DateTime::munch(s.as_bytes())
+            .ok()
             .filter(|(amount, _)| *amount == s.len())
             .map(|(_, dt)| dt)
             .ok_or(DateTimeError::Invalid)
@@ -437,7 +438,7 @@ impl DateTime {
             None
         }
     }
-    pub(crate) fn munch(input: &[u8]) -> Option<(usize, DateTime)> {
+    pub(crate) fn munch(input: &[u8]) -> Result<(usize, DateTime), &'static str> {
         enum State {
             Year,
             Month,
@@ -449,10 +450,14 @@ impl DateTime {
             OffHour,
             OffMin,
         }
-        let mut state = match input {
-            [_, _, b':', _, _, ..] => State::Hour,
-            [_, _, _, _, b'-', _, _, b'-', ..] => State::Year,
-            _ => return None,
+        let mut n = 0;
+        while n < input.len() && input[n].is_ascii_digit() {
+            n += 1;
+        }
+        let mut state = match input.get(n) {
+            Some(b':') if n == 2 => State::Hour,
+            Some(b'-') if n >= 2 => State::Year,
+            _ => return Err(""),
         };
 
         let mut value = DateTime {
@@ -474,7 +479,7 @@ impl DateTime {
         let mut off_sign: i16 = 1;
         let mut off_hour: u8 = 0;
         let mut i = 0usize;
-        let mut valid = false;
+        let valid: bool;
 
         'outer: loop {
             let byte = input.get(i).copied().unwrap_or(0);
@@ -489,8 +494,11 @@ impl DateTime {
             'next: {
                 match state {
                     State::Year => {
-                        if len != 4 || byte != b'-' {
-                            break 'outer;
+                        if len != 4 {
+                            return Err("expected 4-digit year");
+                        }
+                        if byte != b'-' {
+                            return Err("");
                         }
                         value.date.year = current as u16;
                         state = State::Month;
@@ -498,8 +506,14 @@ impl DateTime {
                     }
                     State::Month => {
                         let m = current as u8;
-                        if len != 2 || byte != b'-' || m < 1 || m > 12 {
-                            break 'outer;
+                        if len != 2 {
+                            return Err("expected 2-digit month");
+                        }
+                        if byte != b'-' {
+                            return Err("");
+                        }
+                        if m < 1 || m > 12 {
+                            return Err("month is out of range");
                         }
                         value.date.month = m;
                         state = State::Day;
@@ -507,9 +521,11 @@ impl DateTime {
                     }
                     State::Day => {
                         let d = current as u8;
-                        if len != 2 || d < 1 || d > days_in_month(value.date.year, value.date.month)
-                        {
-                            break 'outer;
+                        if len != 2 {
+                            return Err("expected 2-digit day");
+                        }
+                        if d < 1 || d > days_in_month(value.date.year, value.date.month) {
+                            return Err("day is out of range");
                         }
                         value.date.day = d;
                         value.flags |= HAS_DATE;
@@ -527,8 +543,14 @@ impl DateTime {
                     }
                     State::Hour => {
                         let h = current as u8;
-                        if len != 2 || byte != b':' || h > 23 {
-                            break 'outer;
+                        if len != 2 {
+                            return Err("expected 2-digit hour");
+                        }
+                        if byte != b':' {
+                            return Err("incomplete time");
+                        }
+                        if h > 23 {
+                            return Err("hour is out of range");
                         }
                         value.hour = h;
                         state = State::Minute;
@@ -536,36 +558,37 @@ impl DateTime {
                     }
                     State::Minute => {
                         let m = current as u8;
-                        if len != 2 || m > 59 {
-                            break 'outer;
+                        if len != 2 {
+                            return Err("expected 2-digit minute");
+                        }
+                        if m > 59 {
+                            return Err("minute is out of range");
                         }
                         value.minute = m;
                         value.flags |= HAS_TIME;
                         if byte == b':' {
                             state = State::Second;
                             break 'next;
-                        } else {
-                            // fallthorugh to check offset
                         }
                     }
                     State::Second => {
                         let s = current as u8;
-                        // Note: Second is allowed to be 60, for leap second rule.
-                        if len != 2 || s > 60 {
-                            break 'outer;
+                        if len != 2 {
+                            return Err("expected 2-digit second");
+                        }
+                        if s > 60 {
+                            return Err("second is out of range");
                         }
                         value.seconds = s;
                         value.flags |= HAS_SECONDS;
                         if byte == b'.' {
                             state = State::Frac;
                             break 'next;
-                        } else {
-                            // fallthrough to check outer
                         }
                     }
                     State::Frac => {
                         if len == 0 {
-                            break 'outer;
+                            return Err("expected fractional digits after decimal point");
                         }
                         let digit_count = if len > 9 { 9u8 } else { len as u8 };
                         let mut nanos = current;
@@ -576,22 +599,31 @@ impl DateTime {
                         }
                         value.nanos = nanos;
                         value.flags |= digit_count << NANO_SHIFT;
-                        // fallthrough to check outer
                     }
                     State::OffHour => {
                         let h = current as u8;
-                        if len != 2 || byte != b':' || h > 23 {
-                            break 'outer;
+                        if len != 2 {
+                            return Err("expected 2-digit offset hour");
+                        }
+                        if byte != b':' {
+                            return Err("incomplete offset");
+                        }
+                        if h > 23 {
+                            return Err("offset hour is out of range");
                         }
                         off_hour = h;
                         state = State::OffMin;
                         break 'next;
                     }
                     State::OffMin => {
-                        if len != 2 || current > 59 {
-                            break 'outer;
+                        if len != 2 {
+                            return Err("expected 2-digit offset minute");
                         }
-                        value.offset_minutes = off_sign * (off_hour as i16 * 60 + current as i16);
+                        if current > 59 {
+                            return Err("offset minute is out of range");
+                        }
+                        value.offset_minutes =
+                            off_sign * (off_hour as i16 * 60 + current as i16);
                         valid = true;
                         break 'outer;
                     }
@@ -622,9 +654,9 @@ impl DateTime {
             len = 0;
         }
         if !valid || (value.flags & HAS_DATE == 0 && value.offset_minutes != i16::MIN) {
-            return None;
+            return Err("");
         }
-        Some((i, value))
+        Ok((i, value))
     }
 
     /// Formats this datetime into the provided buffer and returns the result as a `&str`.

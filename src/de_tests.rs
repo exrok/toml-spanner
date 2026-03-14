@@ -384,14 +384,14 @@ fn expect_custom_string_and_context_errors() {
     };
     let _ = ctx.error_message_at("something went wrong", span);
     let _ = ctx.push_error(crate::Error {
-        kind: crate::ErrorKind::InvalidNumber,
+        kind: crate::ErrorKind::InvalidInteger(""),
         span,
     });
     assert_eq!(ctx.errors.len(), 2);
     assert!(matches!(ctx.errors[0].kind, crate::ErrorKind::Custom(..)));
     assert!(matches!(
         ctx.errors[1].kind,
-        crate::ErrorKind::InvalidNumber
+        crate::ErrorKind::InvalidInteger(_)
     ));
 }
 

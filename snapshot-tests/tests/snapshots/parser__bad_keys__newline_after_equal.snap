@@ -2,8 +2,10 @@
 source: snapshot-tests/tests/parser.rs
 expression: error
 ---
-error[invalid-number]: 
+error[unexpected]: 
   ┌─ newline_after_equal:1:5
-  │
-1 │ key=
-  │     ^ unable to parse number
+  │  
+1 │   key=
+  │ ╭────^
+2 │ │ 3
+  │ ╰^ unexpected character '\n'

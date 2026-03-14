@@ -2,8 +2,8 @@
 source: snapshot-tests/tests/parser.rs
 expression: error
 ---
-error[invalid-number]: 
+error[invalid-float]: 
   ┌─ trailing_dec:1:7
   │
 1 │ a = 0.
-  │       ^ unable to parse number
+  │       ^ invalid float: nothing after decimal point

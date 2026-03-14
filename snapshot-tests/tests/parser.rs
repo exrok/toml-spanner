@@ -294,6 +294,11 @@ mod datetimes {
     valid!(tz_neg, "tz = 2016-09-09T09:09:09.123456789-02:00");
     invalid!(utc_trailing_dot, "utc = 2016-09-09T09:09:09.Z");
     invalid!(utc_invalid, "utc = 2016-9-09T09:09:09Z");
+    invalid!(short_year, "a = 25-01-01T00:00:00Z");
+    invalid!(bad_month, "a = 2016-13-01");
+    invalid!(bad_day, "a = 2016-02-30");
+    invalid!(bad_hour, "a = 2016-09-09T25:00:00");
+    invalid!(bad_minute, "a = 2016-09-09T09:60:00");
     invalid!(tz2, "tz = 2016-09-09T09:09:09+2:00");
     invalid!(tz_neg2, "tz = 2016-09-09T09:09:09-2:00");
     invalid!(tz_neg3, "tz = 2016-09-09T09:09:09Z-2:00");
