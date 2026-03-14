@@ -943,112 +943,111 @@ fn from_str_and_to_string_roundtrip() {
 #[test]
 fn to_toml_wrapper_types() {
     use crate::Arena;
-    use crate::ser::{ToContext, ToToml};
+    use crate::ser::ToToml;
     use std::collections::{BTreeMap, BTreeSet};
     use std::path::PathBuf;
     use std::rc::Rc;
     use std::sync::Arc;
 
     let arena = Arena::new();
-    let mut ctx = ToContext::new(&arena);
 
     // str (not String)
     let s: &str = "hello";
-    let item = s.to_toml(&mut ctx).unwrap();
+    let item = s.to_toml(&arena).unwrap();
     assert_eq!(item.as_str(), Some("hello"));
 
     // &T delegates to T
     let num: i64 = 42;
-    let item = (&num).to_toml(&mut ctx).unwrap();
+    let item = (&num).to_toml(&arena).unwrap();
     assert_eq!(item.as_i64(), Some(42));
 
     // Box<T>
     let boxed = Box::new(99i64);
-    let item = boxed.to_toml(&mut ctx).unwrap();
+    let item = boxed.to_toml(&arena).unwrap();
     assert_eq!(item.as_i64(), Some(99));
 
     // Rc<T>
     let rc = Rc::new("rc-str".to_string());
-    let item = rc.to_toml(&mut ctx).unwrap();
+    let item = rc.to_toml(&arena).unwrap();
     assert_eq!(item.as_str(), Some("rc-str"));
 
     // Arc<T>
     let arc = Arc::new(7i64);
-    let item = arc.to_toml(&mut ctx).unwrap();
+    let item = arc.to_toml(&arena).unwrap();
     assert_eq!(item.as_i64(), Some(7));
 
     // Cow<T>
     let cow: std::borrow::Cow<'_, str> = std::borrow::Cow::Borrowed("cow-val");
-    let item = cow.to_toml(&mut ctx).unwrap();
+    let item = cow.to_toml(&arena).unwrap();
     assert_eq!(item.as_str(), Some("cow-val"));
 
     // char
     let ch = 'A';
-    let item = ch.to_toml(&mut ctx).unwrap();
+    let item = ch.to_toml(&arena).unwrap();
     assert_eq!(item.as_str(), Some("A"));
 
     // f32
     let f: f32 = 1.5;
-    let item = f.to_toml(&mut ctx).unwrap();
+    let item = f.to_toml(&arena).unwrap();
     assert!((item.as_f64().unwrap() - 1.5).abs() < f64::EPSILON);
 
     // f64
     let f: f64 = 2.5;
-    let item = f.to_toml(&mut ctx).unwrap();
+    let item = f.to_toml(&arena).unwrap();
     assert!((item.as_f64().unwrap() - 2.5).abs() < f64::EPSILON);
 
     // bool
     let b = true;
-    let item = b.to_toml(&mut ctx).unwrap();
+    let item = b.to_toml(&arena).unwrap();
     assert_eq!(item.as_bool(), Some(true));
 
     // PathBuf
     let path = PathBuf::from("/usr/bin");
-    let item = path.to_toml(&mut ctx).unwrap();
+    let item = path.to_toml(&arena).unwrap();
     assert_eq!(item.as_str(), Some("/usr/bin"));
 
     // std::path::Path (via &Path)
     let path = std::path::Path::new("/etc/config");
-    let item = path.to_toml(&mut ctx).unwrap();
+    let item = path.to_toml(&arena).unwrap();
     assert_eq!(item.as_str(), Some("/etc/config"));
 
     // Vec<T> → [T]
     let vec = vec![1i64, 2, 3];
-    let item = vec.to_toml(&mut ctx).unwrap();
+    let item = vec.to_toml(&arena).unwrap();
     assert_eq!(item.as_array().unwrap().len(), 3);
 
     // [T; N]
     let arr = [10i64, 20, 30];
-    let item = arr.to_toml(&mut ctx).unwrap();
+    let item = arr.to_toml(&arena).unwrap();
     assert_eq!(item.as_array().unwrap().len(), 3);
 
     // BTreeSet
     let mut set = BTreeSet::new();
     set.insert("a".to_string());
     set.insert("b".to_string());
-    let item = set.to_toml(&mut ctx).unwrap();
+    let item = set.to_toml(&arena).unwrap();
     assert_eq!(item.as_array().unwrap().len(), 2);
 
     // HashSet
     let mut hset = std::collections::HashSet::new();
     hset.insert("x".to_string());
-    let item = hset.to_toml(&mut ctx).unwrap();
+    let item = hset.to_toml(&arena).unwrap();
     assert_eq!(item.as_array().unwrap().len(), 1);
 
     // Option<T>: Some and None
     let some_val: Option<i64> = Some(5);
-    let item = some_val.to_optional_toml(&mut ctx).unwrap();
+    let item = some_val.to_optional_toml(&arena).unwrap();
     assert!(item.is_some());
     assert_eq!(item.unwrap().as_i64(), Some(5));
 
     let none_val: Option<i64> = None;
-    let item = none_val.to_optional_toml(&mut ctx).unwrap();
+    let item = none_val.to_optional_toml(&arena).unwrap();
     assert!(item.is_none());
 
     // BTreeMap (as table)
     let mut btm = BTreeMap::new();
     btm.insert("k".to_string(), "v".to_string());
-    let item = btm.to_toml(&mut ctx).unwrap();
+    let item = btm.to_toml(&arena).unwrap();
     assert!(item.as_table().is_some());
     assert_eq!(
         item.as_table().unwrap().get("k").unwrap().as_str(),
@@ -1058,53 +1057,53 @@ fn to_toml_wrapper_types() {
     // HashMap (as table)
     let mut hm = std::collections::HashMap::new();
     hm.insert("key".to_string(), 42i64);
-    let item = hm.to_toml(&mut ctx).unwrap();
+    let item = hm.to_toml(&arena).unwrap();
     assert!(item.as_table().is_some());
 
     // Integer types
-    let item = (42u8).to_toml(&mut ctx).unwrap();
+    let item = (42u8).to_toml(&arena).unwrap();
     assert_eq!(item.as_i64(), Some(42));
-    let item = (-5i8).to_toml(&mut ctx).unwrap();
+    let item = (-5i8).to_toml(&arena).unwrap();
     assert_eq!(item.as_i64(), Some(-5));
-    let item = (1000u16).to_toml(&mut ctx).unwrap();
+    let item = (1000u16).to_toml(&arena).unwrap();
     assert_eq!(item.as_i64(), Some(1000));
-    let item = (-200i16).to_toml(&mut ctx).unwrap();
+    let item = (-200i16).to_toml(&arena).unwrap();
     assert_eq!(item.as_i64(), Some(-200));
-    let item = (100000u32).to_toml(&mut ctx).unwrap();
+    let item = (100000u32).to_toml(&arena).unwrap();
     assert_eq!(item.as_i64(), Some(100000));
-    let item = (-50000i32).to_toml(&mut ctx).unwrap();
+    let item = (-50000i32).to_toml(&arena).unwrap();
     assert_eq!(item.as_i64(), Some(-50000));
 
     // Table::to_toml (clone)
-    let tbl = btm.to_toml(&mut ctx).unwrap();
+    let tbl = btm.to_toml(&arena).unwrap();
     let tbl_ref = tbl.as_table().unwrap();
-    let item = tbl_ref.to_toml(&mut ctx).unwrap();
+    let item = tbl_ref.to_toml(&arena).unwrap();
     assert!(item.as_table().is_some());
 
     // Array::to_toml (clone)
-    let arr_item = vec.to_toml(&mut ctx).unwrap();
+    let arr_item = vec.to_toml(&arena).unwrap();
     let arr_ref = arr_item.as_array().unwrap();
-    let item = arr_ref.to_toml(&mut ctx).unwrap();
+    let item = arr_ref.to_toml(&arena).unwrap();
     assert_eq!(item.as_array().unwrap().len(), 3);
 
     // Item::to_toml (clone)
     let original = Item::from(42i64);
-    let item = original.to_toml(&mut ctx).unwrap();
+    let item = original.to_toml(&arena).unwrap();
     assert_eq!(item.as_i64(), Some(42));
 
     // &mut T delegates to T
     let mut num2: i64 = 77;
     let num2_ref = &mut num2;
-    let item = num2_ref.to_toml(&mut ctx).unwrap();
+    let item = num2_ref.to_toml(&arena).unwrap();
     assert_eq!(item.as_i64(), Some(77));
 
     // Cow (owned variant)
     let cow_owned: std::borrow::Cow<'_, str> = std::borrow::Cow::Owned("owned-val".to_string());
-    let item = cow_owned.to_toml(&mut ctx).unwrap();
+    let item = cow_owned.to_toml(&arena).unwrap();
     assert_eq!(item.as_str(), Some("owned-val"));
 
     // Multi-byte char
     let ch_multi = '\u{1F600}';
-    let item = ch_multi.to_toml(&mut ctx).unwrap();
+    let item = ch_multi.to_toml(&arena).unwrap();
     assert_eq!(item.as_str(), Some("\u{1F600}"));
 }

@@ -640,10 +640,7 @@ fn new_deep_nested_sibling_inherits_inline() {
         d_table.insert(Key::anon("e"), e_table.into_item(), arena);
         section.insert(Key::anon("d"), d_table.into_item(), arena);
     });
-    assert_eq!(
-        result,
-        "[A]\nb = { c = 1 }\nd = { e = { f = { g = 2 } } }"
-    );
+    assert_eq!(result, "[A]\nb = { c = 1 }\nd = { e = { f = { g = 2 } } }");
 }
 
 #[test]
@@ -689,8 +686,6 @@ x = { y = 2 }";
         "expected inline z in B: {result}"
     );
 }
-
-
 
 /// Parse input, reproject identity (same src and dest), emit with config,
 /// and return the output. Unchanged scalars should be preserved verbatim.
@@ -913,8 +908,6 @@ fn plain_emit_ignores_whitespace() {
 
 // full_document_whitespace_preservation: moved to testdata/emit_identity.toml
 
-
-
 fn flag_name(flag: u32) -> &'static str {
     match flag {
         0 => "NONE",
@@ -991,12 +984,7 @@ fn debug_table(table: &Table<'_>) -> String {
                 .unwrap();
                 for (key, val) in tab {
                     let ks = key_span_str(key);
-                    fmt_item(
-                        val,
-                        indent + 2,
-                        &format!("{} [key:{ks}] = ", key.name),
-                        out,
-                    );
+                    fmt_item(val, indent + 2, &format!("{} [key:{ks}] = ", key.name), out);
                 }
             }
         }
@@ -1130,8 +1118,6 @@ fn aot_body_entry_at_eof_is_idempotent() {
     let second = reproject_edit_output(&first, &first);
     assert_eq!(first, second, "emit_with_config must be idempotent");
 }
-
-
 
 /// Parse input, self-reproject, emit with `reprojected_order: true`.
 fn emit_with_reorder(input: &str) -> String {
@@ -1720,7 +1706,6 @@ eta = "0.1"
         panic!("TOML didn't match expected result after serialization:");
     }
 }
-
 
 //
 // These set FORCE_HASH_COLLISIONS so that every array element hashes to the

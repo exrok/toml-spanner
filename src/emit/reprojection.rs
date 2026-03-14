@@ -2,9 +2,9 @@
 #[path = "reprojection_tests.rs"]
 mod tests;
 
-use crate::parser::TableIndex;
 use crate::item::{ArrayStyle, Item, TableStyle, Value, ValueMut};
 use crate::parser::Root;
+use crate::parser::TableIndex;
 use crate::span::Span;
 use crate::{Array, Table};
 use std::hash::{BuildHasher, Hasher};

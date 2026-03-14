@@ -287,8 +287,8 @@ fn impl_to_toml(output: &mut RustWriter, ctx: &Ctx, inner: TokenStream) {
                 [~ty]: [#ctx.crate_path]::ToFlattened,
             }] [~&target.where_clauses] ]
         {
-            fn to_toml<# [#lf]>(& # [#lf] self, __ctx: &mut [#ctx.crate_path]::ToContext<# [#lf]>)
-                -> ::std::result::Result<[#ctx.crate_path]::Item<# [#lf]>, [#ctx.crate_path]::Failed>
+            fn to_toml<# [#lf]>(& # [#lf] self, __arena: & # [#lf] [#ctx.crate_path]::Arena)
+                -> ::std::result::Result<[#ctx.crate_path]::Item<# [#lf]>, [#ctx.crate_path]::ToTomlError>
                 [@TokenTree::Group(Group::new(Delimiter::Brace, inner))]
         }
     };
@@ -299,9 +299,9 @@ fn emit_table_alloc(out: &mut RustWriter, ctx: &Ctx, var: &str, capacity: usize)
     splat!(out;
         let Some(mut [#var_id]) = [#ctx.crate_path]::Table::try_with_capacity(
             [@TokenTree::Literal(Literal::usize_unsuffixed(capacity))],
-            __ctx.arena
+            __arena
         ) else {
-            return __ctx.report_error([@TokenTree::Literal(Literal::string("Table capacity exceeded maximum"))]);
+            return Err([#ctx.crate_path]::ToTomlError::from([@TokenTree::Literal(Literal::string("Table capacity exceeded maximum"))]));
         };
     );
 }
@@ -555,18 +555,18 @@ fn emit_table_field_ser(
             splat!(out;
                 [#table_id].insert(
                     [#ctx.crate_path]::Key::anon([@name_lit.into()]),
-                    [~with]::to_toml([@TokenTree::Group(Group::new(Delimiter::None, field_ref.clone()))], __ctx)?,
-                    __ctx.arena,
+                    [~with]::to_toml([@TokenTree::Group(Group::new(Delimiter::None, field_ref.clone()))], __arena)?,
+                    __arena,
                 );
             );
         } else if first_ty_ident == "Option" {
             splat!(out;
                 if let Some(__val) = [#ctx.crate_path]::ToToml::to_optional_toml(
-                    [@TokenTree::Group(Group::new(Delimiter::None, field_ref.clone()))], __ctx)? {
+                    [@TokenTree::Group(Group::new(Delimiter::None, field_ref.clone()))], __arena)? {
                     [#table_id].insert(
                         [#ctx.crate_path]::Key::anon([@name_lit.into()]),
                         __val,
-                        __ctx.arena,
+                        __arena,
                     );
                 }
             );
@@ -575,8 +575,8 @@ fn emit_table_field_ser(
                 [#table_id].insert(
                     [#ctx.crate_path]::Key::anon([@name_lit.into()]),
                     [#ctx.crate_path]::ToToml::to_toml(
-                        [@TokenTree::Group(Group::new(Delimiter::None, field_ref.clone()))], __ctx)?,
-                    __ctx.arena,
+                        [@TokenTree::Group(Group::new(Delimiter::None, field_ref.clone()))], __arena)?,
+                    __arena,
                 );
             );
         }
@@ -600,13 +600,13 @@ fn emit_table_field_ser(
                 splat!(out;
                     [~with]::to_flattened(
                         [@TokenTree::Group(Group::new(Delimiter::None, field_ref))],
-                        __ctx, &mut [#table_id])?;
+                        __arena, &mut [#table_id])?;
                 );
             } else {
                 splat!(out;
                     [#ctx.crate_path]::ToFlattened::to_flattened(
                         [@TokenTree::Group(Group::new(Delimiter::None, field_ref))],
-                        __ctx, &mut [#table_id])?;
+                        __arena, &mut [#table_id])?;
                 );
             }
         }
@@ -687,7 +687,7 @@ fn handle_struct(output: &mut RustWriter, target: &DeriveTargetInner, fields: &[
                 throw!("Struct must contain a single field to use transparent")
             };
             let body = token_stream! {output;
-                [#ctx.crate_path]::ToToml::to_toml(&self.[#: single_field.name], __ctx)
+                [#ctx.crate_path]::ToToml::to_toml(&self.[#: single_field.name], __arena)
             };
             impl_to_toml(output, &ctx, body);
         } else {
@@ -718,7 +718,7 @@ fn handle_tuple_struct(output: &mut RustWriter, target: &DeriveTargetInner, fiel
     if target.to_toml {
         if let [_single_field] = fields {
             let body = token_stream! {output;
-                [#ctx.crate_path]::ToToml::to_toml(&self.[@TokenTree::Literal(Literal::usize_unsuffixed(0))], __ctx)
+                [#ctx.crate_path]::ToToml::to_toml(&self.[@TokenTree::Literal(Literal::usize_unsuffixed(0))], __arena)
             };
             impl_to_toml(output, &ctx, body);
         } else {
@@ -752,7 +752,7 @@ fn emit_tag_insert(out: &mut RustWriter, ctx: &Ctx, tag_lit: &Literal, name_lit:
         table.insert(
             [#ctx.crate_path]::Key::anon([@tag_lit.clone().into()]),
             [#ctx.crate_path]::Item::string([@name_lit.into()]),
-            __ctx.arena,
+            __arena,
         );
     );
 }
@@ -833,7 +833,7 @@ fn enum_to_toml(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVariant], mode:
                 if matches!(mode, TagMode::Untagged) {
                     splat!(out;
                         Self::[#: variant.name](inner) =>
-                            [#ctx.crate_path]::ToToml::to_toml(inner, __ctx),
+                            [#ctx.crate_path]::ToToml::to_toml(inner, __arena),
                     );
                 } else {
                     let cap = if tag_lit.is_some() { 2 } else { 1 };
@@ -849,8 +849,8 @@ fn enum_to_toml(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVariant], mode:
                                     TagMode::Adjacent(_, content) => { out.buf.push(TokenTree::Literal((*content).clone())); }
                                     _ => {}
                                 }]),
-                                [#ctx.crate_path]::ToToml::to_toml(inner, __ctx)?,
-                                __ctx.arena,
+                                [#ctx.crate_path]::ToToml::to_toml(inner, __arena)?,
+                                __arena,
                             );
                             Ok(table.into_item())
                         }
@@ -877,7 +877,7 @@ fn enum_to_toml(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVariant], mode:
                             outer.insert(
                                 [#ctx.crate_path]::Key::anon([@name_lit.into()]),
                                 table.into_item(),
-                                __ctx.arena,
+                                __arena,
                             );
                             Ok(outer.into_item())
                         );
@@ -911,7 +911,7 @@ fn enum_to_toml(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVariant], mode:
                             outer.insert(
                                 [#ctx.crate_path]::Key::anon([@TokenTree::Literal((*content).clone())]),
                                 table.into_item(),
-                                __ctx.arena,
+                                __arena,
                             );
                             Ok(outer.into_item())
                         );

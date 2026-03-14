@@ -152,8 +152,7 @@ impl Arena {
                 let extra = new_size - old_size;
                 unsafe {
                     let head_ptr = self.ptr.get().as_ptr();
-                    self.ptr
-                        .set(NonNull::new_unchecked(head_ptr.add(extra)));
+                    self.ptr.set(NonNull::new_unchecked(head_ptr.add(extra)));
                     // Re-derive from the bump pointer (which carries full slab
                     // provenance) instead of returning `ptr` directly, because
                     // the MIRI tagging in alloc() restricts `ptr`'s Stacked

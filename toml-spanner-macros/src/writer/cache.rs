@@ -1,27 +1,29 @@
 use proc_macro::{Punct, Spacing};
 pub static BLIT_SRC: &[u8] =
-b"\n\t2-\x05\x07\n\td\x05\x07\x01S\x01\r\n\t@\x05\x07:fr\t\x08k\n\t#\x05\x07\x01\rp\t\x08\n\tT\x05\x07\x0b\x01\n\t=\n\t<\n\t8\x05m\r\n\t6\x01\n\tYS\n\tY\r\n\t$\r:X\x05\x07\x08\x07W\rr\t\x08k\n\t\x13\x05\x07qg\n\t\x12\n\t \rr\x00[lr\x00\x1dqkQ\x03\n\t.s\x02qkQ\x03\x05\x01\x01\n\t.s\x02\x03L\x02\x03L\n\t\x05\x01\x02i\rehi\x00O\x04\x01t\x00\x19slnr\x00\x1c\ri\x00J\n\tfr\re\x01\x01\n\tf\x03g\x04\x01ln\x04\x01t\rj\x04\x01qj\x03\n\t^r\ri\re\r\x08kQqj\x03\x05\x01\x01\n\t^r\x009\n\t,r\rQ\x06\x02\x01\x01\n\t,\x00\x1esNr\x00H\rp\x00Ks\x00!\x0f\x0e\x004s\x02\x03\"\n\t+s\x02\x08W\x00\x00^\n\tU\n\tV\n\tX\x06\rr\x00[\rbqg\n\tY\n\t\x1f\ra\rr\x00[\r\n\tY\n\tXb\x10\n\t1\rr\r\x08k\n\t$\n\t1m\n\tqZ\x03p\x00\\Z\x00_sr\rpc\x00^\n\tT\n\t>qI\x03p\x00\x18\x06\x02hI\x04\x01oj\x04\x01nr\x00]hWc\x00_sF\rr\x02oG\x00^\rc\x00_s\rr\x00[\rG\x00_slhI\x03p\x00(sqc\x03p\x00\\\x06\x02qC\x03c\x00Cs\x02C\x00;s\x04\x03/\r?\x03\x08Ch/\x00O\n\td\n\tfr\r?qM\x03?\x00\\qk`\t7\x05\x080\x01\x03L\x02SEZbi\x00O\x04\x03`\x03g\x02\x16\x02\x03`Nh`bi\x00O\x11\x03qM\x03Z\x02\x06\x02qk`\t7\x05\x080\x01\x03L\x02qkP\t7\x05\x08\x01\x01\x03L\x02P\x03g\x03PNr\rPqM\x03P\x00\\b\'\x04\x03lo\x04\x01lo\rnqB\x03r\x00D\x00;s\x02hr\x00D\x003qM\x03p\x00\\qB\x03r\x00D\x00;s\x02q&\t\n\t=\n\t<\n\t8\x05m\r\n\t6\x01\x03s\x02h&q%\t:\x01\r\x08\x0b\x01\x15\x03\x02b%\x17\n\t\x1a*j\ts\x03";
-pub const IDENT_SIZE: usize = 97;
-pub static NAMES: [&str; 97] = [
+b"\n\t4/\x05\x07\n\td\x05\x07\x01T\x01\r\n\tA\x05\x07;fs\t\x08j\n\t$\x05\x07\x01\rq\t\x08\n\tU\x05\x07\x0b\x01\n\t>\n\t=\n\t9\x05n\r\n\t#\x01\n\tZT\n\tZ\r\n\t%\r;Y\x05\x07\x08\x07X\rl\t\x08\x07\n\t\x12\n\t&\x01rg\n\t\x13\n\t mo\n\t&\n\t\x19rjR\x03\n\t0t\x02rjR\x03\x05\x01\x01\n\t0t\x02\x03M\x02\x03M\n\t\x05\x01\x02i\rehi\x00P\x04\x01u\x00\x1ats\x00\x1d\ri\x00K\n\tfs\re\x01\x01\n\tf\x03g\x04\x01mo\x04\x01u\rk\x04\x01rk\x03\n\t^s\ri\re\r\x08jRrk\x03\x05\x01\x01\n\t^s\x00:\n\t.s\rR\x06\x02\x01\x01\n\t.\x00\x1etOs\x00I\rq\x00Lt\x00!\x0f\x0e\x006t\x02\x03\"\n\t-t\x02\x08X\x00\x00^\n\tV\n\tW\n\tY\x06\rl\rbrg\n\tZ\n\t\x1f\ra\rl\r\n\tZ\n\tYb\x10\n\t3\rl\r\x08j\n\t%\n\t3n\n\tr[\x03q\x00\\[\x00_ts\rqc\x00^\n\tU\n\t?rJ\x03q\x00\x18\x06\x02hJ\x04\x01pk\x04\x01os\x00]hXc\x00_tG\rl\x02pH\x00^\rc\x00_t\rl\rH\x00_tmhJ\x03q\x00*trc\x03q\x00\\\x06\x02rD\x03c\x00Dt\x02D\x00<t\x04\x031\r@\x03\x08Dh1\x00P\n\td\n\tfs\r@rN\x03@\x00\\rj`\t8\x05\x082\x01\x03M\x02TF[bi\x00P\x04\x03`\x03g\x02\x16\x02\x03`Oh`bi\x00P\x11\x03rN\x03[\x02\x06\x02rj`\t8\x05\x082\x01\x03M\x02rjQ\t8\x05\x08\x01\x01\x03M\x02Q\x03g\x03QOs\rQrN\x03Q\x00\\b)\x04\x03mp\x04\x01mp\rorC\x03s\x00E\x00<t\x02hs\x00E\x005rN\x03q\x00\\rC\x03s\x00E\x00<t\x02r(\t\n\t>\n\t=\n\t9\x05n\r\n\t#\x01\x03t\x02h(r\'\t;\x01\r\x08\x0b\x01\x15\x03\x02b\'\x17\n\t\x1b,k\tt\x03";
+pub const IDENT_SIZE: usize = 98;
+pub static NAMES: [&str; 98] = [
+    "Arena",
     "Table",
-    "ToContext",
     "allow",
     "bool",
     "break",
     "clippy",
     "expect_string",
+    "from",
     "is_some",
     "question_mark",
     "ref",
     "report_duplicate_field",
-    "report_error",
     "take",
     "to_optional_toml",
     "try_with_capacity",
     "unwrap_or_else",
     "Default",
+    "Failed",
     "FromContext",
     "ToFlattened",
+    "ToTomlError",
     "__pred",
     "__result",
     "__s",
@@ -39,7 +41,6 @@ pub static NAMES: [&str; 97] = [
     "truncate",
     "unwrap_or_default",
     "where",
-    "Failed",
     "Option",
     "Result",
     "error_message_at",
@@ -76,7 +77,6 @@ pub static NAMES: [&str; 97] = [
     "to_toml",
     "ToToml",
     "__table",
-    "arena",
     "expect_table",
     "error_expected_but_found",
     "insert",
@@ -91,8 +91,9 @@ pub static NAMES: [&str; 97] = [
     "Some",
     "match",
     "__key",
-    "_",
     "mut",
+    "_",
+    "__arena",
     "return",
     "Self",
     "Err",

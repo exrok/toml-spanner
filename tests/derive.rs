@@ -1246,7 +1246,7 @@ fn to_string_with_float_types() {
 }
 
 mod flatten_key_helper {
-    use toml_spanner::{Failed, FromContext, Item, Key, Table, ToContext};
+    use toml_spanner::{Arena, Failed, FromContext, Item, Key, Table, ToTomlError};
 
     pub fn init() -> Vec<String> {
         Vec::new()
@@ -1271,15 +1271,11 @@ mod flatten_key_helper {
 
     pub fn to_flattened<'a>(
         val: &'a Vec<String>,
-        ctx: &mut ToContext<'a>,
+        arena: &'a Arena,
         table: &mut Table<'a>,
-    ) -> Result<(), Failed> {
+    ) -> Result<(), ToTomlError> {
         for s in val {
-            table.insert(
-                Key::anon(ctx.arena.alloc_str(s)),
-                Item::from(true),
-                ctx.arena,
-            );
+            table.insert(Key::anon(arena.alloc_str(s)), Item::from(true), arena);
         }
         Ok(())
     }
@@ -1590,44 +1586,42 @@ fn ser_smart_pointers_and_cow() {
     // All these implement ToToml by delegating to the inner type.
     // Exercise them through the to_string → from_str path.
     let arena = toml_spanner::Arena::new();
-    let mut ctx = toml_spanner::ToContext::new(&arena);
 
     let boxed: Box<String> = Box::new("boxed".to_string());
-    let item = toml_spanner::ToToml::to_toml(&boxed, &mut ctx).unwrap();
+    let item = toml_spanner::ToToml::to_toml(&boxed, &arena).unwrap();
     assert_eq!(item.as_str(), Some("boxed"));
 
     let rc = Rc::new(42i64);
-    let item = toml_spanner::ToToml::to_toml(&rc, &mut ctx).unwrap();
+    let item = toml_spanner::ToToml::to_toml(&rc, &arena).unwrap();
     assert_eq!(item.as_i64(), Some(42));
 
     let arc = Arc::new("arc_str".to_string());
-    let item = toml_spanner::ToToml::to_toml(&arc, &mut ctx).unwrap();
+    let item = toml_spanner::ToToml::to_toml(&arc, &arena).unwrap();
     assert_eq!(item.as_str(), Some("arc_str"));
 
     let cow: Cow<'_, String> = Cow::Owned("cow_str".to_string());
-    let item = toml_spanner::ToToml::to_toml(&cow, &mut ctx).unwrap();
+    let item = toml_spanner::ToToml::to_toml(&cow, &arena).unwrap();
     assert_eq!(item.as_str(), Some("cow_str"));
 }
 
 #[test]
 fn ser_char_and_path() {
     let arena = toml_spanner::Arena::new();
-    let mut ctx = toml_spanner::ToContext::new(&arena);
 
     let ch = 'Z';
-    let item = toml_spanner::ToToml::to_toml(&ch, &mut ctx).unwrap();
+    let item = toml_spanner::ToToml::to_toml(&ch, &arena).unwrap();
     assert_eq!(item.as_str(), Some("Z"));
 
     let ch_multi = '€';
-    let item = toml_spanner::ToToml::to_toml(&ch_multi, &mut ctx).unwrap();
+    let item = toml_spanner::ToToml::to_toml(&ch_multi, &arena).unwrap();
     assert_eq!(item.as_str(), Some("€"));
 
     let path = std::path::PathBuf::from("/tmp/test.toml");
-    let item = toml_spanner::ToToml::to_toml(&path, &mut ctx).unwrap();
+    let item = toml_spanner::ToToml::to_toml(&path, &arena).unwrap();
     assert_eq!(item.as_str(), Some("/tmp/test.toml"));
 
     let path_ref = std::path::Path::new("/etc/config");
-    let item = toml_spanner::ToToml::to_toml(&path_ref, &mut ctx).unwrap();
+    let item = toml_spanner::ToToml::to_toml(&path_ref, &arena).unwrap();
     assert_eq!(item.as_str(), Some("/etc/config"));
 }
 
@@ -1649,34 +1643,32 @@ fn ser_array_and_table_clone() {
     let arena = toml_spanner::Arena::new();
     let root = toml_spanner::parse("[t]\na = 1\nb = [2, 3]", &arena).unwrap();
 
-    let mut ctx = toml_spanner::ToContext::new(&arena);
     let table = root["t"].as_table().unwrap();
-    let item = toml_spanner::ToToml::to_toml(table, &mut ctx).unwrap();
+    let item = toml_spanner::ToToml::to_toml(table, &arena).unwrap();
     assert_eq!(item.as_table().unwrap()["a"].as_i64(), Some(1));
 
     let arr = root["t"]["b"].as_array().unwrap();
-    let item = toml_spanner::ToToml::to_toml(arr, &mut ctx).unwrap();
+    let item = toml_spanner::ToToml::to_toml(arr, &arena).unwrap();
     assert_eq!(item.as_array().unwrap().len(), 2);
 
     // Item::to_toml clones the item
     let orig = root["t"]["a"].item().unwrap();
-    let cloned = toml_spanner::ToToml::to_toml(orig, &mut ctx).unwrap();
+    let cloned = toml_spanner::ToToml::to_toml(orig, &arena).unwrap();
     assert_eq!(cloned.as_i64(), Some(1));
 }
 
 #[test]
 fn ser_ref_and_mut_ref() {
     let arena = toml_spanner::Arena::new();
-    let mut ctx = toml_spanner::ToContext::new(&arena);
 
     let val = 99i64;
     let r = &val;
-    let item = toml_spanner::ToToml::to_toml(&r, &mut ctx).unwrap();
+    let item = toml_spanner::ToToml::to_toml(&r, &arena).unwrap();
     assert_eq!(item.as_i64(), Some(99));
 
     let mut val2 = true;
     let mr = &mut val2;
-    let item = toml_spanner::ToToml::to_toml(&mr, &mut ctx).unwrap();
+    let item = toml_spanner::ToToml::to_toml(&mr, &arena).unwrap();
     assert_eq!(item.as_bool(), Some(true));
 }
 
@@ -1858,16 +1850,9 @@ fn array_index_out_of_bounds() {
 // Exercises to_string error path when top-level is not a table
 #[test]
 fn to_string_non_table_error() {
-    let arena = toml_spanner::Arena::new();
-    let mut ctx = toml_spanner::ToContext::new(&arena);
-
     // A type that produces a non-table item at the top level
     let result = toml_spanner::to_string(&"just a string");
     assert!(result.is_err());
-
-    // report_error exercises the error path
-    let err = ctx.report_error("test error");
-    assert!(err.is_err());
 }
 
 // Exercises to_string_with_config with comments in source

@@ -164,7 +164,7 @@ pub use item::table::Table;
 pub use item::{ArrayStyle, Item, Key, Kind, MaybeItem, TableStyle, Value, ValueMut};
 pub use parser::{Root, parse};
 #[cfg(feature = "to-toml")]
-pub use ser::{ToContext, ToFlattened, ToToml};
+pub use ser::{ToFlattened, ToToml};
 pub use span::{Span, Spanned};
 pub use time::{Date, DateTime, Time, TimeOffset};
 
@@ -234,20 +234,7 @@ pub fn to_string_with_config(
     config: TomlConfig<'_>,
 ) -> Result<String, ToTomlError> {
     let arena = Arena::new();
-    let mut context = ToContext {
-        arena: &arena,
-        error: None,
-    };
-    let mut item = match value.to_toml(&mut context) {
-        Ok(item) => item,
-        Err(_) => {
-            return Err(ToTomlError {
-                message: context
-                    .error
-                    .unwrap_or_else(|| "Failed to convert into item".into()),
-            });
-        }
-    };
+    let mut item = value.to_toml(&arena)?;
     let Some(table) = item.as_table_mut() else {
         return Err(ToTomlError {
             message: "Top-level item must be a table".into(),

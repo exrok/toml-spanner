@@ -497,6 +497,15 @@ pub struct ToTomlError {
     pub message: std::borrow::Cow<'static, str>,
 }
 
+impl ToTomlError {
+    #[cold]
+    pub fn msg<T>(msg: &'static str) -> Result<T, Self> {
+        Err(Self {
+            message: std::borrow::Cow::Borrowed(msg),
+        })
+    }
+}
+
 #[cfg(feature = "to-toml")]
 impl Display for ToTomlError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

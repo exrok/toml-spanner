@@ -1,5 +1,5 @@
 #![allow(dead_code)]
-use toml_spanner::{Arena, FromContext, Failed, FromToml, Item, Value};
+use toml_spanner::{Arena, Failed, FromContext, FromToml, Item, Value};
 
 const TOML_DOCUMENT: &str = r#"
 enabled = false
