@@ -38,7 +38,7 @@ fn push_custom_error(
 ) -> Failed {
     ctx.push_error(toml_spanner::Error {
         kind: toml_spanner::ErrorKind::Custom(err.to_string().into()),
-        span: item.span_unchecked(),
+        span: item.span(),
     })
 }
 

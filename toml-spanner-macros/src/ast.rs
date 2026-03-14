@@ -32,6 +32,7 @@ enum FieldAttrInner {
     With(Vec<TokenTree>),
     Flatten,
     Alias(Literal),
+    Style(Ident),
 }
 pub struct FieldAttrs {
     attrs: Vec<FieldAttr>,
@@ -142,6 +143,16 @@ impl<'a> Field<'a> {
             if attr.enabled & for_trait != 0 {
                 if let FieldAttrInner::With(with) = &attr.inner {
                     return Some(with);
+                }
+            }
+        }
+        None
+    }
+    pub fn style(&self, for_trait: TraitSet) -> Option<&Ident> {
+        for attr in &self.attr.attrs {
+            if attr.enabled & for_trait != 0 {
+                if let FieldAttrInner::Style(ident) = &attr.inner {
+                    return Some(ident);
                 }
             }
         }
@@ -601,6 +612,32 @@ fn parse_single_field_attr(
                 inner: FieldAttrInner::Flatten,
             });
             4u64 * TRAIT_COUNT
+        }
+        "style" => {
+            let Some(TokenTree::Ident(style_ident)) = value.pop() else {
+                Error::span_msg(
+                    "Expected a style name (Header, Inline, Dotted, Implicit)",
+                    ident.span(),
+                )
+            };
+            if !value.is_empty() {
+                Error::span_msg("Expected a single style name", ident.span())
+            }
+            let style_name = style_ident.to_string();
+            match style_name.as_str() {
+                "Header" | "Inline" | "Dotted" | "Implicit" => (),
+                _ => Error::span_msg(
+                    "Unknown style, expected Header, Inline, Dotted, or Implicit",
+                    style_ident.span(),
+                ),
+            }
+            trait_set &= TO_TOML;
+            attrs.attrs.push(FieldAttr {
+                enabled: trait_set & TO_TOML,
+                span: ident.span(),
+                inner: FieldAttrInner::Style(style_ident),
+            });
+            5u64 * TRAIT_COUNT
         }
         "required" => {
             if !value.is_empty() {

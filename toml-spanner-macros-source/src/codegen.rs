@@ -552,6 +552,8 @@ fn emit_table_field_ser(
 
         let is_option = first_ty_ident == "Option";
 
+        let style = field.style(TO_TOML);
+
         let emit_start = out.buf.len();
         if let Some(with) = with_path {
             let val_expr = if is_option {
@@ -564,21 +566,25 @@ fn emit_table_field_ser(
             splat!(out;
                 [#table_id].insert(
                     [#ctx.crate_path]::Key::anon([@name_lit.into()]),
-                    [~with]::to_toml([@TokenTree::Group(Group::new(Delimiter::None, val_expr))], __arena)?,
+                    [~with]::to_toml([@TokenTree::Group(Group::new(Delimiter::None, val_expr))], __arena)?
+                    [?(let Some(style) = style) .with_style_of_array_or_table([#ctx.crate_path]::TableStyle::[#style])],
                     __arena,
                 );
             );
             if is_option {
                 let insert_body = out.split_off_stream(insert_start);
-                out.buf.push(TokenTree::Group(Group::new(Delimiter::Brace, insert_body)));
+                out.buf
+                    .push(TokenTree::Group(Group::new(Delimiter::Brace, insert_body)));
             }
         } else if is_option {
             splat!(out;
                 if let Some(__val) = [#ctx.crate_path]::ToToml::to_optional_toml(
-                    [@TokenTree::Group(Group::new(Delimiter::None, field_ref.clone()))], __arena)? {
+                    [@TokenTree::Group(Group::new(Delimiter::None, field_ref.clone()))], __arena)?
+                {
                     [#table_id].insert(
                         [#ctx.crate_path]::Key::anon([@name_lit.into()]),
-                        __val,
+                        __val
+                        [?(let Some(style) = style) .with_style_of_array_or_table([#ctx.crate_path]::TableStyle::[#style])],
                         __arena,
                     );
                 }
@@ -588,7 +594,8 @@ fn emit_table_field_ser(
                 [#table_id].insert(
                     [#ctx.crate_path]::Key::anon([@name_lit.into()]),
                     [#ctx.crate_path]::ToToml::to_toml(
-                        [@TokenTree::Group(Group::new(Delimiter::None, field_ref.clone()))], __arena)?,
+                        [@TokenTree::Group(Group::new(Delimiter::None, field_ref.clone()))], __arena)?
+                    [?(let Some(style) = style) .with_style_of_array_or_table([#ctx.crate_path]::TableStyle::[#style])],
                     __arena,
                 );
             );

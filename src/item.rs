@@ -838,6 +838,21 @@ impl<'de> Item<'de> {
         }
     }
 
+    #[doc(hidden)]
+    /// Used in derive macro for style attributes
+    pub fn with_style_of_array_or_table(mut self, style: TableStyle) -> Item<'de> {
+        match self.value_mut() {
+            ValueMut::Table(table) => table.set_style(style),
+            ValueMut::Array(array) => match style {
+                TableStyle::Header => array.set_style(ArrayStyle::Header),
+                TableStyle::Inline => array.set_style(ArrayStyle::Inline),
+                _ => (),
+            },
+            _ => (),
+        }
+        self
+    }
+
     /// Returns an `i64` if this is an integer value.
     #[inline]
     pub fn as_i64(&self) -> Option<i64> {

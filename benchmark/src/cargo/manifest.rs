@@ -134,13 +134,13 @@ mod via_parse {
         let s = item.as_str().ok_or_else(|| {
             ctx.push_error(Error::custom(
                 format!("expected a string, got `{}`", item.kind()),
-                item.span_unchecked(),
+                item.span(),
             ))
         })?;
         s.parse::<T>().map_err(|e| {
             ctx.push_error(Error::custom(
                 format!("Failed to parse {}: {}", type_name::<T>(), e),
-                item.span_unchecked(),
+                item.span(),
             ))
         })
     }
@@ -1946,6 +1946,6 @@ fn push_custom_error(
 ) -> Failed {
     ctx.push_error(toml_spanner::Error {
         kind: toml_spanner::ErrorKind::Custom(err.to_string().into()),
-        span: item.span_unchecked(),
+        span: item.span(),
     })
 }
