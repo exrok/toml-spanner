@@ -200,6 +200,7 @@ fn data_emit_roundtrip() {
     run_cases(&cases, |case| {
         let result = run_emit(case.source());
         if let Some(expected) = case.expected {
+            let expected = format!("{expected}\n");
             assert_eq!(result, expected, "case {:?}: emit mismatch", case.name);
         }
     });
@@ -251,7 +252,7 @@ fn normalize_aot_with_non_table_elements() {
     assert_eq!(arr_item.flag(), FLAG_ARRAY);
 
     let s = emit_table(normalized);
-    assert_eq!(s, "arr = [1, 2]");
+    assert_eq!(s, "arr = [1, 2]\n");
 }
 
 #[test]
@@ -280,7 +281,7 @@ fn normalize_frozen_children_fixed() {
     assert_eq!(sub.flag(), FLAG_FROZEN);
 
     let s = emit_table(normalized);
-    assert_eq!(s, "t = { sub = { x = 1 } }");
+    assert_eq!(s, "t = { sub = { x = 1 } }\n");
 }
 
 #[test]

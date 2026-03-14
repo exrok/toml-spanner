@@ -116,7 +116,6 @@ pub fn emit_with_config(table: &NormalizedTable<'_>, config: &EmitConfig<'_>, bu
         }
     } else {
         emit_formatted(table, None, &emit, buf);
-        trim_trailing_newline(buf);
     }
 }
 

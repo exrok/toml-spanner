@@ -2497,3 +2497,202 @@ fn parse_string_display_optional_absent() {
     .unwrap();
     assert_eq!(v.addr, None);
 }
+
+// --- from / try_from container attributes ---
+
+#[test]
+fn from_attribute_roundtrip() {
+    #[derive(Toml)]
+    #[toml(FromToml)]
+    struct RawName {
+        name: String,
+    }
+
+    #[derive(Toml, Debug, PartialEq)]
+    #[toml(FromToml, from = RawName)]
+    struct UpperName {
+        name: String,
+    }
+
+    impl From<RawName> for UpperName {
+        fn from(raw: RawName) -> Self {
+            UpperName {
+                name: raw.name.to_uppercase(),
+            }
+        }
+    }
+
+    let v: UpperName = toml_spanner::from_str(r#"name = "hello""#).unwrap();
+    assert_eq!(
+        v,
+        UpperName {
+            name: "HELLO".to_string()
+        }
+    );
+}
+
+#[test]
+fn try_from_attribute_success() {
+    #[derive(Toml)]
+    #[toml(FromToml)]
+    struct RawRange {
+        value: i64,
+    }
+
+    #[derive(Toml, Debug, PartialEq)]
+    #[toml(FromToml, try_from = RawRange)]
+    struct PositiveValue {
+        value: i64,
+    }
+
+    impl TryFrom<RawRange> for PositiveValue {
+        type Error = String;
+        fn try_from(raw: RawRange) -> Result<Self, Self::Error> {
+            if raw.value > 0 {
+                Ok(PositiveValue { value: raw.value })
+            } else {
+                Err(format!("{} is not positive", raw.value))
+            }
+        }
+    }
+
+    let v: PositiveValue = toml_spanner::from_str("value = 42").unwrap();
+    assert_eq!(v, PositiveValue { value: 42 });
+}
+
+#[test]
+fn try_from_attribute_failure() {
+    #[derive(Toml)]
+    #[toml(FromToml)]
+    struct RawRange {
+        value: i64,
+    }
+
+    #[derive(Toml, Debug, PartialEq)]
+    #[toml(FromToml, try_from = RawRange)]
+    struct PositiveValue {
+        value: i64,
+    }
+
+    impl TryFrom<RawRange> for PositiveValue {
+        type Error = String;
+        fn try_from(raw: RawRange) -> Result<Self, Self::Error> {
+            if raw.value > 0 {
+                Ok(PositiveValue { value: raw.value })
+            } else {
+                Err(format!("{} is not positive", raw.value))
+            }
+        }
+    }
+
+    let result = toml_spanner::from_str::<PositiveValue>("value = -5");
+    assert!(result.is_err());
+}
+
+#[test]
+fn from_attribute_with_struct_proxy() {
+    #[derive(Toml)]
+    #[toml(FromToml)]
+    struct RawConfig {
+        name: String,
+        port: u16,
+    }
+
+    #[derive(Toml, Debug, PartialEq)]
+    #[toml(FromToml, from = RawConfig)]
+    struct AppConfig {
+        label: String,
+        port: u16,
+    }
+
+    impl From<RawConfig> for AppConfig {
+        fn from(raw: RawConfig) -> Self {
+            AppConfig {
+                label: raw.name.to_uppercase(),
+                port: raw.port,
+            }
+        }
+    }
+
+    let v: AppConfig = toml_spanner::from_str(
+        r#"
+        name = "my-app"
+        port = 8080
+    "#,
+    )
+    .unwrap();
+    assert_eq!(v.label, "MY-APP");
+    assert_eq!(v.port, 8080);
+}
+
+#[test]
+fn try_from_attribute_with_struct_proxy() {
+    #[derive(Toml)]
+    #[toml(FromToml)]
+    struct RawRange {
+        min: i64,
+        max: i64,
+    }
+
+    #[derive(Toml, Debug, PartialEq)]
+    #[toml(FromToml, try_from = RawRange)]
+    struct ValidRange {
+        min: i64,
+        max: i64,
+    }
+
+    impl TryFrom<RawRange> for ValidRange {
+        type Error = String;
+        fn try_from(raw: RawRange) -> Result<Self, Self::Error> {
+            if raw.min > raw.max {
+                return Err(format!("min ({}) must be <= max ({})", raw.min, raw.max));
+            }
+            Ok(ValidRange {
+                min: raw.min,
+                max: raw.max,
+            })
+        }
+    }
+
+    let v: ValidRange = toml_spanner::from_str("min = 1\nmax = 10").unwrap();
+    assert_eq!(v, ValidRange { min: 1, max: 10 });
+
+    let result = toml_spanner::from_str::<ValidRange>("min = 10\nmax = 1");
+    assert!(result.is_err());
+}
+
+#[test]
+fn from_attribute_enum() {
+    #[derive(Toml)]
+    #[toml(FromToml)]
+    enum RawColor {
+        Red,
+        Green,
+        Blue,
+    }
+
+    #[derive(Toml, Debug, PartialEq)]
+    #[toml(FromToml, from = RawColor)]
+    enum Color {
+        Red,
+        Green,
+        Blue,
+    }
+
+    impl From<RawColor> for Color {
+        fn from(raw: RawColor) -> Self {
+            match raw {
+                RawColor::Red => Color::Red,
+                RawColor::Green => Color::Green,
+                RawColor::Blue => Color::Blue,
+            }
+        }
+    }
+
+    let arena = Arena::new();
+    let mut root = toml_spanner::parse(r#"val = "Red""#, &arena).unwrap();
+    let (ctx, table) = root.split();
+    let mut th = table.as_item().table_helper(ctx).unwrap();
+    let v: Color = th.required("val").unwrap();
+    assert_eq!(v, Color::Red);
+}

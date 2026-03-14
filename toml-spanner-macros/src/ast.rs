@@ -101,6 +101,8 @@ pub struct DeriveTargetInner<'a> {
     pub tag: Option<Literal>,
     pub content: Option<Literal>,
     pub untagged: bool,
+    pub from_type: Option<Vec<TokenTree>>,
+    pub try_from_type: Option<Vec<TokenTree>>,
 }
 impl<'a> DeriveTargetInner<'a> {
     pub fn has_lifetime(&self) -> bool {
@@ -285,6 +287,26 @@ fn parse_container_attr(
                 Error::span_msg("Duplicate untagged attribute", attr.span())
             }
             target.untagged = true;
+        }
+        "from" => {
+            if target.from_type.is_some() {
+                Error::span_msg("Duplicate from attribute", attr.span())
+            }
+            if value.is_empty() {
+                Error::span_msg("Expected a type for from", attr.span())
+            }
+            target.from_type = Some(value.to_vec());
+            value = &mut [];
+        }
+        "try_from" => {
+            if target.try_from_type.is_some() {
+                Error::span_msg("Duplicate try_from attribute", attr.span())
+            }
+            if value.is_empty() {
+                Error::span_msg("Expected a type for try_from", attr.span())
+            }
+            target.try_from_type = Some(value.to_vec());
+            value = &mut [];
         }
         _ => Error::span_msg("Unknown attribute", attr.span()),
     }

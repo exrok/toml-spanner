@@ -117,6 +117,8 @@ pub struct DeriveTargetInner<'a> {
     pub tag: Option<Literal>,
     pub content: Option<Literal>,
     pub untagged: bool,
+    pub from_type: Option<Vec<TokenTree>>,
+    pub try_from_type: Option<Vec<TokenTree>>,
 }
 
 impl<'a> DeriveTargetInner<'a> {
@@ -353,6 +355,26 @@ fn parse_container_attr(
                 throw!("Duplicate untagged attribute" @ attr.span())
             }
             target.untagged = true;
+        }
+        "from" => {
+            if target.from_type.is_some() {
+                throw!("Duplicate from attribute" @ attr.span())
+            }
+            if value.is_empty() {
+                throw!("Expected a type for from" @ attr.span())
+            }
+            target.from_type = Some(value.to_vec());
+            value = &mut [];
+        }
+        "try_from" => {
+            if target.try_from_type.is_some() {
+                throw!("Duplicate try_from attribute" @ attr.span())
+            }
+            if value.is_empty() {
+                throw!("Expected a type for try_from" @ attr.span())
+            }
+            target.try_from_type = Some(value.to_vec());
+            value = &mut [];
         }
         _ => throw!("Unknown attribute" @ attr.span()),
     }

@@ -681,10 +681,41 @@ fn struct_to_toml(out: &mut RustWriter, ctx: &Ctx, fields: &[Field]) {
     impl_to_toml(out, ctx, body);
 }
 
+fn emit_proxy_from_toml(output: &mut RustWriter, ctx: &Ctx) -> bool {
+    if let Some(from_ty) = &ctx.target.from_type {
+        let body = token_stream! {
+            output;
+            let __proxy = < [~from_ty] as [#ctx.crate_path]::FromToml<#[#: &ctx.lifetime]> >::from_toml(
+                __ctx, __item
+            ) ?;
+            Ok(::std::convert::From::from(__proxy))
+        };
+        impl_from_toml(output, &ctx, body);
+        true
+    } else if let Some(try_from_ty) = &ctx.target.try_from_type {
+        let body = token_stream! {
+            output;
+            let __proxy = < [~try_from_ty] as [#ctx.crate_path]::FromToml<#[#: &ctx.lifetime]> >::from_toml(
+                __ctx, __item
+            ) ?;
+            match ::std::convert::TryFrom::try_from(__proxy) {
+                Ok(__val) => Ok(__val),
+                Err(__e) => Err(__ctx.push_error(
+                    [#ctx.crate_path]::Error::custom(__e, __item.span())
+                )),
+            }
+        };
+        impl_from_toml(output, &ctx, body);
+        true
+    } else {
+        false
+    }
+}
+
 fn handle_struct(output: &mut RustWriter, target: &DeriveTargetInner, fields: &[Field]) {
     let ctx = Ctx::new(output, target);
 
-    if target.from_toml {
+    if target.from_toml && !emit_proxy_from_toml(output, &ctx) {
         if target.transparent_impl {
             let [single_field] = fields else {
                 throw!("Struct must contain a single field to use transparent")
@@ -701,7 +732,7 @@ fn handle_struct(output: &mut RustWriter, target: &DeriveTargetInner, fields: &[
         }
     }
 
-    if target.to_toml {
+    if target.to_toml  {
         if target.transparent_impl {
             let [single_field] = fields else {
                 throw!("Struct must contain a single field to use transparent")
@@ -719,7 +750,7 @@ fn handle_struct(output: &mut RustWriter, target: &DeriveTargetInner, fields: &[
 fn handle_tuple_struct(output: &mut RustWriter, target: &DeriveTargetInner, fields: &[Field]) {
     let ctx = Ctx::new(output, target);
 
-    if target.from_toml {
+    if target.from_toml && !emit_proxy_from_toml(output, &ctx) {
         if let [single_field] = fields {
             let body = token_stream! {
                 output;
@@ -735,7 +766,7 @@ fn handle_tuple_struct(output: &mut RustWriter, target: &DeriveTargetInner, fiel
         }
     }
 
-    if target.to_toml {
+    if target.to_toml  {
         if let [_single_field] = fields {
             let body = token_stream! {output;
                 [#ctx.crate_path]::ToToml::to_toml(&self.[@TokenTree::Literal(Literal::usize_unsuffixed(0))], __arena)
@@ -1410,7 +1441,7 @@ fn handle_enum(output: &mut RustWriter, target: &DeriveTargetInner, variants: &[
         && target.enum_flags & ENUM_CONTAINS_UNIT_VARIANT != 0
         && target.enum_flags & (ENUM_CONTAINS_STRUCT_VARIANT | ENUM_CONTAINS_TUPLE_VARIANT) == 0;
 
-    if target.from_toml {
+    if target.from_toml && !emit_proxy_from_toml(output, &ctx) {
         if target.untagged {
             enum_from_toml_untagged(output, &ctx, variants);
         } else {
@@ -1425,7 +1456,7 @@ fn handle_enum(output: &mut RustWriter, target: &DeriveTargetInner, variants: &[
         }
     }
 
-    if target.to_toml {
+    if target.to_toml  {
         if is_string_enum {
             enum_to_toml_string(output, &ctx, variants);
         } else {
@@ -1461,6 +1492,8 @@ pub fn inner_derive(stream: TokenStream) -> TokenStream {
         tag: None,
         content: None,
         untagged: false,
+        from_type: None,
+        try_from_type: None,
     };
     let (kind, body) = ast::extract_derive_target(&mut target, &outer_tokens);
 

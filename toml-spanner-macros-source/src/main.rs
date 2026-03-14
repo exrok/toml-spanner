@@ -132,7 +132,5 @@ fn main() {
     pub struct Example<P: Clone> {
         pub path: Option<P>,
     }
-
-
             }));
 }

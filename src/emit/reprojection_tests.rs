@@ -258,7 +258,7 @@ fn new_sibling_inherits_dotted_kind() {
         let (k, v) = make_nested("d", "e", Item::from(2i64), arena);
         section.insert(k, v, arena);
     });
-    assert_eq!(result, "[A]\nb.c = 1\nd.e = 2");
+    assert_eq!(result, "[A]\nb.c = 1\nd.e = 2\n");
 }
 
 #[test]
@@ -268,7 +268,7 @@ fn new_sibling_inherits_inline_kind() {
         let (k, v) = make_nested("d", "e", Item::from(2i64), arena);
         section.insert(k, v, arena);
     });
-    assert_eq!(result, "[A]\nb = { c = 1 }\nd = { e = 2 }");
+    assert_eq!(result, "[A]\nb = { c = 1 }\nd = { e = 2 }\n");
 }
 
 #[test]
@@ -280,7 +280,7 @@ fn multiple_new_siblings_all_inherit_dotted() {
         let (k, v) = make_nested("f", "g", Item::from(3i64), arena);
         section.insert(k, v, arena);
     });
-    assert_eq!(result, "[A]\nb.c = 1\nd.e = 2\nf.g = 3");
+    assert_eq!(result, "[A]\nb.c = 1\nd.e = 2\nf.g = 3\n");
 }
 
 #[test]
@@ -292,7 +292,7 @@ fn multiple_new_siblings_all_inherit_inline() {
         let (k, v) = make_nested("f", "g", Item::from(3i64), arena);
         section.insert(k, v, arena);
     });
-    assert_eq!(result, "[A]\nb = { c = 1 }\nd = { e = 2 }\nf = { g = 3 }");
+    assert_eq!(result, "[A]\nb = { c = 1 }\nd = { e = 2 }\nf = { g = 3 }\n");
 }
 
 #[test]
@@ -302,7 +302,7 @@ fn new_sibling_after_multiple_dotted() {
         let (k, v) = make_nested("z", "w", Item::from(99i64), arena);
         section.insert(k, v, arena);
     });
-    assert_eq!(result, "[A]\nb.c = 1\nb.d = 2\nx.y = 3\nz.w = 99");
+    assert_eq!(result, "[A]\nb.c = 1\nb.d = 2\nx.y = 3\nz.w = 99\n");
 }
 
 #[test]
@@ -313,7 +313,7 @@ fn new_sibling_inherits_last_match_dotted_after_inline() {
         let (k, v) = make_nested("z", "w", Item::from(4i64), arena);
         section.insert(k, v, arena);
     });
-    assert_eq!(result, "[A]\nb = { c = 1 }\nx.y = 3\nz.w = 4");
+    assert_eq!(result, "[A]\nb = { c = 1 }\nx.y = 3\nz.w = 4\n");
 }
 
 #[test]
@@ -324,7 +324,7 @@ fn new_sibling_inherits_last_match_inline_after_dotted() {
         let (k, v) = make_nested("z", "w", Item::from(4i64), arena);
         section.insert(k, v, arena);
     });
-    assert_eq!(result, "[A]\nb.c = 1\nx = { y = 3 }\nz = { w = 4 }");
+    assert_eq!(result, "[A]\nb.c = 1\nx = { y = 3 }\nz = { w = 4 }\n");
 }
 
 #[test]
@@ -348,7 +348,7 @@ fn new_sibling_before_match_backfills_dotted() {
 
     let result = emit_table(&mut dest);
     // d should be backfilled with dotted kind from b (first match)
-    assert_eq!(result, "[A]\nd.e = 2\nb.c = 1");
+    assert_eq!(result, "[A]\nd.e = 2\nb.c = 1\n");
 }
 
 #[test]
@@ -369,7 +369,7 @@ fn new_sibling_before_match_backfills_inline() {
     reproject(&src_root, &mut dest, &mut items);
 
     let result = emit_table(&mut dest);
-    assert_eq!(result, "[A]\nd = { e = 2 }\nb = { c = 1 }");
+    assert_eq!(result, "[A]\nd = { e = 2 }\nb = { c = 1 }\n");
 }
 
 #[test]
@@ -378,7 +378,7 @@ fn new_scalar_alongside_dotted() {
         let section = root.get_mut("A").unwrap().as_table_mut().unwrap();
         section.insert(Key::anon("x"), Item::from(42i64), arena);
     });
-    assert_eq!(result, "[A]\nb.c = 1\nx = 42");
+    assert_eq!(result, "[A]\nb.c = 1\nx = 42\n");
 }
 
 #[test]
@@ -387,7 +387,7 @@ fn new_scalar_alongside_inline() {
         let section = root.get_mut("A").unwrap().as_table_mut().unwrap();
         section.insert(Key::anon("x"), Item::from(42i64), arena);
     });
-    assert_eq!(result, "[A]\nb = { c = 1 }\nx = 42");
+    assert_eq!(result, "[A]\nb = { c = 1 }\nx = 42\n");
 }
 
 #[test]
@@ -399,7 +399,7 @@ fn new_sibling_deep_dotted_nesting() {
         let c = bc.get_mut("c").unwrap().as_table_mut().unwrap();
         c.insert(Key::anon("e"), Item::from(2i64), arena);
     });
-    assert_eq!(result, "[A]\nb.c.d = 1\nb.c.e = 2");
+    assert_eq!(result, "[A]\nb.c.d = 1\nb.c.e = 2\n");
 }
 
 #[test]
@@ -410,7 +410,7 @@ fn new_sibling_deep_inline_nesting() {
         let c = b.get_mut("c").unwrap().as_table_mut().unwrap();
         c.insert(Key::anon("e"), Item::from(2i64), arena);
     });
-    assert_eq!(result, "[A]\nb = { c = { d = 1, e = 2 } }");
+    assert_eq!(result, "[A]\nb = { c = { d = 1, e = 2 } }\n");
 }
 
 #[test]
@@ -625,7 +625,7 @@ fn new_deep_nested_sibling_inherits_dotted() {
         d_table.insert(Key::anon("e"), e_table.into_item(), arena);
         section.insert(Key::anon("d"), d_table.into_item(), arena);
     });
-    assert_eq!(result, "[A]\nb.c = 1\nd.e.f.g = 2");
+    assert_eq!(result, "[A]\nb.c = 1\nd.e.f.g = 2\n");
 }
 
 #[test]
@@ -640,7 +640,10 @@ fn new_deep_nested_sibling_inherits_inline() {
         d_table.insert(Key::anon("e"), e_table.into_item(), arena);
         section.insert(Key::anon("d"), d_table.into_item(), arena);
     });
-    assert_eq!(result, "[A]\nb = { c = 1 }\nd = { e = { f = { g = 2 } } }");
+    assert_eq!(
+        result,
+        "[A]\nb = { c = 1 }\nd = { e = { f = { g = 2 } } }\n"
+    );
 }
 
 #[test]
@@ -655,7 +658,7 @@ fn modified_value_plus_new_sibling_dotted() {
         let (k, v) = make_nested("d", "e", Item::from(2i64), arena);
         section.insert(k, v, arena);
     });
-    assert_eq!(result, "[A]\nb.c = 99\nd.e = 2");
+    assert_eq!(result, "[A]\nb.c = 99\nd.e = 2\n");
 }
 
 #[test]
@@ -903,7 +906,7 @@ fn plain_emit_ignores_whitespace() {
     let mut buf = Vec::new();
     emit::emit(normalized, &mut buf);
     let result = String::from_utf8(buf).unwrap();
-    assert_eq!(result, "x = 1");
+    assert_eq!(result, "x = 1\n");
 }
 
 // full_document_whitespace_preservation: moved to testdata/emit_identity.toml

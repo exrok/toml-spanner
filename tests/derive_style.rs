@@ -26,7 +26,7 @@ fn style_header_and_inline() {
     };
     let s = toml_spanner::to_string(&v).unwrap();
     assert_eq!(
-        s, "inline = { a = 2, b = 3 }\n\n[header]\na = 0\nb = 1",
+        s, "inline = { a = 2, b = 3 }\n\n[header]\na = 0\nb = 1\n",
         "got:\n{s}"
     );
 }
@@ -43,7 +43,7 @@ fn style_inline_only() {
         inner: StyleInner { a: 10, b: 20 },
     };
     let s = toml_spanner::to_string(&v).unwrap();
-    assert_eq!(s, "inner = { a = 10, b = 20 }");
+    assert_eq!(s, "inner = { a = 10, b = 20 }\n");
 }
 
 #[test]
@@ -58,7 +58,7 @@ fn style_header_only() {
         inner: StyleInner { a: 5, b: 6 },
     };
     let s = toml_spanner::to_string(&v).unwrap();
-    assert_eq!(s, "[inner]\na = 5\nb = 6");
+    assert_eq!(s, "[inner]\na = 5\nb = 6\n");
 }
 
 #[derive(Toml, Debug, PartialEq)]
@@ -76,7 +76,7 @@ fn style_inline_roundtrip() {
         data: StyleInner { a: 1, b: 2 },
     };
     let s = toml_spanner::to_string(&v).unwrap();
-    assert_eq!(s, "name = \"test\"\ndata = { a = 1, b = 2 }");
+    assert_eq!(s, "name = \"test\"\ndata = { a = 1, b = 2 }\n");
     let restored: StyleRoundTrip = toml_spanner::from_str(&s).unwrap();
     assert_eq!(v, restored);
 }
@@ -93,7 +93,7 @@ fn style_with_option_some() {
         item: Some(StyleInner { a: 3, b: 4 }),
     };
     let s = toml_spanner::to_string(&v).unwrap();
-    assert_eq!(s, "item = { a = 3, b = 4 }");
+    assert_eq!(s, "item = { a = 3, b = 4 }\n");
     let restored: WithOpt = toml_spanner::from_str(&s).unwrap();
     assert_eq!(v, restored);
 }
@@ -129,7 +129,7 @@ fn style_with_default() {
         data: Some(StyleInner { a: 1, b: 2 }),
     };
     let s = toml_spanner::to_string(&v2).unwrap();
-    assert_eq!(s, "name = \"hello\"\ndata = { a = 1, b = 2 }");
+    assert_eq!(s, "name = \"hello\"\ndata = { a = 1, b = 2 }\n");
 }
 
 #[test]
@@ -144,7 +144,7 @@ fn style_with_vec_header() {
         items: vec![StyleInner { a: 1, b: 2 }, StyleInner { a: 3, b: 4 }],
     };
     let s = toml_spanner::to_string(&v).unwrap();
-    assert_eq!(s, "[[items]]\na = 1\nb = 2\n\n[[items]]\na = 3\nb = 4");
+    assert_eq!(s, "[[items]]\na = 1\nb = 2\n\n[[items]]\na = 3\nb = 4\n");
 }
 
 #[test]
@@ -159,7 +159,7 @@ fn style_with_vec_inline() {
         items: vec![StyleInner { a: 1, b: 2 }, StyleInner { a: 3, b: 4 }],
     };
     let s = toml_spanner::to_string(&v).unwrap();
-    assert_eq!(s, "items = [{ a = 1, b = 2 }, { a = 3, b = 4 }]");
+    assert_eq!(s, "items = [{ a = 1, b = 2 }, { a = 3, b = 4 }]\n");
 }
 
 #[test]
@@ -181,7 +181,7 @@ fn style_multiple_headers() {
     let s = toml_spanner::to_string(&v).unwrap();
     assert_eq!(
         s,
-        "x = 42\n\n[first]\na = 1\nb = 2\n\n[second]\na = 3\nb = 4"
+        "x = 42\n\n[first]\na = 1\nb = 2\n\n[second]\na = 3\nb = 4\n"
     );
 }
 
@@ -197,7 +197,7 @@ fn style_with_rename() {
         section: StyleInner { a: 7, b: 8 },
     };
     let s = toml_spanner::to_string(&v).unwrap();
-    assert_eq!(s, "[my-section]\na = 7\nb = 8");
+    assert_eq!(s, "[my-section]\na = 7\nb = 8\n");
 }
 
 #[test]
@@ -276,7 +276,7 @@ fn nested_style_implicit_implicit_header() {
         a: B { b: C { c: leaf() } },
     };
     let s = toml_spanner::to_string(&v).unwrap();
-    assert_eq!(s, "[a.b.c]\nd = 4", "got:\n{s}");
+    assert_eq!(s, "[a.b.c]\nd = 4\n", "got:\n{s}");
 }
 
 #[test]
@@ -306,7 +306,7 @@ fn nested_style_implicit_header_dotted() {
         a: B { b: C { c: leaf() } },
     };
     let s = toml_spanner::to_string(&v).unwrap();
-    assert_eq!(s, "[a.b]\nc.d = 4", "got:\n{s}");
+    assert_eq!(s, "[a.b]\nc.d = 4\n", "got:\n{s}");
 }
 
 #[test]
@@ -336,7 +336,7 @@ fn nested_style_implicit_header_inline() {
         a: B { b: C { c: leaf() } },
     };
     let s = toml_spanner::to_string(&v).unwrap();
-    assert_eq!(s, "[a.b]\nc = { d = 4 }", "got:\n{s}");
+    assert_eq!(s, "[a.b]\nc = { d = 4 }\n", "got:\n{s}");
 }
 
 #[test]
@@ -367,7 +367,7 @@ fn nested_style_header_dotted_inline() {
         a: B { b: C { c: leaf() } },
     };
     let s = toml_spanner::to_string(&v).unwrap();
-    assert_eq!(s, "[a]\nb.c = { d = 4 }", "got:\n{s}");
+    assert_eq!(s, "[a]\nb.c = { d = 4 }\n", "got:\n{s}");
 }
 
 #[test]
@@ -398,7 +398,7 @@ fn nested_style_header_inline_dotted() {
         a: B { b: C { c: leaf() } },
     };
     let s = toml_spanner::to_string(&v).unwrap();
-    assert_eq!(s, "[a]\nb = { c.d = 4 }", "got:\n{s}");
+    assert_eq!(s, "[a]\nb = { c.d = 4 }\n", "got:\n{s}");
 }
 
 #[test]
@@ -429,7 +429,7 @@ fn nested_style_header_inline_inline() {
         a: B { b: C { c: leaf() } },
     };
     let s = toml_spanner::to_string(&v).unwrap();
-    assert_eq!(s, "[a]\nb = { c = { d = 4 } }", "got:\n{s}");
+    assert_eq!(s, "[a]\nb = { c = { d = 4 } }\n", "got:\n{s}");
 }
 
 #[test]
@@ -459,5 +459,5 @@ fn nested_style_all_dotted() {
         a: B { b: C { c: leaf() } },
     };
     let s = toml_spanner::to_string(&v).unwrap();
-    assert_eq!(s, "a.b.c.d = 4", "got:\n{s}");
+    assert_eq!(s, "a.b.c.d = 4\n", "got:\n{s}");
 }
