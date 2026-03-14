@@ -6,7 +6,7 @@ mod tests;
 pub(crate) mod array;
 pub(crate) mod table;
 use crate::arena::Arena;
-use crate::parser::TableIndex;
+use crate::item::table::TableIndex;
 use crate::{DateTime, Error, ErrorKind, Span, Table};
 use std::fmt;
 use std::mem::ManuallyDrop;
@@ -321,7 +321,7 @@ union Payload<'de> {
 /// the number of keys. For small tables or a handful of lookups, as is
 /// typical in TOML, this is well fast enough.
 ///
-/// For structured deserialization of larger tables, use
+/// For structured conversion of larger tables, use
 /// [`TableHelper`](crate::de::TableHelper) with the [`Context`](crate::de::Context)
 /// returned by [`parse`](crate::parse).
 ///
@@ -412,6 +412,7 @@ impl<'de> Item<'de> {
         }
     }
 
+    /// Creates a string [`Item`] in format-hints mode (no source span).
     #[inline]
     pub fn string(s: &'de str) -> Self {
         Self::raw_hints(TAG_STRING, FLAG_NONE, Payload { string: s })
@@ -598,6 +599,7 @@ impl Kind {
 }
 
 impl<'de> Item<'de> {
+    /// Returns the type discriminant of this value.
     #[inline]
     pub fn kind(&self) -> Kind {
         debug_assert!((self.meta.start_and_tag & TAG_MASK) as u8 <= Kind::Array as u8);
@@ -621,6 +623,9 @@ impl<'de> Item<'de> {
         self.tag() < TAG_TABLE
     }
 
+    /// Returns the raw 3-bit flag encoding the container sub-kind.
+    ///
+    /// Prefer [`Table::style`] or [`Array::style`] for a typed alternative.
     #[inline]
     pub fn flag(&self) -> u32 {
         self.meta.flag()
@@ -1026,20 +1031,23 @@ impl<'de> Item<'de> {
         unsafe { &*(self as *const Item<'de>).cast::<Table<'de>>() }
     }
 
-    /// Returns true if the value is a table and is non-empty.
+    /// Returns `true` if the value is a non-empty table.
     #[inline]
     pub fn has_keys(&self) -> bool {
         self.as_table().is_some_and(|t| !t.is_empty())
     }
 
-    /// Returns true if the value is a table and has the specified key.
+    /// Returns `true` if the value is a table containing `key`.
     #[inline]
     pub fn has_key(&self, key: &str) -> bool {
         self.as_table().is_some_and(|t| t.contains_key(key))
     }
 
-    /// Deep-clones this item into `arena`. Keys and strings are shared
-    /// with the source.
+    /// Deep-clones this item into `arena`.
+    ///
+    /// Scalar values are copied directly. Tables and arrays are recursively
+    /// cloned with new arena-allocated storage, but string keys and string
+    /// values continue to reference their original memory.
     pub fn clone_in(&self, arena: &'de Arena) -> Item<'de> {
         if self.is_scalar() {
             // SAFETY: Scalar items have tags 0..=4 (STRING, INTEGER, FLOAT,
@@ -1198,6 +1206,10 @@ pub struct Key<'de> {
 }
 
 impl<'de> Key<'de> {
+    /// Creates a key with no source span.
+    ///
+    /// Use this when constructing tables programmatically via
+    /// [`Table::insert`].
     pub fn anon(value: &'de str) -> Self {
         Self {
             name: value,
@@ -1251,8 +1263,6 @@ impl PartialEq for Key<'_> {
 
 impl Eq for Key<'_> {}
 
-// Would be technically more efficient to pass table index as thread local storage,
-// but that requires even more unsafe.
 pub(crate) fn equal_items(a: &Item<'_>, b: &Item<'_>, index: Option<&TableIndex<'_>>) -> bool {
     if a.kind() != b.kind() {
         return false;
@@ -1312,53 +1322,7 @@ pub(crate) fn equal_items(a: &Item<'_>, b: &Item<'_>, index: Option<&TableIndex<
 
 impl<'de> PartialEq for Item<'de> {
     fn eq(&self, other: &Self) -> bool {
-        return equal_items(self, other, None);
-        // let a = self;
-        // let b = other;
-        // if a.kind() != b.kind() {
-        //     return false;
-        // }
-        // // SAFETY: kind check above guarantees both payloads hold the same union
-        // // variant. Each arm reads only the field that corresponds to that variant.
-        // // Righting this way generates the minimal LLVM lines and the fastest impl
-        // unsafe {
-        //     match a.kind() {
-        //         Kind::String => a.payload.string == b.payload.string,
-        //         Kind::Integer => a.payload.integer == b.payload.integer,
-        //         Kind::Float => {
-        //             let af = a.payload.float;
-        //             let bf = b.payload.float;
-        //             if af.is_nan() && bf.is_nan() {
-        //                 af.is_sign_negative() == bf.is_sign_negative()
-        //             } else {
-        //                 af.to_bits() == bf.to_bits()
-        //             }
-        //         }
-        //         Kind::Boolean => a.payload.boolean == b.payload.boolean,
-        //         Kind::DateTime => {
-        //             let da = &a.payload.datetime;
-        //             let db = &b.payload.datetime;
-        //             da.date() == db.date() && da.time() == db.time() && da.offset() == db.offset()
-        //         }
-        //         Kind::Array => a.payload.array.as_slice() == a.payload.array.as_slice(),
-        //         Kind::Table => {
-        //             let tab_a = a.as_table_unchecked();
-        //             let tab_b = b.as_table_unchecked();
-        //             if tab_a.len() != tab_b.len() {
-        //                 return false;
-        //             }
-        //             for (key, val_a) in tab_a {
-        //                 let Some(val_b) = tab_b.get(key.name) else {
-        //                     return false;
-        //                 };
-        //                 if val_a != val_b {
-        //                     return false;
-        //                 }
-        //             }
-        //             true
-        //         }
-        //     }
-        // }
+        equal_items(self, other, None)
     }
 }
 

@@ -144,9 +144,17 @@ mod ser;
 mod span;
 mod time;
 
+/// Zero-size sentinel indicating that a conversion step failed.
+///
+/// Real error details are recorded in the shared [`Context`] rather than
+/// carried inside `Failed` itself. This allows multiple errors to accumulate
+/// during a single [`FromToml`] pass.
+#[derive(Debug)]
+pub struct Failed;
+
 pub use arena::Arena;
 #[cfg(feature = "from-toml")]
-pub use de::{Context, Failed, FromFlattened, FromToml, TableHelper};
+pub use de::{Context, FromFlattened, FromToml, TableHelper};
 #[cfg(all(feature = "to-toml", fuzzing))]
 pub use emit::reproject;
 #[cfg(all(feature = "to-toml", not(fuzzing)))]
@@ -179,7 +187,7 @@ pub mod impl_serde;
 ///
 /// This is a convenience wrapper that allocates its own [`Arena`] and
 /// calls [`parse`] followed by [`Root::to`]. Because the arena is
-/// local, the deserialized type `T` cannot borrow from the input.
+/// local, the resulting type `T` cannot borrow from the input.
 ///
 /// For more control over lifetimes — for example, to borrow `&'de str`
 /// fields directly from the input, or to reuse an arena across multiple
@@ -196,13 +204,13 @@ pub mod impl_serde;
 ///
 /// Note that [`to_string_with_config`] with [`TomlConfig::with_formatting_from`]
 /// requires a [`Root`] to reproject formatting from, but it does not
-/// have to be the same `Root` that produced the deserialized value,
+/// have to be the same `Root` that produced the converted value,
 /// any parsed TOML tree can serve as a formatting template.
 ///
 /// # Errors
 ///
-/// Returns a [`FromTomlError`] containing all parse and deserialization
-/// errors encountered.
+/// Returns a [`FromTomlError`] containing all parse and conversion errors
+/// encountered.
 #[cfg(feature = "from-toml")]
 pub fn from_str<T: for<'a> FromToml<'a>>(document: &str) -> Result<T, FromTomlError> {
     let arena = Arena::new();
@@ -210,25 +218,84 @@ pub fn from_str<T: for<'a> FromToml<'a>>(document: &str) -> Result<T, FromTomlEr
     root.to()
 }
 
+/// Serializes a [`ToToml`] value into a TOML string with default formatting.
+///
+/// The value must serialize to a table at the top level. For control over
+/// formatting (e.g. preserving the layout of a previously parsed document),
+/// use [`to_string_with_config`].
+///
+/// # Errors
+///
+/// Returns [`ToTomlError`] if serialization fails or the top-level value
+/// is not a table.
+///
+/// # Examples
+///
+/// ```
+/// use std::collections::BTreeMap;
+/// use toml_spanner::to_string;
+///
+/// let mut map = BTreeMap::new();
+/// map.insert("key", "value");
+/// let output = to_string(&map).unwrap();
+/// assert!(output.contains("key = \"value\""));
+/// ```
 #[cfg(feature = "to-toml")]
 pub fn to_string(value: &dyn ToToml) -> Result<String, ToTomlError> {
     to_string_with_config(value, TomlConfig::default())
 }
 
-// Exists for semver safe extension to configuration, in the future
-// could indention settings, comment injection, etc.
+/// Configuration for TOML serialization via [`to_string_with_config`].
+///
+/// Use the builder method [`with_formatting_from`](Self::with_formatting_from)
+/// to preserve formatting from a previously parsed document. The default
+/// configuration produces clean formatted output with no source template.
+///
+/// # Examples
+///
+/// ```
+/// use toml_spanner::{Arena, TomlConfig, to_string_with_config};
+/// use std::collections::BTreeMap;
+///
+/// let arena = Arena::new();
+/// let source = "key = \"value\"\n";
+/// let root = toml_spanner::parse(source, &arena).unwrap();
+///
+/// let mut map = BTreeMap::new();
+/// map.insert("key", "updated");
+///
+/// let config = TomlConfig::default().with_formatting_from(&root);
+/// let output = to_string_with_config(&map, config).unwrap();
+/// assert!(output.contains("key = \"updated\""));
+/// ```
 #[derive(Default)]
 pub struct TomlConfig<'a> {
     formatting_from: Option<&'a Root<'a>>,
 }
 
 impl<'a> TomlConfig<'a> {
+    /// Sets a parsed [`Root`] as the formatting template.
+    ///
+    /// When provided, the emitter reprojects structural styles, key ordering,
+    /// and source positions from the template onto the serialized output. This
+    /// preserves comments, blank lines, and layout from the original document
+    /// where possible.
     pub fn with_formatting_from(mut self, root: &'a Root<'a>) -> Self {
         self.formatting_from = Some(root);
         self
     }
 }
 
+/// Serializes a [`ToToml`] value into a TOML string with the given configuration.
+///
+/// When [`TomlConfig::with_formatting_from`] provides a parsed [`Root`], the
+/// emitter reprojects formatting from that template onto the output, preserving
+/// comments, blank lines, and key ordering where possible.
+///
+/// # Errors
+///
+/// Returns [`ToTomlError`] if serialization fails or the top-level value
+/// is not a table.
 #[cfg(feature = "to-toml")]
 pub fn to_string_with_config(
     value: &dyn ToToml,

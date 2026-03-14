@@ -103,6 +103,7 @@ pub struct DeriveTargetInner<'a> {
     pub untagged: bool,
     pub from_type: Option<Vec<TokenTree>>,
     pub try_from_type: Option<Vec<TokenTree>>,
+    pub deny_unknown_fields: bool,
 }
 impl<'a> DeriveTargetInner<'a> {
     pub fn has_lifetime(&self) -> bool {
@@ -308,6 +309,12 @@ fn parse_container_attr(
             }
             target.try_from_type = Some(value.to_vec());
             value = &mut [];
+        }
+        "deny_unknown_fields" => {
+            if target.deny_unknown_fields {
+                Error::span_msg("Duplicate deny_unknown_fields attribute", attr.span())
+            }
+            target.deny_unknown_fields = true;
         }
         _ => Error::span_msg("Unknown attribute", attr.span()),
     }

@@ -435,14 +435,16 @@ fn emit_table_field_deser(
                 }
             );
         }
-    } else {
+    } else if ctx.target.deny_unknown_fields {
         splat!(out;
             _ => {
-                return Err(__ctx.error_message_at(
+                __ctx.error_message_at(
                     [@TokenTree::Literal(Literal::string("unexpected key"))], __key.span
-                ));
+                );
             }
         );
+    } else {
+        splat!(out; _ => {});
     }
     out.tt_group(Delimiter::Brace, arms_at);
     out.tt_group(Delimiter::Brace, for_body_at);
@@ -1177,13 +1179,17 @@ fn enum_from_toml_internal(
                 out.tt_group(Delimiter::Parenthesis, cpat_at);
                 splat!(out; in __table);
                 let check_at = out.buf.len();
-                splat!(out;
-                    if __key.name != [@tag_lit.clone().into()] {
-                        return Err(__ctx.error_message_at(
-                            [@TokenTree::Literal(Literal::string("unexpected key"))], __key.span
-                        ));
-                    }
-                );
+                if ctx.target.deny_unknown_fields {
+                    splat!(out;
+                        if __key.name != [@tag_lit.clone().into()] {
+                            __ctx.error_message_at(
+                                [@TokenTree::Literal(Literal::string("unexpected key"))], __key.span
+                            );
+                        }
+                    );
+                } else {
+                    splat!(out; let _ = __key;);
+                }
                 out.tt_group(Delimiter::Brace, check_at);
                 splat!(out; Ok(Self::[#: variant.name]));
                 out.tt_group(Delimiter::Brace, arm_at);
@@ -1251,12 +1257,18 @@ fn enum_from_toml_adjacent(
         [@content_lit.clone().into()] => {
             __content = Some(__value);
         }
-        _ => {
-            return Err(__ctx.error_message_at(
-                [@TokenTree::Literal(Literal::string("unexpected key"))], __key.span
-            ));
-        }
     );
+    if ctx.target.deny_unknown_fields {
+        splat!(out;
+            _ => {
+                __ctx.error_message_at(
+                    [@TokenTree::Literal(Literal::string("unexpected key"))], __key.span
+                );
+            }
+        );
+    } else {
+        splat!(out; _ => {});
+    }
     out.tt_group(Delimiter::Brace, extract_arms_at);
     out.tt_group(Delimiter::Brace, for_body_at);
 
@@ -1546,6 +1558,7 @@ pub fn inner_derive(stream: TokenStream) -> TokenStream {
         untagged: false,
         from_type: None,
         try_from_type: None,
+        deny_unknown_fields: false,
     };
     let (kind, body) = ast::extract_derive_target(&mut target, &outer_tokens);
 

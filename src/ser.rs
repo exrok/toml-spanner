@@ -27,10 +27,45 @@ fn required_to_optional<'a>(
     }
 }
 
+/// Trait for types that can be converted into a TOML [`Item`] tree.
+///
+/// Implement either [`to_toml`](Self::to_toml) or
+/// [`to_optional_toml`](Self::to_optional_toml); default implementations
+/// bridge between them. Built-in implementations cover primitive types,
+/// `String`, `Vec<T>`, `HashMap`, `BTreeMap`, `Option<T>`, and more.
+///
+/// # Examples
+///
+/// ```
+/// use toml_spanner::{Arena, Item, Key, Table, ToToml, ToTomlError};
+///
+/// struct Color { r: u8, g: u8, b: u8 }
+///
+/// impl ToToml for Color {
+///     fn to_toml<'a>(&'a self, arena: &'a Arena) -> Result<Item<'a>, ToTomlError> {
+///         let mut table = Table::new();
+///         table.insert(Key::anon("r"), Item::from(self.r as i64), arena);
+///         table.insert(Key::anon("g"), Item::from(self.g as i64), arena);
+///         table.insert(Key::anon("b"), Item::from(self.b as i64), arena);
+///         Ok(table.into_item())
+///     }
+/// }
+/// ```
 pub trait ToToml {
+    /// Produces a TOML [`Item`] representing this value.
+    ///
+    /// Override this method when the value is always present. The default
+    /// implementation delegates to [`to_optional_toml`](Self::to_optional_toml)
+    /// and returns an error if `None` is produced.
     fn to_toml<'a>(&'a self, arena: &'a Arena) -> Result<Item<'a>, ToTomlError> {
         optional_to_required(self.to_optional_toml(arena))
     }
+    /// Produces an optional TOML [`Item`] representing this value.
+    ///
+    /// Override this method when the value may be absent (e.g. `Option<T>`
+    /// returning `None` to omit the field). The default implementation
+    /// delegates to [`to_toml`](Self::to_toml) and wraps the result in
+    /// [`Some`].
     fn to_optional_toml<'a>(&'a self, arena: &'a Arena) -> Result<Option<Item<'a>>, ToTomlError> {
         required_to_optional(self.to_toml(arena))
     }
@@ -211,7 +246,7 @@ macro_rules! direct_upcast_integers {
 
 direct_upcast_integers!(u8, i8, i16, u16, i32, u32, i64);
 
-/// Trait for types that can be serialized into flattened TOML table entries.
+/// Trait for types that can be converted into flattened TOML table entries.
 ///
 /// Used with `#[toml(flatten)]` on struct fields. Built-in implementations
 /// exist for `HashMap` and `BTreeMap`.
@@ -224,6 +259,10 @@ direct_upcast_integers!(u8, i8, i16, u16, i32, u32, i64);
     note = "if `{Self}` implements `ToToml`, you can use `#[toml(flatten, with = flatten_any)]` instead of a manual `ToFlattened` impl"
 )]
 pub trait ToFlattened {
+    /// Inserts this value's entries directly into an existing table.
+    ///
+    /// Each key-value pair is inserted into `table` rather than wrapping
+    /// them in a nested sub-table.
     fn to_flattened<'a>(
         &'a self,
         arena: &'a Arena,
@@ -231,7 +270,7 @@ pub trait ToFlattened {
     ) -> Result<(), ToTomlError>;
 }
 
-/// Serializes a map key to a TOML key string via `ToToml`.
+/// Converts a map key to a TOML key string via `ToToml`.
 fn key_to_str<'a>(item: &Item<'a>) -> Option<&'a str> {
     match item.value() {
         Value::String(s) => Some(*s),

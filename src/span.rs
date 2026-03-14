@@ -22,6 +22,7 @@ impl Span {
     pub fn new(start: u32, end: u32) -> Self {
         Self { start, end }
     }
+    /// Converts this span into a [`Range<usize>`](std::ops::Range).
     pub fn range(self) -> std::ops::Range<usize> {
         self.start as usize..self.end as usize
     }
@@ -135,7 +136,7 @@ impl From<Span> for std::ops::Range<usize> {
 /// Wraps a value `T` with its source [`Span`].
 ///
 /// Use this as a field type in your [`FromToml`](crate::FromToml) structs
-/// when you need to preserve span information alongside the deserialized value.
+/// when you need to preserve span information alongside the converted value.
 ///
 /// # Examples
 ///
@@ -153,7 +154,7 @@ impl From<Span> for std::ops::Range<usize> {
 /// # Ok::<(), toml_spanner::Error>(())
 /// ```
 pub struct Spanned<T> {
-    /// The deserialized value.
+    /// The inner value.
     pub value: T,
     /// The byte-offset span in the source document.
     pub span: Span,

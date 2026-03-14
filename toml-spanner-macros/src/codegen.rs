@@ -312,7 +312,7 @@ fn emit_table_alloc(out: &mut RustWriter, ctx: &Ctx, var: &str, capacity: usize)
         out.blit(90, 2);
         {
             let at = out.buf.len();
-            out.blit_ident(97);
+            out.blit_ident(96);
             out.buf.push(TokenTree::from(var_id.clone()));
             out.tt_group(Delimiter::Parenthesis, at);
         };
@@ -467,7 +467,7 @@ fn emit_table_field_deser(
             };
         }
         {
-            out.blit_ident(96);
+            out.blit_ident(95);
         };
         if let Some(with) = with_path {
             {
@@ -505,7 +505,7 @@ fn emit_table_field_deser(
             out.blit_ident(104);
             {
                 let at = out.buf.len();
-                out.blit_ident(95);
+                out.blit_ident(94);
                 out.tt_group(Delimiter::Parenthesis, at);
             };
             out.blit(144, 2);
@@ -515,14 +515,14 @@ fn emit_table_field_deser(
                 out.blit(168, 2);
                 {
                     let at = out.buf.len();
-                    out.blit_ident(95);
+                    out.blit_ident(94);
                     out.tt_group(Delimiter::Parenthesis, at);
                 };
                 out.blit_punct(2);
                 out.tt_group(Delimiter::Brace, at);
             };
             if is_required {
-                out.blit_ident(102);
+                out.blit_ident(101);
                 {
                     let at = out.buf.len();
                     out.blit_ident(71);
@@ -537,7 +537,7 @@ fn emit_table_field_deser(
                 out.blit_punct(13);
             };
             if !is_required {
-                out.blit_ident(102);
+                out.blit_ident(101);
                 {
                     let at = out.buf.len();
                     out.blit_ident(100);
@@ -589,28 +589,25 @@ fn emit_table_field_deser(
                 };
             };
         }
-    } else {
+    } else if ctx.target.deny_unknown_fields {
         {
             out.blit(178, 3);
             {
                 let at = out.buf.len();
-                out.blit(98, 2);
+                out.blit(205, 3);
                 {
                     let at = out.buf.len();
-                    out.blit(205, 3);
-                    {
-                        let at = out.buf.len();
-                        out.buf
-                            .push(TokenTree::Literal(Literal::string("unexpected key")));
-                        out.blit(153, 4);
-                        out.tt_group(Delimiter::Parenthesis, at);
-                    };
+                    out.buf
+                        .push(TokenTree::Literal(Literal::string("unexpected key")));
+                    out.blit(153, 4);
                     out.tt_group(Delimiter::Parenthesis, at);
                 };
                 out.blit_punct(2);
                 out.tt_group(Delimiter::Brace, at);
             };
         };
+    } else {
+        out.blit(208, 4);
     }
     out.tt_group(Delimiter::Brace, arms_at);
     out.tt_group(Delimiter::Brace, for_body_at);
@@ -621,13 +618,13 @@ fn emit_table_field_deser(
                 out.push_ident(ff.name);
                 out.blit_punct(3);
                 out.buf.extend_from_slice(with);
-                out.blit(208, 3);
+                out.blit(212, 3);
                 {
                     let at = out.buf.len();
-                    out.blit(211, 3);
+                    out.blit(215, 3);
                     out.tt_group(Delimiter::Parenthesis, at);
                 };
-                out.blit(214, 2);
+                out.blit(218, 2);
             };
         } else {
             {
@@ -639,13 +636,13 @@ fn emit_table_field_deser(
                 out.buf.push(TokenTree::from(ctx.crate_path.clone()));
                 out.blit(15, 5);
                 out.push_ident(&ctx.lifetime);
-                out.blit(216, 5);
+                out.blit(220, 5);
                 {
                     let at = out.buf.len();
-                    out.blit(211, 3);
+                    out.blit(215, 3);
                     out.tt_group(Delimiter::Parenthesis, at);
                 };
-                out.blit(214, 2);
+                out.blit(218, 2);
             };
         }
     }
@@ -669,18 +666,18 @@ fn emit_table_field_deser(
                 };
                 out.blit_punct(3);
                 out.push_ident(field.name);
-                out.blit(221, 4);
+                out.blit(225, 4);
             };
             let else_at = out.buf.len();
             {
                 out.blit(98, 2);
                 {
                     let at = out.buf.len();
-                    out.blit(225, 3);
+                    out.blit(229, 3);
                     {
                         let at = out.buf.len();
                         out.buf.push(name_lit.into());
-                        out.blit(228, 5);
+                        out.blit(232, 5);
                         out.tt_group(Delimiter::Parenthesis, at);
                     };
                     out.tt_group(Delimiter::Parenthesis, at);
@@ -705,10 +702,10 @@ fn emit_field_default(out: &mut RustWriter, field: &Field, direction: u8, is_unw
                         out.push_ident(field.name);
                         out.blit_punct(3);
                         out.push_ident(field.name);
-                        out.blit(233, 2);
+                        out.blit(237, 2);
                         {
                             let at = out.buf.len();
-                            out.blit(235, 2);
+                            out.blit(239, 2);
                             out.buf.extend_from_slice(tokens.as_slice());
                             out.tt_group(Delimiter::Parenthesis, at);
                         };
@@ -720,7 +717,7 @@ fn emit_field_default(out: &mut RustWriter, field: &Field, direction: u8, is_unw
                     out.push_ident(field.name);
                     out.blit_punct(3);
                     out.push_ident(field.name);
-                    out.blit(237, 4);
+                    out.blit(241, 4);
                 }
             }
         } else {
@@ -728,7 +725,7 @@ fn emit_field_default(out: &mut RustWriter, field: &Field, direction: u8, is_unw
             out.push_ident(field.name);
             out.blit_punct(3);
             out.push_ident(field.name);
-            out.blit(237, 4);
+            out.blit(241, 4);
         }
     } else {
         if let Some(default_kind) = field.default(direction) {
@@ -743,13 +740,13 @@ fn emit_field_default(out: &mut RustWriter, field: &Field, direction: u8, is_unw
                 DefaultKind::Default => {
                     out.blit_ident(105);
                     out.push_ident(field.name);
-                    out.blit(241, 7);
+                    out.blit(245, 7);
                 }
             }
         } else {
             out.blit_ident(105);
             out.push_ident(field.name);
-            out.blit(241, 7);
+            out.blit(245, 7);
         }
     }
 }
@@ -777,7 +774,7 @@ fn emit_table_field_ser(
         let field_ref = {
             let len = out.buf.len();
             if self_access {
-                out.blit(248, 3);
+                out.blit(252, 3);
                 out.push_ident(field.name);
             };
             if !self_access {
@@ -791,10 +788,10 @@ fn emit_table_field_ser(
         if let Some(with) = with_path {
             let val_expr = if is_option {
                 {
-                    out.blit(251, 3);
+                    out.blit(255, 3);
                     {
                         let at = out.buf.len();
-                        out.blit_ident(95);
+                        out.blit_ident(94);
                         out.tt_group(Delimiter::Parenthesis, at);
                     };
                     out.blit_punct(3);
@@ -804,7 +801,7 @@ fn emit_table_field_ser(
                     )));
                 };
                 let len = out.buf.len();
-                out.blit_ident(95);
+                out.blit_ident(94);
                 out.split_off_stream(len)
             } else {
                 field_ref.clone()
@@ -812,11 +809,11 @@ fn emit_table_field_ser(
             let insert_start = out.buf.len();
             {
                 out.buf.push(TokenTree::from(table_id.clone()));
-                out.blit(254, 2);
+                out.blit(258, 2);
                 {
                     let at = out.buf.len();
                     out.buf.push(TokenTree::from(ctx.crate_path.clone()));
-                    out.blit(256, 6);
+                    out.blit(260, 6);
                     {
                         let at = out.buf.len();
                         out.buf.push(name_lit.into());
@@ -824,7 +821,7 @@ fn emit_table_field_ser(
                     };
                     out.blit_punct(13);
                     out.buf.extend_from_slice(with);
-                    out.blit(262, 3);
+                    out.blit(266, 3);
                     {
                         let at = out.buf.len();
                         out.buf
@@ -834,16 +831,16 @@ fn emit_table_field_ser(
                     };
                     out.blit_punct(6);
                     if let Some(style) = style {
-                        out.blit(265, 2);
+                        out.blit(269, 2);
                         {
                             let at = out.buf.len();
                             out.buf.push(TokenTree::from(ctx.crate_path.clone()));
-                            out.blit(267, 5);
+                            out.blit(271, 5);
                             out.buf.push(TokenTree::from(style.clone()));
                             out.tt_group(Delimiter::Parenthesis, at);
                         };
                     };
-                    out.blit(272, 3);
+                    out.blit(276, 3);
                     out.tt_group(Delimiter::Parenthesis, at);
                 };
                 out.blit_punct(2);
@@ -855,15 +852,15 @@ fn emit_table_field_ser(
             }
         } else if is_option {
             {
-                out.blit(251, 3);
+                out.blit(255, 3);
                 {
                     let at = out.buf.len();
-                    out.blit_ident(95);
+                    out.blit_ident(94);
                     out.tt_group(Delimiter::Parenthesis, at);
                 };
                 out.blit_punct(3);
                 out.buf.push(TokenTree::from(ctx.crate_path.clone()));
-                out.blit(275, 6);
+                out.blit(279, 6);
                 {
                     let at = out.buf.len();
                     out.buf.push(TokenTree::Group(Group::new(
@@ -877,28 +874,28 @@ fn emit_table_field_ser(
                 {
                     let at = out.buf.len();
                     out.buf.push(TokenTree::from(table_id.clone()));
-                    out.blit(254, 2);
+                    out.blit(258, 2);
                     {
                         let at = out.buf.len();
                         out.buf.push(TokenTree::from(ctx.crate_path.clone()));
-                        out.blit(256, 6);
+                        out.blit(260, 6);
                         {
                             let at = out.buf.len();
                             out.buf.push(name_lit.into());
                             out.tt_group(Delimiter::Parenthesis, at);
                         };
-                        out.blit(281, 2);
+                        out.blit(285, 2);
                         if let Some(style) = style {
-                            out.blit(265, 2);
+                            out.blit(269, 2);
                             {
                                 let at = out.buf.len();
                                 out.buf.push(TokenTree::from(ctx.crate_path.clone()));
-                                out.blit(267, 5);
+                                out.blit(271, 5);
                                 out.buf.push(TokenTree::from(style.clone()));
                                 out.tt_group(Delimiter::Parenthesis, at);
                             };
                         };
-                        out.blit(272, 3);
+                        out.blit(276, 3);
                         out.tt_group(Delimiter::Parenthesis, at);
                     };
                     out.blit_punct(2);
@@ -908,11 +905,11 @@ fn emit_table_field_ser(
         } else {
             {
                 out.buf.push(TokenTree::from(table_id.clone()));
-                out.blit(254, 2);
+                out.blit(258, 2);
                 {
                     let at = out.buf.len();
                     out.buf.push(TokenTree::from(ctx.crate_path.clone()));
-                    out.blit(256, 6);
+                    out.blit(260, 6);
                     {
                         let at = out.buf.len();
                         out.buf.push(name_lit.into());
@@ -920,7 +917,7 @@ fn emit_table_field_ser(
                     };
                     out.blit_punct(13);
                     out.buf.push(TokenTree::from(ctx.crate_path.clone()));
-                    out.blit(283, 6);
+                    out.blit(287, 6);
                     {
                         let at = out.buf.len();
                         out.buf.push(TokenTree::Group(Group::new(
@@ -932,16 +929,16 @@ fn emit_table_field_ser(
                     };
                     out.blit_punct(6);
                     if let Some(style) = style {
-                        out.blit(265, 2);
+                        out.blit(269, 2);
                         {
                             let at = out.buf.len();
                             out.buf.push(TokenTree::from(ctx.crate_path.clone()));
-                            out.blit(267, 5);
+                            out.blit(271, 5);
                             out.buf.push(TokenTree::from(style.clone()));
                             out.tt_group(Delimiter::Parenthesis, at);
                         };
                     };
-                    out.blit(272, 3);
+                    out.blit(276, 3);
                     out.tt_group(Delimiter::Parenthesis, at);
                 };
                 out.blit_punct(2);
@@ -950,7 +947,7 @@ fn emit_table_field_ser(
         if let Some(skip_tokens) = skip_if {
             let emit_body = out.split_off_stream(emit_start);
             {
-                out.blit(289, 2);
+                out.blit(293, 2);
                 {
                     let at = out.buf.len();
                     out.buf.extend_from_slice(skip_tokens);
@@ -972,7 +969,7 @@ fn emit_table_field_ser(
             let field_ref = {
                 let len = out.buf.len();
                 if self_access {
-                    out.blit(248, 3);
+                    out.blit(252, 3);
                     out.push_ident(field.name);
                 };
                 if !self_access {
@@ -983,30 +980,30 @@ fn emit_table_field_ser(
             if let Some(with) = field.with(TO_TOML) {
                 {
                     out.buf.extend_from_slice(with);
-                    out.blit(291, 3);
+                    out.blit(295, 3);
                     {
                         let at = out.buf.len();
                         out.buf
                             .push(TokenTree::Group(Group::new(Delimiter::None, field_ref)));
-                        out.blit(294, 5);
+                        out.blit(298, 5);
                         out.buf.push(TokenTree::from(table_id.clone()));
                         out.tt_group(Delimiter::Parenthesis, at);
                     };
-                    out.blit(214, 2);
+                    out.blit(218, 2);
                 };
             } else {
                 {
                     out.buf.push(TokenTree::from(ctx.crate_path.clone()));
-                    out.blit(299, 6);
+                    out.blit(303, 6);
                     {
                         let at = out.buf.len();
                         out.buf
                             .push(TokenTree::Group(Group::new(Delimiter::None, field_ref)));
-                        out.blit(294, 5);
+                        out.blit(298, 5);
                         out.buf.push(TokenTree::from(table_id.clone()));
                         out.tt_group(Delimiter::Parenthesis, at);
                     };
-                    out.blit(214, 2);
+                    out.blit(218, 2);
                 };
             }
         }
@@ -1015,7 +1012,7 @@ fn emit_table_field_ser(
 fn emit_struct_variant_to_arm(out: &mut RustWriter, variant: &EnumVariant, arm_body_start: usize) {
     let arm_body = out.split_off_stream(arm_body_start);
     {
-        out.blit(305, 3);
+        out.blit(309, 3);
         out.push_ident(variant.name);
         {
             let at = out.buf.len();
@@ -1045,7 +1042,7 @@ fn emit_ok_self_variant(out: &mut RustWriter, variant: &EnumVariant) {
         out.blit_ident(104);
         {
             let at = out.buf.len();
-            out.blit(305, 3);
+            out.blit(309, 3);
             out.push_ident(variant.name);
             {
                 let at = out.buf.len();
@@ -1064,20 +1061,20 @@ fn emit_ok_self_variant(out: &mut RustWriter, variant: &EnumVariant) {
 fn struct_from_toml(out: &mut RustWriter, ctx: &Ctx, fields: &[Field]) {
     let start = out.buf.len();
     {
-        out.blit(308, 6);
+        out.blit(312, 6);
         {
             let at = out.buf.len();
             out.blit_ident(106);
             out.tt_group(Delimiter::Parenthesis, at);
         };
-        out.blit(214, 2);
+        out.blit(218, 2);
     };
     emit_table_field_deser(out, ctx, fields, "__table", None, &[]);
     {
         out.blit_ident(104);
         {
             let at = out.buf.len();
-            out.blit_ident(101);
+            out.blit_ident(102);
             {
                 let at = out.buf.len();
                 {
@@ -1102,7 +1099,7 @@ fn struct_to_toml(out: &mut RustWriter, ctx: &Ctx, fields: &[Field]) {
         out.blit_ident(104);
         {
             let at = out.buf.len();
-            out.blit(314, 4);
+            out.blit(318, 4);
             out.tt_group(Delimiter::Parenthesis, at);
         };
     };
@@ -1113,7 +1110,7 @@ fn emit_proxy_from_toml(output: &mut RustWriter, ctx: &Ctx) -> bool {
     if let Some(from_ty) = &ctx.target.from_type {
         let body = {
             let len = output.buf.len();
-            output.blit(318, 4);
+            output.blit(322, 4);
             output.buf.extend_from_slice(from_ty);
             output.blit_ident(81);
             output.buf.push(TokenTree::from(ctx.crate_path.clone()));
@@ -1122,13 +1119,13 @@ fn emit_proxy_from_toml(output: &mut RustWriter, ctx: &Ctx) -> bool {
             output.blit(163, 5);
             {
                 let at = output.buf.len();
-                output.blit(322, 3);
+                output.blit(326, 3);
                 output.tt_group(Delimiter::Parenthesis, at);
             };
-            output.blit(325, 3);
+            output.blit(329, 3);
             {
                 let at = output.buf.len();
-                output.blit(328, 12);
+                output.blit(332, 12);
                 {
                     let at = output.buf.len();
                     output.blit_ident(57);
@@ -1143,7 +1140,7 @@ fn emit_proxy_from_toml(output: &mut RustWriter, ctx: &Ctx) -> bool {
     } else if let Some(try_from_ty) = &ctx.target.try_from_type {
         let body = {
             let len = output.buf.len();
-            output.blit(318, 4);
+            output.blit(322, 4);
             output.buf.extend_from_slice(try_from_ty);
             output.blit_ident(81);
             output.buf.push(TokenTree::from(ctx.crate_path.clone()));
@@ -1152,10 +1149,10 @@ fn emit_proxy_from_toml(output: &mut RustWriter, ctx: &Ctx) -> bool {
             output.blit(163, 5);
             {
                 let at = output.buf.len();
-                output.blit(322, 3);
+                output.blit(326, 3);
                 output.tt_group(Delimiter::Parenthesis, at);
             };
-            output.blit(340, 15);
+            output.blit(344, 15);
             {
                 let at = output.buf.len();
                 output.blit_ident(57);
@@ -1166,32 +1163,32 @@ fn emit_proxy_from_toml(output: &mut RustWriter, ctx: &Ctx) -> bool {
                 output.blit_ident(104);
                 {
                     let at = output.buf.len();
-                    output.blit_ident(95);
+                    output.blit_ident(94);
                     output.tt_group(Delimiter::Parenthesis, at);
                 };
-                output.blit(355, 3);
+                output.blit(359, 3);
                 {
                     let at = output.buf.len();
-                    output.blit_ident(95);
+                    output.blit_ident(94);
                     output.tt_group(Delimiter::Parenthesis, at);
                 };
-                output.blit(358, 2);
+                output.blit(362, 2);
                 {
                     let at = output.buf.len();
                     output.blit_ident(71);
                     output.tt_group(Delimiter::Parenthesis, at);
                 };
-                output.blit(360, 3);
+                output.blit(364, 3);
                 {
                     let at = output.buf.len();
-                    output.blit(363, 3);
+                    output.blit(367, 3);
                     {
                         let at = output.buf.len();
                         output.buf.push(TokenTree::from(ctx.crate_path.clone()));
-                        output.blit(366, 6);
+                        output.blit(370, 6);
                         {
                             let at = output.buf.len();
-                            output.blit(372, 6);
+                            output.blit(376, 6);
                             output.tt_group(Delimiter::Parenthesis, at);
                         };
                         output.tt_group(Delimiter::Parenthesis, at);
@@ -1227,7 +1224,7 @@ fn handle_struct(output: &mut RustWriter, target: &DeriveTargetInner, fields: &[
                 output.blit(163, 5);
                 {
                     let at = output.buf.len();
-                    output.blit(322, 3);
+                    output.blit(326, 3);
                     output.tt_group(Delimiter::Parenthesis, at);
                 };
                 output.split_off_stream(len)
@@ -1245,10 +1242,10 @@ fn handle_struct(output: &mut RustWriter, target: &DeriveTargetInner, fields: &[
             let body = {
                 let len = output.buf.len();
                 output.buf.push(TokenTree::from(ctx.crate_path.clone()));
-                output.blit(283, 6);
+                output.blit(287, 6);
                 {
                     let at = output.buf.len();
-                    output.blit(248, 3);
+                    output.blit(252, 3);
                     output.push_ident(single_field.name);
                     output.blit(78, 2);
                     output.tt_group(Delimiter::Parenthesis, at);
@@ -1282,7 +1279,7 @@ fn handle_tuple_struct(output: &mut RustWriter, target: &DeriveTargetInner, fiel
                         output.blit(163, 5);
                         {
                             let at = output.buf.len();
-                            output.blit(322, 3);
+                            output.blit(326, 3);
                             output.tt_group(Delimiter::Parenthesis, at);
                         };
                         output.blit_punct(6);
@@ -1304,10 +1301,10 @@ fn handle_tuple_struct(output: &mut RustWriter, target: &DeriveTargetInner, fiel
             let body = {
                 let len = output.buf.len();
                 output.buf.push(TokenTree::from(ctx.crate_path.clone()));
-                output.blit(283, 6);
+                output.blit(287, 6);
                 {
                     let at = output.buf.len();
-                    output.blit(248, 3);
+                    output.blit(252, 3);
                     output
                         .buf
                         .push(TokenTree::Literal(Literal::usize_unsuffixed(0)));
@@ -1352,11 +1349,11 @@ fn emit_tag_insert(
     let table_id = Ident::new(table_var, Span::mixed_site());
     {
         out.push_ident(&table_id);
-        out.blit(254, 2);
+        out.blit(258, 2);
         {
             let at = out.buf.len();
             out.buf.push(TokenTree::from(ctx.crate_path.clone()));
-            out.blit(256, 6);
+            out.blit(260, 6);
             {
                 let at = out.buf.len();
                 out.buf.push(tag_lit.clone().into());
@@ -1364,13 +1361,13 @@ fn emit_tag_insert(
             };
             out.blit_punct(13);
             out.buf.push(TokenTree::from(ctx.crate_path.clone()));
-            out.blit(378, 6);
+            out.blit(382, 6);
             {
                 let at = out.buf.len();
                 out.buf.push(name_lit.into());
                 out.tt_group(Delimiter::Parenthesis, at);
             };
-            out.blit(272, 3);
+            out.blit(276, 3);
             out.tt_group(Delimiter::Parenthesis, at);
         };
         out.blit_punct(2);
@@ -1392,13 +1389,13 @@ fn enum_from_toml_string(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVarian
         expected_msg.push_str(&s[1..s.len() - 1]);
     }
     {
-        out.blit(384, 6);
+        out.blit(388, 6);
         {
             let at = out.buf.len();
             out.blit_ident(106);
             out.tt_group(Delimiter::Parenthesis, at);
         };
-        out.blit(390, 4);
+        out.blit(394, 4);
         {
             let at = out.buf.len();
             {
@@ -1409,10 +1406,10 @@ fn enum_from_toml_string(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVarian
                     let name_lit = variant_name_literal(ctx, variant);
                     {
                         out.buf.push(name_lit.into());
-                        out.blit(355, 3);
+                        out.blit(359, 3);
                         {
                             let at = out.buf.len();
-                            out.blit(305, 3);
+                            out.blit(309, 3);
                             out.push_ident(variant.name);
                             out.tt_group(Delimiter::Parenthesis, at);
                         };
@@ -1423,10 +1420,10 @@ fn enum_from_toml_string(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVarian
             {
                 if let Some(ov) = other_variant {
                     {
-                        out.blit(394, 4);
+                        out.blit(398, 4);
                         {
                             let at = out.buf.len();
-                            out.blit(305, 3);
+                            out.blit(309, 3);
                             out.push_ident(ov.name);
                             out.tt_group(Delimiter::Parenthesis, at);
                         };
@@ -1434,10 +1431,10 @@ fn enum_from_toml_string(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVarian
                     };
                 } else {
                     {
-                        out.blit(398, 4);
+                        out.blit(402, 4);
                         {
                             let at = out.buf.len();
-                            out.blit(402, 3);
+                            out.blit(406, 3);
                             {
                                 let at = out.buf.len();
                                 out.buf
@@ -1464,17 +1461,17 @@ fn enum_to_toml_string(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVariant]
         {
             let at = out.buf.len();
             out.buf.push(TokenTree::from(ctx.crate_path.clone()));
-            out.blit(378, 6);
+            out.blit(382, 6);
             {
                 let at = out.buf.len();
-                out.blit(405, 2);
+                out.blit(409, 2);
                 {
                     let at = out.buf.len();
                     {
                         for variant in variants {
                             let name_lit = variant_name_literal(ctx, variant);
                             {
-                                out.blit(305, 3);
+                                out.blit(309, 3);
                                 out.push_ident(variant.name);
                                 out.blit(144, 2);
                                 out.buf.push(name_lit.into());
@@ -1495,7 +1492,7 @@ fn enum_to_toml_string(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVariant]
 fn enum_to_toml(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVariant], mode: &TagMode) {
     let start = out.buf.len();
     {
-        out.blit(405, 2);
+        out.blit(409, 2);
     };
     let arms_at = out.buf.len();
     for variant in variants {
@@ -1508,7 +1505,7 @@ fn enum_to_toml(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVariant], mode:
             EnumKind::None => {
                 if let Some(tag) = tag_lit {
                     {
-                        out.blit(305, 3);
+                        out.blit(309, 3);
                         out.push_ident(variant.name);
                         out.blit(144, 2);
                         {
@@ -1520,7 +1517,7 @@ fn enum_to_toml(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVariant], mode:
                             out.blit_ident(104);
                             {
                                 let at = out.buf.len();
-                                out.blit(407, 4);
+                                out.blit(411, 4);
                                 out.tt_group(Delimiter::Parenthesis, at);
                             };
                             out.tt_group(Delimiter::Brace, at);
@@ -1528,13 +1525,13 @@ fn enum_to_toml(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVariant], mode:
                     };
                 } else {
                     {
-                        out.blit(305, 3);
+                        out.blit(309, 3);
                         out.push_ident(variant.name);
-                        out.blit(355, 3);
+                        out.blit(359, 3);
                         {
                             let at = out.buf.len();
                             out.buf.push(TokenTree::from(ctx.crate_path.clone()));
-                            out.blit(378, 6);
+                            out.blit(382, 6);
                             {
                                 let at = out.buf.len();
                                 out.buf.push(name_lit.into());
@@ -1555,7 +1552,7 @@ fn enum_to_toml(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVariant], mode:
                     _ => false,
                 } {
                     {
-                        out.blit(305, 3);
+                        out.blit(309, 3);
                         out.push_ident(variant.name);
                         {
                             let at = out.buf.len();
@@ -1564,10 +1561,10 @@ fn enum_to_toml(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVariant], mode:
                         };
                         out.blit(144, 2);
                         out.buf.push(TokenTree::from(ctx.crate_path.clone()));
-                        out.blit(283, 6);
+                        out.blit(287, 6);
                         {
                             let at = out.buf.len();
-                            out.blit(411, 3);
+                            out.blit(415, 3);
                             out.tt_group(Delimiter::Parenthesis, at);
                         };
                         out.blit_punct(13);
@@ -1575,7 +1572,7 @@ fn enum_to_toml(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVariant], mode:
                 } else {
                     let cap = if tag_lit.is_some() { 2 } else { 1 };
                     {
-                        out.blit(305, 3);
+                        out.blit(309, 3);
                         out.push_ident(variant.name);
                         {
                             let at = out.buf.len();
@@ -1591,11 +1588,11 @@ fn enum_to_toml(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVariant], mode:
                                     emit_tag_insert(out, ctx, "table", tag, name_lit.clone());
                                 }
                             };
-                            out.blit(414, 3);
+                            out.blit(418, 3);
                             {
                                 let at = out.buf.len();
                                 out.buf.push(TokenTree::from(ctx.crate_path.clone()));
-                                out.blit(256, 6);
+                                out.blit(260, 6);
                                 {
                                     let at = out.buf.len();
                                     {
@@ -1614,19 +1611,19 @@ fn enum_to_toml(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVariant], mode:
                                 };
                                 out.blit_punct(13);
                                 out.buf.push(TokenTree::from(ctx.crate_path.clone()));
-                                out.blit(283, 6);
+                                out.blit(287, 6);
                                 {
                                     let at = out.buf.len();
-                                    out.blit(411, 3);
+                                    out.blit(415, 3);
                                     out.tt_group(Delimiter::Parenthesis, at);
                                 };
-                                out.blit(417, 4);
+                                out.blit(421, 4);
                                 out.tt_group(Delimiter::Parenthesis, at);
                             };
-                            out.blit(326, 2);
+                            out.blit(330, 2);
                             {
                                 let at = out.buf.len();
-                                out.blit(407, 4);
+                                out.blit(411, 4);
                                 out.tt_group(Delimiter::Parenthesis, at);
                             };
                             out.tt_group(Delimiter::Brace, at);
@@ -1650,23 +1647,23 @@ fn enum_to_toml(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVariant], mode:
                         );
                         emit_table_alloc(out, ctx, "outer", 1);
                         {
-                            out.blit(421, 3);
+                            out.blit(425, 3);
                             {
                                 let at = out.buf.len();
                                 out.buf.push(TokenTree::from(ctx.crate_path.clone()));
-                                out.blit(256, 6);
+                                out.blit(260, 6);
                                 {
                                     let at = out.buf.len();
                                     out.buf.push(name_lit.into());
                                     out.tt_group(Delimiter::Parenthesis, at);
                                 };
-                                out.blit(424, 8);
+                                out.blit(428, 8);
                                 out.tt_group(Delimiter::Parenthesis, at);
                             };
-                            out.blit(326, 2);
+                            out.blit(330, 2);
                             {
                                 let at = out.buf.len();
-                                out.blit(432, 4);
+                                out.blit(436, 4);
                                 out.tt_group(Delimiter::Parenthesis, at);
                             };
                         };
@@ -1686,7 +1683,7 @@ fn enum_to_toml(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVariant], mode:
                             out.blit_ident(104);
                             {
                                 let at = out.buf.len();
-                                out.blit(407, 4);
+                                out.blit(411, 4);
                                 out.tt_group(Delimiter::Parenthesis, at);
                             };
                         };
@@ -1704,23 +1701,23 @@ fn enum_to_toml(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVariant], mode:
                         emit_table_alloc(out, ctx, "outer", 2);
                         emit_tag_insert(out, ctx, "outer", tag, name_lit);
                         {
-                            out.blit(421, 3);
+                            out.blit(425, 3);
                             {
                                 let at = out.buf.len();
                                 out.buf.push(TokenTree::from(ctx.crate_path.clone()));
-                                out.blit(256, 6);
+                                out.blit(260, 6);
                                 {
                                     let at = out.buf.len();
                                     out.buf.push(TokenTree::Literal((*content).clone()));
                                     out.tt_group(Delimiter::Parenthesis, at);
                                 };
-                                out.blit(424, 8);
+                                out.blit(428, 8);
                                 out.tt_group(Delimiter::Parenthesis, at);
                             };
-                            out.blit(326, 2);
+                            out.blit(330, 2);
                             {
                                 let at = out.buf.len();
-                                out.blit(432, 4);
+                                out.blit(436, 4);
                                 out.tt_group(Delimiter::Parenthesis, at);
                             };
                         };
@@ -1739,7 +1736,7 @@ fn enum_to_toml(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVariant], mode:
                             out.blit_ident(104);
                             {
                                 let at = out.buf.len();
-                                out.blit(407, 4);
+                                out.blit(411, 4);
                                 out.tt_group(Delimiter::Parenthesis, at);
                             };
                         };
@@ -1762,7 +1759,7 @@ fn enum_from_toml_external(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVari
     if has_unit {
         let if_body_start = out.buf.len();
         {
-            out.blit(436, 3);
+            out.blit(440, 3);
             {
                 let at = out.buf.len();
                 {
@@ -1775,10 +1772,10 @@ fn enum_from_toml_external(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVari
                             let name_lit = variant_name_literal(ctx, variant);
                             {
                                 out.buf.push(name_lit.into());
-                                out.blit(355, 3);
+                                out.blit(359, 3);
                                 {
                                     let at = out.buf.len();
-                                    out.blit(305, 3);
+                                    out.blit(309, 3);
                                     out.push_ident(variant.name);
                                     out.tt_group(Delimiter::Parenthesis, at);
                                 };
@@ -1790,10 +1787,10 @@ fn enum_from_toml_external(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVari
                 {
                     if let Some(ov) = other_variant {
                         {
-                            out.blit(394, 4);
+                            out.blit(398, 4);
                             {
                                 let at = out.buf.len();
-                                out.blit(305, 3);
+                                out.blit(309, 3);
                                 out.push_ident(ov.name);
                                 out.tt_group(Delimiter::Parenthesis, at);
                             };
@@ -1801,10 +1798,10 @@ fn enum_from_toml_external(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVari
                         };
                     } else {
                         {
-                            out.blit(398, 4);
+                            out.blit(402, 4);
                             {
                                 let at = out.buf.len();
-                                out.blit(402, 3);
+                                out.blit(406, 3);
                                 {
                                     let at = out.buf.len();
                                     out.buf.push(TokenTree::Literal(Literal::string(
@@ -1825,33 +1822,33 @@ fn enum_from_toml_external(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVari
         };
         let if_body = out.split_off_stream(if_body_start);
         {
-            out.blit(251, 3);
+            out.blit(255, 3);
             {
                 let at = out.buf.len();
                 out.blit_ident(64);
                 out.tt_group(Delimiter::Parenthesis, at);
             };
-            out.blit(439, 5);
+            out.blit(443, 5);
             out.buf
                 .push(TokenTree::Group(Group::new(Delimiter::Brace, if_body)));
         };
     }
     if has_complex {
         {
-            out.blit(444, 6);
+            out.blit(448, 6);
             {
                 let at = out.buf.len();
                 out.blit_ident(106);
                 out.tt_group(Delimiter::Parenthesis, at);
             };
-            out.blit(450, 10);
+            out.blit(454, 10);
         };
         let err_body_start = out.buf.len();
         {
             out.blit(98, 2);
             {
                 let at = out.buf.len();
-                out.blit(402, 3);
+                out.blit(406, 3);
                 {
                     let at = out.buf.len();
                     out.buf.push(TokenTree::Literal(Literal::string(
@@ -1871,10 +1868,10 @@ fn enum_from_toml_external(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVari
             TokenStream::from(TokenTree::Literal(Literal::usize_unsuffixed(0))),
         ));
         {
-            out.blit(289, 2);
+            out.blit(293, 2);
             {
                 let at = out.buf.len();
-                out.blit(460, 6);
+                out.blit(464, 6);
                 out.buf.push(one_lit);
                 out.tt_group(Delimiter::Parenthesis, at);
             };
@@ -1883,15 +1880,15 @@ fn enum_from_toml_external(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVari
             out.blit_ident(105);
             {
                 let at = out.buf.len();
-                out.blit(466, 3);
+                out.blit(470, 3);
                 out.tt_group(Delimiter::Parenthesis, at);
             };
-            out.blit(469, 3);
+            out.blit(473, 3);
             out.buf.push(zero_index);
             out.blit_punct(2);
         };
         {
-            out.blit(472, 4);
+            out.blit(476, 4);
         };
         let arms_at = out.buf.len();
         for variant in variants {
@@ -1912,18 +1909,18 @@ fn enum_from_toml_external(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVari
                     }
                     {
                         out.buf.push(name_lit.into());
-                        out.blit(355, 3);
+                        out.blit(359, 3);
                         {
                             let at = out.buf.len();
-                            out.blit(305, 3);
+                            out.blit(309, 3);
                             out.push_ident(variant.name);
                             {
                                 let at = out.buf.len();
                                 out.buf.push(TokenTree::from(ctx.crate_path.clone()));
-                                out.blit(476, 6);
+                                out.blit(480, 6);
                                 {
                                     let at = out.buf.len();
-                                    out.blit(482, 3);
+                                    out.blit(486, 3);
                                     out.tt_group(Delimiter::Parenthesis, at);
                                 };
                                 out.blit_punct(6);
@@ -1941,13 +1938,13 @@ fn enum_from_toml_external(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVari
                     };
                     let arm_at = out.buf.len();
                     {
-                        out.blit(485, 6);
+                        out.blit(489, 6);
                         {
                             let at = out.buf.len();
                             out.blit_ident(106);
                             out.tt_group(Delimiter::Parenthesis, at);
                         };
-                        out.blit(214, 2);
+                        out.blit(218, 2);
                     };
                     emit_table_field_deser(
                         out,
@@ -1965,10 +1962,10 @@ fn enum_from_toml_external(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVari
         }
         if let Some(ov) = other_variant {
             {
-                out.blit(394, 4);
+                out.blit(398, 4);
                 {
                     let at = out.buf.len();
-                    out.blit(305, 3);
+                    out.blit(309, 3);
                     out.push_ident(ov.name);
                     out.tt_group(Delimiter::Parenthesis, at);
                 };
@@ -1976,10 +1973,10 @@ fn enum_from_toml_external(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVari
             };
         } else {
             {
-                out.blit(398, 4);
+                out.blit(402, 4);
                 {
                     let at = out.buf.len();
-                    out.blit(402, 3);
+                    out.blit(406, 3);
                     {
                         let at = out.buf.len();
                         out.buf
@@ -1995,10 +1992,10 @@ fn enum_from_toml_external(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVari
         out.tt_group(Delimiter::Brace, arms_at);
     } else if !has_unit {
         {
-            out.blit_ident(102);
+            out.blit_ident(101);
             {
                 let at = out.buf.len();
-                out.blit(402, 3);
+                out.blit(406, 3);
                 {
                     let at = out.buf.len();
                     out.buf
@@ -2024,16 +2021,16 @@ fn enum_from_toml_internal(
     }
     let start = out.buf.len();
     {
-        out.blit(308, 6);
+        out.blit(312, 6);
         {
             let at = out.buf.len();
             out.blit_ident(106);
             out.tt_group(Delimiter::Parenthesis, at);
         };
-        out.blit(214, 2);
+        out.blit(218, 2);
     };
     {
-        out.blit(491, 13);
+        out.blit(495, 13);
     };
     let pat_at = out.buf.len();
     {
@@ -2041,19 +2038,19 @@ fn enum_from_toml_internal(
     };
     out.tt_group(Delimiter::Parenthesis, pat_at);
     {
-        out.blit(504, 2);
+        out.blit(508, 2);
     };
     let tag_body_at = out.buf.len();
     {
-        out.blit(506, 6);
+        out.blit(510, 6);
         out.buf.push(tag_lit.clone().into());
         {
             let at = out.buf.len();
-            out.blit(512, 3);
+            out.blit(516, 3);
             {
                 let at = out.buf.len();
                 out.buf.push(TokenTree::from(ctx.crate_path.clone()));
-                out.blit(476, 6);
+                out.blit(480, 6);
                 {
                     let at = out.buf.len();
                     out.blit(160, 3);
@@ -2062,7 +2059,7 @@ fn enum_from_toml_internal(
                 out.blit_punct(6);
                 out.tt_group(Delimiter::Parenthesis, at);
             };
-            out.blit(515, 3);
+            out.blit(519, 3);
             out.tt_group(Delimiter::Brace, at);
         };
     };
@@ -2074,18 +2071,18 @@ fn enum_from_toml_internal(
             out.blit_ident(88);
             out.tt_group(Delimiter::Parenthesis, at);
         };
-        out.blit(518, 3);
+        out.blit(522, 3);
     };
     let else_at = out.buf.len();
     {
         out.blit(98, 2);
         {
             let at = out.buf.len();
-            out.blit(225, 3);
+            out.blit(229, 3);
             {
                 let at = out.buf.len();
                 out.buf.push(tag_lit.clone().into());
-                out.blit(228, 5);
+                out.blit(232, 5);
                 out.tt_group(Delimiter::Parenthesis, at);
             };
             out.tt_group(Delimiter::Parenthesis, at);
@@ -2098,7 +2095,7 @@ fn enum_from_toml_internal(
     };
     let other_variant = variants.iter().find(|v| v.other);
     {
-        out.blit(521, 2);
+        out.blit(525, 2);
     };
     let arms_at = out.buf.len();
     for variant in variants {
@@ -2122,15 +2119,13 @@ fn enum_from_toml_internal(
                 };
                 out.tt_group(Delimiter::Parenthesis, cpat_at);
                 {
-                    out.blit(504, 2);
+                    out.blit(508, 2);
                 };
                 let check_at = out.buf.len();
-                {
-                    out.blit(523, 6);
-                    out.buf.push(tag_lit.clone().into());
+                if ctx.target.deny_unknown_fields {
                     {
-                        let at = out.buf.len();
-                        out.blit(98, 2);
+                        out.blit(527, 6);
+                        out.buf.push(tag_lit.clone().into());
                         {
                             let at = out.buf.len();
                             out.blit(205, 3);
@@ -2141,18 +2136,19 @@ fn enum_from_toml_internal(
                                 out.blit(153, 4);
                                 out.tt_group(Delimiter::Parenthesis, at);
                             };
-                            out.tt_group(Delimiter::Parenthesis, at);
+                            out.blit_punct(2);
+                            out.tt_group(Delimiter::Brace, at);
                         };
-                        out.blit_punct(2);
-                        out.tt_group(Delimiter::Brace, at);
                     };
-                };
+                } else {
+                    out.blit(533, 5);
+                }
                 out.tt_group(Delimiter::Brace, check_at);
                 {
                     out.blit_ident(104);
                     {
                         let at = out.buf.len();
-                        out.blit(305, 3);
+                        out.blit(309, 3);
                         out.push_ident(variant.name);
                         out.tt_group(Delimiter::Parenthesis, at);
                     };
@@ -2166,7 +2162,7 @@ fn enum_from_toml_internal(
                 };
                 let arm_at = out.buf.len();
                 {
-                    out.blit(529, 5);
+                    out.blit(538, 5);
                 };
                 emit_table_field_deser(
                     out,
@@ -2184,10 +2180,10 @@ fn enum_from_toml_internal(
     }
     if let Some(ov) = other_variant {
         {
-            out.blit(394, 4);
+            out.blit(398, 4);
             {
                 let at = out.buf.len();
-                out.blit(305, 3);
+                out.blit(309, 3);
                 out.push_ident(ov.name);
                 out.tt_group(Delimiter::Parenthesis, at);
             };
@@ -2195,10 +2191,10 @@ fn enum_from_toml_internal(
         };
     } else {
         {
-            out.blit(398, 4);
+            out.blit(402, 4);
             {
                 let at = out.buf.len();
-                out.blit(402, 3);
+                out.blit(406, 3);
                 {
                     let at = out.buf.len();
                     out.buf
@@ -2224,17 +2220,17 @@ fn enum_from_toml_adjacent(
 ) {
     let start = out.buf.len();
     {
-        out.blit(308, 6);
+        out.blit(312, 6);
         {
             let at = out.buf.len();
             out.blit_ident(106);
             out.tt_group(Delimiter::Parenthesis, at);
         };
-        out.blit(534, 21);
+        out.blit(543, 21);
         out.buf.push(TokenTree::from(ctx.crate_path.clone()));
         out.blit(36, 5);
         out.push_ident(&ctx.lifetime);
-        out.blit(555, 5);
+        out.blit(564, 5);
     };
     {
         out.blit_ident(73);
@@ -2245,7 +2241,7 @@ fn enum_from_toml_adjacent(
     };
     out.tt_group(Delimiter::Parenthesis, pat_at);
     {
-        out.blit(504, 2);
+        out.blit(508, 2);
     };
     let for_body_at = out.buf.len();
     {
@@ -2257,11 +2253,11 @@ fn enum_from_toml_adjacent(
         out.blit(144, 2);
         {
             let at = out.buf.len();
-            out.blit(512, 3);
+            out.blit(516, 3);
             {
                 let at = out.buf.len();
                 out.buf.push(TokenTree::from(ctx.crate_path.clone()));
-                out.blit(476, 6);
+                out.blit(480, 6);
                 {
                     let at = out.buf.len();
                     out.blit(160, 3);
@@ -2277,7 +2273,7 @@ fn enum_from_toml_adjacent(
         out.blit(144, 2);
         {
             let at = out.buf.len();
-            out.blit(560, 3);
+            out.blit(569, 3);
             {
                 let at = out.buf.len();
                 out.blit_ident(89);
@@ -2286,10 +2282,10 @@ fn enum_from_toml_adjacent(
             out.blit_punct(2);
             out.tt_group(Delimiter::Brace, at);
         };
-        out.blit(178, 3);
+    };
+    if ctx.target.deny_unknown_fields {
         {
-            let at = out.buf.len();
-            out.blit(98, 2);
+            out.blit(178, 3);
             {
                 let at = out.buf.len();
                 out.blit(205, 3);
@@ -2300,12 +2296,13 @@ fn enum_from_toml_adjacent(
                     out.blit(153, 4);
                     out.tt_group(Delimiter::Parenthesis, at);
                 };
-                out.tt_group(Delimiter::Parenthesis, at);
+                out.blit_punct(2);
+                out.tt_group(Delimiter::Brace, at);
             };
-            out.blit_punct(2);
-            out.tt_group(Delimiter::Brace, at);
         };
-    };
+    } else {
+        out.blit(208, 4);
+    }
     out.tt_group(Delimiter::Brace, extract_arms_at);
     out.tt_group(Delimiter::Brace, for_body_at);
     {
@@ -2315,18 +2312,18 @@ fn enum_from_toml_adjacent(
             out.blit_ident(88);
             out.tt_group(Delimiter::Parenthesis, at);
         };
-        out.blit(518, 3);
+        out.blit(522, 3);
     };
     let else_at = out.buf.len();
     {
         out.blit(98, 2);
         {
             let at = out.buf.len();
-            out.blit(225, 3);
+            out.blit(229, 3);
             {
                 let at = out.buf.len();
                 out.buf.push(tag_lit.clone().into());
-                out.blit(228, 5);
+                out.blit(232, 5);
                 out.tt_group(Delimiter::Parenthesis, at);
             };
             out.tt_group(Delimiter::Parenthesis, at);
@@ -2339,7 +2336,7 @@ fn enum_from_toml_adjacent(
     };
     let other_variant = variants.iter().find(|v| v.other);
     {
-        out.blit(521, 2);
+        out.blit(525, 2);
     };
     let arms_at = out.buf.len();
     for variant in variants {
@@ -2357,7 +2354,7 @@ fn enum_from_toml_adjacent(
                         out.blit_ident(104);
                         {
                             let at = out.buf.len();
-                            out.blit(305, 3);
+                            out.blit(309, 3);
                             out.push_ident(variant.name);
                             out.tt_group(Delimiter::Parenthesis, at);
                         };
@@ -2378,18 +2375,18 @@ fn enum_from_toml_adjacent(
                         out.blit_ident(70);
                         out.tt_group(Delimiter::Parenthesis, at);
                     };
-                    out.blit(563, 3);
+                    out.blit(572, 3);
                 };
                 let ce_at = out.buf.len();
                 {
                     out.blit(98, 2);
                     {
                         let at = out.buf.len();
-                        out.blit(225, 3);
+                        out.blit(229, 3);
                         {
                             let at = out.buf.len();
                             out.buf.push(content_lit.clone().into());
-                            out.blit(228, 5);
+                            out.blit(232, 5);
                             out.tt_group(Delimiter::Parenthesis, at);
                         };
                         out.tt_group(Delimiter::Parenthesis, at);
@@ -2409,15 +2406,15 @@ fn enum_from_toml_adjacent(
                             out.blit_ident(104);
                             {
                                 let at = out.buf.len();
-                                out.blit(305, 3);
+                                out.blit(309, 3);
                                 out.push_ident(variant.name);
                                 {
                                     let at = out.buf.len();
                                     out.buf.push(TokenTree::from(ctx.crate_path.clone()));
-                                    out.blit(476, 6);
+                                    out.blit(480, 6);
                                     {
                                         let at = out.buf.len();
-                                        out.blit(566, 3);
+                                        out.blit(575, 3);
                                         out.tt_group(Delimiter::Parenthesis, at);
                                     };
                                     out.blit_punct(6);
@@ -2429,13 +2426,13 @@ fn enum_from_toml_adjacent(
                     }
                     EnumKind::Struct => {
                         {
-                            out.blit(569, 6);
+                            out.blit(578, 6);
                             {
                                 let at = out.buf.len();
                                 out.blit_ident(106);
                                 out.tt_group(Delimiter::Parenthesis, at);
                             };
-                            out.blit(214, 2);
+                            out.blit(218, 2);
                         };
                         emit_table_field_deser(
                             out,
@@ -2455,10 +2452,10 @@ fn enum_from_toml_adjacent(
     }
     if let Some(ov) = other_variant {
         {
-            out.blit(394, 4);
+            out.blit(398, 4);
             {
                 let at = out.buf.len();
-                out.blit(305, 3);
+                out.blit(309, 3);
                 out.push_ident(ov.name);
                 out.tt_group(Delimiter::Parenthesis, at);
             };
@@ -2466,10 +2463,10 @@ fn enum_from_toml_adjacent(
         };
     } else {
         {
-            out.blit(398, 4);
+            out.blit(402, 4);
             {
                 let at = out.buf.len();
-                out.blit(402, 3);
+                out.blit(406, 3);
                 {
                     let at = out.buf.len();
                     out.buf
@@ -2500,23 +2497,23 @@ fn enum_from_toml_untagged(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVari
         match variant.kind {
             EnumKind::None => {
                 {
-                    out.blit(251, 3);
+                    out.blit(255, 3);
                     {
                         let at = out.buf.len();
                         out.blit_ident(28);
                         out.tt_group(Delimiter::Parenthesis, at);
                     };
-                    out.blit(439, 5);
+                    out.blit(443, 5);
                     {
                         let at = out.buf.len();
-                        out.blit(575, 4);
+                        out.blit(584, 4);
                         out.buf.push(name_lit.into());
                         {
                             let at = out.buf.len();
-                            out.blit(579, 2);
+                            out.blit(588, 2);
                             {
                                 let at = out.buf.len();
-                                out.blit(305, 3);
+                                out.blit(309, 3);
                                 out.push_ident(variant.name);
                                 out.tt_group(Delimiter::Parenthesis, at);
                             };
@@ -2529,7 +2526,7 @@ fn enum_from_toml_untagged(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVari
                         out.blit(98, 2);
                         {
                             let at = out.buf.len();
-                            out.blit(402, 3);
+                            out.blit(406, 3);
                             {
                                 let at = out.buf.len();
                                 out.buf.push(TokenTree::Literal(Literal::string(
@@ -2550,12 +2547,12 @@ fn enum_from_toml_untagged(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVari
                 }
                 if propagate {
                     {
-                        out.blit_ident(96);
+                        out.blit_ident(95);
                         out.buf.push(TokenTree::from(ctx.crate_path.clone()));
-                        out.blit(476, 6);
+                        out.blit(480, 6);
                         {
                             let at = out.buf.len();
-                            out.blit(322, 3);
+                            out.blit(326, 3);
                             out.tt_group(Delimiter::Parenthesis, at);
                         };
                         {
@@ -2563,22 +2560,22 @@ fn enum_from_toml_untagged(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVari
                             out.blit_ident(104);
                             {
                                 let at = out.buf.len();
-                                out.blit_ident(95);
+                                out.blit_ident(94);
                                 out.tt_group(Delimiter::Parenthesis, at);
                             };
-                            out.blit(581, 4);
+                            out.blit(590, 4);
                             {
                                 let at = out.buf.len();
-                                out.blit(305, 3);
+                                out.blit(309, 3);
                                 out.push_ident(variant.name);
                                 {
                                     let at = out.buf.len();
-                                    out.blit_ident(95);
+                                    out.blit_ident(94);
                                     out.tt_group(Delimiter::Parenthesis, at);
                                 };
                                 out.tt_group(Delimiter::Parenthesis, at);
                             };
-                            out.blit(358, 2);
+                            out.blit(362, 2);
                             {
                                 let at = out.buf.len();
                                 out.blit_ident(71);
@@ -2598,12 +2595,12 @@ fn enum_from_toml_untagged(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVari
                     {
                         {
                             let at = out.buf.len();
-                            out.blit(585, 11);
+                            out.blit(594, 11);
                             out.buf.push(TokenTree::from(ctx.crate_path.clone()));
-                            out.blit(476, 6);
+                            out.blit(480, 6);
                             {
                                 let at = out.buf.len();
-                                out.blit(322, 3);
+                                out.blit(326, 3);
                                 out.tt_group(Delimiter::Parenthesis, at);
                             };
                             {
@@ -2611,22 +2608,22 @@ fn enum_from_toml_untagged(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVari
                                 out.blit_ident(104);
                                 {
                                     let at = out.buf.len();
-                                    out.blit_ident(95);
+                                    out.blit_ident(94);
                                     out.tt_group(Delimiter::Parenthesis, at);
                                 };
-                                out.blit(581, 4);
+                                out.blit(590, 4);
                                 {
                                     let at = out.buf.len();
-                                    out.blit(305, 3);
+                                    out.blit(309, 3);
                                     out.push_ident(variant.name);
                                     {
                                         let at = out.buf.len();
-                                        out.blit_ident(95);
+                                        out.blit_ident(94);
                                         out.tt_group(Delimiter::Parenthesis, at);
                                     };
                                     out.tt_group(Delimiter::Parenthesis, at);
                                 };
-                                out.blit(358, 2);
+                                out.blit(362, 2);
                                 {
                                     let at = out.buf.len();
                                     out.blit_ident(100);
@@ -2635,7 +2632,7 @@ fn enum_from_toml_untagged(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVari
                                 out.blit(144, 2);
                                 {
                                     let at = out.buf.len();
-                                    out.blit(596, 5);
+                                    out.blit(605, 5);
                                     {
                                         let at = out.buf.len();
                                         out.blit_ident(56);
@@ -2654,13 +2651,13 @@ fn enum_from_toml_untagged(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVari
             EnumKind::Struct => {
                 if propagate {
                     {
-                        out.blit(601, 6);
+                        out.blit(610, 6);
                         {
                             let at = out.buf.len();
                             out.blit_ident(106);
                             out.tt_group(Delimiter::Parenthesis, at);
                         };
-                        out.blit(214, 2);
+                        out.blit(218, 2);
                     };
                     emit_table_field_deser(
                         out,
@@ -2671,10 +2668,10 @@ fn enum_from_toml_untagged(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVari
                         &[],
                     );
                     {
-                        out.blit(579, 2);
+                        out.blit(588, 2);
                         {
                             let at = out.buf.len();
-                            out.blit(305, 3);
+                            out.blit(309, 3);
                             out.push_ident(variant.name);
                             {
                                 let at = out.buf.len();
@@ -2693,13 +2690,13 @@ fn enum_from_toml_untagged(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVari
                 } else {
                     let closure_body_start = out.buf.len();
                     {
-                        out.blit(601, 6);
+                        out.blit(610, 6);
                         {
                             let at = out.buf.len();
                             out.blit_ident(106);
                             out.tt_group(Delimiter::Parenthesis, at);
                         };
-                        out.blit(214, 2);
+                        out.blit(218, 2);
                     };
                     emit_table_field_deser(
                         out,
@@ -2716,31 +2713,31 @@ fn enum_from_toml_untagged(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVari
                     {
                         {
                             let at = out.buf.len();
-                            out.blit(607, 25);
+                            out.blit(616, 25);
                             out.buf.push(TokenTree::from(ctx.crate_path.clone()));
-                            out.blit(632, 5);
+                            out.blit(641, 5);
                             {
                                 let at = out.buf.len();
-                                out.blit(235, 2);
+                                out.blit(239, 2);
                                 out.buf.push(closure_body_group);
                                 out.tt_group(Delimiter::Parenthesis, at);
                             };
-                            out.blit(637, 4);
+                            out.blit(646, 4);
                             {
                                 let at = out.buf.len();
                                 out.blit_ident(104);
                                 {
                                     let at = out.buf.len();
-                                    out.blit_ident(95);
+                                    out.blit_ident(94);
                                     out.tt_group(Delimiter::Parenthesis, at);
                                 };
-                                out.blit(581, 4);
+                                out.blit(590, 4);
                                 {
                                     let at = out.buf.len();
-                                    out.blit_ident(95);
+                                    out.blit_ident(94);
                                     out.tt_group(Delimiter::Parenthesis, at);
                                 };
-                                out.blit(358, 2);
+                                out.blit(362, 2);
                                 {
                                     let at = out.buf.len();
                                     out.blit_ident(100);
@@ -2749,7 +2746,7 @@ fn enum_from_toml_untagged(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVari
                                 out.blit(144, 2);
                                 {
                                     let at = out.buf.len();
-                                    out.blit(596, 5);
+                                    out.blit(605, 5);
                                     {
                                         let at = out.buf.len();
                                         out.blit_ident(56);
@@ -2774,26 +2771,26 @@ fn enum_from_toml_untagged(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVari
             {
                 {
                     let at = out.buf.len();
-                    out.blit(641, 4);
+                    out.blit(650, 4);
                     {
                         let at = out.buf.len();
                         out.blit(24, 2);
                         out.buf.push(TokenTree::from(ctx.crate_path.clone()));
                         out.blit(26, 5);
                         out.push_ident(&ctx.lifetime);
-                        out.blit(645, 3);
+                        out.blit(654, 3);
                         out.buf.push(TokenTree::from(ctx.crate_path.clone()));
                         out.blit(36, 5);
                         out.push_ident(&ctx.lifetime);
                         out.blit_punct(0);
                         out.tt_group(Delimiter::Parenthesis, at);
                     };
-                    out.blit(648, 4);
+                    out.blit(657, 4);
                     out.buf.push(pred_group);
-                    out.blit(652, 3);
+                    out.blit(661, 3);
                     {
                         let at = out.buf.len();
-                        out.blit(322, 3);
+                        out.blit(326, 3);
                         out.tt_group(Delimiter::Parenthesis, at);
                     };
                     out.buf.push(inner_group);
@@ -2804,10 +2801,10 @@ fn enum_from_toml_untagged(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVari
     }
     if !last_is_unhinted {
         {
-            out.blit_ident(102);
+            out.blit_ident(101);
             {
                 let at = out.buf.len();
-                out.blit(402, 3);
+                out.blit(406, 3);
                 {
                     let at = out.buf.len();
                     out.buf
@@ -2921,6 +2918,7 @@ pub fn inner_derive(stream: TokenStream) -> TokenStream {
         untagged: false,
         from_type: None,
         try_from_type: None,
+        deny_unknown_fields: false,
     };
     let (kind, body) = ast::extract_derive_target(&mut target, &outer_tokens);
     if !(target.from_toml || target.to_toml) {
@@ -2964,12 +2962,12 @@ pub fn inner_derive(stream: TokenStream) -> TokenStream {
             (&mut rust_writer).blit_ident(5);
             {
                 let at = (&mut rust_writer).buf.len();
-                (&mut rust_writer).blit(655, 4);
+                (&mut rust_writer).blit(664, 4);
                 (&mut rust_writer).tt_group(Delimiter::Parenthesis, at);
             };
             (&mut rust_writer).tt_group(Delimiter::Bracket, at);
         };
-        (&mut rust_writer).blit(659, 5);
+        (&mut rust_writer).blit(668, 5);
         (&mut rust_writer)
             .buf
             .push(TokenTree::Group(Group::new(Delimiter::Brace, ts)));

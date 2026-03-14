@@ -7,15 +7,13 @@ use crate::item::{
     FLAG_DOTTED, FLAG_FROZEN, FLAG_HEADER, FLAG_TABLE, Item, ItemMetadata, Key, MaybeItem, NONE,
     TAG_TABLE, TableStyle,
 };
-#[cfg(feature = "to-toml")]
 use crate::parser::KeyRef;
 use std::mem::size_of;
 use std::ptr::NonNull;
 
 use crate::arena::Arena;
 
-#[cfg(feature = "to-toml")]
-use crate::parser::TableIndex;
+pub(crate) type TableIndex<'de> = foldhash::HashMap<KeyRef<'de>, usize>;
 
 type TableEntry<'de> = (Key<'de>, Item<'de>);
 
@@ -358,7 +356,7 @@ impl ExactSizeIterator for IntoIter<'_> {}
 ///   panics on missing keys, and supports chained indexing.
 /// - **`get` / `get_mut`** — return `Option<&Item>` / `Option<&mut Item>`.
 ///
-/// For type-safe deserialization, use [`Item::table_helper`](crate::Item::table_helper)
+/// For type-safe extraction, use [`Item::table_helper`](crate::Item::table_helper)
 /// to create a [`TableHelper`](crate::de::TableHelper).
 ///
 /// # Lookup performance
@@ -367,7 +365,7 @@ impl ExactSizeIterator for IntoIter<'_> {}
 /// over entries — O(n) in the number of keys. For small tables or a handful
 /// of lookups, as is typical in TOML, this is well fast enough.
 ///
-/// For structured deserialization of larger tables, use
+/// For structured conversion of larger tables, use
 /// [`TableHelper`](crate::de::TableHelper) via
 /// [`Root::helper`](crate::Root::helper) or
 /// [`Item::table_helper`](crate::Item::table_helper). The
@@ -420,12 +418,6 @@ impl<'de> Table<'de> {
             meta: ItemMetadata::spanned(TAG_TABLE, FLAG_TABLE, span.start, span.end),
             value: InnerTable::new(),
         }
-    }
-
-    /// Returns the byte-offset span of this table in the source document.
-    /// Only valid on parser-produced tables (span mode).
-    pub(crate) fn span_unchecked(&self) -> Span {
-        self.meta.span_unchecked()
     }
 
     /// Returns the source span, or `0..0` if this table was constructed

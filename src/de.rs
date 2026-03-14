@@ -15,7 +15,7 @@ use crate::{
     parser::{INDEXED_TABLE_THRESHOLD, KeyRef},
 };
 
-/// Guides deserialization of a [`Table`] by tracking which fields have been
+/// Guides extraction from a [`Table`] by tracking which fields have been
 /// consumed.
 ///
 /// Create one via [`Root::helper`](crate::Root::helper) for the root table,
@@ -162,7 +162,7 @@ impl<'ctx, 't, 'de> TableHelper<'ctx, 't, 'de> {
     /// Looks up a key-value entry without marking it as consumed.
     ///
     /// This is useful for peeking at a field before deciding how to
-    /// deserialize it. The entry will still be flagged as unexpected by
+    /// convert it. The entry will still be flagged as unexpected by
     /// [`expect_empty`](Self::expect_empty) unless it is later consumed by
     /// [`required`](Self::required) or [`optional`](Self::optional).
     pub fn get_entry(&self, key: &str) -> Option<&'t (Key<'de>, Item<'de>)> {
@@ -236,7 +236,7 @@ impl<'ctx, 't, 'de> TableHelper<'ctx, 't, 'de> {
 
     /// Returns the raw [`Item`] for a required field.
     ///
-    /// Like [`required`](Self::required) but skips deserialization, giving
+    /// Like [`required`](Self::required) but skips conversion, giving
     /// direct access to the parsed value. The field is marked as consumed.
     ///
     /// # Errors
@@ -250,7 +250,7 @@ impl<'ctx, 't, 'de> TableHelper<'ctx, 't, 'de> {
 
     /// Returns the raw [`Item`] for an optional field.
     ///
-    /// Like [`optional`](Self::optional) but skips deserialization, giving
+    /// Like [`optional`](Self::optional) but skips conversion, giving
     /// direct access to the parsed value. Returns [`None`] when the key is
     /// missing (no error recorded). The field is marked as consumed.
     pub fn optional_item(&mut self, name: &'static str) -> Option<&'t Item<'de>> {
@@ -305,19 +305,19 @@ impl<'ctx, 't, 'de> TableHelper<'ctx, 't, 'de> {
     fn report_missing_field(&mut self, name: &'static str) -> Failed {
         self.ctx.errors.push(Error {
             kind: ErrorKind::MissingField(name),
-            span: self.table.span_unchecked(),
+            span: self.table.span(),
         });
         Failed
     }
 
-    /// Deserializes a required field, recording an error if the key is missing.
+    /// Extracts and converts a required field via [`FromToml`].
     ///
     /// The field is marked as consumed so [`expect_empty`](Self::expect_empty)
     /// will not flag it as unexpected.
     ///
     /// # Errors
     ///
-    /// Returns [`Failed`] if the key is absent or if `T::deserialize` fails.
+    /// Returns [`Failed`] if the key is absent or if conversion fails.
     /// In both cases the error is pushed onto the shared [`Context`].
     pub fn required<T: FromToml<'de>>(&mut self, name: &'static str) -> Result<T, Failed> {
         let Some((_, val)) = self.optional_entry(name) else {
@@ -327,8 +327,9 @@ impl<'ctx, 't, 'de> TableHelper<'ctx, 't, 'de> {
         T::from_toml(self.ctx, val)
     }
 
-    /// Deserializes an optional field, returning [`None`] if the key is missing
-    /// or deserialization fails (recording the error in the [`Context`]).
+    /// Extracts and converts an optional field via [`FromToml`], returning
+    /// [`None`] if the key is missing or conversion fails (recording the
+    /// error in the [`Context`]).
     ///
     /// The field is marked as consumed so [`expect_empty`](Self::expect_empty)
     /// will not flag it as unexpected.
@@ -365,7 +366,7 @@ impl<'ctx, 't, 'de> TableHelper<'ctx, 't, 'de> {
         }
     }
 
-    /// Finishes deserialization, recording an error if any fields were not
+    /// Finishes field extraction, recording an error if any fields were not
     /// consumed by [`required`](Self::required) or
     /// [`optional`](Self::optional).
     ///
@@ -395,19 +396,19 @@ impl<'ctx, 't, 'de> TableHelper<'ctx, 't, 'de> {
 
         self.ctx.errors.push(Error::from((
             ErrorKind::UnexpectedKeys { keys },
-            self.table.span_unchecked(),
+            self.table.span(),
         )));
         Err(Failed)
     }
 }
 
-/// Shared deserialization state that accumulates errors and holds the arena.
+/// Shared state that accumulates errors and holds the arena.
 ///
 /// A `Context` is created by [`parse`](crate::parse) and lives inside
 /// [`Root`](crate::Root). Pass it into [`TableHelper::new`] or
 /// [`Item::table_helper`] when implementing [`FromToml`].
 ///
-/// Multiple errors can be recorded during a single deserialization pass;
+/// Multiple errors can be recorded during a single conversion pass;
 /// inspect them afterwards via [`Root::errors`](crate::Root::errors).
 pub struct Context<'de> {
     pub arena: &'de Arena,
@@ -417,6 +418,7 @@ pub struct Context<'de> {
 }
 
 impl<'de> Context<'de> {
+    /// Returns the original TOML source string passed to [`parse`](crate::parse).
     pub fn source(&self) -> &'de str {
         self.source
     }
@@ -486,17 +488,9 @@ impl<'de> Context<'de> {
     }
 }
 
-/// Sentinel indicating that a deserialization error has been recorded in the
-/// [`Context`].
-///
-/// `Failed` carries no data — the actual error details live in
-/// [`Context::errors`](Context::errors). Return `Err(Failed)` from
-/// [`FromToml::from_toml`] after calling one of the `Context::error_*`
-/// methods.
-#[derive(Debug)]
-pub struct Failed;
+pub use crate::Failed;
 
-/// Trait for types that can be deserialized from a TOML [`Item`].
+/// Trait for types that can be constructed from a TOML [`Item`].
 ///
 /// Implement this on your own types to enable extraction via
 /// [`TableHelper::required`] and [`TableHelper::optional`].
@@ -524,14 +518,14 @@ pub struct Failed;
 /// }
 /// ```
 pub trait FromToml<'de>: Sized {
-    /// Attempts to produce `Self` from a TOML [`Item`].
+    /// Attempts to construct `Self` from a TOML [`Item`].
     ///
     /// On failure, records one or more errors in `ctx` and returns
     /// `Err(`[`Failed`]`)`.
     fn from_toml(ctx: &mut Context<'de>, item: &Item<'de>) -> Result<Self, Failed>;
 }
 
-/// Trait for types that can be deserialized from flattened TOML table entries.
+/// Trait for types that can be constructed from flattened TOML table entries.
 ///
 /// Used with `#[toml(flatten)]` on struct fields. Built-in implementations
 /// exist for `HashMap` and `BTreeMap`.
@@ -544,18 +538,23 @@ pub trait FromToml<'de>: Sized {
     note = "if `{Self}` implements `FromToml`, you can use `#[toml(flatten, with = flatten_any)]` instead of a manual `FromFlattened` impl"
 )]
 pub trait FromFlattened<'de>: Sized {
+    /// Intermediate accumulator type used during conversion.
     type Partial;
+    /// Creates an empty accumulator to collect flattened entries.
     fn init() -> Self::Partial;
+    /// Inserts a single key-value pair into the accumulator.
     fn insert(
         ctx: &mut Context<'de>,
         key: &Key<'de>,
         item: &Item<'de>,
         partial: &mut Self::Partial,
     ) -> Result<(), Failed>;
+    /// Converts the accumulator into the final value after all entries
+    /// have been inserted.
     fn finish(ctx: &mut Context<'de>, partial: Self::Partial) -> Result<Self, Failed>;
 }
 
-/// Deserializes a map key from a TOML key, preserving span information.
+/// Converts a TOML key into a map key, preserving span information.
 fn key_from_toml<'de, K: FromToml<'de>>(
     ctx: &mut Context<'de>,
     key: &Key<'de>,

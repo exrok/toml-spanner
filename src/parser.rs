@@ -116,9 +116,6 @@ impl<'de> PartialEq for KeyRef<'de> {
 
 impl<'de> Eq for KeyRef<'de> {}
 
-#[cfg(feature = "to-toml")]
-pub(crate) type TableIndex<'de> = foldhash::HashMap<KeyRef<'de>, usize>;
-
 struct Parser<'de> {
     /// Raw bytes of the input. Always valid UTF-8 (derived from `&str`).
     bytes: &'de [u8],
@@ -1811,10 +1808,23 @@ impl<'de> Parser<'de> {
     }
 }
 
-/// Holds both the root table and the parsing context for deserialization.
+/// The result of parsing a TOML document.
 ///
-/// During deserialization the document tree remains immutable. Use
-/// [`Root::into_table()`] to extract the table for mutable access.
+/// A `Root` wraps the parsed [`Table`] tree and, when the `from-toml` feature
+/// is enabled, a [`Context`](crate::Context) that accumulates errors.
+///
+/// Access values via index operators (`root["key"]`) which return
+/// [`MaybeItem`](crate::MaybeItem), or use [`helper`](Self::helper) /
+/// [`to`](Self::to) for typed conversion.
+///
+/// # Examples
+///
+/// ```
+/// let arena = toml_spanner::Arena::new();
+/// let root = toml_spanner::parse("name = 'world'", &arena)?;
+/// assert_eq!(root["name"].as_str(), Some("world"));
+/// # Ok::<(), toml_spanner::Error>(())
+/// ```
 pub struct Root<'de> {
     pub(crate) table: Table<'de>,
     #[cfg(all(not(feature = "from-toml"), feature = "to-toml"))]
@@ -1824,8 +1834,7 @@ pub struct Root<'de> {
 }
 
 impl<'de> Root<'de> {
-    /// Extracts the root table for mutable access. Root is consumed.
-    /// You can also access the root table immutably via [`Root::table()`].
+    /// Consumes the root and returns the underlying [`Table`].
     pub fn into_table(self) -> Table<'de> {
         self.table
     }
@@ -1835,12 +1844,17 @@ impl<'de> Root<'de> {
         self.table.into_item()
     }
 
-    /// Access the root table immutably.
+    /// Returns a shared reference to the root table.
     pub fn table(&self) -> &Table<'de> {
         &self.table
     }
 
-    /// Access the root table immutably.
+    /// Returns disjoint borrows of the [`Context`](crate::Context) and the
+    /// root [`Table`].
+    ///
+    /// This is useful when you need to pass the context into
+    /// [`TableHelper::new`](crate::TableHelper::new) while still holding
+    /// a reference to the table.
     #[cfg(feature = "from-toml")]
     pub fn split(&mut self) -> (&mut crate::de::Context<'de>, &Table<'de>) {
         (&mut self.ctx, &self.table)
@@ -1850,7 +1864,7 @@ impl<'de> Root<'de> {
     ///
     /// Used internally by [`reproject`](crate::reproject).
     #[cfg(feature = "to-toml")]
-    pub(crate) fn table_index(&self) -> &TableIndex<'de> {
+    pub(crate) fn table_index(&self) -> &crate::item::table::TableIndex<'de> {
         // `to-toml` implies `from-toml`, so ctx is always available here.
         &self.ctx.index
     }
@@ -1858,12 +1872,23 @@ impl<'de> Root<'de> {
 
 #[cfg(feature = "from-toml")]
 impl<'de> Root<'de> {
-    /// Create a [`TableHelper`] for the root table.
+    /// Creates a [`TableHelper`] for the root table.
+    ///
+    /// This is the typical entry point for typed extraction. Extract fields
+    /// with [`TableHelper::required`](crate::TableHelper::required) and
+    /// [`TableHelper::optional`](crate::TableHelper::optional), then call
+    /// [`TableHelper::expect_empty`](crate::TableHelper::expect_empty) to
+    /// reject unknown keys.
     pub fn helper<'ctx>(&'ctx mut self) -> TableHelper<'ctx, 'ctx, 'de> {
         TableHelper::new(&mut self.ctx, &self.table)
     }
 
-    /// Produce a typed value from the root table.
+    /// Converts the root table into a typed value `T` via [`FromToml`](crate::FromToml).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`FromTomlError`](crate::FromTomlError) containing all
+    /// accumulated errors.
     pub fn to<T>(&mut self) -> Result<T, crate::error::FromTomlError>
     where
         T: crate::de::FromToml<'de>,
@@ -1877,12 +1902,12 @@ impl<'de> Root<'de> {
         }
     }
 
-    /// Returns the accumulated deserialization errors.
+    /// Returns the accumulated errors.
     pub fn errors(&self) -> &[Error] {
         &self.ctx.errors
     }
 
-    /// Returns `true` if any deserialization errors have been recorded.
+    /// Returns `true` if any errors have been recorded.
     pub fn has_errors(&self) -> bool {
         !self.ctx.errors.is_empty()
     }

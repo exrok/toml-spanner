@@ -187,7 +187,7 @@ fn table_access_and_mutation() {
     // Basic properties
     assert_eq!(table.len(), 3);
     assert!(!table.is_empty());
-    assert_eq!(table.span_unchecked(), Span::new(0, 100));
+    assert_eq!(table.span(), Span::new(0, 100));
 
     // get
     assert_eq!(table["a"].as_i64(), Some(1));
@@ -245,22 +245,22 @@ fn table_span_helpers() {
     assert_eq!(table.span_start(), 10);
     table.set_span_start(50);
     assert_eq!(table.span_start(), 50);
-    assert_eq!(table.span_unchecked().start, 50);
+    assert_eq!(table.span().start, 50);
 
     // set_span_end
     table.set_span_end(100);
-    assert_eq!(table.span_unchecked().end, 100);
+    assert_eq!(table.span().end, 100);
 
     // extend_span_end: only updates if new value is greater
     table.extend_span_end(90); // less than current 100, no change
-    assert_eq!(table.span_unchecked().end, 100);
+    assert_eq!(table.span().end, 100);
     table.extend_span_end(200); // greater, updates
-    assert_eq!(table.span_unchecked().end, 200);
+    assert_eq!(table.span().end, 200);
 
     // set_header_flag preserves span
     let mut table = Table::new_spanned(Span::new(10, 20));
     table.set_header_flag();
-    assert_eq!(table.span_unchecked(), Span::new(10, 20));
+    assert_eq!(table.span(), Span::new(10, 20));
 }
 
 #[test]
@@ -347,7 +347,7 @@ fn clone_in_basic() {
 
     let cloned = table.clone_in(&arena);
     assert_eq!(cloned.len(), 3);
-    assert_eq!(cloned.span_unchecked(), Span::new(0, 100));
+    assert_eq!(cloned.span(), Span::new(0, 100));
     assert_eq!(cloned["a"].as_i64(), Some(1));
     assert_eq!(cloned["b"].as_i64(), Some(2));
     assert_eq!(cloned["c"].as_i64(), Some(3));
@@ -359,7 +359,7 @@ fn clone_in_empty() {
     let table = Table::new_spanned(Span::new(5, 10));
     let cloned = table.clone_in(&arena);
     assert!(cloned.is_empty());
-    assert_eq!(cloned.span_unchecked(), Span::new(5, 10));
+    assert_eq!(cloned.span(), Span::new(5, 10));
 }
 
 #[test]

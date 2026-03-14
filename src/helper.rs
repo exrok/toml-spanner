@@ -2,16 +2,15 @@
 
 use crate::{Item, Table};
 
-/// Deserializes a TOML string value into any type that implements
-/// [`FromStr`].
+/// Converts a TOML string value into any type that implements [`FromStr`].
 ///
 /// Pair this with the `with` field attribute to store types like
-/// [`IpAddr`], [`Url`], or [`SocketAddr`] as plain TOML strings.
+/// [`IpAddr`] or [`SocketAddr`] as plain TOML strings.
 /// At parse time the string is passed through [`str::parse`], and any
-/// [`FromStr::Err`] is reported as a custom deserialization error with the
+/// [`std::str::FromStr::Err`] is reported as a custom error with the
 /// span of the original value.
 ///
-/// For the serialization direction, see [`display`].
+/// For the reverse direction, see [`display`].
 ///
 /// # Examples
 ///
@@ -55,14 +54,14 @@ pub mod parse_string {
     }
 }
 
-/// Serializes any type that implements [`Display`] as a TOML string.
+/// Converts any type that implements [`Display`] into a TOML string [`Item`].
 ///
 /// Pair this with the `with` field attribute to emit types like
-/// [`IpAddr`], [`Url`], or [`SocketAddr`] as plain TOML strings.
+/// [`IpAddr`] or [`SocketAddr`] as plain TOML strings.
 /// The value is formatted with [`Display`] and the resulting string is
 /// allocated in the arena.
 ///
-/// For the deserialization direction, see [`parse_string`].
+/// For the reverse direction, see [`parse_string`].
 ///
 /// # Examples
 ///
@@ -176,6 +175,7 @@ pub mod flatten_any {
     use crate::{Arena, ToToml, ToTomlError};
     use crate::{Context, Failed, FromToml, Item, Key, Table, helper::ShallowTable};
 
+    /// Creates an empty accumulator for collecting flattened entries.
     pub fn init<'a, 'b>() -> ShallowTable<'a, 'b> {
         ShallowTable {
             table: Table::new(),
@@ -183,6 +183,7 @@ pub mod flatten_any {
         }
     }
 
+    /// Inserts a single key-value pair into the accumulator.
     pub fn insert<'de, 'b>(
         ctx: &mut Context<'de>,
         key: &Key<'de>,
@@ -201,6 +202,7 @@ pub mod flatten_any {
         Ok(())
     }
 
+    /// Converts the accumulated entries into `T` via [`FromToml`].
     pub fn finish<'de, 'b, T: FromToml<'de>>(
         ctx: &mut Context<'de>,
         partial: ShallowTable<'de, 'b>,
@@ -208,6 +210,8 @@ pub mod flatten_any {
         T::from_toml(ctx, partial.table.as_item())
     }
 
+    /// Converts `value` into [`Item`] entries and inserts them
+    /// into `table`.
     #[cfg(feature = "to-toml")]
     pub fn to_flattened<'a, T: ToToml>(
         value: &'a T,
