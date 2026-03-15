@@ -75,9 +75,11 @@ pub enum ErrorKind {
     /// value.
     Unexpected(char),
 
-    /// An unterminated string was found where EOF was found before the ending
-    /// EOF mark.
-    UnterminatedString,
+    /// An unterminated string was found where EOF or a newline was reached
+    /// before the closing delimiter.
+    ///
+    /// The `char` is the expected closing delimiter (`"` or `'`).
+    UnterminatedString(char),
 
     /// An integer literal failed to parse, with an optional reason.
     InvalidInteger(&'static str),
@@ -164,6 +166,18 @@ pub enum ErrorKind {
         /// The actual value that was found.
         value: Option<String>,
     },
+
+    /// A comma is missing between elements in an array.
+    MissingArrayComma,
+
+    /// An array was not closed before EOF.
+    UnclosedArray,
+
+    /// A comma is missing between entries in an inline table.
+    MissingInlineTableComma,
+
+    /// An inline table was not closed before EOF or a newline.
+    UnclosedInlineTable,
 }
 
 impl Display for ErrorKind {
@@ -184,7 +198,7 @@ impl Display for ErrorKind {
             Self::InvalidEscapeValue(..) => "invalid-escape-value",
             Self::InvalidHexEscape(..) => "invalid-hex-escape",
             Self::Unexpected(..) => "unexpected",
-            Self::UnterminatedString => "unterminated-string",
+            Self::UnterminatedString(..) => "unterminated-string",
             Self::InvalidInteger(_) => "invalid-integer",
             Self::InvalidFloat(_) => "invalid-float",
             Self::InvalidDateTime(_) => "invalid-datetime",
@@ -194,6 +208,10 @@ impl Display for ErrorKind {
             Self::DuplicateField(..) => "duplicate-field",
             Self::Deprecated { .. } => "deprecated",
             Self::UnexpectedValue { .. } => "unexpected-value",
+            Self::MissingArrayComma => "missing-array-comma",
+            Self::UnclosedArray => "unclosed-array",
+            Self::MissingInlineTableComma => "missing-inline-table-comma",
+            Self::UnclosedInlineTable => "unclosed-inline-table",
         };
         f.write_str(text)
     }
@@ -211,7 +229,7 @@ impl fmt::Display for Escape {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         use std::fmt::Write as _;
 
-        if self.0.is_whitespace() {
+        if self.0.is_control() {
             for esc in self.0.escape_default() {
                 f.write_char(esc)?;
             }
@@ -236,7 +254,7 @@ impl Display for Error {
             ErrorKind::FileTooLarge => f.write_str("file is too large (maximum 512 MiB)"),
             ErrorKind::InvalidCharInString(c) => {
                 rtry!(f.write_str("invalid character in string: `"));
-                rtry!(std::fmt::Display::fmt(c, f));
+                rtry!(Escape(*c).fmt(f));
                 f.write_str("`")
             }
             ErrorKind::InvalidEscape(c) => {
@@ -246,7 +264,7 @@ impl Display for Error {
             }
             ErrorKind::InvalidHexEscape(c) => {
                 rtry!(f.write_str("invalid hex escape character in string: `"));
-                rtry!(std::fmt::Display::fmt(c, f));
+                rtry!(Escape(*c).fmt(f));
                 f.write_str("`")
             }
             ErrorKind::InvalidEscapeValue(c) => {
@@ -256,10 +274,16 @@ impl Display for Error {
             }
             ErrorKind::Unexpected(c) => {
                 rtry!(f.write_str("unexpected character found: `"));
-                rtry!(std::fmt::Display::fmt(c, f));
+                rtry!(Escape(*c).fmt(f));
                 f.write_str("`")
             }
-            ErrorKind::UnterminatedString => f.write_str("unterminated string"),
+            ErrorKind::UnterminatedString(delim) => {
+                if *delim == '\'' {
+                    f.write_str("invalid literal string, expected `'`")
+                } else {
+                    f.write_str("invalid basic string, expected `\"`")
+                }
+            }
             ErrorKind::Wanted { expected, found } => {
                 rtry!(f.write_str("expected "));
                 rtry!(f.write_str(expected));
@@ -350,6 +374,16 @@ impl Display for Error {
                 }
                 f.write_str("]'")
             }
+            ErrorKind::MissingArrayComma => {
+                f.write_str("missing comma between array elements, expected `,`")
+            }
+            ErrorKind::UnclosedArray => f.write_str("unclosed array, expected `]`"),
+            ErrorKind::MissingInlineTableComma => {
+                f.write_str("missing comma in inline table, expected `,`")
+            }
+            ErrorKind::UnclosedInlineTable => {
+                f.write_str("unclosed inline table, expected `}`")
+            }
         }
     }
 }
@@ -358,11 +392,7 @@ impl Display for Error {
 impl Error {
     /// Converts this error into an [`annotate_snippets::Group`] for rendering
     /// with [`annotate_snippets`].
-    pub fn to_snippet<'s>(
-        &self,
-        source: &'s str,
-        path: &'s str,
-    ) -> annotate_snippets::Group<'s> {
+    pub fn to_snippet<'s>(&self, source: &'s str, path: &'s str) -> annotate_snippets::Group<'s> {
         use annotate_snippets::{AnnotationKind, Level, Snippet};
 
         let title = self.to_string();
@@ -395,12 +425,10 @@ impl Error {
                 );
             }
             ErrorKind::InvalidEscape(c) => {
-                snippet = snippet.annotation(
-                    AnnotationKind::Primary.span(span).label(format!(
-                        "invalid escape character '{}' in string",
-                        Escape(*c)
-                    )),
-                );
+                snippet = snippet.annotation(AnnotationKind::Primary.span(span).label(format!(
+                    "invalid escape character '{}' in string",
+                    Escape(*c)
+                )));
             }
             ErrorKind::InvalidEscapeValue(_) => {
                 snippet = snippet.annotation(
@@ -412,15 +440,11 @@ impl Error {
             ErrorKind::InvalidInteger(_)
             | ErrorKind::InvalidFloat(_)
             | ErrorKind::InvalidDateTime(_) => {
-                snippet = snippet.annotation(
-                    AnnotationKind::Primary
-                        .span(span)
-                        .label(self.to_string()),
-                );
+                snippet =
+                    snippet.annotation(AnnotationKind::Primary.span(span).label(self.to_string()));
             }
             ErrorKind::OutOfRange(_) => {
-                snippet = snippet
-                    .annotation(AnnotationKind::Primary.span(span));
+                snippet = snippet.annotation(AnnotationKind::Primary.span(span));
             }
             ErrorKind::Wanted { expected, .. } => {
                 snippet = snippet.annotation(
@@ -436,11 +460,11 @@ impl Error {
                         .label("multiline keys are not allowed"),
                 );
             }
-            ErrorKind::UnterminatedString => {
+            ErrorKind::UnterminatedString(delim) => {
                 snippet = snippet.annotation(
                     AnnotationKind::Primary
                         .span(span)
-                        .label("eof reached before string terminator"),
+                        .label(format!("expected `{delim}`")),
                 );
             }
             ErrorKind::DuplicateTable { first, .. } => {
@@ -450,11 +474,7 @@ impl Error {
                             .span(first.range())
                             .label("first table instance"),
                     )
-                    .annotation(
-                        AnnotationKind::Primary
-                            .span(span)
-                            .label("duplicate table"),
-                    );
+                    .annotation(AnnotationKind::Primary.span(span).label("duplicate table"));
             }
             ErrorKind::InvalidHexEscape(c) => {
                 snippet = snippet.annotation(
@@ -472,8 +492,7 @@ impl Error {
             }
             ErrorKind::UnexpectedKeys { keys } => {
                 for (_name, key_span) in keys {
-                    snippet = snippet
-                        .annotation(AnnotationKind::Context.span(key_span.range()));
+                    snippet = snippet.annotation(AnnotationKind::Context.span(key_span.range()));
                 }
             }
             ErrorKind::MissingField(_) => {
@@ -484,29 +503,19 @@ impl Error {
                 );
             }
             ErrorKind::DuplicateField(_) => {
-                snippet = snippet.annotation(
-                    AnnotationKind::Primary
-                        .span(span)
-                        .label("duplicate field"),
-                );
+                snippet =
+                    snippet.annotation(AnnotationKind::Primary.span(span).label("duplicate field"));
             }
             ErrorKind::Deprecated { .. } => {
-                snippet = snippet.annotation(
-                    AnnotationKind::Primary
-                        .span(span)
-                        .label("deprecated field"),
-                );
+                snippet = snippet
+                    .annotation(AnnotationKind::Primary.span(span).label("deprecated field"));
             }
             ErrorKind::UnexpectedValue { .. } => {
-                snippet = snippet.annotation(
-                    AnnotationKind::Primary
-                        .span(span)
-                        .label("unexpected value"),
-                );
+                snippet = snippet
+                    .annotation(AnnotationKind::Primary.span(span).label("unexpected value"));
             }
             ErrorKind::UnexpectedEof => {
-                snippet = snippet
-                    .annotation(AnnotationKind::Primary.span(span));
+                snippet = snippet.annotation(AnnotationKind::Primary.span(span));
             }
             ErrorKind::DottedKeyInvalidType { first } => {
                 snippet = snippet
@@ -522,22 +531,33 @@ impl Error {
                     );
             }
             ErrorKind::RedefineAsArray => {
-                snippet = snippet
-                    .annotation(AnnotationKind::Primary.span(span));
+                snippet = snippet.annotation(AnnotationKind::Primary.span(span));
             }
             ErrorKind::Custom(_) => {
-                snippet = snippet
-                    .annotation(AnnotationKind::Primary.span(span));
+                snippet = snippet.annotation(AnnotationKind::Primary.span(span));
             }
             ErrorKind::FileTooLarge => {
-                snippet = snippet
-                    .annotation(AnnotationKind::Primary.span(span));
+                snippet = snippet.annotation(AnnotationKind::Primary.span(span));
+            }
+            ErrorKind::MissingArrayComma => {
+                snippet =
+                    snippet.annotation(AnnotationKind::Primary.span(span).label("expected `,`"));
+            }
+            ErrorKind::UnclosedArray => {
+                snippet =
+                    snippet.annotation(AnnotationKind::Primary.span(span).label("expected `]`"));
+            }
+            ErrorKind::MissingInlineTableComma => {
+                snippet =
+                    snippet.annotation(AnnotationKind::Primary.span(span).label("expected `,`"));
+            }
+            ErrorKind::UnclosedInlineTable => {
+                snippet =
+                    snippet.annotation(AnnotationKind::Primary.span(span).label("expected `}`"));
             }
         }
 
-        Level::ERROR
-            .primary_title(title)
-            .element(snippet)
+        Level::ERROR.primary_title(title).element(snippet)
     }
 }
 
@@ -589,8 +609,8 @@ impl Error {
             ErrorKind::MultilineStringKey => diag.with_labels(vec![
                 Label::primary(fid, self.span).with_message("multiline keys are not allowed"),
             ]),
-            ErrorKind::UnterminatedString => diag.with_labels(vec![
-                Label::primary(fid, self.span).with_message("eof reached before string terminator"),
+            ErrorKind::UnterminatedString(delim) => diag.with_labels(vec![
+                Label::primary(fid, self.span).with_message(format!("expected `{delim}`")),
             ]),
             ErrorKind::DuplicateTable { first, .. } => diag.with_labels(vec![
                 Label::secondary(fid, *first).with_message("first table instance"),
@@ -650,6 +670,22 @@ impl Error {
             ErrorKind::FileTooLarge => diag
                 .with_message("file is too large (maximum 512 MiB)")
                 .with_labels(vec![Label::primary(fid, self.span)]),
+            ErrorKind::MissingArrayComma => diag.with_message(self.to_string()).with_labels(vec![
+                Label::primary(fid, self.span).with_message("expected `,`"),
+            ]),
+            ErrorKind::UnclosedArray => diag.with_message(self.to_string()).with_labels(vec![
+                Label::primary(fid, self.span).with_message("expected `]`"),
+            ]),
+            ErrorKind::MissingInlineTableComma => {
+                diag.with_message(self.to_string()).with_labels(vec![
+                    Label::primary(fid, self.span).with_message("expected `,`"),
+                ])
+            }
+            ErrorKind::UnclosedInlineTable => {
+                diag.with_message(self.to_string()).with_labels(vec![
+                    Label::primary(fid, self.span).with_message("expected `}`"),
+                ])
+            }
         }
     }
 }

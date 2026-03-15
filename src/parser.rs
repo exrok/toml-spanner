@@ -557,7 +557,7 @@ impl<'de> Parser<'de> {
 
             let i = self.cursor;
             let Some(&b) = self.bytes.get(i) else {
-                return Err(self.set_error(start, None, ErrorKind::UnterminatedString));
+                return Err(self.set_error(start, None, ErrorKind::UnterminatedString(delim as char)));
             };
             self.cursor = i + 1;
 
@@ -566,9 +566,9 @@ impl<'de> Parser<'de> {
                     if self.eat_byte(b'\n') {
                         if !multiline {
                             return Err(self.set_error(
-                                i,
+                                start,
                                 None,
-                                ErrorKind::InvalidCharInString('\n'),
+                                ErrorKind::UnterminatedString(delim as char),
                             ));
                         }
                     } else {
@@ -577,7 +577,11 @@ impl<'de> Parser<'de> {
                 }
                 b'\n' => {
                     if !multiline {
-                        return Err(self.set_error(i, None, ErrorKind::InvalidCharInString('\n')));
+                        return Err(self.set_error(
+                            start,
+                            None,
+                            ErrorKind::UnterminatedString(delim as char),
+                        ));
                     }
                 }
                 d if d == delim => {
@@ -642,7 +646,7 @@ impl<'de> Parser<'de> {
     ) -> Result<(), Failed> {
         let i = self.cursor;
         let Some(&b) = self.bytes.get(i) else {
-            return Err(self.set_error(string_start, None, ErrorKind::UnterminatedString));
+            return Err(self.set_error(string_start, None, ErrorKind::UnterminatedString('"')));
         };
         self.cursor = i + 1;
         let chr: char = 'char: {
@@ -748,7 +752,7 @@ impl<'de> Parser<'de> {
         let mut val: u32 = 0;
         for _ in 0..n {
             let Some(&byte) = self.bytes.get(self.cursor) else {
-                return Err(self.set_error(string_start, None, ErrorKind::UnterminatedString));
+                return Err(self.set_error(string_start, None, ErrorKind::UnterminatedString('"')));
             };
             let digit = HEX[byte as usize];
             if digit >= 0 {
@@ -1273,8 +1277,13 @@ impl<'de> Parser<'de> {
             if self.eat_byte(b'}') {
                 return Ok(());
             }
-            if let Err(e) = self.expect_byte(b',') {
-                return Err(e);
+            if !self.eat_byte(b',') {
+                let start = self.cursor;
+                if self.peek_byte().is_none() {
+                    return Err(self.set_error(start, None, ErrorKind::UnclosedInlineTable));
+                }
+                let (_found_desc, end) = self.scan_token_desc_and_end();
+                return Err(self.set_error(start, Some(end), ErrorKind::MissingInlineTableComma));
             }
             if let Err(e) = self.eat_inline_table_whitespace() {
                 return Err(e);
@@ -1318,7 +1327,15 @@ impl<'de> Parser<'de> {
         if let Err(e) = self.eat_intermediate() {
             return Err(e);
         }
-        self.expect_byte(b']')
+        if self.eat_byte(b']') {
+            return Ok(());
+        }
+        let start = self.cursor;
+        if self.peek_byte().is_none() {
+            return Err(self.set_error(start, None, ErrorKind::UnclosedArray));
+        }
+        let (_found_desc, end) = self.scan_token_desc_and_end();
+        Err(self.set_error(start, Some(end), ErrorKind::MissingArrayComma))
     }
 
     #[inline(always)]

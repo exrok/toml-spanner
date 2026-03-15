@@ -46,7 +46,7 @@ fn display_all_error_kinds() {
         ),
         (ErrorKind::InvalidHexEscape('g'), "invalid-hex-escape"),
         (ErrorKind::Unexpected('!'), "unexpected"),
-        (ErrorKind::UnterminatedString, "unterminated-string"),
+        (ErrorKind::UnterminatedString('"'), "unterminated-string"),
         (ErrorKind::InvalidInteger(""), "invalid-integer"),
         (ErrorKind::InvalidInteger("integer overflow"), "invalid-integer"),
         (ErrorKind::InvalidFloat(""), "invalid-float"),
@@ -76,6 +76,13 @@ fn display_all_error_kinds() {
             },
             "unexpected-value",
         ),
+        (ErrorKind::MissingArrayComma, "missing-array-comma"),
+        (ErrorKind::UnclosedArray, "unclosed-array"),
+        (
+            ErrorKind::MissingInlineTableComma,
+            "missing-inline-table-comma",
+        ),
+        (ErrorKind::UnclosedInlineTable, "unclosed-inline-table"),
     ];
 
     for (kind, expected) in &cases {
@@ -149,10 +156,17 @@ fn error_display_all_variants() {
         ),
         (
             Error {
-                kind: ErrorKind::UnterminatedString,
+                kind: ErrorKind::UnterminatedString('"'),
                 span,
             },
-            "unterminated string",
+            "invalid basic string, expected `\"`",
+        ),
+        (
+            Error {
+                kind: ErrorKind::UnterminatedString('\''),
+                span,
+            },
+            "invalid literal string, expected `'`",
         ),
         (
             Error {
@@ -312,6 +326,34 @@ fn error_display_all_variants() {
                 span,
             },
             "expected '[x, y]'",
+        ),
+        (
+            Error {
+                kind: ErrorKind::MissingArrayComma,
+                span,
+            },
+            "missing comma between array elements, expected `,`",
+        ),
+        (
+            Error {
+                kind: ErrorKind::UnclosedArray,
+                span,
+            },
+            "unclosed array, expected `]`",
+        ),
+        (
+            Error {
+                kind: ErrorKind::MissingInlineTableComma,
+                span,
+            },
+            "missing comma in inline table, expected `,`",
+        ),
+        (
+            Error {
+                kind: ErrorKind::UnclosedInlineTable,
+                span,
+            },
+            "unclosed inline table, expected `}`",
         ),
     ];
 

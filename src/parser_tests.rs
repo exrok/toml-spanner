@@ -306,7 +306,7 @@ fn parse_errors() {
     assert!(matches!(e.kind, ErrorKind::DuplicateKey { .. }));
 
     let e = ctx.parse_err("a = \"unterminated");
-    assert!(matches!(e.kind, ErrorKind::UnterminatedString));
+    assert!(matches!(e.kind, ErrorKind::UnterminatedString('"')));
 
     let e = ctx.parse_err(r#"a = "\z""#);
     assert!(matches!(e.kind, ErrorKind::InvalidEscape('z')));
@@ -571,7 +571,7 @@ fn crlf_handling() {
 
     let e = ctx.parse_err("a = \"hello\r\nworld\"");
     assert!(
-        matches!(e.kind, ErrorKind::InvalidCharInString('\n')),
+        matches!(e.kind, ErrorKind::UnterminatedString('"')),
         "input: a = \"hello\\r\\nworld\""
     );
 
@@ -656,7 +656,7 @@ fn escape_sequences() {
 
     let e = ctx.parse_err("a = \"\\u00");
     assert!(
-        matches!(e.kind, ErrorKind::UnterminatedString),
+        matches!(e.kind, ErrorKind::UnterminatedString('"')),
         "input: a = \"\\u00"
     );
 
@@ -858,11 +858,11 @@ fn structural_errors() {
 
     // newline in basic string
     let e = ctx.parse_err("a = \"line1\nline2\"");
-    assert!(matches!(e.kind, ErrorKind::InvalidCharInString('\n')));
+    assert!(matches!(e.kind, ErrorKind::UnterminatedString('"')));
 
     // newline in literal string
     let e = ctx.parse_err("a = 'line1\nline2'");
-    assert!(matches!(e.kind, ErrorKind::InvalidCharInString('\n')));
+    assert!(matches!(e.kind, ErrorKind::UnterminatedString('\'')));
 
     // DEL character in string
     let e = ctx.parse_err("a = \"hello\x7Fworld\"");
@@ -1028,11 +1028,11 @@ fn more_parse_errors() {
 
     // missing closing brace in inline table
     let e = ctx.parse_err("a = {x = 1");
-    assert!(matches!(e.kind, ErrorKind::Wanted { .. }));
+    assert!(matches!(e.kind, ErrorKind::UnclosedInlineTable));
 
     // missing closing bracket in array
     let e = ctx.parse_err("a = [1, 2");
-    assert!(matches!(e.kind, ErrorKind::Wanted { .. }));
+    assert!(matches!(e.kind, ErrorKind::UnclosedArray));
 
     // junk after value on same line
     let e = ctx.parse_err("a = 1 b = 2");
@@ -1080,11 +1080,11 @@ fn more_parse_errors() {
 
     // unterminated quoted key
     let e = ctx.parse_err(r#""unterminated = 1"#);
-    assert!(matches!(e.kind, ErrorKind::UnterminatedString));
+    assert!(matches!(e.kind, ErrorKind::UnterminatedString('"')));
 
     // unterminated literal key
     let e = ctx.parse_err("'unterminated = 1");
-    assert!(matches!(e.kind, ErrorKind::UnterminatedString));
+    assert!(matches!(e.kind, ErrorKind::UnterminatedString('\'')));
 
     // expected key found equals
     let e = ctx.parse_err("= 1");
@@ -1102,7 +1102,7 @@ fn more_parse_errors() {
 
     // CRLF in basic string (not multiline) is an error
     let e = ctx.parse_err("a = \"hello\r\nworld\"");
-    assert!(matches!(e.kind, ErrorKind::InvalidCharInString('\n')));
+    assert!(matches!(e.kind, ErrorKind::UnterminatedString('"')));
 }
 
 #[test]
@@ -1164,13 +1164,7 @@ fn scan_token_desc_branches() {
     // Identifier branch: missing comma, cursor at next identifier
     let e = ctx.parse_err("a = {x = 1 y = 2}");
     assert!(
-        matches!(
-            e.kind,
-            ErrorKind::Wanted {
-                found: "an identifier",
-                ..
-            }
-        ),
+        matches!(e.kind, ErrorKind::MissingInlineTableComma),
         "input: a = {{x = 1 y = 2}}, got: {:?}",
         e.kind
     );
@@ -1178,13 +1172,7 @@ fn scan_token_desc_branches() {
     // Generic character branch: non-special byte
     let e = ctx.parse_err("a = {x = 1 @}");
     assert!(
-        matches!(
-            e.kind,
-            ErrorKind::Wanted {
-                found: "a character",
-                ..
-            }
-        ),
+        matches!(e.kind, ErrorKind::MissingInlineTableComma),
         "input: a = {{x = 1 @}}, got: {:?}",
         e.kind
     );
@@ -1198,7 +1186,7 @@ fn string_eof_edge_cases() {
     for input in eof_cases {
         let e = ctx.parse_err(input);
         assert!(
-            matches!(e.kind, ErrorKind::UnterminatedString),
+            matches!(e.kind, ErrorKind::UnterminatedString('"')),
             "input: {input}"
         );
     }
@@ -1998,7 +1986,7 @@ fn scan_token_whitespace_and_string() {
     // scan_token_desc_and_end with whitespace (space/tab run)
     let e = ctx.parse_err("a = {x = 1   ");
     assert!(
-        matches!(e.kind, ErrorKind::Wanted { .. }),
+        matches!(e.kind, ErrorKind::UnclosedInlineTable),
         "input: truncated inline table with trailing whitespace"
     );
 
@@ -2102,9 +2090,9 @@ fn parse_error_token_descriptions() {
 
     // Incomplete inline table with whitespace error
     let e = ctx.parse_err("t = { a = 1  ");
-    assert!(matches!(e.kind, ErrorKind::Wanted { .. }));
+    assert!(matches!(e.kind, ErrorKind::UnclosedInlineTable));
 
     // Array with trailing error
     let e = ctx.parse_err("a = [1, 2  ");
-    assert!(matches!(e.kind, ErrorKind::Wanted { .. }));
+    assert!(matches!(e.kind, ErrorKind::UnclosedArray));
 }
