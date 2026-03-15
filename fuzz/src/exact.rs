@@ -58,7 +58,7 @@ pub fn collect_body_entries<'de>(
         path.push(key.name);
         let key_start = key.span.start as usize;
         let key_end = key.span.end as usize;
-        let val_span = item.span_unchecked();
+        let val_span = item.span();
 
         match item.value() {
             Value::Table(sub) => {

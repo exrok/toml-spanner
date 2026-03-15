@@ -1,0 +1,13 @@
+---
+source: snapshot-tests/tests/annotate_snippets.rs
+assertion_line: 7
+expression: rendered
+---
+error: invalid character in string: `
+       `
+ --> newline_string:1:6
+  |
+1 |   a = "
+  |  ______^
+2 | | "
+  | |_^ invalid character '\n' in string

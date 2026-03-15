@@ -1,0 +1,14 @@
+---
+source: snapshot-tests/tests/annotate_snippets.rs
+assertion_line: 11
+expression: rendered
+---
+error: redefinition of table `b`
+ --> table_redefinition:2:1
+  |
+1 | / [a.b]
+2 | | [a."b"]
+  | | -^^^^^^
+  | | |
+  | |_duplicate table
+  |   first table instance

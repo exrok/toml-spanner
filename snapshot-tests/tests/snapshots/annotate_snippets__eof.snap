@@ -1,0 +1,10 @@
+---
+source: snapshot-tests/tests/annotate_snippets.rs
+assertion_line: 15
+expression: rendered
+---
+error: unexpected eof encountered
+ --> eof:1:6
+  |
+1 | key =
+  |      ^

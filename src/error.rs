@@ -354,7 +354,194 @@ impl Display for Error {
     }
 }
 
-#[cfg(feature = "reporting")]
+#[cfg(feature = "annotate-snippets")]
+impl Error {
+    /// Converts this error into an [`annotate_snippets::Group`] for rendering
+    /// with [`annotate_snippets`].
+    pub fn to_snippet<'s>(
+        &self,
+        source: &'s str,
+        path: &'s str,
+    ) -> annotate_snippets::Group<'s> {
+        use annotate_snippets::{AnnotationKind, Level, Snippet};
+
+        let title = self.to_string();
+        let span = self.span.range();
+
+        let mut snippet = Snippet::source(source).path(path).fold(true);
+
+        match &self.kind {
+            ErrorKind::DuplicateKey { first, .. } => {
+                snippet = snippet
+                    .annotation(
+                        AnnotationKind::Context
+                            .span(first.range())
+                            .label("first key instance"),
+                    )
+                    .annotation(AnnotationKind::Primary.span(span).label("duplicate key"));
+            }
+            ErrorKind::Unexpected(c) => {
+                snippet = snippet.annotation(
+                    AnnotationKind::Primary
+                        .span(span)
+                        .label(format!("unexpected character '{}'", Escape(*c))),
+                );
+            }
+            ErrorKind::InvalidCharInString(c) => {
+                snippet = snippet.annotation(
+                    AnnotationKind::Primary
+                        .span(span)
+                        .label(format!("invalid character '{}' in string", Escape(*c))),
+                );
+            }
+            ErrorKind::InvalidEscape(c) => {
+                snippet = snippet.annotation(
+                    AnnotationKind::Primary.span(span).label(format!(
+                        "invalid escape character '{}' in string",
+                        Escape(*c)
+                    )),
+                );
+            }
+            ErrorKind::InvalidEscapeValue(_) => {
+                snippet = snippet.annotation(
+                    AnnotationKind::Primary
+                        .span(span)
+                        .label("invalid escape value"),
+                );
+            }
+            ErrorKind::InvalidInteger(_)
+            | ErrorKind::InvalidFloat(_)
+            | ErrorKind::InvalidDateTime(_) => {
+                snippet = snippet.annotation(
+                    AnnotationKind::Primary
+                        .span(span)
+                        .label(self.to_string()),
+                );
+            }
+            ErrorKind::OutOfRange(_) => {
+                snippet = snippet
+                    .annotation(AnnotationKind::Primary.span(span));
+            }
+            ErrorKind::Wanted { expected, .. } => {
+                snippet = snippet.annotation(
+                    AnnotationKind::Primary
+                        .span(span)
+                        .label(format!("expected {expected}")),
+                );
+            }
+            ErrorKind::MultilineStringKey => {
+                snippet = snippet.annotation(
+                    AnnotationKind::Primary
+                        .span(span)
+                        .label("multiline keys are not allowed"),
+                );
+            }
+            ErrorKind::UnterminatedString => {
+                snippet = snippet.annotation(
+                    AnnotationKind::Primary
+                        .span(span)
+                        .label("eof reached before string terminator"),
+                );
+            }
+            ErrorKind::DuplicateTable { first, .. } => {
+                snippet = snippet
+                    .annotation(
+                        AnnotationKind::Context
+                            .span(first.range())
+                            .label("first table instance"),
+                    )
+                    .annotation(
+                        AnnotationKind::Primary
+                            .span(span)
+                            .label("duplicate table"),
+                    );
+            }
+            ErrorKind::InvalidHexEscape(c) => {
+                snippet = snippet.annotation(
+                    AnnotationKind::Primary
+                        .span(span)
+                        .label(format!("invalid hex escape '{}'", Escape(*c))),
+                );
+            }
+            ErrorKind::UnquotedString => {
+                snippet = snippet.annotation(
+                    AnnotationKind::Primary
+                        .span(span)
+                        .label("string is not quoted"),
+                );
+            }
+            ErrorKind::UnexpectedKeys { keys } => {
+                for (_name, key_span) in keys {
+                    snippet = snippet
+                        .annotation(AnnotationKind::Context.span(key_span.range()));
+                }
+            }
+            ErrorKind::MissingField(_) => {
+                snippet = snippet.annotation(
+                    AnnotationKind::Primary
+                        .span(span)
+                        .label("table with missing field"),
+                );
+            }
+            ErrorKind::DuplicateField(_) => {
+                snippet = snippet.annotation(
+                    AnnotationKind::Primary
+                        .span(span)
+                        .label("duplicate field"),
+                );
+            }
+            ErrorKind::Deprecated { .. } => {
+                snippet = snippet.annotation(
+                    AnnotationKind::Primary
+                        .span(span)
+                        .label("deprecated field"),
+                );
+            }
+            ErrorKind::UnexpectedValue { .. } => {
+                snippet = snippet.annotation(
+                    AnnotationKind::Primary
+                        .span(span)
+                        .label("unexpected value"),
+                );
+            }
+            ErrorKind::UnexpectedEof => {
+                snippet = snippet
+                    .annotation(AnnotationKind::Primary.span(span));
+            }
+            ErrorKind::DottedKeyInvalidType { first } => {
+                snippet = snippet
+                    .annotation(
+                        AnnotationKind::Primary
+                            .span(span)
+                            .label("attempted to extend table here"),
+                    )
+                    .annotation(
+                        AnnotationKind::Context
+                            .span(first.range())
+                            .label("non-table"),
+                    );
+            }
+            ErrorKind::RedefineAsArray => {
+                snippet = snippet
+                    .annotation(AnnotationKind::Primary.span(span));
+            }
+            ErrorKind::Custom(_) => {
+                snippet = snippet
+                    .annotation(AnnotationKind::Primary.span(span));
+            }
+            ErrorKind::FileTooLarge => {
+                snippet = snippet
+                    .annotation(AnnotationKind::Primary.span(span));
+            }
+        }
+
+        Level::ERROR
+            .primary_title(title)
+            .element(snippet)
+    }
+}
+
+#[cfg(feature = "codespan-reporting")]
 impl Error {
     /// Converts this error into a [`codespan_reporting`](https://docs.rs/codespan-reporting) diagnostic.
     pub fn to_diagnostic<FileId: Copy + PartialEq>(

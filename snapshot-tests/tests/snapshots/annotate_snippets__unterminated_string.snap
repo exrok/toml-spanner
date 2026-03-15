@@ -1,0 +1,10 @@
+---
+source: snapshot-tests/tests/annotate_snippets.rs
+assertion_line: 10
+expression: rendered
+---
+error: unterminated string
+ --> unterminated_string:1:7
+  |
+1 | foo = "\
+  |       ^ eof reached before string terminator

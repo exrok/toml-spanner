@@ -1,0 +1,10 @@
+---
+source: snapshot-tests/tests/annotate_snippets.rs
+assertion_line: 9
+expression: rendered
+---
+error: invalid escape value: `55296`
+ --> bad_codepoint:1:9
+  |
+1 | foo = "\uD800"
+  |         ^^^^ invalid escape value

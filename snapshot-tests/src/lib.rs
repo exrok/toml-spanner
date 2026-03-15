@@ -221,3 +221,54 @@ macro_rules! invalid {
         }
     };
 }
+
+pub fn render_snippets(groups: &[annotate_snippets::Group<'_>]) -> String {
+    let renderer = annotate_snippets::Renderer::plain();
+    renderer.render(groups).to_string()
+}
+
+#[macro_export]
+macro_rules! snippet_error_snapshot {
+    ($name:ident, $groups:expr) => {
+        let rendered = $crate::render_snippets(&$groups);
+        insta::assert_snapshot!(rendered);
+    };
+}
+
+#[macro_export]
+macro_rules! invalid_snippet {
+    ($name:ident, $toml:expr) => {
+        #[test]
+        fn $name() {
+            let arena = toml_spanner::Arena::new();
+            let error = toml_spanner::parse($toml, &arena).unwrap_err();
+            let group = error.to_snippet($toml, stringify!($name));
+            $crate::snippet_error_snapshot!($name, [group]);
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! invalid_de_snippet {
+    ($name:ident, $kind:ty, $toml:literal) => {
+        #[test]
+        fn $name() {
+            let arena = toml_spanner::Arena::new();
+            let mut doc = toml_spanner::parse($toml, &arena).expect("failed to parse toml");
+
+            match doc.to::<$kind>() {
+                Ok(de) => {
+                    panic!("expected errors but deserialized '{de:#?}' successfully");
+                }
+                Err(e) => {
+                    let groups: Vec<_> = e
+                        .errors
+                        .iter()
+                        .map(|e| e.to_snippet($toml, stringify!($name)))
+                        .collect();
+                    $crate::snippet_error_snapshot!($name, groups);
+                }
+            }
+        }
+    };
+}

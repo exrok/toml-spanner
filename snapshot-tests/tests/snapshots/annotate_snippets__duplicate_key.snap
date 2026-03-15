@@ -1,0 +1,12 @@
+---
+source: snapshot-tests/tests/annotate_snippets.rs
+assertion_line: 8
+expression: rendered
+---
+error: duplicate key: `a`
+ --> duplicate_key:1:10
+  |
+1 | a = {a=1,a=1}
+  |      -   ^ duplicate key
+  |      |
+  |      first key instance

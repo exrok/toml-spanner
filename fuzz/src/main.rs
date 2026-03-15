@@ -207,7 +207,7 @@ fn run_reproject_identity(path: &str) {
     };
 
     println!("── parsed input ──");
-    fuzz::gen_tree::print_table(src_doc.table(), "source tree");
+    fuzz::gen_tree::print_table(src_root.table(), "source tree");
     println!();
 
     // Parse as dest (identity — same text).
@@ -272,8 +272,8 @@ fn run_reproject_identity(path: &str) {
 
     // Invariant 3: semantically equal with matching flags.
     match fuzz::gen_tree::items_eq(
-        src_doc.table().as_item(),
-        out_doc.table().as_item(),
+        src_root.table().as_item(),
+        out_root.table().as_item(),
         &mut Vec::new(),
     ) {
         Ok(()) => println!("── items_eq: OK ──"),
@@ -289,8 +289,8 @@ fn run_reproject_identity(path: &str) {
 
     // Also check flags match (gen_tree::items_eq checks values but not flags).
     check_flags_match(
-        src_doc.table().as_item(),
-        out_doc.table().as_item(),
+        src_root.table().as_item(),
+        out_root.table().as_item(),
         &mut Vec::new(),
         &text,
         &output,
@@ -423,7 +423,7 @@ fn run_reproject_edit(path: &str) {
             std::process::exit(1);
         }
     };
-    fuzz::gen_tree::print_table(src_doc.table(), "parsed source");
+    fuzz::gen_tree::print_table(src_root.table(), "parsed source");
     println!();
 
     // Parse dest (reference copy — not modified).
@@ -435,7 +435,7 @@ fn run_reproject_edit(path: &str) {
             std::process::exit(1);
         }
     };
-    fuzz::gen_tree::print_table(ref_doc.table(), "parsed dest (reference)");
+    fuzz::gen_tree::print_table(ref_root.table(), "parsed dest (reference)");
     println!();
 
     // Parse dest (working copy for reproject + normalize).
@@ -500,7 +500,7 @@ fn run_reproject_edit(path: &str) {
     };
 
     // Invariant 3: semantically equal to dest (values, ignoring flags).
-    if ref_doc.table().as_item() != out_doc.table().as_item() {
+    if ref_root.table().as_item() != out_root.table().as_item() {
         eprintln!(
             "FAILURE: emit output differs semantically from dest!\n\
              src:\n{src_text:?}\n\
@@ -575,7 +575,7 @@ fn run_reproject_reorder(path: &str) {
             std::process::exit(1);
         }
     };
-    fuzz::gen_tree::print_table(src_doc.table(), "parsed source");
+    fuzz::gen_tree::print_table(src_root.table(), "parsed source");
     println!();
 
     // Parse dest (reference copy — not modified).
@@ -587,7 +587,7 @@ fn run_reproject_reorder(path: &str) {
             std::process::exit(1);
         }
     };
-    fuzz::gen_tree::print_table(ref_doc.table(), "parsed dest (reference)");
+    fuzz::gen_tree::print_table(ref_root.table(), "parsed dest (reference)");
     println!();
 
     // Parse dest (working copy for reproject + normalize).
@@ -602,7 +602,7 @@ fn run_reproject_reorder(path: &str) {
 
     // Collect projected source key positions before reproject mutates things.
     let mut src_positions: Vec<(Vec<String>, u32)> = Vec::new();
-    collect_table_key_positions(src_doc.table(), &mut Vec::new(), &mut src_positions);
+    collect_table_key_positions(src_root.table(), &mut Vec::new(), &mut src_positions);
     println!("── source key positions ({}) ──", src_positions.len());
     for (path, pos) in &src_positions {
         println!("  {} @ {pos}", path.join("."));
@@ -661,7 +661,7 @@ fn run_reproject_reorder(path: &str) {
     };
 
     // Invariant 3: semantically equal to dest (values, ignoring flags).
-    if ref_doc.table().as_item() != out_doc.table().as_item() {
+    if ref_root.table().as_item() != out_root.table().as_item() {
         eprintln!(
             "FAILURE: emit output differs semantically from dest!\n\
              src:\n{src_text:?}\n\
@@ -706,7 +706,7 @@ fn run_reproject_reorder(path: &str) {
 
     // Invariant 5: projected entries preserve their source-relative ordering.
     let mut out_positions: Vec<(Vec<String>, u32)> = Vec::new();
-    collect_table_key_positions(out_doc.table(), &mut Vec::new(), &mut out_positions);
+    collect_table_key_positions(out_root.table(), &mut Vec::new(), &mut out_positions);
     println!("── output key positions ({}) ──", out_positions.len());
     for (path, pos) in &out_positions {
         println!("  {} @ {pos}", path.join("."));
@@ -839,10 +839,10 @@ fn run_reproject_exact(path: &str) {
         }
     };
 
-    fuzz::gen_tree::print_table(src_doc.table(), "parsed source");
+    fuzz::gen_tree::print_table(src_root.table(), "parsed source");
     println!();
 
-    if src_doc.table().try_as_normalized().is_none() {
+    if src_root.table().try_as_normalized().is_none() {
         println!("table is not normalizable, skipping");
         return;
     }
@@ -852,7 +852,7 @@ fn run_reproject_exact(path: &str) {
     // Collect body entries.
     let mut entries = Vec::new();
     fuzz::exact::collect_body_entries(
-        src_doc.table(),
+        src_root.table(),
         source_bytes,
         &mut Vec::new(),
         &mut entries,
@@ -922,7 +922,7 @@ fn run_reproject_exact(path: &str) {
                 }
             };
 
-            let mut dest_table = src_doc.table().clone_in(&arena);
+            let mut dest_table = src_root.table().clone_in(&arena);
             fuzz::exact::set_at_path(&mut dest_table, &entry.path, new_item);
 
             let mut items = Vec::new();
@@ -950,7 +950,7 @@ fn run_reproject_exact(path: &str) {
 
             // Semantic check.
             let out_root = toml_spanner::parse(&output, &arena).unwrap();
-            if dest_table.as_item() != out_doc.table().as_item() {
+            if dest_table.as_item() != out_root.table().as_item() {
                 eprintln!("FAILURE: semantic mismatch after edit");
                 std::process::exit(1);
             }
@@ -973,7 +973,7 @@ fn run_reproject_exact(path: &str) {
                 entry.path, entry.line_start, entry.line_end
             );
 
-            let mut dest_table = src_doc.table().clone_in(&arena);
+            let mut dest_table = src_root.table().clone_in(&arena);
             fuzz::exact::remove_at_path(&mut dest_table, &entry.path);
 
             let mut items = Vec::new();
@@ -1000,7 +1000,7 @@ fn run_reproject_exact(path: &str) {
 
             // Semantic check.
             let out_root = toml_spanner::parse(&output, &arena).unwrap();
-            if dest_table.as_item() != out_doc.table().as_item() {
+            if dest_table.as_item() != out_root.table().as_item() {
                 eprintln!("FAILURE: semantic mismatch after remove");
                 std::process::exit(1);
             }
@@ -1011,7 +1011,7 @@ fn run_reproject_exact(path: &str) {
 
         fuzz::exact::ModKind::Insert => {
             let mut targets = Vec::new();
-            fuzz::exact::insertable_targets(src_doc.table(), &mut Vec::new(), &mut targets);
+            fuzz::exact::insertable_targets(src_root.table(), &mut Vec::new(), &mut targets);
             if targets.is_empty() {
                 println!("no insertable targets, fuzzer would reject");
                 return;
@@ -1022,7 +1022,7 @@ fn run_reproject_exact(path: &str) {
                 fresh_key, table_path
             );
 
-            let mut dest_table = src_doc.table().clone_in(&arena);
+            let mut dest_table = src_root.table().clone_in(&arena);
             let target = fuzz::exact::table_at_path_mut(&mut dest_table, table_path);
             let new_item = toml_spanner::Item::from(42i64);
             target.insert(toml_spanner::Key::anon(fresh_key), new_item, &arena);
@@ -1051,7 +1051,7 @@ fn run_reproject_exact(path: &str) {
 
             // Semantic check.
             let out_root = toml_spanner::parse(&output, &arena).unwrap();
-            if dest_table.as_item() != out_doc.table().as_item() {
+            if dest_table.as_item() != out_root.table().as_item() {
                 eprintln!("FAILURE: semantic mismatch after insert");
                 std::process::exit(1);
             }

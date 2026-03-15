@@ -7,4 +7,4 @@ edition = "2024"
 codespan-reporting = "0.13.1"
 #jsony = { version = "0.1.8" }
 jsony.path = "/home/user/Projects/git/jsony/jsony"
-toml-spanner = { path = "..", features = ["reporting"] }
+toml-spanner = { path = "..", features = ["codespan-reporting"] }
