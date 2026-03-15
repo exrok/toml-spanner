@@ -46,7 +46,7 @@ fn deser_booleans() {
 
     // wrong type
     let err = parse_val::<bool>(r#"v = "not a bool""#, &arena).unwrap_err();
-    assert!(matches!(err.kind(), Some(crate::ErrorKind::Wanted { .. })));
+    assert!(matches!(err.kind(), crate::ErrorKind::Wanted { .. }));
 }
 
 #[test]
@@ -87,20 +87,20 @@ fn deser_integers() {
 
     // Out-of-range errors
     let err = parse_val::<i8>("v = 200", &arena).unwrap_err();
-    assert!(matches!(err.kind(), Some(crate::ErrorKind::OutOfRange("i8"))));
+    assert!(matches!(err.kind(), crate::ErrorKind::OutOfRange("i8")));
 
     let err = parse_val::<u8>("v = 256", &arena).unwrap_err();
-    assert!(matches!(err.kind(), Some(crate::ErrorKind::OutOfRange("u8"))));
+    assert!(matches!(err.kind(), crate::ErrorKind::OutOfRange("u8")));
 
     let err = parse_val::<u64>("v = -1", &arena).unwrap_err();
-    assert!(matches!(err.kind(), Some(crate::ErrorKind::OutOfRange("u64"))));
+    assert!(matches!(err.kind(), crate::ErrorKind::OutOfRange("u64")));
 
     let err = parse_val::<usize>("v = -1", &arena).unwrap_err();
-    assert!(matches!(err.kind(), Some(crate::ErrorKind::OutOfRange("usize"))));
+    assert!(matches!(err.kind(), crate::ErrorKind::OutOfRange("usize")));
 
     // Wrong type
     let err = parse_val::<i32>(r#"v = "not an int""#, &arena).unwrap_err();
-    assert!(matches!(err.kind(), Some(crate::ErrorKind::Wanted { .. })));
+    assert!(matches!(err.kind(), crate::ErrorKind::Wanted { .. }));
 }
 
 #[test]
@@ -117,10 +117,10 @@ fn deser_floats() {
 
     // Wrong type
     let err = parse_val::<f64>(r#"v = "not a float""#, &arena).unwrap_err();
-    assert!(matches!(err.kind(), Some(crate::ErrorKind::Wanted { .. })));
+    assert!(matches!(err.kind(), crate::ErrorKind::Wanted { .. }));
 
     let err = parse_val::<f32>(r#"v = "not a float""#, &arena).unwrap_err();
-    assert!(matches!(err.kind(), Some(crate::ErrorKind::Wanted { .. })));
+    assert!(matches!(err.kind(), crate::ErrorKind::Wanted { .. }));
 }
 
 #[test]
@@ -141,7 +141,7 @@ fn deser_vecs() {
 
     // Wrong type
     let err = parse_val::<Vec<i64>>(r#"v = "not an array""#, &arena).unwrap_err();
-    assert!(matches!(err.kind(), Some(crate::ErrorKind::Wanted { .. })));
+    assert!(matches!(err.kind(), crate::ErrorKind::Wanted { .. }));
 }
 
 #[test]
@@ -237,7 +237,7 @@ fn table_helper_workflows() {
     }
     assert!(matches!(
         doc.ctx.errors[0].kind(),
-        Some(crate::ErrorKind::UnexpectedKey)
+        crate::ErrorKind::UnexpectedKey
     ));
 
     // required() returns MissingField error for nonexistent key
@@ -248,7 +248,7 @@ fn table_helper_workflows() {
     }
     assert!(matches!(
         doc.ctx.errors[0].kind(),
-        Some(crate::ErrorKind::MissingField("nonexistent"))
+        crate::ErrorKind::MissingField("nonexistent")
     ));
 
     // optional() returns None for missing key (no error) and None with
@@ -287,23 +287,23 @@ fn deser_boxed_and_array_types() {
     let val: Box<str> = parse_val(r#"v = "boxed""#, &arena).unwrap();
     assert_eq!(&*val, "boxed");
     let err = parse_val::<Box<str>>("v = 42", &arena).unwrap_err();
-    assert!(matches!(err.kind(), Some(crate::ErrorKind::Wanted { .. })));
+    assert!(matches!(err.kind(), crate::ErrorKind::Wanted { .. }));
 
     // Box<T>
     let val: Box<i64> = parse_val("v = 42", &arena).unwrap();
     assert_eq!(*val, 42);
     let err = parse_val::<Box<i64>>(r#"v = "nope""#, &arena).unwrap_err();
-    assert!(matches!(err.kind(), Some(crate::ErrorKind::Wanted { .. })));
+    assert!(matches!(err.kind(), crate::ErrorKind::Wanted { .. }));
 
     // Box<[T]>
     let val: Box<[i64]> = parse_val("v = [1, 2, 3]", &arena).unwrap();
     assert_eq!(&*val, &[1, 2, 3]);
     let err = parse_val::<Box<[i64]>>(r#"v = "nope""#, &arena).unwrap_err();
-    assert!(matches!(err.kind(), Some(crate::ErrorKind::Wanted { .. })));
+    assert!(matches!(err.kind(), crate::ErrorKind::Wanted { .. }));
 
     // String wrong type
     let err = parse_val::<String>("v = 42", &arena).unwrap_err();
-    assert!(matches!(err.kind(), Some(crate::ErrorKind::Wanted { .. })));
+    assert!(matches!(err.kind(), crate::ErrorKind::Wanted { .. }));
 
     // [T; N] correct size
     let val: [i64; 3] = parse_val("v = [1, 2, 3]", &arena).unwrap();
@@ -311,13 +311,13 @@ fn deser_boxed_and_array_types() {
 
     // [T; N] wrong size
     let err = parse_val::<[i64; 2]>("v = [1, 2, 3]", &arena).unwrap_err();
-    assert!(err.kind().is_none());
+    assert!(matches!(err.kind(), crate::ErrorKind::Custom(_)));
 
     // &str and Cow<str> wrong type errors
     let err = parse_val::<&str>("v = 42", &arena).unwrap_err();
-    assert!(matches!(err.kind(), Some(crate::ErrorKind::Wanted { .. })));
+    assert!(matches!(err.kind(), crate::ErrorKind::Wanted { .. }));
     let err = parse_val::<std::borrow::Cow<'_, str>>("v = 42", &arena).unwrap_err();
-    assert!(matches!(err.kind(), Some(crate::ErrorKind::Wanted { .. })));
+    assert!(matches!(err.kind(), crate::ErrorKind::Wanted { .. }));
 
     // Vec<T> with element type errors
     let mut doc = crate::parser::parse(r#"v = [1, "bad", 3, "worse"]"#, &arena).unwrap();
@@ -353,7 +353,7 @@ fn expect_custom_string_and_context_errors() {
     }
     assert!(matches!(
         doc.ctx.errors[0].kind(),
-        Some(crate::ErrorKind::Wanted { .. })
+        crate::ErrorKind::Wanted { .. }
     ));
 
     // table_helper() on table vs non-table items
@@ -383,10 +383,10 @@ fn expect_custom_string_and_context_errors() {
     let _ = ctx.error_message_at("something went wrong", span);
     let _ = ctx.push_error(Error::new(crate::ErrorKind::InvalidInteger(""), span));
     assert_eq!(ctx.errors.len(), 2);
-    assert!(ctx.errors[0].kind().is_none());
+    assert!(matches!(ctx.errors[0].kind(), crate::ErrorKind::Custom(_)));
     assert!(matches!(
         ctx.errors[1].kind(),
-        Some(crate::ErrorKind::InvalidInteger(_))
+        crate::ErrorKind::InvalidInteger(_)
     ));
 }
 
@@ -467,7 +467,7 @@ x = 1
     }
     assert!(matches!(
         doc.ctx.errors[0].kind(),
-        Some(crate::ErrorKind::MissingField("missing"))
+        crate::ErrorKind::MissingField("missing")
     ));
 
     // optional_item returns Some for present key, None for absent
@@ -520,7 +520,7 @@ x = 1
     }
     assert!(matches!(
         doc.ctx.errors[0].kind(),
-        Some(crate::ErrorKind::UnexpectedKey)
+        crate::ErrorKind::UnexpectedKey
     ));
 
     // Works with indexed tables (7+ entries)
@@ -588,7 +588,7 @@ fn required_entry_and_optional_entry() {
     }
     assert!(matches!(
         doc.ctx.errors[0].kind(),
-        Some(crate::ErrorKind::MissingField("missing"))
+        crate::ErrorKind::MissingField("missing")
     ));
 
     // optional_entry returns Some with key+item for present key
@@ -628,7 +628,7 @@ fn required_entry_and_optional_entry() {
     }
     assert!(matches!(
         doc.ctx.errors[0].kind(),
-        Some(crate::ErrorKind::UnexpectedKey)
+        crate::ErrorKind::UnexpectedKey
     ));
 
     // Works with indexed tables (7+ entries)
@@ -709,7 +709,7 @@ fn required_mapped_and_optional_mapped() {
     }
     assert!(matches!(
         doc.ctx.errors[0].kind(),
-        Some(crate::ErrorKind::MissingField("missing"))
+        crate::ErrorKind::MissingField("missing")
     ));
 
     // required_mapped fails when the mapping function returns an error
@@ -719,7 +719,7 @@ fn required_mapped_and_optional_mapped() {
         assert!(h.required_mapped("ip", Item::parse::<Ipv4Addr>).is_err());
     }
     assert_eq!(doc.ctx.errors.len(), 1);
-    assert!(doc.ctx.errors[0].kind().is_none());
+    assert!(matches!(doc.ctx.errors[0].kind(), crate::ErrorKind::Custom(_)));
 
     // required_mapped fails when item is wrong type for mapping
     let mut doc = crate::parser::parse("count = -5", &arena).unwrap();
@@ -765,7 +765,7 @@ fn required_mapped_and_optional_mapped() {
         h.expect_empty().unwrap();
     }
     assert_eq!(doc.ctx.errors.len(), 1);
-    assert!(doc.ctx.errors[0].kind().is_none());
+    assert!(matches!(doc.ctx.errors[0].kind(), crate::ErrorKind::Custom(_)));
 
     // optional_mapped returns None when item is wrong type, records error
     let mut doc = crate::parser::parse("name = 42", &arena).unwrap();
@@ -841,12 +841,12 @@ key2 = "val2"
 
     // BTreeMap wrong type (not a table)
     let err = parse_val::<std::collections::BTreeMap<String, i64>>("v = 42", &arena).unwrap_err();
-    assert!(matches!(err.kind(), Some(crate::ErrorKind::Wanted { .. })));
+    assert!(matches!(err.kind(), crate::ErrorKind::Wanted { .. }));
 
     // HashMap wrong type
     let err =
         parse_val::<std::collections::HashMap<String, i64>>("v = \"nope\"", &arena).unwrap_err();
-    assert!(matches!(err.kind(), Some(crate::ErrorKind::Wanted { .. })));
+    assert!(matches!(err.kind(), crate::ErrorKind::Wanted { .. }));
 
     // PathBuf
     let val: std::path::PathBuf = parse_val(r#"v = "/usr/bin/test""#, &arena).unwrap();
@@ -854,7 +854,7 @@ key2 = "val2"
 
     // PathBuf wrong type
     let err = parse_val::<std::path::PathBuf>("v = 42", &arena).unwrap_err();
-    assert!(matches!(err.kind(), Some(crate::ErrorKind::Wanted { .. })));
+    assert!(matches!(err.kind(), crate::ErrorKind::Wanted { .. }));
 
     // HashMap with value type mismatch triggers error accumulation
     let input = r#"
@@ -863,7 +863,7 @@ good = 1
 bad = "not a number"
 "#;
     let err = parse_val::<std::collections::HashMap<String, i64>>(input, &arena).unwrap_err();
-    assert!(matches!(err.kind(), Some(crate::ErrorKind::Wanted { .. })));
+    assert!(matches!(err.kind(), crate::ErrorKind::Wanted { .. }));
 
     // BTreeMap with value type mismatch
     let input = r#"
@@ -872,7 +872,7 @@ ok = 10
 nope = "string"
 "#;
     let err = parse_val::<std::collections::BTreeMap<String, i64>>(input, &arena).unwrap_err();
-    assert!(matches!(err.kind(), Some(crate::ErrorKind::Wanted { .. })));
+    assert!(matches!(err.kind(), crate::ErrorKind::Wanted { .. }));
 }
 
 #[test]

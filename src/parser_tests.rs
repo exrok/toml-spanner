@@ -6,11 +6,9 @@ macro_rules! is_number_error {
     ($kind:expr) => {
         matches!(
             $kind,
-            Some(
-                ErrorKind::InvalidInteger(_)
-                    | ErrorKind::InvalidFloat(_)
-                    | ErrorKind::InvalidDateTime(_)
-            )
+            ErrorKind::InvalidInteger(_)
+                | ErrorKind::InvalidFloat(_)
+                | ErrorKind::InvalidDateTime(_)
         )
     };
 }
@@ -307,19 +305,19 @@ fn parse_errors() {
     let ctx = TestCtx::new();
 
     let e = ctx.parse_err("a = 1\na = 2");
-    assert!(matches!(e.kind(), Some(ErrorKind::DuplicateKey { .. })));
+    assert!(matches!(e.kind(), ErrorKind::DuplicateKey { .. }));
 
     let e = ctx.parse_err("a = \"unterminated");
-    assert!(matches!(e.kind(), Some(ErrorKind::UnterminatedString('"'))));
+    assert!(matches!(e.kind(), ErrorKind::UnterminatedString('"')));
 
     let e = ctx.parse_err(r#"a = "\z""#);
-    assert!(matches!(e.kind(), Some(ErrorKind::InvalidEscape('z'))));
+    assert!(matches!(e.kind(), ErrorKind::InvalidEscape('z')));
 
     let e = ctx.parse_err("[t]\na = 1\n[t]\nb = 2");
-    assert!(matches!(e.kind(), Some(ErrorKind::DuplicateTable { .. })));
+    assert!(matches!(e.kind(), ErrorKind::DuplicateTable { .. }));
 
     let e = ctx.parse_err("a = ");
-    assert!(matches!(e.kind(), Some(ErrorKind::UnexpectedEof)));
+    assert!(matches!(e.kind(), ErrorKind::UnexpectedEof));
 
     let e = ctx.parse_err("a = 0x");
     assert!(is_number_error!(e.kind()));
@@ -327,13 +325,13 @@ fn parse_errors() {
     let e = ctx.parse_err("a = 1\n[a]\nb = 2");
     assert!(matches!(
         e.kind(),
-        Some(ErrorKind::DuplicateTable { .. } | ErrorKind::DuplicateKey { .. })
+        ErrorKind::DuplicateTable { .. } | ErrorKind::DuplicateKey { .. }
     ));
 
     let e = ctx.parse_err("a = {x = 1}\n[a]\ny = 2");
     assert!(matches!(
         e.kind(),
-        Some(ErrorKind::DuplicateTable { .. } | ErrorKind::DuplicateKey { .. })
+        ErrorKind::DuplicateTable { .. } | ErrorKind::DuplicateKey { .. }
     ));
 }
 
@@ -451,7 +449,7 @@ fn recursion_depth_over_limit() {
     let e = ctx.parse_err(&input);
     assert!(matches!(
         e.kind(),
-        Some(ErrorKind::OutOfRange("Max recursion depth exceeded"))
+        ErrorKind::OutOfRange("Max recursion depth exceeded")
     ));
 
     // Nested inline tables one past the limit
@@ -466,7 +464,7 @@ fn recursion_depth_over_limit() {
     let e = ctx.parse_err(&input);
     assert!(matches!(
         e.kind(),
-        Some(ErrorKind::OutOfRange("Max recursion depth exceeded"))
+        ErrorKind::OutOfRange("Max recursion depth exceeded")
     ));
 
     // Mixed nesting one past the limit
@@ -481,7 +479,7 @@ fn recursion_depth_over_limit() {
     let e = ctx.parse_err(&input);
     assert!(matches!(
         e.kind(),
-        Some(ErrorKind::OutOfRange("Max recursion depth exceeded"))
+        ErrorKind::OutOfRange("Max recursion depth exceeded")
     ));
 }
 
@@ -569,20 +567,20 @@ fn crlf_handling() {
 
     let e = ctx.parse_err("a = \"hello\rworld\"");
     assert!(
-        matches!(e.kind(), Some(ErrorKind::InvalidCharInString('\r'))),
+        matches!(e.kind(), ErrorKind::InvalidCharInString('\r')),
         "input: a = \"hello\\rworld\""
     );
 
     let e = ctx.parse_err("a = \"hello\r\nworld\"");
     assert!(
-        matches!(e.kind(), Some(ErrorKind::UnterminatedString('"'))),
+        matches!(e.kind(), ErrorKind::UnterminatedString('"')),
         "input: a = \"hello\\r\\nworld\""
     );
 
     // Bare CR in array
     let e = ctx.parse_err("a = [ \r ]");
     assert!(
-        matches!(e.kind(), Some(ErrorKind::Unexpected('\r'))),
+        matches!(e.kind(), ErrorKind::Unexpected('\r')),
         "bare CR in array: {:?}",
         e.kind(),
     );
@@ -592,10 +590,10 @@ fn crlf_handling() {
     assert!(
         matches!(
             e.kind(),
-            Some(&ErrorKind::Wanted {
+            ErrorKind::Wanted {
                 expected: &"a table key",
                 found: &"a carriage return",
-            })
+            }
         ),
         "bare CR in inline table: {:?}",
         e.kind(),
@@ -606,10 +604,10 @@ fn crlf_handling() {
     assert!(
         matches!(
             e.kind(),
-            Some(&ErrorKind::Wanted {
+            ErrorKind::Wanted {
                 expected: &"newline",
                 found: &"a carriage return",
-            })
+            }
         ),
         "bare CR after key-value: {:?}",
         e.kind(),
@@ -620,10 +618,10 @@ fn crlf_handling() {
     assert!(
         matches!(
             e.kind(),
-            Some(&ErrorKind::Wanted {
+            ErrorKind::Wanted {
                 expected: &"newline",
                 found: &"a carriage return",
-            })
+            }
         ),
         "bare CR after table header: {:?}",
         e.kind(),
@@ -648,25 +646,25 @@ fn escape_sequences() {
 
     let e = ctx.parse_err(r#"a = "\uGGGG""#);
     assert!(
-        matches!(e.kind(), Some(ErrorKind::InvalidHexEscape('G'))),
+        matches!(e.kind(), ErrorKind::InvalidHexEscape('G')),
         "input: a = \"\\uGGGG\""
     );
 
     let e = ctx.parse_err(r#"a = "\UFFFFFFFF""#);
     assert!(
-        matches!(e.kind(), Some(ErrorKind::InvalidEscapeValue(_))),
+        matches!(e.kind(), ErrorKind::InvalidEscapeValue(_)),
         "input: a = \"\\UFFFFFFFF\""
     );
 
     let e = ctx.parse_err("a = \"\\u00");
     assert!(
-        matches!(e.kind(), Some(ErrorKind::UnterminatedString('"'))),
+        matches!(e.kind(), ErrorKind::UnterminatedString('"')),
         "input: a = \"\\u00"
     );
 
     let e = ctx.parse_err(r#"a = "\xGG""#);
     assert!(
-        matches!(e.kind(), Some(ErrorKind::InvalidHexEscape('G'))),
+        matches!(e.kind(), ErrorKind::InvalidHexEscape('G')),
         "input: a = \"\\xGG\""
     );
 }
@@ -694,7 +692,7 @@ fn multiline_string_edge_cases() {
 
     let e = ctx.parse_err("a = \"\"\"\\  x\"\"\"");
     assert!(
-        matches!(e.kind(), Some(ErrorKind::InvalidEscape(' '))),
+        matches!(e.kind(), ErrorKind::InvalidEscape(' ')),
         "input: a = \"\"\"\\  x\"\"\""
     );
 
@@ -703,7 +701,7 @@ fn multiline_string_edge_cases() {
     // = escape ws newline, where ws = *wschar and wschar = SP / HTAB).
     let e = ctx.parse_err("a = \"\"\"\\\r\r\n\"\"\"");
     assert!(
-        matches!(e.kind(), Some(ErrorKind::InvalidCharInString('\r'))),
+        matches!(e.kind(), ErrorKind::InvalidCharInString('\r')),
         "bare CR after line-ending backslash: {:?}",
         e.kind(),
     );
@@ -823,62 +821,60 @@ fn structural_errors() {
     let e = ctx.parse_err("a = 1\na.b = 2");
     assert!(matches!(
         e.kind(),
-        Some(ErrorKind::DottedKeyInvalidType { .. })
+        ErrorKind::DottedKeyInvalidType { .. }
     ));
 
     // dotted key on frozen inline table
     let e = ctx.parse_err("a = {b = 1}\na.c = 2");
     assert!(matches!(
         e.kind(),
-        Some(
-            ErrorKind::DuplicateTable { .. }
-                | ErrorKind::DuplicateKey { .. }
-                | ErrorKind::DottedKeyInvalidType { .. }
-        )
+        ErrorKind::DuplicateTable { .. }
+            | ErrorKind::DuplicateKey { .. }
+            | ErrorKind::DottedKeyInvalidType { .. }
     ));
 
     // table then array of tables
     let e = ctx.parse_err("[a]\nb = 1\n[[a]]");
-    assert!(matches!(e.kind(), Some(ErrorKind::RedefineAsArray)));
+    assert!(matches!(e.kind(), ErrorKind::RedefineAsArray));
 
     // duplicate table header
     let e = ctx.parse_err("[a]\nb = 1\n[a]\nc = 2");
-    assert!(matches!(e.kind(), Some(ErrorKind::DuplicateTable { .. })));
+    assert!(matches!(e.kind(), ErrorKind::DuplicateTable { .. }));
 
     // multiline basic string as key
     let e = ctx.parse_err("\"\"\"key\"\"\" = 1");
-    assert!(matches!(e.kind(), Some(ErrorKind::MultilineStringKey)));
+    assert!(matches!(e.kind(), ErrorKind::MultilineStringKey));
 
     // multiline literal string as key
     let e = ctx.parse_err("'''key''' = 1");
-    assert!(matches!(e.kind(), Some(ErrorKind::MultilineStringKey)));
+    assert!(matches!(e.kind(), ErrorKind::MultilineStringKey));
 
     // unquoted string value
     let e = ctx.parse_err("a = not_a_keyword");
-    assert!(matches!(e.kind(), Some(ErrorKind::UnquotedString)));
+    assert!(matches!(e.kind(), ErrorKind::UnquotedString));
 
     // missing value at EOF
     let e = ctx.parse_err("a = ");
-    assert!(matches!(e.kind(), Some(ErrorKind::UnexpectedEof)));
+    assert!(matches!(e.kind(), ErrorKind::UnexpectedEof));
 
     // missing equals sign
     let e = ctx.parse_err("key 1");
-    assert!(matches!(e.kind(), Some(ErrorKind::Wanted { .. })));
+    assert!(matches!(e.kind(), ErrorKind::Wanted { .. }));
 
     // newline in basic string
     let e = ctx.parse_err("a = \"line1\nline2\"");
-    assert!(matches!(e.kind(), Some(ErrorKind::UnterminatedString('"'))));
+    assert!(matches!(e.kind(), ErrorKind::UnterminatedString('"')));
 
     // newline in literal string
     let e = ctx.parse_err("a = 'line1\nline2'");
     assert!(matches!(
         e.kind(),
-        Some(ErrorKind::UnterminatedString('\''))
+        ErrorKind::UnterminatedString('\'')
     ));
 
     // DEL character in string
     let e = ctx.parse_err("a = \"hello\x7Fworld\"");
-    assert!(matches!(e.kind(), Some(ErrorKind::InvalidCharInString(_))));
+    assert!(matches!(e.kind(), ErrorKind::InvalidCharInString(_)));
 }
 
 #[test]
@@ -1001,19 +997,19 @@ fn more_parse_errors() {
 
     // inline table duplicate key
     let e = ctx.parse_err("a = {x = 1, x = 2}");
-    assert!(matches!(e.kind(), Some(ErrorKind::DuplicateKey { .. })));
+    assert!(matches!(e.kind(), ErrorKind::DuplicateKey { .. }));
 
     // dotted key duplicate in table
     let e = ctx.parse_err("[a]\nb = 1\nb = 2");
-    assert!(matches!(e.kind(), Some(ErrorKind::DuplicateKey { .. })));
+    assert!(matches!(e.kind(), ErrorKind::DuplicateKey { .. }));
 
     // expected value found ]
     let e = ctx.parse_err("a = ]");
-    assert!(matches!(e.kind(), Some(ErrorKind::Unexpected(']'))));
+    assert!(matches!(e.kind(), ErrorKind::Unexpected(']')));
 
     // expected value found }
     let e = ctx.parse_err("a = }");
-    assert!(matches!(e.kind(), Some(ErrorKind::Unexpected('}'))));
+    assert!(matches!(e.kind(), ErrorKind::Unexpected('}')));
 
     // dash-leading invalid number
     let e = ctx.parse_err("a = -_bad");
@@ -1021,103 +1017,103 @@ fn more_parse_errors() {
 
     // EOF in key position
     let e = ctx.parse_err("[");
-    assert!(matches!(e.kind(), Some(ErrorKind::Wanted { .. })));
+    assert!(matches!(e.kind(), ErrorKind::Wanted { .. }));
 
     // invalid key character (= with no key)
     let e = ctx.parse_err("= 1");
-    assert!(matches!(e.kind(), Some(ErrorKind::Wanted { .. })));
+    assert!(matches!(e.kind(), ErrorKind::Wanted { .. }));
 
     // bare CR at document level
     let e = ctx.parse_err("a = 1\r");
     assert!(matches!(
         e.kind(),
-        Some(ErrorKind::Wanted { .. } | ErrorKind::Unexpected('\r'))
+        ErrorKind::Wanted { .. } | ErrorKind::Unexpected('\r')
     ));
 
     // missing closing bracket in table header
     let e = ctx.parse_err("[table\na = 1");
-    assert!(matches!(e.kind(), Some(ErrorKind::Wanted { .. })));
+    assert!(matches!(e.kind(), ErrorKind::Wanted { .. }));
 
     // missing closing brace in inline table
     let e = ctx.parse_err("a = {x = 1");
-    assert!(matches!(e.kind(), Some(ErrorKind::UnclosedInlineTable)));
+    assert!(matches!(e.kind(), ErrorKind::UnclosedInlineTable));
 
     // missing closing bracket in array
     let e = ctx.parse_err("a = [1, 2");
-    assert!(matches!(e.kind(), Some(ErrorKind::UnclosedArray)));
+    assert!(matches!(e.kind(), ErrorKind::UnclosedArray));
 
     // junk after value on same line
     let e = ctx.parse_err("a = 1 b = 2");
-    assert!(matches!(e.kind(), Some(ErrorKind::Wanted { .. })));
+    assert!(matches!(e.kind(), ErrorKind::Wanted { .. }));
 
     // dotted key in inline table on frozen table
     let e = ctx.parse_err("a = {b = 1}\na.b.c = 2");
     assert!(matches!(
         e.kind(),
-        Some(ErrorKind::DuplicateKey { .. } | ErrorKind::DottedKeyInvalidType { .. })
+        ErrorKind::DuplicateKey { .. } | ErrorKind::DottedKeyInvalidType { .. }
     ));
 
     // header intermediate on scalar
     let e = ctx.parse_err("a = 1\n[a.b]");
-    assert!(matches!(e.kind(), Some(ErrorKind::DuplicateKey { .. })));
+    assert!(matches!(e.kind(), ErrorKind::DuplicateKey { .. }));
 
     // dotted key conflicts with header
     let e = ctx.parse_err("[a]\nb = 1\n[a.b]\nc = 2");
     assert!(matches!(
         e.kind(),
-        Some(ErrorKind::DottedKeyInvalidType { .. } | ErrorKind::DuplicateKey { .. })
+        ErrorKind::DottedKeyInvalidType { .. } | ErrorKind::DuplicateKey { .. }
     ));
 
     // redefine dotted as header
     let e = ctx.parse_err("a.b = 1\n[a.b]\nc = 2");
     assert!(matches!(
         e.kind(),
-        Some(ErrorKind::DuplicateKey { .. } | ErrorKind::DuplicateTable { .. })
+        ErrorKind::DuplicateKey { .. } | ErrorKind::DuplicateTable { .. }
     ));
 
     // header on frozen inline table
     let e = ctx.parse_err("a = {b = 1}\n[a.c]");
-    assert!(matches!(e.kind(), Some(ErrorKind::DuplicateKey { .. })));
+    assert!(matches!(e.kind(), ErrorKind::DuplicateKey { .. }));
 
     // array-of-tables on existing non-table
     let e = ctx.parse_err("a = 1\n[[a]]");
-    assert!(matches!(e.kind(), Some(ErrorKind::DuplicateKey { .. })));
+    assert!(matches!(e.kind(), ErrorKind::DuplicateKey { .. }));
 
     // dotted header on dotted table
     let e = ctx.parse_err("a.b = 1\n[a]\nc = 2");
     assert!(matches!(
         e.kind(),
-        Some(ErrorKind::DuplicateTable { .. } | ErrorKind::DuplicateKey { .. })
+        ErrorKind::DuplicateTable { .. } | ErrorKind::DuplicateKey { .. }
     ));
 
     // unterminated quoted key
     let e = ctx.parse_err(r#""unterminated = 1"#);
-    assert!(matches!(e.kind(), Some(ErrorKind::UnterminatedString('"'))));
+    assert!(matches!(e.kind(), ErrorKind::UnterminatedString('"')));
 
     // unterminated literal key
     let e = ctx.parse_err("'unterminated = 1");
     assert!(matches!(
         e.kind(),
-        Some(ErrorKind::UnterminatedString('\''))
+        ErrorKind::UnterminatedString('\'')
     ));
 
     // expected key found equals
     let e = ctx.parse_err("= 1");
     assert!(matches!(
         e.kind(),
-        Some(&ErrorKind::Wanted {
+        ErrorKind::Wanted {
             expected: &"a table key",
             ..
-        })
+        }
     ));
 
     // expected key found comma
     let e = ctx.parse_err("[a]\n, = 1");
-    assert!(matches!(e.kind(), Some(ErrorKind::Wanted { .. })));
+    assert!(matches!(e.kind(), ErrorKind::Wanted { .. }));
 
     // CRLF in basic string (not multiline) is an error
     let e = ctx.parse_err("a = \"hello\r\nworld\"");
-    assert!(matches!(e.kind(), Some(ErrorKind::UnterminatedString('"'))));
+    assert!(matches!(e.kind(), ErrorKind::UnterminatedString('"')));
 }
 
 #[test]
@@ -1172,7 +1168,7 @@ fn scan_token_desc_branches() {
         assert!(
             matches!(
                 e.kind(),
-                Some(&ErrorKind::Wanted { found, .. }) if *found == expected_found
+                ErrorKind::Wanted { found, .. } if *found == expected_found
             ),
             "input: {input}, got: {:?}",
             e.kind()
@@ -1182,7 +1178,7 @@ fn scan_token_desc_branches() {
     // Identifier branch: missing comma, cursor at next identifier
     let e = ctx.parse_err("a = {x = 1 y = 2}");
     assert!(
-        matches!(e.kind(), Some(ErrorKind::MissingInlineTableComma)),
+        matches!(e.kind(), ErrorKind::MissingInlineTableComma),
         "input: a = {{x = 1 y = 2}}, got: {:?}",
         e.kind()
     );
@@ -1190,7 +1186,7 @@ fn scan_token_desc_branches() {
     // Generic character branch: non-special byte
     let e = ctx.parse_err("a = {x = 1 @}");
     assert!(
-        matches!(e.kind(), Some(ErrorKind::MissingInlineTableComma)),
+        matches!(e.kind(), ErrorKind::MissingInlineTableComma),
         "input: a = {{x = 1 @}}, got: {:?}",
         e.kind()
     );
@@ -1204,7 +1200,7 @@ fn string_eof_edge_cases() {
     for input in eof_cases {
         let e = ctx.parse_err(input);
         assert!(
-            matches!(e.kind(), Some(ErrorKind::UnterminatedString('"'))),
+            matches!(e.kind(), ErrorKind::UnterminatedString('"')),
             "input: {input}"
         );
     }
@@ -1230,78 +1226,78 @@ fn error_messages_and_spans() {
     let e = ctx.parse_err("a = +0xFF");
     assert!(matches!(
         e.kind(),
-        Some(ErrorKind::InvalidInteger(
+        ErrorKind::InvalidInteger(
             "signs are not allowed on prefixed integers"
-        ))
+        )
     ));
 
     let e = ctx.parse_err("a = -0b1");
     assert!(matches!(
         e.kind(),
-        Some(ErrorKind::InvalidInteger(
+        ErrorKind::InvalidInteger(
             "signs are not allowed on prefixed integers"
-        ))
+        )
     ));
 
     let e = ctx.parse_err("a = -0o7");
     assert!(matches!(
         e.kind(),
-        Some(ErrorKind::InvalidInteger(
+        ErrorKind::InvalidInteger(
             "signs are not allowed on prefixed integers"
-        ))
+        )
     ));
 
     // Expected digit after sign
     let e = ctx.parse_err("a = -.7");
     assert!(matches!(
         e.kind(),
-        Some(ErrorKind::InvalidInteger("expected digit after sign"))
+        ErrorKind::InvalidInteger("expected digit after sign")
     ));
 
     let e = ctx.parse_err("a = +_2");
     assert!(matches!(
         e.kind(),
-        Some(ErrorKind::InvalidInteger("expected digit after sign"))
+        ErrorKind::InvalidInteger("expected digit after sign")
     ));
 
     let e = ctx.parse_err("a = -_bad");
     assert!(matches!(
         e.kind(),
-        Some(ErrorKind::InvalidInteger("expected digit after sign"))
+        ErrorKind::InvalidInteger("expected digit after sign")
     ));
 
     // Stray plus at EOF
     let e = ctx.parse_err("key = +");
     assert!(matches!(
         e.kind(),
-        Some(ErrorKind::InvalidInteger("expected digit after sign"))
+        ErrorKind::InvalidInteger("expected digit after sign")
     ));
 
     // Unexpected characters in value position
     let e = ctx.parse_err("a = .1");
-    assert!(matches!(e.kind(), Some(ErrorKind::Unexpected('.'))));
+    assert!(matches!(e.kind(), ErrorKind::Unexpected('.')));
 
     let e = ctx.parse_err("a = ]");
-    assert!(matches!(e.kind(), Some(ErrorKind::Unexpected(']'))));
+    assert!(matches!(e.kind(), ErrorKind::Unexpected(']')));
 
     let e = ctx.parse_err("a = }");
-    assert!(matches!(e.kind(), Some(ErrorKind::Unexpected('}'))));
+    assert!(matches!(e.kind(), ErrorKind::Unexpected('}')));
 
     // Unquoted strings
     let e = ctx.parse_err("a = hello");
-    assert!(matches!(e.kind(), Some(ErrorKind::UnquotedString)));
+    assert!(matches!(e.kind(), ErrorKind::UnquotedString));
 
     let e = ctx.parse_err("a = not_a_keyword");
-    assert!(matches!(e.kind(), Some(ErrorKind::UnquotedString)));
+    assert!(matches!(e.kind(), ErrorKind::UnquotedString));
 
     let e = ctx.parse_err("a = True");
-    assert!(matches!(e.kind(), Some(ErrorKind::UnquotedString)));
+    assert!(matches!(e.kind(), ErrorKind::UnquotedString));
 
     // Pointed span for invalid hex digit: "a = 0xABGD" → G at position 8
     let e = ctx.parse_err("a = 0xABGD");
     assert!(matches!(
         e.kind(),
-        Some(ErrorKind::InvalidInteger("invalid digit for hexadecimal"))
+        ErrorKind::InvalidInteger("invalid digit for hexadecimal")
     ));
     assert_eq!(e.span(), Span::new(8, 9), "should point at 'G'");
 
@@ -1309,7 +1305,7 @@ fn error_messages_and_spans() {
     let e = ctx.parse_err("a = 0o89");
     assert!(matches!(
         e.kind(),
-        Some(ErrorKind::InvalidInteger("invalid digit for octal"))
+        ErrorKind::InvalidInteger("invalid digit for octal")
     ));
     assert_eq!(e.span(), Span::new(6, 7), "should point at '8'");
 
@@ -1317,7 +1313,7 @@ fn error_messages_and_spans() {
     let e = ctx.parse_err("a = 0b102");
     assert!(matches!(
         e.kind(),
-        Some(ErrorKind::InvalidInteger("invalid digit for binary"))
+        ErrorKind::InvalidInteger("invalid digit for binary")
     ));
     assert_eq!(e.span(), Span::new(8, 9), "should point at '2'");
 
@@ -1325,9 +1321,9 @@ fn error_messages_and_spans() {
     let e = ctx.parse_err("a = 1__2");
     assert!(matches!(
         e.kind(),
-        Some(ErrorKind::InvalidInteger(
+        ErrorKind::InvalidInteger(
             "underscores must be between two digits"
-        ))
+        )
     ));
     assert_eq!(
         e.span(),
@@ -1339,9 +1335,9 @@ fn error_messages_and_spans() {
     let e = ctx.parse_err("a = 123_");
     assert!(matches!(
         e.kind(),
-        Some(ErrorKind::InvalidInteger(
+        ErrorKind::InvalidInteger(
             "underscores must be between two digits"
-        ))
+        )
     ));
     assert_eq!(
         e.span(),
@@ -1353,9 +1349,9 @@ fn error_messages_and_spans() {
     let e = ctx.parse_err("a = 0xFF_");
     assert!(matches!(
         e.kind(),
-        Some(ErrorKind::InvalidInteger(
+        ErrorKind::InvalidInteger(
             "underscores must be between two digits"
-        ))
+        )
     ));
     assert_eq!(
         e.span(),
@@ -1367,7 +1363,7 @@ fn error_messages_and_spans() {
     let e = ctx.parse_err("a = 1a2");
     assert!(matches!(
         e.kind(),
-        Some(ErrorKind::InvalidInteger("contains non-digit character"))
+        ErrorKind::InvalidInteger("contains non-digit character")
     ));
     assert_eq!(e.span(), Span::new(5, 6), "should point at 'a'");
 
@@ -1375,44 +1371,44 @@ fn error_messages_and_spans() {
     let e = ctx.parse_err("a = 01");
     assert!(matches!(
         e.kind(),
-        Some(ErrorKind::InvalidInteger("leading zeros are not allowed"))
+        ErrorKind::InvalidInteger("leading zeros are not allowed")
     ));
 
     // Malformed datetimes produce datetime errors, not integer errors
     let e = ctx.parse_err("a = 2016-9-09T09:09:09Z");
     assert!(matches!(
         e.kind(),
-        Some(ErrorKind::InvalidDateTime("expected 2-digit month"))
+        ErrorKind::InvalidDateTime("expected 2-digit month")
     ));
 
     let e = ctx.parse_err("a = 25-01-01T00:00:00Z");
     assert!(matches!(
         e.kind(),
-        Some(ErrorKind::InvalidDateTime("expected 4-digit year"))
+        ErrorKind::InvalidDateTime("expected 4-digit year")
     ));
 
     let e = ctx.parse_err("a = 2016-13-01");
     assert!(matches!(
         e.kind(),
-        Some(ErrorKind::InvalidDateTime("month is out of range"))
+        ErrorKind::InvalidDateTime("month is out of range")
     ));
 
     let e = ctx.parse_err("a = 2016-02-30");
     assert!(matches!(
         e.kind(),
-        Some(ErrorKind::InvalidDateTime("day is out of range"))
+        ErrorKind::InvalidDateTime("day is out of range")
     ));
 
     let e = ctx.parse_err("a = 2016-09-09T25:00:00");
     assert!(matches!(
         e.kind(),
-        Some(ErrorKind::InvalidDateTime("hour is out of range"))
+        ErrorKind::InvalidDateTime("hour is out of range")
     ));
 
     let e = ctx.parse_err("a = 2016-09-09T09:60:00");
     assert!(matches!(
         e.kind(),
-        Some(ErrorKind::InvalidDateTime("minute is out of range"))
+        ErrorKind::InvalidDateTime("minute is out of range")
     ));
 }
 
@@ -1485,7 +1481,7 @@ fn inline_table_error_paths() {
     // eat_inline_table_whitespace error at start (bare CR after comment)
     let e = ctx.parse_err("a = {#bad\r}");
     assert!(
-        matches!(e.kind(), Some(ErrorKind::Wanted { .. })),
+        matches!(e.kind(), ErrorKind::Wanted { .. }),
         "input: bare CR after comment in inline table start"
     );
 
@@ -1494,10 +1490,10 @@ fn inline_table_error_paths() {
     assert!(
         matches!(
             e.kind(),
-            Some(&ErrorKind::Wanted {
+            ErrorKind::Wanted {
                 expected: &"a table key",
                 ..
-            })
+            }
         ),
         "input: a = {{!}}"
     );
@@ -1505,14 +1501,14 @@ fn inline_table_error_paths() {
     // eat_inline_table_whitespace error after key (bare CR)
     let e = ctx.parse_err("a = {x #bad\r= 1}");
     assert!(
-        matches!(e.kind(), Some(ErrorKind::Wanted { .. })),
+        matches!(e.kind(), ErrorKind::Wanted { .. }),
         "input: bare CR after key in inline table"
     );
 
     // navigate_dotted_key error (dotted key on non-table value)
     let e = ctx.parse_err("a = {x = 1, x.y = 2}");
     assert!(
-        matches!(e.kind(), Some(ErrorKind::DottedKeyInvalidType { .. })),
+        matches!(e.kind(), ErrorKind::DottedKeyInvalidType { .. }),
         "input: dotted key on integer in inline table"
     );
 
@@ -1521,10 +1517,10 @@ fn inline_table_error_paths() {
     assert!(
         matches!(
             e.kind(),
-            Some(&ErrorKind::Wanted {
+            ErrorKind::Wanted {
                 expected: &"a table key",
                 ..
-            })
+            }
         ),
         "input: invalid key after dot in inline table"
     );
@@ -1534,10 +1530,10 @@ fn inline_table_error_paths() {
     assert!(
         matches!(
             e.kind(),
-            Some(&ErrorKind::Wanted {
+            ErrorKind::Wanted {
                 expected: &"an equals",
                 ..
-            })
+            }
         ),
         "input: a = {{x}}"
     );
@@ -1545,14 +1541,14 @@ fn inline_table_error_paths() {
     // eat_inline_table_whitespace error after value (bare CR)
     let e = ctx.parse_err("a = {x = 1 #bad\r}");
     assert!(
-        matches!(e.kind(), Some(ErrorKind::Wanted { .. })),
+        matches!(e.kind(), ErrorKind::Wanted { .. }),
         "input: bare CR after value in inline table"
     );
 
     // eat_inline_table_whitespace error after comma (bare CR)
     let e = ctx.parse_err("a = {x = 1, #bad\r}");
     assert!(
-        matches!(e.kind(), Some(ErrorKind::Wanted { .. })),
+        matches!(e.kind(), ErrorKind::Wanted { .. }),
         "input: bare CR after comma in inline table"
     );
 }
@@ -1564,21 +1560,21 @@ fn array_error_paths() {
     // eat_intermediate error at start of array (bare CR after comment)
     let e = ctx.parse_err("a = [#bad\r]");
     assert!(
-        matches!(e.kind(), Some(ErrorKind::Wanted { .. })),
+        matches!(e.kind(), ErrorKind::Wanted { .. }),
         "input: bare CR after comment at array start"
     );
 
     // eat_intermediate error after value (bare CR after comment)
     let e = ctx.parse_err("a = [1 #bad\r]");
     assert!(
-        matches!(e.kind(), Some(ErrorKind::Wanted { .. })),
+        matches!(e.kind(), ErrorKind::Wanted { .. }),
         "input: bare CR after comment after array value"
     );
 
     // eat_intermediate error after comma
     let e = ctx.parse_err("a = [1, #bad\r]");
     assert!(
-        matches!(e.kind(), Some(ErrorKind::Wanted { .. })),
+        matches!(e.kind(), ErrorKind::Wanted { .. }),
         "input: bare CR after comment after comma in array"
     );
 }
@@ -1590,26 +1586,26 @@ fn parse_document_error_paths() {
     // eat_comment error at top level (bare CR after comment)
     let e = ctx.parse_err("#bad\r");
     assert!(
-        matches!(e.kind(), Some(ErrorKind::Wanted { .. })),
+        matches!(e.kind(), ErrorKind::Wanted { .. }),
         "input: bare CR after top-level comment"
     );
 
     let e = ctx.parse_err("a = 1\n#bad\r");
     assert!(
-        matches!(e.kind(), Some(ErrorKind::Wanted { .. })),
+        matches!(e.kind(), ErrorKind::Wanted { .. }),
         "input: bare CR after comment following key-value"
     );
 
     // Bare CR at top level (not in comment or string)
     let e = ctx.parse_err("\r");
     assert!(
-        matches!(e.kind(), Some(ErrorKind::Unexpected('\r'))),
+        matches!(e.kind(), ErrorKind::Unexpected('\r')),
         "input: bare CR at document top level"
     );
 
     let e = ctx.parse_err("a = 1\n\r");
     assert!(
-        matches!(e.kind(), Some(ErrorKind::Unexpected('\r'))),
+        matches!(e.kind(), ErrorKind::Unexpected('\r')),
         "input: bare CR after newline at document top level"
     );
 }
@@ -1623,10 +1619,10 @@ fn table_header_error_paths() {
     assert!(
         matches!(
             e.kind(),
-            Some(&ErrorKind::Wanted {
+            ErrorKind::Wanted {
                 expected: &"a table key",
                 ..
-            })
+            }
         ),
         "input: [a.]"
     );
@@ -1636,10 +1632,10 @@ fn table_header_error_paths() {
     assert!(
         matches!(
             e.kind(),
-            Some(&ErrorKind::Wanted {
+            ErrorKind::Wanted {
                 expected: &"a right bracket",
                 ..
-            })
+            }
         ),
         "input: [[a] missing second bracket"
     );
@@ -1653,10 +1649,10 @@ fn table_header_error_paths() {
     assert!(
         matches!(
             e.kind(),
-            Some(&ErrorKind::Wanted {
+            ErrorKind::Wanted {
                 expected: &"newline",
                 ..
-            })
+            }
         ),
         "input: [a]x"
     );
@@ -1664,7 +1660,7 @@ fn table_header_error_paths() {
     // eat_comment error after header (bare CR)
     let e = ctx.parse_err("[a]#bad\r");
     assert!(
-        matches!(e.kind(), Some(ErrorKind::Wanted { .. })),
+        matches!(e.kind(), ErrorKind::Wanted { .. }),
         "input: [a]#bad\\r"
     );
 }
@@ -1678,10 +1674,10 @@ fn key_value_error_paths() {
     assert!(
         matches!(
             e.kind(),
-            Some(&ErrorKind::Wanted {
+            ErrorKind::Wanted {
                 expected: &"a table key",
                 ..
-            })
+            }
         ),
         "input: x.! = 1"
     );
@@ -1690,10 +1686,10 @@ fn key_value_error_paths() {
     assert!(
         matches!(
             e.kind(),
-            Some(&ErrorKind::Wanted {
+            ErrorKind::Wanted {
                 expected: &"a table key",
                 ..
-            })
+            }
         ),
         "input: x.= = 1"
     );
@@ -1701,7 +1697,7 @@ fn key_value_error_paths() {
     // eat_comment error after key-value (bare CR)
     let e = ctx.parse_err("a = 1 #bad\r");
     assert!(
-        matches!(e.kind(), Some(ErrorKind::Wanted { .. })),
+        matches!(e.kind(), ErrorKind::Wanted { .. }),
         "input: a = 1 #bad\\r"
     );
 }
@@ -1836,7 +1832,7 @@ fn backslash_whitespace_in_nonmultiline_string() {
     // Backslash followed by space in a non-multiline basic string is an error.
     let e = ctx.parse_err("a = \"hello\\ world\"");
     assert!(
-        matches!(e.kind(), Some(ErrorKind::InvalidEscape(' '))),
+        matches!(e.kind(), ErrorKind::InvalidEscape(' ')),
         "backslash-space in basic string: {:?}",
         e.kind()
     );
@@ -1844,7 +1840,7 @@ fn backslash_whitespace_in_nonmultiline_string() {
     // Backslash followed by tab in a non-multiline basic string is an error.
     let e = ctx.parse_err("a = \"hello\\\tworld\"");
     assert!(
-        matches!(e.kind(), Some(ErrorKind::InvalidEscape('\t'))),
+        matches!(e.kind(), ErrorKind::InvalidEscape('\t')),
         "backslash-tab in basic string: {:?}",
         e.kind()
     );
@@ -1989,7 +1985,7 @@ fn octal_digit_validation() {
 //     let size = (1u32 << 29) as usize + 1;
 //     let big = " ".repeat(size);
 //     let e = ctx.parse_err(&big);
-//     assert!(matches!(e.kind(), Some(ErrorKind::FileTooLarge)));
+//     assert!(matches!(e.kind(), ErrorKind::FileTooLarge));
 // }
 
 #[test]
@@ -2001,10 +1997,10 @@ fn invalid_true_false_literals() {
     assert!(
         matches!(
             e.kind(),
-            Some(&ErrorKind::Wanted {
+            ErrorKind::Wanted {
                 expected: &"the literal `true`",
                 ..
-            })
+            }
         ),
         "input: a = tru, got: {:?}",
         e.kind()
@@ -2013,10 +2009,10 @@ fn invalid_true_false_literals() {
     assert!(
         matches!(
             e.kind(),
-            Some(&ErrorKind::Wanted {
+            ErrorKind::Wanted {
                 expected: &"the literal `true`",
                 ..
-            })
+            }
         ),
         "input: a = toast, got: {:?}",
         e.kind()
@@ -2027,10 +2023,10 @@ fn invalid_true_false_literals() {
     assert!(
         matches!(
             e.kind(),
-            Some(&ErrorKind::Wanted {
+            ErrorKind::Wanted {
                 expected: &"the literal `false`",
                 ..
-            })
+            }
         ),
         "input: a = fals, got: {:?}",
         e.kind()
@@ -2039,10 +2035,10 @@ fn invalid_true_false_literals() {
     assert!(
         matches!(
             e.kind(),
-            Some(&ErrorKind::Wanted {
+            ErrorKind::Wanted {
                 expected: &"the literal `false`",
                 ..
-            })
+            }
         ),
         "input: a = foobar, got: {:?}",
         e.kind()
@@ -2073,14 +2069,14 @@ fn scan_token_whitespace_and_string() {
     // scan_token_desc_and_end with whitespace (space/tab run)
     let e = ctx.parse_err("a = {x = 1   ");
     assert!(
-        matches!(e.kind(), Some(ErrorKind::UnclosedInlineTable)),
+        matches!(e.kind(), ErrorKind::UnclosedInlineTable),
         "input: truncated inline table with trailing whitespace"
     );
 
     // String delimiter at unexpected position
     let e = ctx.parse_err("[\"key\"\n]");
     assert!(
-        matches!(e.kind(), Some(ErrorKind::Wanted { .. })),
+        matches!(e.kind(), ErrorKind::Wanted { .. }),
         "input: string where bracket expected"
     );
 }
@@ -2099,7 +2095,7 @@ fn duplicate_key_in_indexed_table() {
     let input = lines.join("\n");
     let e = ctx.parse_err(&input);
     assert!(
-        matches!(e.kind(), Some(ErrorKind::DuplicateKey { .. })),
+        matches!(e.kind(), ErrorKind::DuplicateKey { .. }),
         "duplicate in indexed table: {:?}",
         e.kind()
     );
@@ -2114,7 +2110,7 @@ fn duplicate_key_in_indexed_table() {
     let input = format!("a = {{{}, k0 = 99}}", pairs.join(", "));
     let e = ctx.parse_err(&input);
     assert!(
-        matches!(e.kind(), Some(ErrorKind::DuplicateKey { .. })),
+        matches!(e.kind(), ErrorKind::DuplicateKey { .. }),
         "duplicate in inline table: {:?}",
         e.kind()
     );
@@ -2165,11 +2161,11 @@ fn parse_error_token_descriptions() {
 
     // Whitespace-only input after key (exercises scan_token_desc_and_end whitespace path)
     let e = ctx.parse_err("key   ");
-    assert!(matches!(e.kind(), Some(ErrorKind::Wanted { .. })));
+    assert!(matches!(e.kind(), ErrorKind::Wanted { .. }));
 
     // Stray colon (exercises scan_token_desc_and_end colon path)
     let e = ctx.parse_err("key : value");
-    assert!(matches!(e.kind(), Some(ErrorKind::Wanted { .. })));
+    assert!(matches!(e.kind(), ErrorKind::Wanted { .. }));
 
     // Stray plus (exercises scan_token_desc_and_end plus path)
     let e = ctx.parse_err("key = +");
@@ -2177,9 +2173,9 @@ fn parse_error_token_descriptions() {
 
     // Incomplete inline table with whitespace error
     let e = ctx.parse_err("t = { a = 1  ");
-    assert!(matches!(e.kind(), Some(ErrorKind::UnclosedInlineTable)));
+    assert!(matches!(e.kind(), ErrorKind::UnclosedInlineTable));
 
     // Array with trailing error
     let e = ctx.parse_err("a = [1, 2  ");
-    assert!(matches!(e.kind(), Some(ErrorKind::UnclosedArray)));
+    assert!(matches!(e.kind(), ErrorKind::UnclosedArray));
 }

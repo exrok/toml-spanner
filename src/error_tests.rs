@@ -2,7 +2,7 @@ use super::*;
 
 #[test]
 fn display_all_error_kinds() {
-    let cases: Vec<(ErrorKind, &str)> = vec![
+    let cases: Vec<(ErrorKind<'_>, &str)> = vec![
         (ErrorKind::UnexpectedEof, "unexpected-eof"),
         (ErrorKind::FileTooLarge, "file-too-large"),
         (
@@ -269,12 +269,12 @@ fn error_display_all_variants() {
 fn error_constructors() {
     let err = Error::custom("something broke", Span::new(5, 10));
     assert_eq!(err.span(), Span::new(5, 10));
-    assert!(err.kind().is_none());
+    assert!(matches!(err.kind(), ErrorKind::Custom(_)));
     assert_eq!(format!("{err}"), "something broke");
 
     let err: Error = (ErrorKind::InvalidInteger(""), Span::new(0, 5)).into();
     assert_eq!(err.span(), Span::new(0, 5));
-    assert!(matches!(err.kind(), Some(ErrorKind::InvalidInteger(""))));
+    assert!(matches!(err.kind(), ErrorKind::InvalidInteger("")));
 
     let _: &dyn std::error::Error = &err;
 }

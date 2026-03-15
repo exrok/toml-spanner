@@ -303,7 +303,7 @@ fn type_error_helpers() {
     let err = v.expected(&"a string");
     assert!(matches!(
         err.kind(),
-        Some(crate::ErrorKind::Wanted { .. })
+        crate::ErrorKind::Wanted { .. }
     ));
     assert_eq!(err.span(), sp(0, 2));
 }
@@ -330,7 +330,7 @@ fn expect_helpers() {
     assert_eq!(ctx.errors.len(), 1);
     assert!(matches!(
         ctx.errors[0].kind(),
-        Some(crate::ErrorKind::Wanted { .. })
+        crate::ErrorKind::Wanted { .. }
     ));
 
     // expect_array success
@@ -345,7 +345,7 @@ fn expect_helpers() {
     assert!(v.expect_array(&mut ctx).is_err());
     assert!(matches!(
         ctx.errors.last().unwrap().kind(),
-        Some(crate::ErrorKind::Wanted { .. })
+        crate::ErrorKind::Wanted { .. }
     ));
 
     // expect_table success
@@ -367,7 +367,7 @@ fn expect_helpers() {
     assert!(v.expect_table(&mut ctx).is_err());
     assert!(matches!(
         ctx.errors.last().unwrap().kind(),
-        Some(crate::ErrorKind::Wanted { .. })
+        crate::ErrorKind::Wanted { .. }
     ));
 }
 
@@ -413,12 +413,12 @@ fn parse_method() {
     // Parse failure (invalid content)
     let v = Item::string_spanned("not_a_number", sp(0, 12));
     let err = v.parse::<i32>().unwrap_err();
-    assert!(err.kind().is_none());
+    assert!(matches!(err.kind(), crate::ErrorKind::Custom(_)));
 
     // Wrong type (not a string)
     let v = Item::integer_spanned(42, sp(0, 2));
     let err = v.parse::<i32>().unwrap_err();
-    assert!(matches!(err.kind(), Some(crate::ErrorKind::Wanted { .. })));
+    assert!(matches!(err.kind(), crate::ErrorKind::Wanted { .. }));
 }
 
 #[test]

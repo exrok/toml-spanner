@@ -347,8 +347,8 @@ pub struct DateTime {
     minute: u8,
     seconds: u8,
 
-    offset_minutes: i16,
     nanos: u32,
+    offset_minutes: i16,
 }
 
 impl std::fmt::Debug for DateTime {
@@ -363,9 +363,18 @@ impl std::fmt::Debug for DateTime {
 
 impl PartialEq for DateTime {
     fn eq(&self, other: &Self) -> bool {
-        self.date() == other.date()
-            && self.time() == other.time()
-            && self.offset() == other.offset()
+        // The obvious implementation ends up with huge amount of binary bloat.
+        // this unsafety dropped llvm-lines by 350.
+        #[repr(C)]
+        struct Raw {
+            header: u64,
+            offset: u32,
+            nanos: i16,
+        }
+        // Saftey: DateTime and Raw have identical layouts, so transmuting between them is safe.
+        let rhs = unsafe { &*(self as *const _ as *const Raw) };
+        let lhs = unsafe { &*(other as *const _ as *const Raw) };
+        (rhs.header == lhs.header) & (rhs.offset == lhs.offset) & (rhs.nanos == lhs.nanos)
     }
 }
 
@@ -622,8 +631,7 @@ impl DateTime {
                         if current > 59 {
                             return Err("offset minute is out of range");
                         }
-                        value.offset_minutes =
-                            off_sign * (off_hour as i16 * 60 + current as i16);
+                        value.offset_minutes = off_sign * (off_hour as i16 * 60 + current as i16);
                         valid = true;
                         break 'outer;
                     }

@@ -11,7 +11,7 @@ use crate::de::TableHelper;
 use crate::{
     Failed, MaybeItem, Span,
     arena::Arena,
-    error::{ErrorKind, Error},
+    error::{Error, ErrorKind},
     item::{
         self, Item, Key,
         table::{InnerTable, Table},
@@ -124,7 +124,7 @@ struct Parser<'de> {
 
     // Error context -- populated just before returning Failed
     error_span: Span,
-    error_kind: Option<ErrorKind>,
+    error_kind: Option<ErrorKind<'static>>,
 
     // Global key-index for O(1) lookups in large tables.
     // Maps (table-discriminator, key-name) → entry index in the table.
@@ -184,8 +184,9 @@ impl<'de> Parser<'de> {
         self.error_kind = Some(ErrorKind::DuplicateKey { first });
         Failed
     }
+
     #[cold]
-    fn set_error(&mut self, start: usize, end: Option<usize>, kind: ErrorKind) -> Failed {
+    fn set_error(&mut self, start: usize, end: Option<usize>, kind: ErrorKind<'static>) -> Failed {
         self.error_span = Span::new(start as u32, end.unwrap_or(start + 1) as u32);
         self.error_kind = Some(kind);
         Failed
@@ -573,11 +574,7 @@ impl<'de> Parser<'de> {
                             ));
                         }
                     } else {
-                        return Err(self.set_error(
-                            i,
-                            None,
-                            ErrorKind::InvalidCharInString('\r'),
-                        ));
+                        return Err(self.set_error(i, None, ErrorKind::InvalidCharInString('\r')));
                     }
                 }
                 b'\n' => {
@@ -637,11 +634,7 @@ impl<'de> Parser<'de> {
                 // from the SWAR scan.
                 0x09 | 0x20..=0x7E | 0x80.. => {}
                 _ => {
-                    return Err(self.set_error(
-                        i,
-                        None,
-                        ErrorKind::InvalidCharInString(b as char),
-                    ));
+                    return Err(self.set_error(i, None, ErrorKind::InvalidCharInString(b as char)));
                 }
             }
         }
@@ -761,11 +754,7 @@ impl<'de> Parser<'de> {
         let mut val: u32 = 0;
         for _ in 0..n {
             let Some(&byte) = self.bytes.get(self.cursor) else {
-                return Err(self.set_error(
-                    string_start,
-                    None,
-                    ErrorKind::UnterminatedString('"'),
-                ));
+                return Err(self.set_error(string_start, None, ErrorKind::UnterminatedString('"')));
             };
             let digit = HEX[byte as usize];
             if digit >= 0 {
@@ -1255,11 +1244,7 @@ impl<'de> Parser<'de> {
                 ErrorKind::InvalidInteger("expected digit after sign"),
             ))
         } else if key.is_empty() {
-            Err(self.set_error(
-                at,
-                None,
-                ErrorKind::Unexpected(self.next_char_for_error()),
-            ))
+            Err(self.set_error(at, None, ErrorKind::Unexpected(self.next_char_for_error())))
         } else {
             Err(self.set_error(at, Some(self.cursor), ErrorKind::UnquotedString))
         }
@@ -1333,11 +1318,7 @@ impl<'de> Parser<'de> {
                     return Err(self.set_error(start, None, ErrorKind::UnclosedInlineTable));
                 }
                 let (_found_desc, end) = self.scan_token_desc_and_end();
-                return Err(self.set_error(
-                    start,
-                    Some(end),
-                    ErrorKind::MissingInlineTableComma,
-                ));
+                return Err(self.set_error(start, Some(end), ErrorKind::MissingInlineTableComma));
             }
             if let Err(e) = self.eat_inline_table_whitespace() {
                 return Err(e);
@@ -1661,10 +1642,7 @@ impl<'de> Parser<'de> {
         if table.len() < INDEXED_TABLE_THRESHOLD {
             for (existing_key, _) in table.entries() {
                 if existing_key.as_str() == key.name {
-                    return Err(self.set_duplicate_key_error(
-                        existing_key.span,
-                        key.span,
-                    ));
+                    return Err(self.set_duplicate_key_error(existing_key.span, key.span));
                 }
             }
             table.insert(key, item, self.arena);
