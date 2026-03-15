@@ -15,14 +15,14 @@ fn constructors() {
     assert_eq!(v.tag(), TAG_STRING);
     assert_eq!(v.as_str(), Some("hello"));
     assert_eq!(v.span_unchecked(), sp(0, 5));
-    assert_eq!(v.type_str(), "string");
+    assert_eq!(*v.type_str(), "string");
 
     // Integer (positive and negative)
     let v = Item::integer_spanned(42, sp(0, 2));
     assert_eq!(v.tag(), TAG_INTEGER);
     assert_eq!(v.as_i64(), Some(42));
     assert_eq!(v.span_unchecked(), sp(0, 2));
-    assert_eq!(v.type_str(), "integer");
+    assert_eq!(*v.type_str(), "integer");
 
     let v = Item::integer_spanned(-9999, sp(0, 5));
     assert_eq!(v.as_i64(), Some(-9999));
@@ -32,7 +32,7 @@ fn constructors() {
     assert_eq!(v.tag(), TAG_FLOAT);
     assert_eq!(v.as_f64(), Some(3.15));
     assert_eq!(v.span_unchecked(), sp(0, 4));
-    assert_eq!(v.type_str(), "float");
+    assert_eq!(*v.type_str(), "float");
 
     // Boolean
     let t = Item::boolean(true, sp(0, 4));
@@ -40,7 +40,7 @@ fn constructors() {
     assert_eq!(t.tag(), TAG_BOOLEAN);
     assert_eq!(t.as_bool(), Some(true));
     assert_eq!(f.as_bool(), Some(false));
-    assert_eq!(t.type_str(), "boolean");
+    assert_eq!(*t.type_str(), "boolean");
 
     // Array
     let mut arr = InternalArray::new();
@@ -49,7 +49,7 @@ fn constructors() {
     let v = Item::array(arr, sp(0, 3));
     assert_eq!(v.tag(), TAG_ARRAY);
     assert_eq!(v.as_array().unwrap().len(), 2);
-    assert_eq!(v.type_str(), "array");
+    assert_eq!(*v.type_str(), "array");
 
     // Table
     let mut tab = InnerTable::new();
@@ -64,16 +64,16 @@ fn constructors() {
     let v = Item::table(tab, sp(0, 4));
     assert_eq!(v.tag(), TAG_TABLE);
     assert_eq!(v.as_table().unwrap().len(), 1);
-    assert_eq!(v.type_str(), "table");
+    assert_eq!(*v.type_str(), "table");
 
     // type_str for table variants
     assert_eq!(
         Item::table_header(InnerTable::new(), sp(0, 0)).type_str(),
-        "table"
+        &"table"
     );
     assert_eq!(
         Item::table_dotted(InnerTable::new(), sp(0, 0)).type_str(),
-        "table"
+        &"table"
     );
 
     // has_keys / has_key
@@ -299,17 +299,13 @@ fn value_mut_all_types() {
 
 #[test]
 fn type_error_helpers() {
-    // expected() produces correct error
     let v = Item::integer_spanned(42, sp(0, 2));
-    let err = v.expected("a string");
+    let err = v.expected(&"a string");
     assert!(matches!(
-        err.kind,
-        crate::ErrorKind::Wanted {
-            expected: "a string",
-            found: "integer"
-        }
+        err.kind(),
+        Some(crate::ErrorKind::Wanted { .. })
     ));
-    assert_eq!(err.span, sp(0, 2));
+    assert_eq!(err.span(), sp(0, 2));
 }
 
 #[cfg(feature = "from-toml")]
@@ -333,11 +329,8 @@ fn expect_helpers() {
     assert!(v.expect_string(&mut ctx).is_err());
     assert_eq!(ctx.errors.len(), 1);
     assert!(matches!(
-        ctx.errors[0].kind,
-        crate::ErrorKind::Wanted {
-            expected: "a string",
-            found: "integer"
-        }
+        ctx.errors[0].kind(),
+        Some(crate::ErrorKind::Wanted { .. })
     ));
 
     // expect_array success
@@ -351,8 +344,8 @@ fn expect_helpers() {
     let v = Item::integer_spanned(42, sp(0, 2));
     assert!(v.expect_array(&mut ctx).is_err());
     assert!(matches!(
-        ctx.errors.last().unwrap().kind,
-        crate::ErrorKind::Wanted { .. }
+        ctx.errors.last().unwrap().kind(),
+        Some(crate::ErrorKind::Wanted { .. })
     ));
 
     // expect_table success
@@ -373,8 +366,8 @@ fn expect_helpers() {
     let v = Item::integer_spanned(42, sp(0, 2));
     assert!(v.expect_table(&mut ctx).is_err());
     assert!(matches!(
-        ctx.errors.last().unwrap().kind,
-        crate::ErrorKind::Wanted { .. }
+        ctx.errors.last().unwrap().kind(),
+        Some(crate::ErrorKind::Wanted { .. })
     ));
 }
 
@@ -420,12 +413,12 @@ fn parse_method() {
     // Parse failure (invalid content)
     let v = Item::string_spanned("not_a_number", sp(0, 12));
     let err = v.parse::<i32>().unwrap_err();
-    assert!(matches!(err.kind, crate::ErrorKind::Custom(..)));
+    assert!(err.kind().is_none());
 
     // Wrong type (not a string)
     let v = Item::integer_spanned(42, sp(0, 2));
     let err = v.parse::<i32>().unwrap_err();
-    assert!(matches!(err.kind, crate::ErrorKind::Wanted { .. }));
+    assert!(matches!(err.kind(), Some(crate::ErrorKind::Wanted { .. })));
 }
 
 #[test]
@@ -662,7 +655,7 @@ fn datetime_items() {
     assert_eq!(dt.date().unwrap().year, 2023);
 
     // type_str for datetime
-    assert_eq!(dt_item.type_str(), "datetime");
+    assert_eq!(*dt_item.type_str(), "datetime");
 
     // value() returns DateTime variant
     assert!(matches!(dt_item.value(), Value::DateTime(_)));

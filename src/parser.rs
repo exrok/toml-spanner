@@ -11,7 +11,7 @@ use crate::de::TableHelper;
 use crate::{
     Failed, MaybeItem, Span,
     arena::Arena,
-    error::{Error, ErrorKind},
+    error::{ErrorKind, Error},
     item::{
         self, Item, Key,
         table::{InnerTable, Table},
@@ -179,12 +179,9 @@ impl<'de> Parser<'de> {
     }
 
     #[cold]
-    fn set_duplicate_key_error(&mut self, first: Span, second: Span, key: &str) -> Failed {
+    fn set_duplicate_key_error(&mut self, first: Span, second: Span) -> Failed {
         self.error_span = second;
-        self.error_kind = Some(ErrorKind::DuplicateKey {
-            key: key.into(),
-            first,
-        });
+        self.error_kind = Some(ErrorKind::DuplicateKey { first });
         Failed
     }
     #[cold]
@@ -206,7 +203,7 @@ impl<'de> Parser<'de> {
         // regression across the board.
         std::hint::black_box(&self.bytes.iter().enumerate().next());
 
-        Error { kind, span }
+        Error::new(kind, span)
     }
 
     #[inline]
@@ -290,7 +287,7 @@ impl<'de> Parser<'de> {
                     start,
                     Some(end),
                     ErrorKind::Wanted {
-                        expected: "newline",
+                        expected: &"newline",
                         found: found_desc,
                     },
                 ))
@@ -325,13 +322,13 @@ impl<'de> Parser<'de> {
     /// Scan forward from the current position to determine the description
     /// and end position of the "token" at the cursor. This provides compatible
     /// error spans with the old tokenizer.
-    fn scan_token_desc_and_end(&self) -> (&'static str, usize) {
+    fn scan_token_desc_and_end(&self) -> (&'static &'static str, usize) {
         let Some(b) = self.peek_byte() else {
-            return ("eof", self.bytes.len());
+            return (&"eof", self.bytes.len());
         };
         match b {
-            b'\n' => ("a newline", self.cursor + 1),
-            b'\r' => ("a carriage return", self.cursor + 1),
+            b'\n' => (&"a newline", self.cursor + 1),
+            b'\r' => (&"a carriage return", self.cursor + 1),
             b' ' | b'\t' => {
                 let mut end = self.cursor + 1;
                 while end < self.bytes.len()
@@ -339,27 +336,27 @@ impl<'de> Parser<'de> {
                 {
                     end += 1;
                 }
-                ("whitespace", end)
+                (&"whitespace", end)
             }
-            b'#' => ("a comment", self.cursor + 1),
-            b'=' => ("an equals", self.cursor + 1),
-            b'.' => ("a period", self.cursor + 1),
-            b',' => ("a comma", self.cursor + 1),
-            b':' => ("a colon", self.cursor + 1),
-            b'+' => ("a plus", self.cursor + 1),
-            b'{' => ("a left brace", self.cursor + 1),
-            b'}' => ("a right brace", self.cursor + 1),
-            b'[' => ("a left bracket", self.cursor + 1),
-            b']' => ("a right bracket", self.cursor + 1),
-            b'\'' | b'"' => ("a string", self.cursor + 1),
+            b'#' => (&"a comment", self.cursor + 1),
+            b'=' => (&"an equals", self.cursor + 1),
+            b'.' => (&"a period", self.cursor + 1),
+            b',' => (&"a comma", self.cursor + 1),
+            b':' => (&"a colon", self.cursor + 1),
+            b'+' => (&"a plus", self.cursor + 1),
+            b'{' => (&"a left brace", self.cursor + 1),
+            b'}' => (&"a right brace", self.cursor + 1),
+            b'[' => (&"a left bracket", self.cursor + 1),
+            b']' => (&"a right bracket", self.cursor + 1),
+            b'\'' | b'"' => (&"a string", self.cursor + 1),
             _ if is_keylike_byte(b) => {
                 let mut end = self.cursor + 1;
                 while end < self.bytes.len() && is_keylike_byte(self.bytes[end]) {
                     end += 1;
                 }
-                ("an identifier", end)
+                (&"an identifier", end)
             }
-            _ => ("a character", self.cursor + 1),
+            _ => (&"a character", self.cursor + 1),
         }
     }
 
@@ -381,8 +378,8 @@ impl<'de> Parser<'de> {
                 self.bytes.len(),
                 None,
                 ErrorKind::Wanted {
-                    expected: "a table key",
-                    found: "eof",
+                    expected: &"a table key",
+                    found: &"eof",
                 },
             ));
         };
@@ -432,7 +429,7 @@ impl<'de> Parser<'de> {
                     start,
                     Some(end),
                     ErrorKind::Wanted {
-                        expected: "a table key",
+                        expected: &"a table key",
                         found: found_desc,
                     },
                 ))
@@ -557,7 +554,11 @@ impl<'de> Parser<'de> {
 
             let i = self.cursor;
             let Some(&b) = self.bytes.get(i) else {
-                return Err(self.set_error(start, None, ErrorKind::UnterminatedString(delim as char)));
+                return Err(self.set_error(
+                    start,
+                    None,
+                    ErrorKind::UnterminatedString(delim as char),
+                ));
             };
             self.cursor = i + 1;
 
@@ -572,7 +573,11 @@ impl<'de> Parser<'de> {
                             ));
                         }
                     } else {
-                        return Err(self.set_error(i, None, ErrorKind::InvalidCharInString('\r')));
+                        return Err(self.set_error(
+                            i,
+                            None,
+                            ErrorKind::InvalidCharInString('\r'),
+                        ));
                     }
                 }
                 b'\n' => {
@@ -632,7 +637,11 @@ impl<'de> Parser<'de> {
                 // from the SWAR scan.
                 0x09 | 0x20..=0x7E | 0x80.. => {}
                 _ => {
-                    return Err(self.set_error(i, None, ErrorKind::InvalidCharInString(b as char)));
+                    return Err(self.set_error(
+                        i,
+                        None,
+                        ErrorKind::InvalidCharInString(b as char),
+                    ));
                 }
             }
         }
@@ -752,7 +761,11 @@ impl<'de> Parser<'de> {
         let mut val: u32 = 0;
         for _ in 0..n {
             let Some(&byte) = self.bytes.get(self.cursor) else {
-                return Err(self.set_error(string_start, None, ErrorKind::UnterminatedString('"')));
+                return Err(self.set_error(
+                    string_start,
+                    None,
+                    ErrorKind::UnterminatedString('"'),
+                ));
             };
             let digit = HEX[byte as usize];
             if digit >= 0 {
@@ -811,7 +824,11 @@ impl<'de> Parser<'de> {
                         Err(e) => Err(e),
                     }
                 }
-                _ => Err(self.set_error(at, Some(end as usize), ErrorKind::InvalidFloat("nothing after decimal point"))),
+                _ => Err(self.set_error(
+                    at,
+                    Some(end as usize),
+                    ErrorKind::InvalidFloat("nothing after decimal point"),
+                )),
             };
         }
 
@@ -834,7 +851,11 @@ impl<'de> Parser<'de> {
                         consumed += 1;
                     }
                     self.cursor = start as usize + consumed;
-                    return Err(self.set_error(start as usize, Some(self.cursor), ErrorKind::InvalidDateTime(reason)));
+                    return Err(self.set_error(
+                        start as usize,
+                        Some(self.cursor),
+                        ErrorKind::InvalidDateTime(reason),
+                    ));
                 }
                 Err(_) => {}
             }
@@ -943,7 +964,12 @@ impl<'de> Parser<'de> {
     }
 
     #[inline(never)]
-    fn integer_prefixed(&mut self, bytes: &'de [u8], span: Span, shift: u32) -> Result<Item<'de>, Failed> {
+    fn integer_prefixed(
+        &mut self,
+        bytes: &'de [u8],
+        span: Span,
+        shift: u32,
+    ) -> Result<Item<'de>, Failed> {
         let max_digit = (1i8 << shift) - 1;
         let invalid_msg = match shift {
             4 => "invalid digit for hexadecimal",
@@ -1019,7 +1045,11 @@ impl<'de> Parser<'de> {
 
         // TOML forbids leading zeros in the integer part (e.g. 00.5, -01.0).
         if let [b'0', b'0'..=b'9' | b'_', ..] = s.as_bytes() {
-            return Err(self.set_error(s_start, Some(s_end), ErrorKind::InvalidFloat("leading zeros are not allowed")));
+            return Err(self.set_error(
+                s_start,
+                Some(s_end),
+                ErrorKind::InvalidFloat("leading zeros are not allowed"),
+            ));
         }
 
         // Safety: no other Scratch or arena.alloc() is active during float parsing.
@@ -1029,18 +1059,30 @@ impl<'de> Parser<'de> {
             scratch.push(b'-');
         }
         if !scratch.push_strip_underscores(s.as_bytes()) {
-            return Err(self.set_error(s_start, Some(s_end), ErrorKind::InvalidFloat("underscores must be between two digits")));
+            return Err(self.set_error(
+                s_start,
+                Some(s_end),
+                ErrorKind::InvalidFloat("underscores must be between two digits"),
+            ));
         }
 
         let mut last = s;
 
         if let Some(after) = after_decimal {
             if !matches!(after.as_bytes().first(), Some(b'0'..=b'9')) {
-                return Err(self.set_error(s_start, Some(s_end), ErrorKind::InvalidFloat("nothing after decimal point")));
+                return Err(self.set_error(
+                    s_start,
+                    Some(s_end),
+                    ErrorKind::InvalidFloat("nothing after decimal point"),
+                ));
             }
             scratch.push(b'.');
             if !scratch.push_strip_underscores(after.as_bytes()) {
-                return Err(self.set_error(s_start, Some(s_end), ErrorKind::InvalidFloat("underscores must be between two digits")));
+                return Err(self.set_error(
+                    s_start,
+                    Some(s_end),
+                    ErrorKind::InvalidFloat("underscores must be between two digits"),
+                ));
             }
             last = after;
         }
@@ -1054,11 +1096,19 @@ impl<'de> Parser<'de> {
                 Some(b) if is_keylike_byte(b) && b != b'-' => {
                     let next = self.read_keylike();
                     if !scratch.push_strip_underscores(next.as_bytes()) {
-                        return Err(self.set_error(s_start, Some(s_end), ErrorKind::InvalidFloat("exponent requires at least one digit")));
+                        return Err(self.set_error(
+                            s_start,
+                            Some(s_end),
+                            ErrorKind::InvalidFloat("exponent requires at least one digit"),
+                        ));
                     }
                 }
                 _ => {
-                    return Err(self.set_error(s_start, Some(s_end), ErrorKind::InvalidFloat("exponent requires at least one digit")));
+                    return Err(self.set_error(
+                        s_start,
+                        Some(s_end),
+                        ErrorKind::InvalidFloat("exponent requires at least one digit"),
+                    ));
                 }
             }
         }
@@ -1077,7 +1127,11 @@ impl<'de> Parser<'de> {
         if n.is_finite() {
             Ok(n)
         } else {
-            Err(self.set_error(s_start, Some(s_end), ErrorKind::InvalidFloat("float overflow")))
+            Err(self.set_error(
+                s_start,
+                Some(s_end),
+                ErrorKind::InvalidFloat("float overflow"),
+            ))
         }
     }
 
@@ -1127,8 +1181,8 @@ impl<'de> Parser<'de> {
                         at,
                         Some(self.cursor),
                         ErrorKind::Wanted {
-                            expected: "the literal `true`",
-                            found: "something else",
+                            expected: &"the literal `true`",
+                            found: &"something else",
                         },
                     ))
                 };
@@ -1146,8 +1200,8 @@ impl<'de> Parser<'de> {
                         at,
                         Some(self.cursor),
                         ErrorKind::Wanted {
-                            expected: "the literal `false`",
-                            found: "something else",
+                            expected: &"the literal `false`",
+                            found: &"something else",
                         },
                     ))
                 };
@@ -1207,11 +1261,7 @@ impl<'de> Parser<'de> {
                 ErrorKind::Unexpected(self.next_char_for_error()),
             ))
         } else {
-            Err(self.set_error(
-                at,
-                Some(self.cursor),
-                ErrorKind::UnquotedString,
-            ))
+            Err(self.set_error(at, Some(self.cursor), ErrorKind::UnquotedString))
         }
     }
 
@@ -1283,7 +1333,11 @@ impl<'de> Parser<'de> {
                     return Err(self.set_error(start, None, ErrorKind::UnclosedInlineTable));
                 }
                 let (_found_desc, end) = self.scan_token_desc_and_end();
-                return Err(self.set_error(start, Some(end), ErrorKind::MissingInlineTableComma));
+                return Err(self.set_error(
+                    start,
+                    Some(end),
+                    ErrorKind::MissingInlineTableComma,
+                ));
             }
             if let Err(e) = self.eat_inline_table_whitespace() {
                 return Err(e);
@@ -1433,7 +1487,7 @@ impl<'de> Parser<'de> {
             // with NLL limitations.
             if existing.is_table() {
                 if existing.is_frozen() {
-                    return Err(self.set_duplicate_key_error(existing_span, key.span, key.name));
+                    return Err(self.set_duplicate_key_error(existing_span, key.span));
                 }
                 // SAFETY: is_table() verified by the preceding check.
                 unsafe { Ok(existing.as_table_mut_unchecked()) }
@@ -1443,12 +1497,12 @@ impl<'de> Parser<'de> {
                 // unwrap is safe as array's of tables always have atleast one value by construction
                 let last = arr.last_mut().unwrap();
                 if !last.is_table() {
-                    return Err(self.set_duplicate_key_error(existing_span, key.span, key.name));
+                    return Err(self.set_duplicate_key_error(existing_span, key.span));
                 }
                 // SAFETY: last.is_table() verified by the preceding check.
                 unsafe { Ok(last.as_table_mut_unchecked()) }
             } else {
-                Err(self.set_duplicate_key_error(existing_span, key.span, key.name))
+                Err(self.set_duplicate_key_error(existing_span, key.span))
             }
         } else {
             let span = key.span;
@@ -1499,20 +1553,20 @@ impl<'de> Parser<'de> {
             let first_key_span = existing_key.span;
 
             if !existing.is_table() || existing.is_frozen() {
-                return Err(self.set_duplicate_key_error(first_key_span, key.span, key.name));
+                return Err(self.set_duplicate_key_error(first_key_span, key.span));
             }
             if existing.has_header_bit() {
                 return Err(self.set_error(
                     header_start as usize,
                     Some(header_end as usize),
                     ErrorKind::DuplicateTable {
-                        name: String::from(key.name),
+                        name: key.span,
                         first: existing.span_unchecked(),
                     },
                 ));
             }
             if existing.has_dotted_bit() {
-                return Err(self.set_duplicate_key_error(first_key_span, key.span, key.name));
+                return Err(self.set_duplicate_key_error(first_key_span, key.span));
             }
             // SAFETY: is_table() verified by the preceding checks.
             let table = unsafe { existing.as_table_mut_unchecked() };
@@ -1575,7 +1629,7 @@ impl<'de> Parser<'de> {
                     ErrorKind::RedefineAsArray,
                 ))
             } else {
-                Err(self.set_duplicate_key_error(first_key_span, key.span, key.name))
+                Err(self.set_duplicate_key_error(first_key_span, key.span))
             }
         } else {
             let entry_span = Span::new(header_start, header_end);
@@ -1610,7 +1664,6 @@ impl<'de> Parser<'de> {
                     return Err(self.set_duplicate_key_error(
                         existing_key.span,
                         key.span,
-                        key.name,
                     ));
                 }
             }
@@ -1634,7 +1687,7 @@ impl<'de> Parser<'de> {
             std::collections::hash_map::Entry::Occupied(occupied_entry) => {
                 let idx = *occupied_entry.get();
                 let (existing_key, _) = &table.entries()[idx];
-                Err(self.set_duplicate_key_error(existing_key.span, key.span, key.name))
+                Err(self.set_duplicate_key_error(existing_key.span, key.span))
             }
             std::collections::hash_map::Entry::Vacant(vacant_entry) => {
                 vacant_entry.insert(table.len());
@@ -1965,10 +2018,7 @@ pub fn parse<'de>(document: &'de str, arena: &'de Arena) -> Result<Document<'de>
     const MAX_SIZE: usize = (1u32 << 28) as usize;
 
     if document.len() >= MAX_SIZE {
-        return Err(Error {
-            kind: ErrorKind::FileTooLarge,
-            span: Span::new(0, 0),
-        });
+        return Err(Error::new(ErrorKind::FileTooLarge, Span::new(0, 0)));
     }
 
     let mut root_st = Table::new_spanned(Span::new(0, document.len() as u32));
@@ -1997,21 +2047,21 @@ fn is_keylike_byte(b: u8) -> bool {
     b.is_ascii_alphanumeric() || b == b'-' || b == b'_'
 }
 
-fn byte_describe(b: u8) -> &'static str {
+fn byte_describe(b: u8) -> &'static &'static str {
     match b {
-        b'\n' => "a newline",
-        b' ' | b'\t' => "whitespace",
-        b'=' => "an equals",
-        b'.' => "a period",
-        b',' => "a comma",
-        b':' => "a colon",
-        b'+' => "a plus",
-        b'{' => "a left brace",
-        b'}' => "a right brace",
-        b'[' => "a left bracket",
-        b']' => "a right bracket",
-        b'\'' | b'"' => "a string",
-        _ if is_keylike_byte(b) => "an identifier",
-        _ => "a character",
+        b'\n' => &"a newline",
+        b' ' | b'\t' => &"whitespace",
+        b'=' => &"an equals",
+        b'.' => &"a period",
+        b',' => &"a comma",
+        b':' => &"a colon",
+        b'+' => &"a plus",
+        b'{' => &"a left brace",
+        b'}' => &"a right brace",
+        b'[' => &"a left bracket",
+        b']' => &"a right bracket",
+        b'\'' | b'"' => &"a string",
+        _ if is_keylike_byte(b) => &"an identifier",
+        _ => &"a character",
     }
 }

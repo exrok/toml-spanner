@@ -1,10 +1,9 @@
 ---
 source: snapshot-tests/tests/annotate_snippets.rs
-assertion_line: 36
 expression: rendered
 ---
-error: unexpected keys in table: ["this-field-is-not-known"]
+error: unexpected key `this-field-is-not-known`
  --> unknown_field:2:1
   |
 2 | this-field-is-not-known = 20
-  | -----------------------
+  | ^^^^^^^^^^^^^^^^^^^^^^^ unexpected key

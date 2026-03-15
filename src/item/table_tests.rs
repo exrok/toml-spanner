@@ -337,7 +337,7 @@ fn as_item_and_into_item() {
     let item = table2.into_item();
     assert_eq!(item.span_unchecked(), Span::new(0, 100));
     assert_eq!(item.as_table().unwrap().len(), 3);
-    assert_eq!(item.type_str(), "table");
+    assert_eq!(*item.type_str(), "table");
 }
 
 #[test]

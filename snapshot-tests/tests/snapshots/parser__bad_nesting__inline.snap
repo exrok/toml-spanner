@@ -2,7 +2,7 @@
 source: snapshot-tests/tests/parser.rs
 expression: error
 ---
-error[duplicate-key]: 
+error[duplicate-key]: duplicate key: `b`
   ┌─ inline:4:12
   │
 3 │         b = { c = 2, d = {} }

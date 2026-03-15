@@ -52,10 +52,10 @@ impl<'de> FromToml<'de> for Ohno {
         if let Some(snbh) =
             th.optional::<Spanned<std::borrow::Cow<'de, str>>>("this-is-deprecated")
         {
-            return Err(th.ctx.push_error(toml_spanner::Error::from((
-                toml_spanner::ErrorKind::Custom("this-is-deprecated is deprecated".into()),
+            return Err(th.ctx.push_error(toml_spanner::Error::custom(
+                "this-is-deprecated is deprecated",
                 snbh.span,
-            ))));
+            )));
         }
 
         th.expect_empty()?;

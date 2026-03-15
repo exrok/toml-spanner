@@ -45,7 +45,7 @@ macro_rules! valid_de {
                 }
                 Err(e) => {
                     let file = $crate::File::new(stringify!($name), &toml_str);
-                    let diags = e.errors.iter().map(|e| e.to_diagnostic(()));
+                    let diags = e.errors.iter().map(|e| e.to_diagnostic(&toml_str, ()));
                     let error = $crate::emit_diags(&file, diags);
                     panic!("unexpected toml deserialization errors:\n{error}");
                 }
@@ -64,7 +64,7 @@ macro_rules! valid_de {
                 }
                 Err(e) => {
                     let file = $crate::File::new(stringify!($name), $toml);
-                    let diags = e.errors.iter().map(|e| e.to_diagnostic(()));
+                    let diags = e.errors.iter().map(|e| e.to_diagnostic($toml, ()));
                     let error = $crate::emit_diags(&file, diags);
                     panic!("unexpected toml deserialization errors:\n{error}");
                 }
@@ -90,7 +90,7 @@ macro_rules! invalid_de {
                     panic!("expected errors but deserialized '{de:#?}' successfully");
                 }
                 Err(e) => {
-                    let diags: Vec<_> = e.errors.iter().map(|e| e.to_diagnostic(())).collect();
+                    let diags: Vec<_> = e.errors.iter().map(|e| e.to_diagnostic(&toml_str, ())).collect();
                     $crate::error_snapshot!($name, diags, &toml_str);
                 }
             }
@@ -107,7 +107,7 @@ macro_rules! invalid_de {
                     panic!("expected errors but deserialized '{de:#?}' successfully");
                 }
                 Err(e) => {
-                    let diags: Vec<_> = e.errors.iter().map(|e| e.to_diagnostic(())).collect();
+                    let diags: Vec<_> = e.errors.iter().map(|e| e.to_diagnostic($toml, ())).collect();
                     $crate::error_snapshot!($name, diags, $toml);
                 }
             }
@@ -209,7 +209,7 @@ macro_rules! invalid {
                     .expect(concat!("failed to load ", stringify!($name), ".toml"));
             let arena = toml_spanner::Arena::new();
             let error = toml_spanner::parse(&toml_str, &arena).unwrap_err();
-            $crate::error_snapshot!($name, Some(error.to_diagnostic(())), &toml_str);
+            $crate::error_snapshot!($name, Some(error.to_diagnostic(&toml_str, ())), &toml_str);
         }
     };
     ($name:ident, $toml:expr) => {
@@ -217,7 +217,7 @@ macro_rules! invalid {
         fn $name() {
             let arena = toml_spanner::Arena::new();
             let error = toml_spanner::parse($toml, &arena).unwrap_err();
-            $crate::error_snapshot!($name, Some(error.to_diagnostic(())), $toml);
+            $crate::error_snapshot!($name, Some(error.to_diagnostic($toml, ())), $toml);
         }
     };
 }

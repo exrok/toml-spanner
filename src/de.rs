@@ -12,7 +12,8 @@ use foldhash::HashMap;
 use std::fmt::{self, Debug, Display};
 
 use crate::{
-    Arena, Error, ErrorKind, Key, Span, Table,
+    Arena, Key, Span, Table,
+    error::{ErrorKind, Error},
     item::{self, Item},
     parser::{INDEXED_TABLE_THRESHOLD, KeyRef},
 };
@@ -204,10 +205,7 @@ impl<'ctx, 't, 'de> TableHelper<'ctx, 't, 'de> {
         };
 
         func(item).map_err(|err| {
-            self.ctx.push_error(Error {
-                kind: ErrorKind::Custom(std::borrow::Cow::Owned(err.to_string())),
-                span: item.span_unchecked(),
-            })
+            self.ctx.push_error(Error::custom(err, item.span_unchecked()))
         })
     }
 
@@ -228,10 +226,7 @@ impl<'ctx, 't, 'de> TableHelper<'ctx, 't, 'de> {
 
         func(item)
             .map_err(|err| {
-                self.ctx.push_error(Error {
-                    kind: ErrorKind::Custom(std::borrow::Cow::Owned(err.to_string())),
-                    span: item.span_unchecked(),
-                })
+                self.ctx.push_error(Error::custom(err, item.span_unchecked()))
             })
             .ok()
     }
@@ -305,10 +300,10 @@ impl<'ctx, 't, 'de> TableHelper<'ctx, 't, 'de> {
 
     #[cold]
     fn report_missing_field(&mut self, name: &'static str) -> Failed {
-        self.ctx.errors.push(Error {
-            kind: ErrorKind::MissingField(name),
-            span: self.table.span(),
-        });
+        self.ctx.errors.push(Error::new(
+            ErrorKind::MissingField(name),
+            self.table.span(),
+        ));
         Failed
     }
 
@@ -385,22 +380,22 @@ impl<'ctx, 't, 'de> TableHelper<'ctx, 't, 'de> {
             return Ok(());
         }
 
-        let mut keys = Vec::new();
+        let mut had_unexpected = false;
         for (i, (key, _)) in self.table.entries().iter().enumerate() {
             if !self.used.get(i) {
-                keys.push((key.name.into(), key.span));
+                self.ctx.errors.push(Error::new(
+                    ErrorKind::UnexpectedKey,
+                    key.span,
+                ));
+                had_unexpected = true;
             }
         }
 
-        if keys.is_empty() {
-            return Ok(());
+        if had_unexpected {
+            Err(Failed)
+        } else {
+            Ok(())
         }
-
-        self.ctx.errors.push(Error::from((
-            ErrorKind::UnexpectedKeys { keys },
-            self.table.span(),
-        )));
-        Err(Failed)
     }
 }
 
@@ -426,24 +421,21 @@ impl<'de> Context<'de> {
     }
     /// Records a "expected X, found Y" type-mismatch error and returns [`Failed`].
     #[cold]
-    pub fn error_expected_but_found(&mut self, message: &'static str, found: &Item<'_>) -> Failed {
-        self.errors.push(Error {
-            kind: ErrorKind::Wanted {
+    pub fn error_expected_but_found(&mut self, message: &'static &'static str, found: &Item<'_>) -> Failed {
+        self.errors.push(Error::new(
+            ErrorKind::Wanted {
                 expected: message,
                 found: found.type_str(),
             },
-            span: found.span_unchecked(),
-        });
+            found.span_unchecked(),
+        ));
         Failed
     }
 
     /// Records a custom error message at the given span and returns [`Failed`].
     #[cold]
     pub fn error_message_at(&mut self, message: &'static str, at: Span) -> Failed {
-        self.errors.push(Error {
-            kind: ErrorKind::Custom(std::borrow::Cow::Borrowed(message)),
-            span: at,
-        });
+        self.errors.push(Error::custom_static(message, at));
         Failed
     }
     /// Pushes a pre-built [`Error`] and returns [`Failed`].
@@ -456,10 +448,7 @@ impl<'de> Context<'de> {
     /// Records an out-of-range error for the type `name` and returns [`Failed`].
     #[cold]
     pub fn error_out_of_range(&mut self, name: &'static str, span: Span) -> Failed {
-        self.errors.push(Error {
-            kind: ErrorKind::OutOfRange(name),
-            span,
-        });
+        self.errors.push(Error::new(ErrorKind::OutOfRange(name), span));
         Failed
     }
 
@@ -469,10 +458,7 @@ impl<'de> Context<'de> {
     /// entries instead of using [`TableHelper`].
     #[cold]
     pub fn report_missing_field(&mut self, name: &'static str, span: Span) -> Failed {
-        self.errors.push(Error {
-            kind: ErrorKind::MissingField(name),
-            span,
-        });
+        self.errors.push(Error::new(ErrorKind::MissingField(name), span));
         Failed
     }
 
@@ -482,10 +468,7 @@ impl<'de> Context<'de> {
     /// is set more than once (e.g. both the primary key and an alias appear).
     #[cold]
     pub fn report_duplicate_field(&mut self, name: &'static str, span: Span) -> Failed {
-        self.errors.push(Error {
-            kind: ErrorKind::DuplicateField(name),
-            span,
-        });
+        self.errors.push(Error::new(ErrorKind::DuplicateField(name), span));
         Failed
     }
 }
@@ -656,14 +639,14 @@ impl<'de, T: FromToml<'de>, const N: usize> FromToml<'de> for [T; N] {
         let boxed_slice = Box::<[T]>::from_toml(ctx, value)?;
         match <Box<[T; N]>>::try_from(boxed_slice) {
             Ok(array) => Ok(*array),
-            Err(res) => Err(ctx.push_error(Error {
-                kind: ErrorKind::Custom(std::borrow::Cow::Owned(format!(
+            Err(res) => Err(ctx.push_error(Error::custom(
+                format!(
                     "Expect Array Size: found {} but expected {}",
                     res.len(),
                     N
-                ))),
-                span: value.span_unchecked(),
-            })),
+                ),
+                value.span_unchecked(),
+            ))),
         }
     }
 }
@@ -672,7 +655,7 @@ impl<'de> FromToml<'de> for String {
     fn from_toml(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
         match value.as_str() {
             Some(s) => Ok(s.to_string()),
-            None => Err(ctx.error_expected_but_found("a string", value)),
+            None => Err(ctx.error_expected_but_found(&"a string", value)),
         }
     }
 }
@@ -681,7 +664,7 @@ impl<'de> FromToml<'de> for PathBuf {
     fn from_toml(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
         match value.as_str() {
             Some(s) => Ok(PathBuf::from(s)),
-            None => Err(ctx.error_expected_but_found("a path", value)),
+            None => Err(ctx.error_expected_but_found(&"a path", value)),
         }
     }
 }
@@ -712,7 +695,7 @@ impl<'de> FromToml<'de> for Box<str> {
     fn from_toml(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
         match value.value() {
             item::Value::String(&s) => Ok(s.into()),
-            _ => Err(ctx.error_expected_but_found("a string", value)),
+            _ => Err(ctx.error_expected_but_found(&"a string", value)),
         }
     }
 }
@@ -720,7 +703,7 @@ impl<'de> FromToml<'de> for &'de str {
     fn from_toml(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
         match value.value() {
             item::Value::String(s) => Ok(*s),
-            _ => Err(ctx.error_expected_but_found("a string", value)),
+            _ => Err(ctx.error_expected_but_found(&"a string", value)),
         }
     }
 }
@@ -729,7 +712,7 @@ impl<'de> FromToml<'de> for std::borrow::Cow<'de, str> {
     fn from_toml(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
         match value.value() {
             item::Value::String(s) => Ok(std::borrow::Cow::Borrowed(*s)),
-            _ => Err(ctx.error_expected_but_found("a string", value)),
+            _ => Err(ctx.error_expected_but_found(&"a string", value)),
         }
     }
 }
@@ -738,7 +721,7 @@ impl<'de> FromToml<'de> for bool {
     fn from_toml(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
         match value.as_bool() {
             Some(b) => Ok(b),
-            None => Err(ctx.error_expected_but_found("a bool", value)),
+            None => Err(ctx.error_expected_but_found(&"a bool", value)),
         }
     }
 }
@@ -754,7 +737,7 @@ fn deser_integer_ctx(
     match value.as_i64() {
         Some(i) if i >= min && i <= max => Ok(i),
         Some(_) => Err(ctx.error_out_of_range(name, span)),
-        None => Err(ctx.error_expected_but_found("an integer", value)),
+        None => Err(ctx.error_expected_but_found(&"an integer", value)),
     }
 }
 
@@ -806,7 +789,7 @@ impl<'de> FromToml<'de> for f32 {
     fn from_toml(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
         match value.as_f64() {
             Some(f) => Ok(f as f32),
-            None => Err(ctx.error_expected_but_found("a float", value)),
+            None => Err(ctx.error_expected_but_found(&"a float", value)),
         }
     }
 }
@@ -815,7 +798,7 @@ impl<'de> FromToml<'de> for f64 {
     fn from_toml(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
         match value.as_f64() {
             Some(f) => Ok(f),
-            None => Err(ctx.error_expected_but_found("a float", value)),
+            None => Err(ctx.error_expected_but_found(&"a float", value)),
         }
     }
 }
@@ -875,7 +858,7 @@ impl<'de> Item<'de> {
     pub fn expect_custom_string(
         &self,
         ctx: &mut Context<'de>,
-        expected: &'static str,
+        expected: &'static &'static str,
     ) -> Result<&'de str, Failed> {
         match self.value() {
             item::Value::String(s) => Ok(*s),
@@ -886,7 +869,7 @@ impl<'de> Item<'de> {
     pub fn expect_string(&self, ctx: &mut Context<'de>) -> Result<&'de str, Failed> {
         match self.value() {
             item::Value::String(s) => Ok(*s),
-            _ => Err(ctx.error_expected_but_found("a string", self)),
+            _ => Err(ctx.error_expected_but_found(&"a string", self)),
         }
     }
 
@@ -894,7 +877,7 @@ impl<'de> Item<'de> {
     pub fn expect_array(&self, ctx: &mut Context<'de>) -> Result<&crate::Array<'de>, Failed> {
         match self.as_array() {
             Some(arr) => Ok(arr),
-            None => Err(ctx.error_expected_but_found("an array", self)),
+            None => Err(ctx.error_expected_but_found(&"an array", self)),
         }
     }
 
@@ -902,7 +885,7 @@ impl<'de> Item<'de> {
     pub fn expect_table(&self, ctx: &mut Context<'de>) -> Result<&crate::Table<'de>, Failed> {
         match self.as_table() {
             Some(table) => Ok(table),
-            None => Err(ctx.error_expected_but_found("a table", self)),
+            None => Err(ctx.error_expected_but_found(&"a table", self)),
         }
     }
 
@@ -914,7 +897,7 @@ impl<'de> Item<'de> {
         ctx: &'ctx mut Context<'de>,
     ) -> Result<TableHelper<'ctx, 'item, 'de>, Failed> {
         let Some(table) = self.as_table() else {
-            return Err(ctx.error_expected_but_found("a table", self));
+            return Err(ctx.error_expected_but_found(&"a table", self));
         };
         Ok(TableHelper::new(ctx, table))
     }

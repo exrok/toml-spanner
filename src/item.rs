@@ -9,7 +9,8 @@ pub(crate) mod table;
 mod to_toml;
 use crate::arena::Arena;
 use crate::item::table::TableIndex;
-use crate::{DateTime, Error, ErrorKind, Span, Table};
+use crate::{DateTime, Span, Table};
+use crate::error::{ErrorKind, Error};
 use std::fmt;
 use std::mem::ManuallyDrop;
 
@@ -513,15 +514,15 @@ impl<'de> Item<'de> {
 
     /// Returns the TOML type name (e.g. `"string"`, `"integer"`, `"table"`).
     #[inline]
-    pub fn type_str(&self) -> &'static str {
+    pub fn type_str(&self) -> &'static &'static str {
         match self.kind() {
-            Kind::String => "string",
-            Kind::Integer => "integer",
-            Kind::Float => "float",
-            Kind::Boolean => "boolean",
-            Kind::Array => "array",
-            Kind::Table => "table",
-            Kind::DateTime => "datetime",
+            Kind::String => &"string",
+            Kind::Integer => &"integer",
+            Kind::Float => &"float",
+            Kind::Boolean => &"boolean",
+            Kind::Array => &"array",
+            Kind::Table => &"table",
+            Kind::DateTime => &"datetime",
         }
     }
 
@@ -935,14 +936,14 @@ impl<'de> Item<'de> {
 impl<'de> Item<'de> {
     /// Creates an "expected X, found Y" error using this value's type and span.
     #[inline]
-    pub fn expected(&self, expected: &'static str) -> Error {
-        Error {
-            kind: ErrorKind::Wanted {
+    pub fn expected(&self, expected: &'static &'static str) -> Error {
+        Error::new(
+            ErrorKind::Wanted {
                 expected,
                 found: self.type_str(),
             },
-            span: self.span_unchecked(),
-        }
+            self.span_unchecked(),
+        )
     }
 
     /// Takes a string value and parses it via [`std::str::FromStr`].
@@ -955,14 +956,14 @@ impl<'de> Item<'de> {
         <T as std::str::FromStr>::Err: std::fmt::Display,
     {
         let Some(s) = self.as_str() else {
-            return Err(self.expected("a string"));
+            return Err(self.expected(&"a string"));
         };
         match s.parse() {
             Ok(v) => Ok(v),
-            Err(err) => Err(Error {
-                kind: ErrorKind::Custom(format!("failed to parse string: {err}").into()),
-                span: self.span_unchecked(),
-            }),
+            Err(err) => Err(Error::custom(
+                format!("failed to parse string: {err}"),
+                self.span_unchecked(),
+            )),
         }
     }
 }

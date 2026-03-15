@@ -31,7 +31,8 @@ use crate::{Item, Table};
 /// [`IpAddr`]: std::net::IpAddr
 /// [`SocketAddr`]: std::net::SocketAddr
 pub mod parse_string {
-    use crate::{Context, Error, Failed, Item};
+    use crate::{Context, Failed, Item};
+    use crate::error::Error;
 
     /// Parses a TOML string value into `T` via [`FromStr`].
     ///
@@ -45,7 +46,7 @@ pub mod parse_string {
         T::Err: std::fmt::Display,
     {
         let Some(s) = item.as_str() else {
-            return Err(ctx.error_expected_but_found("a string", item));
+            return Err(ctx.error_expected_but_found(&"a string", item));
         };
         match s.parse::<T>() {
             Ok(val) => Ok(val),

@@ -845,7 +845,7 @@ fn enum_from_toml_string(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVarian
             } else {
                 splat!(out;
                     _ => Err(__ctx.error_expected_but_found(
-                        [@TokenTree::Literal(Literal::string(&expected_msg))], __item)),
+                        &[@TokenTree::Literal(Literal::string(&expected_msg))], __item)),
                 );
             }]
         }
@@ -1034,7 +1034,7 @@ fn enum_from_toml_external(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVari
                 } else {
                     splat!(out;
                         _ => Err(__ctx.error_expected_but_found(
-                            [@TokenTree::Literal(Literal::string("a known variant"))], __item)),
+                            &[@TokenTree::Literal(Literal::string("a known variant"))], __item)),
                     );
                 }]
             };
@@ -1054,7 +1054,7 @@ fn enum_from_toml_external(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVari
         let err_body_start = out.buf.len();
         splat!(out;
             return Err(__ctx.error_expected_but_found(
-                [@TokenTree::Literal(Literal::string("a table with exactly one key"))], __item));
+                &[@TokenTree::Literal(Literal::string("a table with exactly one key"))], __item));
         );
         let err_body = out.split_off_stream(err_body_start);
         let one_lit = TokenTree::Literal(Literal::usize_unsuffixed(1));
@@ -1109,14 +1109,14 @@ fn enum_from_toml_external(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVari
         } else {
             splat!(out;
                 _ => Err(__ctx.error_expected_but_found(
-                    [@TokenTree::Literal(Literal::string("a known variant"))], __item)),
+                    &[@TokenTree::Literal(Literal::string("a known variant"))], __item)),
             );
         }
         out.tt_group(Delimiter::Brace, arms_at);
     } else if !has_unit {
         splat!(out;
             Err(__ctx.error_expected_but_found(
-                [@TokenTree::Literal(Literal::string("a known variant"))], __item))
+                &[@TokenTree::Literal(Literal::string("a known variant"))], __item))
         );
     }
 
@@ -1217,7 +1217,7 @@ fn enum_from_toml_internal(
     } else {
         splat!(out;
             _ => Err(__ctx.error_expected_but_found(
-                [@TokenTree::Literal(Literal::string("a known variant"))], __item)),
+                &[@TokenTree::Literal(Literal::string("a known variant"))], __item)),
         );
     }
     out.tt_group(Delimiter::Brace, arms_at);
@@ -1340,7 +1340,7 @@ fn enum_from_toml_adjacent(
     } else {
         splat!(out;
             _ => Err(__ctx.error_expected_but_found(
-                [@TokenTree::Literal(Literal::string("a known variant"))], __item)),
+                &[@TokenTree::Literal(Literal::string("a known variant"))], __item)),
         );
     }
     out.tt_group(Delimiter::Brace, arms_at);
@@ -1372,7 +1372,7 @@ fn enum_from_toml_untagged(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVari
                         }
                     }
                     [?(propagate) return Err(__ctx.error_expected_but_found(
-                        [@TokenTree::Literal(Literal::string("a matching variant"))], __item));]
+                        &[@TokenTree::Literal(Literal::string("a matching variant"))], __item));]
                 );
             }
             EnumKind::Tuple => {
@@ -1456,7 +1456,7 @@ fn enum_from_toml_untagged(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVari
     if !last_is_unhinted {
         splat!(out;
             Err(__ctx.error_expected_but_found(
-                [@TokenTree::Literal(Literal::string("a matching variant"))], __item))
+                &[@TokenTree::Literal(Literal::string("a matching variant"))], __item))
         );
     }
 

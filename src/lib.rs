@@ -83,7 +83,7 @@
 //! impl<'de> FromToml<'de> for Things {
 //!     fn from_toml(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
 //!         let Some(table) = value.as_table() else {
-//!             return Err(ctx.error_expected_but_found("a table", value));
+//!             return Err(ctx.error_expected_but_found(&"a table", value));
 //!         };
 //!         let mut th = TableHelper::new(ctx, table);
 //!         let name = th.required("name")?;

@@ -1944,8 +1944,5 @@ fn push_custom_error(
     item: &toml_spanner::Item<'_>,
     err: impl fmt::Display,
 ) -> Failed {
-    ctx.push_error(toml_spanner::Error {
-        kind: toml_spanner::ErrorKind::Custom(err.to_string().into()),
-        span: item.span(),
-    })
+    ctx.push_error(toml_spanner::Error::custom(err, item.span()))
 }
