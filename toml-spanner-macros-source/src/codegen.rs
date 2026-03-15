@@ -7,7 +7,7 @@ use crate::case::RenameRule;
 use crate::util::MemoryPool;
 use crate::writer::RustWriter;
 use crate::Error;
-use proc_macro2::{Delimiter, Group, Ident, Literal, Span, TokenStream, TokenTree};
+use proc_macro2::{Delimiter, Group, Ident, Literal, Punct, Spacing, Span, TokenStream, TokenTree};
 
 #[rustfmt::skip]
 macro_rules! throw {
@@ -820,18 +820,6 @@ fn emit_tag_insert(
 fn enum_from_toml_string(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVariant]) {
     let start = out.buf.len();
     let other_variant = variants.iter().find(|v| v.other);
-    let mut expected_msg = String::from("one of: ");
-    for (i, v) in variants.iter().enumerate() {
-        if v.other {
-            continue;
-        }
-        if i > 0 {
-            expected_msg.push_str(", ");
-        }
-        let l = variant_name_literal(ctx, v);
-        let s = l.to_string();
-        expected_msg.push_str(&s[1..s.len() - 1]);
-    }
     splat!(out;
         let s = __item.expect_string(__ctx)?;
         match s {
@@ -843,9 +831,18 @@ fn enum_from_toml_string(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVarian
             [if let Some(ov) = other_variant {
                 splat!(out; _ => Ok(Self::[#: ov.name]),);
             } else {
+                let expected_array = {
+                    let mut ts = TokenStream::new();
+                    for variant in variants {
+                        if variant.other { continue; }
+                        let name_lit = variant_name_literal(ctx, variant);
+                        ts.extend([name_lit.into(), TokenTree::Punct(Punct::new(',', Spacing::Alone))]);
+                    }
+                    TokenTree::Group(Group::new(Delimiter::Bracket, ts))
+                };
                 splat!(out;
-                    _ => Err(__ctx.error_expected_but_found(
-                        &[@TokenTree::Literal(Literal::string(&expected_msg))], __item)),
+                    _ => Err(__ctx.error_unexpected_variant(
+                        &[@expected_array], __item)),
                 );
             }]
         }

@@ -1,16 +1,22 @@
 # toml-spanner
 
-High-performance, fast compiling, span preserving conformant TOML parsing for Rust.
-Originally forked from `toml-span` to add TOML 1.1.0 support, `toml-spanner`
-has received significant performance improvements and reductions in compile time.
+High-performance, fast compiling, TOML serialization and deserialization library for rust with full compliance with the TOML 1.1 spec.
 
 [![Crates.io](https://img.shields.io/crates/v/toml-spanner?style=flat-square)](https://crates.io/crates/toml-spanner)
 [![Docs.rs](https://img.shields.io/docsrs/toml-spanner?style=flat-square)](https://docs.rs/toml-spanner/latest/toml_spanner/)
 [![License](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue?style=flat-square)](LICENSE-MIT)
 
-Unlike the original, `toml-spanner` aims to be a fully compliant TOML v1.1.0 parser, including
-full date-time support, with conformance verified by extensive fuzzing against the `toml` crate
-and passing the official TOML decoding test suite.
+toml-spanner is a complete TOML libary featuring:
+
+- High Performance: [See Benchmarks](#Benchmarks)
+- Fast (Increment & Clean) Complilation: [See Compile Time Benchmarks](https://github.com/exrok/rust-serialization-build-time-benchmarks/blob/main/README.md)
+- Compact Span Preserving Tree: See Item on docs.rs
+- Derive macros: optional, powerful, zero-dependency <!-- TODO add docs.rs link -->
+- Format Preserving Serialization, even through mutation on your own data types.
+- Full TOML 1.1, including date-time support, passing 100% of offical TOML test-suite
+- Tiny Binary Size <!-- TODO add link to benchmarks once I post them -->
+- Extensively tested with miri and fuzzing under memory santizers and debug assertions.
+- High quality error messages: [See Examples](#Error-Examples)
 
 ## Example
 
@@ -181,6 +187,23 @@ extensive changes:
   Note that the `toml` crate `Value` type doesn't contain any span information
   and that `toml-span` doesn't support table entry order preservation.
 
+### Error Examples
+
+Toml-spanner provides specific errors with spans pointing directly to the problem, multi-error accumulation,
+and integrations with [annotate-snippets](https://crates.io/crates/annotate-snippets)
+and [codespan-reporting](https://crates.io/crates/codespan-reporting).
+
+Here are some parsing examples using the annotated-snippets feature:
+
+![unterminated string](error-examples/output/unterminated_string.svg)
+
+![duplicate key](error-examples/output/duplicate_key.svg)
+
+Here are some a deserialization error, note how multiple errors are reported instead
+bailing out after first error.
+
+![deserialization errors](error-examples/output/deserialization_errors.svg)
+
 ### Trade-offs
 
 `toml-spanner` makes extensive use of `unsafe` code to achieve its performance
@@ -217,12 +240,16 @@ cargo +nightly llvm-cov --branch --show-missing-lines -- -q
 
 Note: See the `devsm.toml` file in the root for typical commands that are run during development.
 
-## Differences from `toml`
+### Acknowledgements
 
-First off I just want to be up front and clear about the differences/limitations of this crate versus `toml`
+toml-spanner started off as fork of toml-span and though it's been completely rewritten at this
+point, the original test suite and some of the API patterns remain.
 
-1. No `serde` support for deserialization, there is a `serde` feature, but that only enables serialization of the `Value` and `Spanned` types.
-1. No toml serialization. This crate is only intended to be a span preserving deserializer, there is no intention to provide serialization to toml, especially the advanced format preserving kind provided by `toml-edit`.
+Both toml and toml-edit crates
+
+Unlike the original, `toml-spanner` aims to be a fully compliant TOML v1.1.0 parser, including
+full date-time support, with conformance verified by extensive fuzzing against the `toml` crate
+and passing the official TOML decoding test suite.
 
 ### License
 

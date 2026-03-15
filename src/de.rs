@@ -432,6 +432,16 @@ impl<'de> Context<'de> {
         Failed
     }
 
+    /// Records an "unknown variant" error listing the accepted variants and returns [`Failed`].
+    #[cold]
+    pub fn error_unexpected_variant(&mut self, expected: &'static [&'static str], found: &Item<'_>) -> Failed {
+        self.errors.push(Error::new(
+            ErrorKind::UnexpectedVariant { expected },
+            found.span_unchecked(),
+        ));
+        Failed
+    }
+
     /// Records a custom error message at the given span and returns [`Failed`].
     #[cold]
     pub fn error_message_at(&mut self, message: &'static str, at: Span) -> Failed {

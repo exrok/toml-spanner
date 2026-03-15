@@ -1,8 +1,9 @@
 ---
 source: snapshot-tests/tests/parser.rs
+assertion_line: 237
 expression: error
 ---
-error[duplicate-key]: duplicate key: `b`
+error[duplicate-key]: the key `b` is defined multiple times
   ┌─ inline:4:12
   │
 3 │         b = { c = 2, d = {} }

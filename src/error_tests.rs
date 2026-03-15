@@ -78,6 +78,12 @@ fn display_all_error_kinds() {
             },
             "unexpected-value",
         ),
+        (
+            ErrorKind::UnexpectedVariant {
+                expected: &["a", "b"],
+            },
+            "unexpected-variant",
+        ),
         (ErrorKind::MissingArrayComma, "missing-array-comma"),
         (ErrorKind::UnclosedArray, "unclosed-array"),
         (
@@ -241,6 +247,15 @@ fn error_display_all_variants() {
                 span,
             ),
             "expected '[x, y]'",
+        ),
+        (
+            Error::new(
+                ErrorKind::UnexpectedVariant {
+                    expected: &["x", "y"],
+                },
+                span,
+            ),
+            "unknown variant, expected one of: x, y",
         ),
         (
             Error::new(ErrorKind::MissingArrayComma, span),

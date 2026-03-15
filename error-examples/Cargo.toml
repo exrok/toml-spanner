@@ -1,0 +1,12 @@
+[package]
+name = "error-examples"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+toml-spanner = { path = "..", features = ["annotate-snippets"] }
+toml-spanner-macros = { path = "../toml-spanner-macros" }
+annotate-snippets = "0.12.13"
+anstream = "0.6"
+anstyle-svg = "1.1.0"

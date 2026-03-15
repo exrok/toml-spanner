@@ -1,8 +1,9 @@
 ---
 source: snapshot-tests/tests/parser.rs
+assertion_line: 54
 expression: error
 ---
-error[duplicate-key]: duplicate key: `taste`
+error[duplicate-key]: the key `taste` is defined multiple times
   ┌─ table_9_invalid:6:14
   │
 3 │ apple.taste.sweet = true

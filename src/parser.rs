@@ -556,8 +556,8 @@ impl<'de> Parser<'de> {
             let i = self.cursor;
             let Some(&b) = self.bytes.get(i) else {
                 return Err(self.set_error(
-                    start,
-                    None,
+                    i,
+                    Some(i),
                     ErrorKind::UnterminatedString(delim as char),
                 ));
             };
@@ -568,8 +568,8 @@ impl<'de> Parser<'de> {
                     if self.eat_byte(b'\n') {
                         if !multiline {
                             return Err(self.set_error(
-                                start,
-                                None,
+                                i,
+                                Some(i),
                                 ErrorKind::UnterminatedString(delim as char),
                             ));
                         }
@@ -580,8 +580,8 @@ impl<'de> Parser<'de> {
                 b'\n' => {
                     if !multiline {
                         return Err(self.set_error(
-                            start,
-                            None,
+                            i,
+                            Some(i),
                             ErrorKind::UnterminatedString(delim as char),
                         ));
                     }
@@ -648,7 +648,11 @@ impl<'de> Parser<'de> {
     ) -> Result<(), Failed> {
         let i = self.cursor;
         let Some(&b) = self.bytes.get(i) else {
-            return Err(self.set_error(string_start, None, ErrorKind::UnterminatedString('"')));
+            return Err(self.set_error(
+                i,
+                Some(i),
+                ErrorKind::UnterminatedString('"'),
+            ));
         };
         self.cursor = i + 1;
         let chr: char = 'char: {
@@ -748,13 +752,17 @@ impl<'de> Parser<'de> {
     fn read_hex(
         &mut self,
         n: usize,
-        string_start: usize,
+        _string_start: usize,
         escape_start: usize,
     ) -> Result<char, Failed> {
         let mut val: u32 = 0;
         for _ in 0..n {
             let Some(&byte) = self.bytes.get(self.cursor) else {
-                return Err(self.set_error(string_start, None, ErrorKind::UnterminatedString('"')));
+                return Err(self.set_error(
+                    self.cursor,
+                    Some(self.cursor),
+                    ErrorKind::UnterminatedString('"'),
+                ));
             };
             let digit = HEX[byte as usize];
             if digit >= 0 {

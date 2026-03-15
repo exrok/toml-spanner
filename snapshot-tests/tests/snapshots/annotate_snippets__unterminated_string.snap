@@ -3,7 +3,7 @@ source: snapshot-tests/tests/annotate_snippets.rs
 expression: rendered
 ---
 error: invalid basic string, expected `"`
- --> unterminated_string:1:7
+ --> unterminated_string:1:9
   |
 1 | foo = "\
-  |       ^ expected `"`
+  |         ^ expected `"`

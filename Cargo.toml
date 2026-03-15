@@ -27,6 +27,7 @@ exclude = [
     "third-party-integration-tests",
     "fuzz",
     "benchmark",
+    "error-examples",
     "toml-test-harness",
     "stress-tests",
     "toml-spanner-macros-source",

@@ -3,7 +3,7 @@ source: snapshot-tests/tests/parser.rs
 expression: error
 ---
 error[unterminated-string]: 
-  ┌─ unterminated:1:7
+  ┌─ unterminated:1:9
   │
 1 │ foo = "\
-  │       ^ expected `"`
+  │         ^ expected `"`

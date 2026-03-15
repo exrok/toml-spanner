@@ -124,7 +124,13 @@ pub enum ErrorKind<'a> {
 
     /// An unexpected value was encountered
     UnexpectedValue {
-        /// The list of values that could have been used, eg. typically enum variants
+        /// The list of values that could have been used
+        expected: &'static [&'static str],
+    },
+
+    /// A string did not match any known variant
+    UnexpectedVariant {
+        /// The list of variant names that would have been accepted
         expected: &'static [&'static str],
     },
 
@@ -232,6 +238,7 @@ impl<'a> Display for ErrorKind<'a> {
             Self::DuplicateField(..) => "duplicate-field",
             Self::Deprecated { .. } => "deprecated",
             Self::UnexpectedValue { .. } => "unexpected-value",
+            Self::UnexpectedVariant { .. } => "unexpected-variant",
             Self::MissingArrayComma => "missing-array-comma",
             Self::UnclosedArray => "unclosed-array",
             Self::MissingInlineTableComma => "missing-inline-table-comma",
@@ -355,6 +362,18 @@ impl Display for Error {
                 }
                 f.write_str("]'")
             }
+            ErrorKind::UnexpectedVariant { expected } => {
+                rtry!(f.write_str("unknown variant, expected one of: "));
+                let mut first = true;
+                for val in expected {
+                    if !first {
+                        rtry!(f.write_str(", "));
+                    }
+                    first = false;
+                    rtry!(f.write_str(val));
+                }
+                Ok(())
+            }
             ErrorKind::MissingArrayComma => {
                 f.write_str("missing comma between array elements, expected `,`")
             }
@@ -397,7 +416,7 @@ impl Error {
         let title = match kind {
             ErrorKind::DuplicateKey { .. } => {
                 if let Some(name) = source.get(span.clone()) {
-                    format!("duplicate key: `{name}`")
+                    format!("the key `{name}` is defined multiple times")
                 } else {
                     self.to_string()
                 }
@@ -412,6 +431,16 @@ impl Error {
             ErrorKind::UnexpectedKey => {
                 if let Some(key_name) = source.get(span.clone()) {
                     format!("unexpected key `{key_name}`")
+                } else {
+                    self.to_string()
+                }
+            }
+            ErrorKind::UnexpectedVariant { .. } => {
+                if let Some(value) = source.get(span.clone()) {
+                    match value.split_once('\n') {
+                        Some((first, _)) => format!("unknown variant {first}..."),
+                        None => format!("unknown variant {value}"),
+                    }
                 } else {
                     self.to_string()
                 }
@@ -534,6 +563,17 @@ impl Error {
                 snippet = snippet
                     .annotation(AnnotationKind::Primary.span(span).label("unexpected value"));
             }
+            ErrorKind::UnexpectedVariant { expected } => {
+                let mut label = String::from("expected one of: ");
+                for (i, val) in expected.iter().enumerate() {
+                    if i > 0 {
+                        label.push_str(", ");
+                    }
+                    label.push_str(val);
+                }
+                snippet = snippet
+                    .annotation(AnnotationKind::Primary.span(span).label(label));
+            }
             ErrorKind::UnexpectedEof => {
                 snippet = snippet.annotation(AnnotationKind::Primary.span(span));
             }
@@ -593,7 +633,7 @@ impl Error {
         match kind {
             ErrorKind::DuplicateKey { first } => {
                 let msg = match source.get(self.span().range()) {
-                    Some(name) => format!("duplicate key: `{name}`"),
+                    Some(name) => format!("the key `{name}` is defined multiple times"),
                     None => "duplicate key".into(),
                 };
                 diag.with_message(msg).with_labels(vec![
@@ -683,6 +723,20 @@ impl Error {
                 .with_labels(vec![
                     Label::primary(fid, error_span).with_message("unexpected value"),
                 ]),
+            ErrorKind::UnexpectedVariant { expected } => {
+                let mut label = String::from("expected one of: ");
+                for (i, val) in expected.iter().enumerate() {
+                    if i > 0 {
+                        label.push_str(", ");
+                    }
+                    label.push_str(val);
+                }
+                diag
+                    .with_message(self.to_string())
+                    .with_labels(vec![
+                        Label::primary(fid, error_span).with_message(label),
+                    ])
+            }
             ErrorKind::UnexpectedEof => diag
                 .with_message("unexpected end of file")
                 .with_labels(vec![Label::primary(fid, error_span)]),
