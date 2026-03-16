@@ -8,10 +8,7 @@ invalid_snippet!(newline_string, "a = \"\n\"");
 invalid_snippet!(duplicate_key, "a = {a=1,a=1}");
 invalid_snippet!(bad_codepoint, "foo = \"\\uD800\"");
 invalid_snippet!(unterminated_string, r#"foo = "\"#);
-invalid_snippet!(
-    table_redefinition,
-    "[a.b]\n[a.\"b\"]"
-);
+invalid_snippet!(table_redefinition, "[a.b]\n[a.\"b\"]");
 invalid_snippet!(eof, "key =");
 
 // Deserialization errors
@@ -49,8 +46,7 @@ impl<'de> FromToml<'de> for Ohno {
         let mut th = value.table_helper(ctx)?;
         let year = th.required("year")?;
 
-        if let Some(snbh) =
-            th.optional::<Spanned<std::borrow::Cow<'de, str>>>("this-is-deprecated")
+        if let Some(snbh) = th.optional::<Spanned<std::borrow::Cow<'de, str>>>("this-is-deprecated")
         {
             return Err(th.ctx.push_error(toml_spanner::Error::custom(
                 "this-is-deprecated is deprecated",

@@ -571,8 +571,7 @@ impl Error {
                     }
                     label.push_str(val);
                 }
-                snippet = snippet
-                    .annotation(AnnotationKind::Primary.span(span).label(label));
+                snippet = snippet.annotation(AnnotationKind::Primary.span(span).label(label));
             }
             ErrorKind::UnexpectedEof => {
                 snippet = snippet.annotation(AnnotationKind::Primary.span(span));
@@ -731,11 +730,8 @@ impl Error {
                     }
                     label.push_str(val);
                 }
-                diag
-                    .with_message(self.to_string())
-                    .with_labels(vec![
-                        Label::primary(fid, error_span).with_message(label),
-                    ])
+                diag.with_message(self.to_string())
+                    .with_labels(vec![Label::primary(fid, error_span).with_message(label)])
             }
             ErrorKind::UnexpectedEof => diag
                 .with_message("unexpected end of file")

@@ -301,10 +301,7 @@ fn value_mut_all_types() {
 fn type_error_helpers() {
     let v = Item::integer_spanned(42, sp(0, 2));
     let err = v.expected(&"a string");
-    assert!(matches!(
-        err.kind(),
-        crate::ErrorKind::Wanted { .. }
-    ));
+    assert!(matches!(err.kind(), crate::ErrorKind::Wanted { .. }));
     assert_eq!(err.span(), sp(0, 2));
 }
 

@@ -1,3 +1,4 @@
+use super::array::Array;
 use super::table::Table;
 use super::{FLAG_MASK, HINTS_BIT, Item, ItemMetadata, NOT_PROJECTED, TAG_MASK, TAG_SHIFT};
 
@@ -161,5 +162,19 @@ impl<'de> Table<'de> {
     #[must_use]
     pub fn ignore_source_style(&self) -> bool {
         self.meta.ignore_source_style()
+    }
+
+    /// Returns `true` if this table has automatic style resolution pending.
+    #[must_use]
+    pub fn is_auto_style(&self) -> bool {
+        self.meta.is_auto_style()
+    }
+}
+
+impl<'de> Array<'de> {
+    /// Returns `true` if this array has automatic style resolution pending.
+    #[must_use]
+    pub fn is_auto_style(&self) -> bool {
+        self.meta.is_auto_style()
     }
 }

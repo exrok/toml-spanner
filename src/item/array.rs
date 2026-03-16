@@ -332,9 +332,15 @@ const _: () = assert!(std::mem::align_of::<Array<'_>>() == std::mem::align_of::<
 
 impl<'de> Array<'de> {
     /// Creates an empty array in format-hints mode (no source span).
+    ///
+    /// The array starts with automatic style: normalization will choose
+    /// between inline and header (array-of-tables) based on content. Call
+    /// [`set_style`](Self::set_style) to override.
     pub fn new() -> Self {
+        let mut meta = ItemMetadata::hints(TAG_ARRAY, FLAG_ARRAY);
+        meta.set_auto_style();
         Self {
-            meta: ItemMetadata::hints(TAG_ARRAY, FLAG_ARRAY),
+            meta,
             value: InternalArray::new(),
         }
     }
@@ -344,8 +350,10 @@ impl<'de> Array<'de> {
     /// Returns `None` if `cap` exceeds `u32::MAX`.
     pub fn try_with_capacity(cap: usize, arena: &'de Arena) -> Option<Self> {
         let cap: u32 = cap.try_into().ok()?;
+        let mut meta = ItemMetadata::hints(TAG_ARRAY, FLAG_ARRAY);
+        meta.set_auto_style();
         Some(Self {
-            meta: ItemMetadata::hints(TAG_ARRAY, FLAG_ARRAY),
+            meta,
             value: InternalArray::with_capacity(cap, arena),
         })
     }
@@ -460,7 +468,7 @@ impl<'de> Array<'de> {
         }
     }
 
-    /// Sets the kind of this array.
+    /// Sets the kind of this array, clearing automatic style resolution.
     #[inline]
     pub fn set_style(&mut self, kind: ArrayStyle) {
         let flag = match kind {
@@ -468,6 +476,7 @@ impl<'de> Array<'de> {
             ArrayStyle::Header => FLAG_AOT,
         };
         self.meta.set_flag(flag);
+        self.meta.clear_auto_style();
     }
 
     /// Deep-clones this array into `arena`. Keys and strings are shared

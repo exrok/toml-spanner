@@ -133,6 +133,11 @@ fn is_reordered_aot(op: &EmitOp<'_, '_, '_>) -> bool {
     }
 }
 
+fn segment_index(sort_pos: u32, index: usize, is_body: bool) -> u64 {
+    let sub_bit = if is_body { 0 } else { 1u64 << 63 };
+    sub_bit | ((sort_pos as u64) << 32) | (index as u64)
+}
+
 /// A segment of emit output with its source-derived sort position.
 struct Segment<'a, 'b, 'de> {
     /// Source position for sorting (or `last_projected` for unprojected items).
@@ -175,6 +180,43 @@ fn alloc_prefix<'b, 'de>(
     }
 }
 
+fn build_segment_order(segments: &[Segment<'_, '_, '_>], ignore_source_order: bool) -> Vec<u64> {
+    let mut order = Vec::with_capacity(segments.len());
+    for (i, seg) in segments.iter().enumerate() {
+        order.push(segment_index(seg.sort_pos, i, seg.is_body));
+    }
+    if !ignore_source_order {
+        sort_index(&mut order);
+    }
+    order
+}
+
+fn emit_segment_prefix(
+    seg: &Segment<'_, '_, '_>,
+    emit: &Emitter<'_, '_>,
+    out: &mut Vec<u8>,
+    cursor: &mut usize,
+) {
+    let ss = seg.source_start;
+    let is_header = matches!(seg.op, EmitOp::Header(..) | EmitOp::AotElement(..));
+
+    if ss != u32::MAX {
+        let target = ss as usize;
+        if target >= *cursor {
+            let pre_len = out.len();
+            emit_gap(emit, *cursor, target, out);
+            if out.len() == pre_len && is_header && !out.is_empty() && out.last() != Some(&b'\n') {
+                out.push(b'\n');
+            }
+            *cursor = target;
+        } else if is_header && !is_reordered_aot(&seg.op) {
+            out.push(b'\n');
+        }
+    } else if is_header && !is_reordered_aot(&seg.op) {
+        out.push(b'\n');
+    }
+}
+
 /// Segmented path: collect format operations WITHOUT gap handling,
 /// record segments with sort keys, sort, and execute with proper gaps.
 fn emit_ordered<'a, 'b, 'de: 'b>(
@@ -198,54 +240,12 @@ fn emit_ordered<'a, 'b, 'de: 'b>(
         0, // ALL
     );
 
-    // Build u64 sort index: body (bit63=0) before subsections (bit63=1),
-    // then by position (bits 60-32), then by collection order (bits 31-0).
-    let mut order: Vec<u64> = Vec::with_capacity(segments.len());
-    for (i, seg) in segments.iter().enumerate() {
-        let sub_bit = if seg.is_body { 0u64 } else { 1u64 << 63 };
-        order.push(sub_bit | ((seg.sort_pos as u64) << 32) | (i as u64));
-    }
-    if !table.meta.ignore_source_order() {
-        sort_index(&mut order);
-    }
+    let order = build_segment_order(&segments, table.meta.ignore_source_order());
 
     // Reassemble into output with proper gap handling.
     for &entry in &order {
         let seg = &segments[(entry & 0xFFFF_FFFF) as usize];
-        let ss = seg.source_start;
-        let is_header = matches!(seg.op, EmitOp::Header(..) | EmitOp::AotElement(..));
-
-        if ss != u32::MAX {
-            let target = ss as usize;
-            if target >= *cursor {
-                let pre_len = out.len();
-                emit_gap(emit, *cursor, target, out);
-                // Headers/AOTs need a blank line separator when no gap
-                // was emitted, but only if the output doesn't already
-                // end with a newline (i.e. there was skipped source
-                // content, not just adjacent segments).
-                if out.len() == pre_len
-                    && is_header
-                    && !out.is_empty()
-                    && out.last() != Some(&b'\n')
-                {
-                    out.push(b'\n');
-                }
-                *cursor = target;
-            } else if is_header {
-                // Source position already passed: add separator for headers,
-                // unless this is a reordered AOT element (already adjacent).
-                if !is_reordered_aot(&seg.op) {
-                    out.push(b'\n');
-                }
-            }
-        } else if is_header {
-            // Unprojected header: add separator,
-            // unless this is a reordered AOT element (already adjacent).
-            if !is_reordered_aot(&seg.op) {
-                out.push(b'\n');
-            }
-        }
+        emit_segment_prefix(seg, emit, out, cursor);
 
         match &seg.op {
             EmitOp::Body(key, item, dotted) => {
@@ -445,20 +445,9 @@ fn emit_header_body<'a, 'b, 'de: 'b>(
     out: &mut Vec<u8>,
     cursor: &mut usize,
 ) {
-    // Emit header line from source
-    if let Some(src_span) = projected_span(item, emit) {
-        let hdr_start = src_span.start as usize;
-        if hdr_start < emit.src.len() && emit.src[hdr_start] == b'[' {
-            let hdr_line_end = line_end_of(emit.src, hdr_start);
-            let hdr_slice = &emit.src[hdr_start..hdr_line_end];
-            out.extend_from_slice(hdr_slice);
-            if !hdr_slice.ends_with(b"\n") {
-                out.push(b'\n');
-            }
-            *cursor = hdr_line_end;
-            emit_body_ordered(table, emit, out, cursor);
-            return;
-        }
+    if emit_projected_header_line(item, false, emit, out, cursor) {
+        emit_body_ordered(table, emit, out, cursor);
+        return;
     }
 
     // Fallback: formatted header
@@ -488,13 +477,7 @@ fn emit_body_ordered<'a, 'b, 'de: 'b>(
         1, // BODY_ONLY
     );
 
-    let mut order: Vec<u64> = Vec::with_capacity(segments.len());
-    for (i, seg) in segments.iter().enumerate() {
-        order.push(((seg.sort_pos as u64) << 32) | (i as u64));
-    }
-    if !table.meta.ignore_source_order() {
-        sort_index(&mut order);
-    }
+    let order = build_segment_order(&segments, table.meta.ignore_source_order());
 
     for &entry in &order {
         let seg = &segments[(entry & 0xFFFF_FFFF) as usize];
@@ -512,6 +495,36 @@ fn emit_body_ordered<'a, 'b, 'de: 'b>(
     }
 }
 
+fn emit_projected_header_line(
+    item: &Item<'_>,
+    include_comment_prefix: bool,
+    emit: &Emitter<'_, '_>,
+    out: &mut Vec<u8>,
+    cursor: &mut usize,
+) -> bool {
+    let Some(src_span) = projected_span(item, emit) else {
+        return false;
+    };
+    let hdr_start = src_span.start as usize;
+    if hdr_start >= emit.src.len() || emit.src[hdr_start] != b'[' {
+        return false;
+    }
+    if include_comment_prefix {
+        let (pstart, pend) = find_comment_prefix(emit.src, hdr_start);
+        if pstart != pend {
+            out.extend_from_slice(&emit.src[pstart..pend]);
+        }
+    }
+    let hdr_line_end = line_end_of(emit.src, hdr_start);
+    let hdr_slice = &emit.src[hdr_start..hdr_line_end];
+    out.extend_from_slice(hdr_slice);
+    if !hdr_slice.ends_with(b"\n") {
+        out.push(b'\n');
+    }
+    *cursor = hdr_line_end;
+    true
+}
+
 /// Emits a single AOT element (header + body) without gap/separator handling.
 fn emit_aot_element<'a, 'b, 'de: 'b>(
     sub_table: &'a Table<'de>,
@@ -521,28 +534,9 @@ fn emit_aot_element<'a, 'b, 'de: 'b>(
     out: &mut Vec<u8>,
     cursor: &mut usize,
 ) {
-    if let Some(src_span) = projected_span(entry, emit) {
-        let hdr_start = src_span.start as usize;
-        if hdr_start < emit.src.len() && emit.src[hdr_start] == b'[' {
-            // For reordered AOT elements, emit the comment prefix
-            // (comments/blanks before the header in source) so that
-            // comments move with the element they precede.
-            if entry.meta.array_reordered() {
-                let (pstart, pend) = find_comment_prefix(emit.src, hdr_start);
-                if pstart != pend {
-                    out.extend_from_slice(&emit.src[pstart..pend]);
-                }
-            }
-            let hdr_line_end = line_end_of(emit.src, hdr_start);
-            let hdr_slice = &emit.src[hdr_start..hdr_line_end];
-            out.extend_from_slice(hdr_slice);
-            if !hdr_slice.ends_with(b"\n") {
-                out.push(b'\n');
-            }
-            *cursor = hdr_line_end;
-            emit_ordered(sub_table, None, Some(prefix), emit, out, cursor);
-            return;
-        }
+    if emit_projected_header_line(entry, entry.meta.array_reordered(), emit, out, cursor) {
+        emit_ordered(sub_table, None, Some(prefix), emit, out, cursor);
+        return;
     }
 
     // Fallback: formatted header

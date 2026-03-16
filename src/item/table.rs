@@ -394,9 +394,15 @@ pub struct Table<'de> {
 
 impl<'de> Table<'de> {
     /// Creates an empty table in format-hints mode (no source span).
+    ///
+    /// The table starts with automatic style: normalization will choose
+    /// between inline and header based on content. Call [`set_style`](Self::set_style)
+    /// to override.
     pub fn new() -> Table<'de> {
+        let mut meta = ItemMetadata::hints(TAG_TABLE, FLAG_TABLE);
+        meta.set_auto_style();
         Table {
-            meta: ItemMetadata::hints(TAG_TABLE, FLAG_TABLE),
+            meta,
             value: InnerTable::new(),
         }
     }
@@ -406,8 +412,10 @@ impl<'de> Table<'de> {
     /// Returns `None` if `cap` exceeds `u32::MAX`.
     pub fn try_with_capacity(cap: usize, arena: &'de Arena) -> Option<Table<'de>> {
         let cap: u32 = cap.try_into().ok()?;
+        let mut meta = ItemMetadata::hints(TAG_TABLE, FLAG_TABLE);
+        meta.set_auto_style();
         Some(Table {
-            meta: ItemMetadata::hints(TAG_TABLE, FLAG_TABLE),
+            meta,
             value: InnerTable::with_capacity(cap, arena),
         })
     }
@@ -591,7 +599,7 @@ impl<'de> Table<'de> {
         }
     }
 
-    /// Sets the kind of this table.
+    /// Sets the kind of this table, clearing automatic style resolution.
     #[inline]
     pub fn set_style(&mut self, kind: TableStyle) {
         let flag = match kind {
@@ -601,6 +609,7 @@ impl<'de> Table<'de> {
             TableStyle::Inline => FLAG_FROZEN,
         };
         self.meta.set_flag(flag);
+        self.meta.clear_auto_style();
     }
 
     /// Deep-clones this table into `arena`. Keys and strings are shared

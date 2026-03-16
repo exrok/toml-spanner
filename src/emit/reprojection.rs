@@ -336,7 +336,6 @@ fn ensure_valid_subsection_ordering(
             continue;
         }
         let Some((_, src_item)) = src.value.get_entry_with_index(dst_key.name, index) else {
-            // Currently unreachable: entries with non-empty span were matched
             continue;
         };
         let Some(st) = src_item.as_table() else {
@@ -560,8 +559,7 @@ fn reproject_array<'de>(
             for k in 0..prefix_len {
                 let src_idx = (src_sorted[si_start + k] & INDEX_MASK) as usize;
                 let dest_idx = (dest_sorted[di_start + k] & INDEX_MASK) as usize;
-                if crate::item::equal_items(src.get(src_idx).unwrap(), &dest[dest_idx], Some(index))
-                {
+                if crate::item::equal_items(&src[src_idx], &dest[dest_idx], Some(index)) {
                     dest_sorted[di_start + k] =
                         MATCHED_BIT | ((src_idx as u64) << HASH_SHIFT) | (dest_idx as u64);
                     src_sorted[si_start + k] |= MATCHED_BIT;
@@ -587,11 +585,7 @@ fn reproject_array<'de>(
                         continue;
                     }
                     let src_idx = (*src_entry & INDEX_MASK) as usize;
-                    if crate::item::equal_items(
-                        src.get(src_idx).unwrap(),
-                        &dest[dest_idx],
-                        Some(index),
-                    ) {
+                    if crate::item::equal_items(&src[src_idx], &dest[dest_idx], Some(index)) {
                         dest_sorted[d] =
                             MATCHED_BIT | ((src_idx as u64) << HASH_SHIFT) | (dest_idx as u64);
                         *src_entry |= MATCHED_BIT;
@@ -653,7 +647,7 @@ fn reproject_array<'de>(
         let dest_entry = &mut dest[di];
         if *entry & MATCHED_BIT != 0 {
             let src_idx = ((*entry >> HASH_SHIFT) & INDEX_MASK) as usize;
-            if !reproject_item(index, src.get(src_idx).unwrap(), dest_entry, items) {
+            if !reproject_item(index, &src[src_idx], dest_entry, items) {
                 // Currently unreachable: content-matched elements (verified
                 // by equal_items) always produce a full match in reproject_item.
                 // Kept as a defensive guard.
@@ -662,7 +656,7 @@ fn reproject_array<'de>(
         } else if fi < fc {
             // Fallback: pair with next unconsumed src for partial match.
             let src_idx = src_sorted[fi] as usize;
-            reproject_item(index, src.get(src_idx).unwrap(), dest_entry, items);
+            reproject_item(index, &src[src_idx], dest_entry, items);
             fi += 1;
             all_matched = false;
         } else {
@@ -688,6 +682,7 @@ fn reproject_array_positional<'de>(
     items: &mut Vec<&'de Item<'de>>,
 ) -> bool {
     let mut all_matched = src.len() == dest.len();
+    let src = src.as_slice();
     let mut i = 0;
     for dest_item in dest.as_mut_slice() {
         if let Some(src_item) = src.get(i) {

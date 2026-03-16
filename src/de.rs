@@ -2,10 +2,11 @@
 #[path = "./de_tests.rs"]
 mod tests;
 
+use std::collections::{BTreeMap, BTreeSet};
 use std::hash::BuildHasher;
+use std::hash::Hash;
 use std::num::NonZeroU64;
 use std::path::PathBuf;
-use std::{collections::BTreeMap, hash::Hash};
 
 use foldhash::HashMap;
 
@@ -13,7 +14,7 @@ use std::fmt::{self, Debug, Display};
 
 use crate::{
     Arena, Key, Span, Table,
-    error::{ErrorKind, Error},
+    error::{Error, ErrorKind},
     item::{self, Item},
     parser::{INDEXED_TABLE_THRESHOLD, KeyRef},
 };
@@ -205,7 +206,8 @@ impl<'ctx, 't, 'de> TableHelper<'ctx, 't, 'de> {
         };
 
         func(item).map_err(|err| {
-            self.ctx.push_error(Error::custom(err, item.span_unchecked()))
+            self.ctx
+                .push_error(Error::custom(err, item.span_unchecked()))
         })
     }
 
@@ -226,7 +228,8 @@ impl<'ctx, 't, 'de> TableHelper<'ctx, 't, 'de> {
 
         func(item)
             .map_err(|err| {
-                self.ctx.push_error(Error::custom(err, item.span_unchecked()))
+                self.ctx
+                    .push_error(Error::custom(err, item.span_unchecked()))
             })
             .ok()
     }
@@ -300,10 +303,9 @@ impl<'ctx, 't, 'de> TableHelper<'ctx, 't, 'de> {
 
     #[cold]
     fn report_missing_field(&mut self, name: &'static str) -> Failed {
-        self.ctx.errors.push(Error::new(
-            ErrorKind::MissingField(name),
-            self.table.span(),
-        ));
+        self.ctx
+            .errors
+            .push(Error::new(ErrorKind::MissingField(name), self.table.span()));
         Failed
     }
 
@@ -383,19 +385,14 @@ impl<'ctx, 't, 'de> TableHelper<'ctx, 't, 'de> {
         let mut had_unexpected = false;
         for (i, (key, _)) in self.table.entries().iter().enumerate() {
             if !self.used.get(i) {
-                self.ctx.errors.push(Error::new(
-                    ErrorKind::UnexpectedKey,
-                    key.span,
-                ));
+                self.ctx
+                    .errors
+                    .push(Error::new(ErrorKind::UnexpectedKey, key.span));
                 had_unexpected = true;
             }
         }
 
-        if had_unexpected {
-            Err(Failed)
-        } else {
-            Ok(())
-        }
+        if had_unexpected { Err(Failed) } else { Ok(()) }
     }
 }
 
@@ -421,7 +418,11 @@ impl<'de> Context<'de> {
     }
     /// Records a "expected X, found Y" type-mismatch error and returns [`Failed`].
     #[cold]
-    pub fn error_expected_but_found(&mut self, message: &'static &'static str, found: &Item<'_>) -> Failed {
+    pub fn error_expected_but_found(
+        &mut self,
+        message: &'static &'static str,
+        found: &Item<'_>,
+    ) -> Failed {
         self.errors.push(Error::new(
             ErrorKind::Wanted {
                 expected: message,
@@ -434,7 +435,11 @@ impl<'de> Context<'de> {
 
     /// Records an "unknown variant" error listing the accepted variants and returns [`Failed`].
     #[cold]
-    pub fn error_unexpected_variant(&mut self, expected: &'static [&'static str], found: &Item<'_>) -> Failed {
+    pub fn error_unexpected_variant(
+        &mut self,
+        expected: &'static [&'static str],
+        found: &Item<'_>,
+    ) -> Failed {
         self.errors.push(Error::new(
             ErrorKind::UnexpectedVariant { expected },
             found.span_unchecked(),
@@ -458,7 +463,8 @@ impl<'de> Context<'de> {
     /// Records an out-of-range error for the type `name` and returns [`Failed`].
     #[cold]
     pub fn error_out_of_range(&mut self, name: &'static str, span: Span) -> Failed {
-        self.errors.push(Error::new(ErrorKind::OutOfRange(name), span));
+        self.errors
+            .push(Error::new(ErrorKind::OutOfRange(name), span));
         Failed
     }
 
@@ -468,7 +474,8 @@ impl<'de> Context<'de> {
     /// entries instead of using [`TableHelper`].
     #[cold]
     pub fn report_missing_field(&mut self, name: &'static str, span: Span) -> Failed {
-        self.errors.push(Error::new(ErrorKind::MissingField(name), span));
+        self.errors
+            .push(Error::new(ErrorKind::MissingField(name), span));
         Failed
     }
 
@@ -478,7 +485,8 @@ impl<'de> Context<'de> {
     /// is set more than once (e.g. both the primary key and an alias appear).
     #[cold]
     pub fn report_duplicate_field(&mut self, name: &'static str, span: Span) -> Failed {
-        self.errors.push(Error::new(ErrorKind::DuplicateField(name), span));
+        self.errors
+            .push(Error::new(ErrorKind::DuplicateField(name), span));
         Failed
     }
 }
@@ -650,11 +658,7 @@ impl<'de, T: FromToml<'de>, const N: usize> FromToml<'de> for [T; N] {
         match <Box<[T; N]>>::try_from(boxed_slice) {
             Ok(array) => Ok(*array),
             Err(res) => Err(ctx.push_error(Error::custom(
-                format!(
-                    "Expect Array Size: found {} but expected {}",
-                    res.len(),
-                    N
-                ),
+                format!("Expect Array Size: found {} but expected {}", res.len(), N),
                 value.span_unchecked(),
             ))),
         }
@@ -824,6 +828,26 @@ where
         for item in arr {
             match T::from_toml(ctx, item) {
                 Ok(v) => result.push(v),
+                Err(_) => had_error = true,
+            }
+        }
+        if had_error { Err(Failed) } else { Ok(result) }
+    }
+}
+
+impl<'de, T> FromToml<'de> for BTreeSet<T>
+where
+    T: Ord + FromToml<'de>,
+{
+    fn from_toml(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
+        let arr = value.expect_array(ctx)?;
+        let mut result = BTreeSet::new();
+        let mut had_error = false;
+        for item in arr {
+            match T::from_toml(ctx, item) {
+                Ok(v) => {
+                    result.insert(v);
+                }
                 Err(_) => had_error = true,
             }
         }

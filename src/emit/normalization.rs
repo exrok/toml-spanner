@@ -1,10 +1,8 @@
 use crate::emit::partition::ensure_body_order;
-use crate::{Array, ArrayStyle, Item, Kind, Table, TableStyle, ValueMut};
+use crate::{Array, ArrayStyle, Item, Kind, Table, TableStyle, Value, ValueMut};
 impl<'de> Table<'de> {
     fn normalize_inner(&mut self) -> &'de NormalizedTable<'de> {
-        for (_, item) in self.value.entries_mut().iter_mut() {
-            normalize_item(item, true);
-        }
+        normalize_entries(self.value.entries_mut(), true);
         ensure_body_order(self.value.entries_mut());
         // SAFETY: NormalizedTable is #[repr(transparent)] over Table, so the
         // cast preserves layout. The normalize_item calls above have ensured
@@ -135,6 +133,9 @@ fn normalize_inline(item: &mut Item<'_>, allow_dotted: bool) {
 #[allow(dead_code)]
 fn is_valid(table: &Table<'_>, body_emitted: bool) -> bool {
     for (_, item) in table {
+        if item.meta.is_auto_style() {
+            return false;
+        }
         if item.has_dotted_bit() {
             let Some(sub) = item.as_table() else {
                 return false;
@@ -175,14 +176,86 @@ fn is_valid(table: &Table<'_>, body_emitted: bool) -> bool {
     true
 }
 
+fn is_small_value(item: &Item<'_>) -> bool {
+    match item.value() {
+        Value::String(text) => {
+            if text.len() > 30 {
+                return false;
+            }
+            for byte in text.as_bytes() {
+                if byte.is_ascii_control() {
+                    return false;
+                }
+            }
+            true
+        }
+        Value::Array(array) => array.is_empty(),
+        Value::Table(table) => table.is_empty(),
+        _ => true,
+    }
+}
+
+fn resolve_auto_table(sub: &mut Table<'_>, body_emitted: bool) {
+    if !sub.meta.is_auto_style() {
+        return;
+    }
+    sub.meta.clear_auto_style();
+    if !body_emitted {
+        return;
+    }
+
+    match sub.entries() {
+        [(_, a), (_, b)] if is_small_value(a) && is_small_value(b) => (),
+        [(_, a)] if is_small_value(a) => (),
+        [] => (),
+        _ => return,
+    };
+
+    sub.set_style(TableStyle::Inline);
+}
+
+fn resolve_auto_array(arr: &mut Array<'_>) {
+    if !arr.meta.is_auto_style() {
+        return;
+    }
+    arr.meta.clear_auto_style();
+    let style = match arr.as_slice() {
+        [a, b] if is_small_value(a) && is_small_value(b) => ArrayStyle::Inline,
+        [a] if is_small_value(a) => ArrayStyle::Inline,
+        [] => ArrayStyle::Inline,
+        _ => ArrayStyle::Header, // Note: We resolve before normalization, so if Header is not possible it will be fixed
+    };
+    arr.set_style(style);
+}
+
+fn normalize_entries(entries: &mut [(crate::Key<'_>, Item<'_>)], body_emitted: bool) -> bool {
+    let mut has_body = false;
+    for (_, item) in entries.iter_mut() {
+        has_body |= normalize_item(item, body_emitted);
+    }
+    has_body
+}
+
+fn renormalize_promoted_header_children(entries: &mut [(crate::Key<'_>, Item<'_>)]) {
+    for (_, item) in entries.iter_mut() {
+        if item.as_table().is_some() {
+            normalize_item(item, true);
+        }
+    }
+}
+
 pub(crate) fn normalize_item(item: &mut Item<'_>, body_emitted: bool) -> bool {
     match item.value_mut() {
         ValueMut::Table(sub) => {
+            resolve_auto_table(sub, body_emitted);
             let has_body = normalize_table(sub, body_emitted);
             ensure_body_order(sub.value.entries_mut());
             has_body
         }
-        ValueMut::Array(arr) => normalize_array(arr),
+        ValueMut::Array(arr) => {
+            resolve_auto_array(arr);
+            normalize_array(arr)
+        }
         _ => true,
     }
 }
@@ -198,9 +271,7 @@ fn normalize_table(sub: &mut Table<'_>, body_emitted: bool) -> bool {
             return true;
         }
         TableStyle::Header => {
-            for (_, child) in sub.value.entries_mut().iter_mut() {
-                normalize_item(child, true);
-            }
+            normalize_entries(sub.value.entries_mut(), true);
             return false;
         }
         _ => {}
@@ -224,21 +295,14 @@ fn normalize_table(sub: &mut Table<'_>, body_emitted: bool) -> bool {
         }
     }
 
-    let mut has_body = false;
-
-    for (_, child) in sub.value.entries_mut().iter_mut() {
-        has_body |= normalize_item(child, effective_body);
-    }
+    let mut has_body = normalize_entries(sub.value.entries_mut(), effective_body);
 
     if !effective_body && has_body {
         sub.set_style(TableStyle::Header);
-        // We initially processed children with `effective_body = false`.
-        // Now that we've become a Header, the correct context is `true`.
-        // Re-normalize to ensure any nested items adopt the correct kind
-        // (e.g., staying Dotted instead of becoming Header).
-        for (_, child) in sub.value.entries_mut().iter_mut() {
-            normalize_item(child, true);
-        }
+        // Promotion to Header only changes context-sensitive descendants
+        // reachable through table children; arrays and scalars are already
+        // normalized identically in either context.
+        renormalize_promoted_header_children(sub.value.entries_mut());
         return false;
     }
 
@@ -321,9 +385,7 @@ fn normalize_array(arr: &mut Array<'_>) -> bool {
                     continue;
                 };
                 sub.set_style(TableStyle::Header);
-                for (_, child) in sub.value.entries_mut().iter_mut() {
-                    normalize_item(child, true);
-                }
+                normalize_entries(sub.value.entries_mut(), true);
                 ensure_body_order(sub.value.entries_mut());
             }
             false

@@ -648,11 +648,7 @@ impl<'de> Parser<'de> {
     ) -> Result<(), Failed> {
         let i = self.cursor;
         let Some(&b) = self.bytes.get(i) else {
-            return Err(self.set_error(
-                i,
-                Some(i),
-                ErrorKind::UnterminatedString('"'),
-            ));
+            return Err(self.set_error(i, Some(i), ErrorKind::UnterminatedString('"')));
         };
         self.cursor = i + 1;
         let chr: char = 'char: {

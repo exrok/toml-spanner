@@ -719,7 +719,10 @@ fn required_mapped_and_optional_mapped() {
         assert!(h.required_mapped("ip", Item::parse::<Ipv4Addr>).is_err());
     }
     assert_eq!(doc.ctx.errors.len(), 1);
-    assert!(matches!(doc.ctx.errors[0].kind(), crate::ErrorKind::Custom(_)));
+    assert!(matches!(
+        doc.ctx.errors[0].kind(),
+        crate::ErrorKind::Custom(_)
+    ));
 
     // required_mapped fails when item is wrong type for mapping
     let mut doc = crate::parser::parse("count = -5", &arena).unwrap();
@@ -765,7 +768,10 @@ fn required_mapped_and_optional_mapped() {
         h.expect_empty().unwrap();
     }
     assert_eq!(doc.ctx.errors.len(), 1);
-    assert!(matches!(doc.ctx.errors[0].kind(), crate::ErrorKind::Custom(_)));
+    assert!(matches!(
+        doc.ctx.errors[0].kind(),
+        crate::ErrorKind::Custom(_)
+    ));
 
     // optional_mapped returns None when item is wrong type, records error
     let mut doc = crate::parser::parse("name = 42", &arena).unwrap();

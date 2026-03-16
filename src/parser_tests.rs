@@ -819,10 +819,7 @@ fn structural_errors() {
 
     // dotted key on non-table value
     let e = ctx.parse_err("a = 1\na.b = 2");
-    assert!(matches!(
-        e.kind(),
-        ErrorKind::DottedKeyInvalidType { .. }
-    ));
+    assert!(matches!(e.kind(), ErrorKind::DottedKeyInvalidType { .. }));
 
     // dotted key on frozen inline table
     let e = ctx.parse_err("a = {b = 1}\na.c = 2");
@@ -867,10 +864,7 @@ fn structural_errors() {
 
     // newline in literal string
     let e = ctx.parse_err("a = 'line1\nline2'");
-    assert!(matches!(
-        e.kind(),
-        ErrorKind::UnterminatedString('\'')
-    ));
+    assert!(matches!(e.kind(), ErrorKind::UnterminatedString('\'')));
 
     // DEL character in string
     let e = ctx.parse_err("a = \"hello\x7Fworld\"");
@@ -1092,10 +1086,7 @@ fn more_parse_errors() {
 
     // unterminated literal key
     let e = ctx.parse_err("'unterminated = 1");
-    assert!(matches!(
-        e.kind(),
-        ErrorKind::UnterminatedString('\'')
-    ));
+    assert!(matches!(e.kind(), ErrorKind::UnterminatedString('\'')));
 
     // expected key found equals
     let e = ctx.parse_err("= 1");
@@ -1226,25 +1217,19 @@ fn error_messages_and_spans() {
     let e = ctx.parse_err("a = +0xFF");
     assert!(matches!(
         e.kind(),
-        ErrorKind::InvalidInteger(
-            "signs are not allowed on prefixed integers"
-        )
+        ErrorKind::InvalidInteger("signs are not allowed on prefixed integers")
     ));
 
     let e = ctx.parse_err("a = -0b1");
     assert!(matches!(
         e.kind(),
-        ErrorKind::InvalidInteger(
-            "signs are not allowed on prefixed integers"
-        )
+        ErrorKind::InvalidInteger("signs are not allowed on prefixed integers")
     ));
 
     let e = ctx.parse_err("a = -0o7");
     assert!(matches!(
         e.kind(),
-        ErrorKind::InvalidInteger(
-            "signs are not allowed on prefixed integers"
-        )
+        ErrorKind::InvalidInteger("signs are not allowed on prefixed integers")
     ));
 
     // Expected digit after sign
@@ -1321,9 +1306,7 @@ fn error_messages_and_spans() {
     let e = ctx.parse_err("a = 1__2");
     assert!(matches!(
         e.kind(),
-        ErrorKind::InvalidInteger(
-            "underscores must be between two digits"
-        )
+        ErrorKind::InvalidInteger("underscores must be between two digits")
     ));
     assert_eq!(
         e.span(),
@@ -1335,9 +1318,7 @@ fn error_messages_and_spans() {
     let e = ctx.parse_err("a = 123_");
     assert!(matches!(
         e.kind(),
-        ErrorKind::InvalidInteger(
-            "underscores must be between two digits"
-        )
+        ErrorKind::InvalidInteger("underscores must be between two digits")
     ));
     assert_eq!(
         e.span(),
@@ -1349,9 +1330,7 @@ fn error_messages_and_spans() {
     let e = ctx.parse_err("a = 0xFF_");
     assert!(matches!(
         e.kind(),
-        ErrorKind::InvalidInteger(
-            "underscores must be between two digits"
-        )
+        ErrorKind::InvalidInteger("underscores must be between two digits")
     ));
     assert_eq!(
         e.span(),

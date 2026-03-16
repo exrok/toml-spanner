@@ -31,8 +31,8 @@ use crate::{Item, Table};
 /// [`IpAddr`]: std::net::IpAddr
 /// [`SocketAddr`]: std::net::SocketAddr
 pub mod parse_string {
-    use crate::{Context, Failed, Item};
     use crate::error::Error;
+    use crate::{Context, Failed, Item};
 
     /// Parses a TOML string value into `T` via [`FromStr`].
     ///

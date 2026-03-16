@@ -8,9 +8,9 @@ pub(crate) mod table;
 #[cfg(feature = "to-toml")]
 mod to_toml;
 use crate::arena::Arena;
+use crate::error::{Error, ErrorKind};
 use crate::item::table::TableIndex;
 use crate::{DateTime, Span, Table};
-use crate::error::{ErrorKind, Error};
 use std::fmt;
 use std::mem::ManuallyDrop;
 
@@ -49,6 +49,9 @@ pub(crate) const FLAG_FROZEN: u32 = 7;
 /// Bit 31 of `end_and_flag`: when set, the metadata is in format-hints mode
 /// (constructed programmatically); when clear, it is in span mode (from parser).
 pub(crate) const HINTS_BIT: u32 = 1 << 31;
+/// Bit 26 of `end_and_flag`: when set in hints mode, defers style decisions
+/// to normalization time. Resolved based on content heuristics.
+pub(crate) const AUTO_STYLE_BIT: u32 = 1 << 26;
 /// Value bits (above TAG_SHIFT) all set = "not projected".
 const NOT_PROJECTED: u32 = !(TAG_MASK); // 0xFFFF_FFF8
 
@@ -102,6 +105,21 @@ impl ItemMetadata {
     #[inline]
     pub(crate) fn set_flag(&mut self, flag: u32) {
         self.end_and_flag = (self.end_and_flag & !FLAG_MASK) | flag;
+    }
+
+    #[inline]
+    pub(crate) fn set_auto_style(&mut self) {
+        self.end_and_flag |= AUTO_STYLE_BIT;
+    }
+
+    #[inline]
+    pub(crate) fn is_auto_style(&self) -> bool {
+        self.end_and_flag & (HINTS_BIT | AUTO_STYLE_BIT) == (HINTS_BIT | AUTO_STYLE_BIT)
+    }
+
+    #[inline]
+    pub(crate) fn clear_auto_style(&mut self) {
+        self.end_and_flag &= !AUTO_STYLE_BIT;
     }
 
     /// Returns `true` if this metadata carries a source span (parser-produced).

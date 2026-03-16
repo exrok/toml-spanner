@@ -46,10 +46,7 @@ fn display_all_error_kinds() {
             "invalid-integer",
         ),
         (ErrorKind::InvalidFloat(""), "invalid-float"),
-        (
-            ErrorKind::InvalidFloat("float overflow"),
-            "invalid-float",
-        ),
+        (ErrorKind::InvalidFloat("float overflow"), "invalid-float"),
         (ErrorKind::InvalidDateTime(""), "invalid-datetime"),
         (
             ErrorKind::InvalidDateTime("month is out of range"),
@@ -177,10 +174,7 @@ fn error_display_all_variants() {
             "invalid datetime",
         ),
         (
-            Error::new(
-                ErrorKind::InvalidDateTime("month is out of range"),
-                span,
-            ),
+            Error::new(ErrorKind::InvalidDateTime("month is out of range"), span),
             "invalid datetime: month is out of range",
         ),
         (
@@ -209,18 +203,12 @@ fn error_display_all_variants() {
             Error::new(ErrorKind::MultilineStringKey, span),
             "multiline strings are not allowed for key",
         ),
-        (
-            Error::custom("custom message", span),
-            "custom message",
-        ),
+        (Error::custom("custom message", span), "custom message"),
         (
             Error::new(ErrorKind::DottedKeyInvalidType { first: span }, span),
             "dotted key attempted to extend non-table type",
         ),
-        (
-            Error::new(ErrorKind::UnexpectedKey, span),
-            "unexpected key",
-        ),
+        (Error::new(ErrorKind::UnexpectedKey, span), "unexpected key"),
         (
             Error::new(ErrorKind::UnquotedString, span),
             "invalid TOML value, did you mean to use a quoted string?",
@@ -309,10 +297,7 @@ fn from_toml_error_display_and_debug() {
     use crate::FromTomlError;
 
     let err = FromTomlError {
-        errors: vec![Error::new(
-            ErrorKind::MissingField("name"),
-            Span::new(0, 5),
-        )],
+        errors: vec![Error::new(ErrorKind::MissingField("name"), Span::new(0, 5))],
     };
     assert_eq!(format!("{err}"), "missing field 'name' in table");
     let debug = format!("{err:?}");
@@ -346,10 +331,7 @@ fn from_toml_error_display_and_debug() {
     let from: FromTomlError = single_err.into();
     assert_eq!(from.errors.len(), 1);
 
-    let errors = vec![Error::new(
-        ErrorKind::InvalidInteger(""),
-        Span::new(0, 1),
-    )];
+    let errors = vec![Error::new(ErrorKind::InvalidInteger(""), Span::new(0, 1))];
     let from: FromTomlError = errors.into();
     assert_eq!(from.errors.len(), 1);
 }

@@ -223,9 +223,10 @@ fn constructed_implicit_rejects() {
 
 #[test]
 fn normalize_implicit_promoted_to_header() {
-    // into_item produces FLAG_TABLE (implicit) — without normalize, emit rejects.
+    // Explicit Implicit@ produces FLAG_TABLE (implicit) without auto-style,
+    // so scalars inside would be lost without normalize promoting to header.
     let arena = Arena::new();
-    let mut table = table! { in arena; a: { x: 1, y: 2 }, b: "hi" };
+    let mut table = table! { in arena; a: Implicit @ { x: 1, y: 2 }, b: "hi" };
     let s = emit_normalized(&mut table);
     assert!(s.contains("[a]"), "expected header section: {s}");
     assert!(s.contains("x = 1"), "expected x: {s}");
@@ -628,4 +629,138 @@ fn emit_nested_inline_dotted() {
     root.insert(Key::anon("t"), t.into_item(), &arena);
     let s = emit_normalized(&mut root);
     assert!(s.contains("42"), "deep value: {s}");
+}
+
+#[test]
+fn auto_style_table_becomes_inline() {
+    let arena = Arena::new();
+    let mut root = table! { in arena; a: { x: 1, y: 2 }, b: "hi" };
+    let s = emit_normalized(&mut root);
+    assert!(s.contains("a = { "), "expected inline table: {s}");
+    assert!(s.contains("b = \"hi\""), "expected b: {s}");
+}
+
+#[test]
+fn auto_style_table_too_large_stays_header() {
+    let arena = Arena::new();
+    let mut root = table! { in arena; a: { x: 1, y: 2, z: 3 }, b: "hi" };
+    let s = emit_normalized(&mut root);
+    assert!(s.contains("[a]"), "expected header section: {s}");
+}
+
+#[test]
+fn auto_style_table_with_non_small_value() {
+    let arena = Arena::new();
+    let mut root = table! { in arena; a: { x: 1, nested: { v: 1 } }, b: "hi" };
+    let s = emit_normalized(&mut root);
+    assert!(s.contains("[a]"), "expected header section: {s}");
+}
+
+#[test]
+fn auto_style_array_becomes_inline() {
+    let arena = Arena::new();
+    let mut root = table! { in arena; arr: [1, 2] };
+    let s = emit_normalized(&mut root);
+    assert_eq!(s, "arr = [1, 2]\n");
+}
+
+#[test]
+fn auto_style_array_of_tables_becomes_aot() {
+    let arena = Arena::new();
+    let mut root = table! { in arena; servers: [{ host: "a" }, { host: "b" }] };
+    let s = emit_normalized(&mut root);
+    assert!(s.contains("[[servers]]"), "expected AOT: {s}");
+    assert!(s.contains("host = \"a\""), "expected first host: {s}");
+    assert!(s.contains("host = \"b\""), "expected second host: {s}");
+}
+
+#[test]
+fn auto_style_array_of_tables_roundtrip() {
+    let arena = Arena::new();
+    check_normalize(&mut table! {
+        in arena;
+        items: [{ name: "x", val: 1 }, { name: "y", val: 2 }]
+    });
+}
+
+#[test]
+fn auto_style_cleared_by_set_style() {
+    let mut t = Table::new();
+    assert!(t.is_auto_style());
+    t.set_style(TableStyle::Header);
+    assert!(!t.is_auto_style());
+
+    let mut a = Array::new();
+    assert!(a.is_auto_style());
+    a.set_style(ArrayStyle::Inline);
+    assert!(!a.is_auto_style());
+}
+
+#[test]
+fn auto_style_string_boundary() {
+    let arena = Arena::new();
+    let short = "a".repeat(30);
+    let long = "a".repeat(31);
+
+    let mut inner_short = Table::default();
+    inner_short.insert(Key::anon("s"), Item::string(&short), &arena);
+    let mut root_short = Table::default();
+    root_short.insert(Key::anon("t"), inner_short.into_item(), &arena);
+    let s = emit_normalized(&mut root_short);
+    assert!(
+        s.contains("t = { "),
+        "30-char string should auto-inline: {s}"
+    );
+
+    let mut inner_long = Table::default();
+    inner_long.insert(Key::anon("s"), Item::string(&long), &arena);
+    let mut root_long = Table::default();
+    root_long.insert(Key::anon("t"), inner_long.into_item(), &arena);
+    let s = emit_normalized(&mut root_long);
+    assert!(
+        s.contains("[t]"),
+        "31-char string should not auto-inline: {s}"
+    );
+}
+
+#[test]
+fn auto_style_string_with_control_chars() {
+    let arena = Arena::new();
+    let mut root = Table::default();
+    root.insert(Key::anon("t"), item!({ s: "hi\nthere" } in arena), &arena);
+    let s = emit_normalized(&mut root);
+    assert!(
+        s.contains("[t]"),
+        "string with control char should not auto-inline: {s}"
+    );
+}
+
+#[test]
+fn auto_style_empty_containers_are_small() {
+    let arena = Arena::new();
+    let mut root = table! { in arena; t: { a: [], b: {} } };
+    let s = emit_normalized(&mut root);
+    assert!(
+        s.contains("t = { "),
+        "empty containers should be small: {s}"
+    );
+}
+
+#[test]
+fn auto_style_array_mixed_types_downgraded_from_header() {
+    // resolve_auto_array sets Header for arrays that don't meet inline
+    // small-value criteria. normalize_array must downgrade to Inline when
+    // elements are not all tables.
+    let arena = Arena::new();
+    let mut root = table! { in arena; arr: [1, 2, 3] };
+    let s = emit_normalized(&mut root);
+    assert_eq!(s, "arr = [1, 2, 3]\n");
+
+    let mut root2 = table! { in arena; arr: [{ x: 1 }, "not a table"] };
+    let s2 = emit_normalized(&mut root2);
+    assert!(
+        s2.contains("arr = ["),
+        "mixed array must be inline, not AOT: {s2}"
+    );
+    assert!(!s2.contains("[["), "must not contain AOT header: {s2}");
 }

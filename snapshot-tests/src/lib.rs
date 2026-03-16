@@ -90,7 +90,11 @@ macro_rules! invalid_de {
                     panic!("expected errors but deserialized '{de:#?}' successfully");
                 }
                 Err(e) => {
-                    let diags: Vec<_> = e.errors.iter().map(|e| e.to_diagnostic(&toml_str, ())).collect();
+                    let diags: Vec<_> = e
+                        .errors
+                        .iter()
+                        .map(|e| e.to_diagnostic(&toml_str, ()))
+                        .collect();
                     $crate::error_snapshot!($name, diags, &toml_str);
                 }
             }
@@ -107,7 +111,11 @@ macro_rules! invalid_de {
                     panic!("expected errors but deserialized '{de:#?}' successfully");
                 }
                 Err(e) => {
-                    let diags: Vec<_> = e.errors.iter().map(|e| e.to_diagnostic($toml, ())).collect();
+                    let diags: Vec<_> = e
+                        .errors
+                        .iter()
+                        .map(|e| e.to_diagnostic($toml, ()))
+                        .collect();
                     $crate::error_snapshot!($name, diags, $toml);
                 }
             }
