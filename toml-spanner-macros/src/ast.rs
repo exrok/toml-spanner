@@ -1,3 +1,4 @@
+
 use crate::{case::RenameRule, util::Allocator, Error};
 use proc_macro::{Delimiter, Ident, Literal, Span, TokenStream, TokenTree};
 pub enum GenericKind {
@@ -53,23 +54,26 @@ impl FieldAttrs {
         None
     }
     pub fn has_aliases(&self, for_trait: TraitSet) -> bool {
-        self.attrs.iter().any(|attr| {
-            attr.enabled & for_trait != 0
+        for attr in &self.attrs {
+            if attr.enabled & for_trait != 0
                 && match attr.inner {
                     FieldAttrInner::Alias(_) => true,
                     _ => false,
                 }
-        })
+            {
+                return true;
+            }
+        }
+        false
     }
-    pub fn aliases(&self, for_trait: TraitSet) -> impl Iterator<Item = &Literal> + '_ {
-        self.attrs.iter().filter_map(move |attr| {
+    pub fn for_each_alias(&self, for_trait: TraitSet, f: &mut dyn FnMut(&Literal)) {
+        for attr in &self.attrs {
             if attr.enabled & for_trait != 0 {
                 if let FieldAttrInner::Alias(lit) = &attr.inner {
-                    return Some(lit);
+                    f(lit);
                 }
             }
-            None
-        })
+        }
     }
 }
 #[allow(clippy::derivable_impls)]
@@ -107,10 +111,15 @@ pub struct DeriveTargetInner<'a> {
 }
 impl<'a> DeriveTargetInner<'a> {
     pub fn has_lifetime(&self) -> bool {
-        self.generics.iter().any(|x| match x.kind {
-            GenericKind::Lifetime => true,
-            _ => false,
-        })
+        for g in &self.generics {
+            if match g.kind {
+                GenericKind::Lifetime => true,
+                _ => false,
+            } {
+                return true;
+            }
+        }
+        false
     }
 }
 pub struct Field<'a> {
@@ -189,6 +198,8 @@ pub struct EnumVariant<'a> {
     pub try_if: Option<Vec<TokenTree>>,
     pub final_if: Option<Vec<TokenTree>>,
     pub other: bool,
+    buf_start: usize,
+    buf_end: usize,
 }
 pub enum EnumKind {
     Tuple,
@@ -771,6 +782,15 @@ fn parse_attrs(toks: TokenStream, func: &mut dyn FnMut(TraitSet, Ident, &mut Vec
         buf.clear();
     }
 }
+fn ensure_attr<'a, 'b>(
+    opt: &'b mut Option<&'a mut FieldAttrs>,
+    buf: &mut Allocator<'a, FieldAttrs>,
+) -> &'b mut &'a mut FieldAttrs {
+    if opt.is_none() {
+        *opt = Some(buf.alloc_default());
+    }
+    opt.as_mut().unwrap()
+}
 fn parse_field_attr<'a>(
     current: &mut Option<&'a mut FieldAttrs>,
     attr_buf: &mut Allocator<'a, FieldAttrs>,
@@ -779,74 +799,56 @@ fn parse_field_attr<'a>(
     let Some(attrs) = extract_toml_attr(toks) else {
         return;
     };
-    let attr = current.get_or_insert_with(|| attr_buf.alloc_default());
+    let attr = ensure_attr(current, attr_buf);
     parse_attrs(attrs, &mut |set, ident, buf| {
         parse_single_field_attr(attr, set, ident, buf)
     })
 }
-struct VariantTemp<'a> {
-    name: &'a Ident,
-    start: usize,
-    end: usize,
-    attr: &'a FieldAttrs,
-    kind: EnumKind,
-    rename_all: RenameRule,
-    try_if: Option<Vec<TokenTree>>,
-    final_if: Option<Vec<TokenTree>>,
-    other: bool,
+fn option_inner_ty_ast<'a>(ty: &'a [TokenTree]) -> &'a [TokenTree] {
+    if let [TokenTree::Ident(id), _, inner @ .., TokenTree::Punct(close)] = ty {
+        if id.to_string() == "Option" && close.as_char() == '>' {
+            return inner;
+        }
+    }
+    ty
 }
 pub fn scan_fields<'a>(target: &mut DeriveTargetInner<'a>, fields: &mut Vec<Field<'a>>) {
-    let type_generic_names: Vec<_> = target
-        .generics
-        .iter()
-        .filter_map(|a| {
-            if !match a.kind {
-                GenericKind::Type => true,
-                _ => false,
-            } {
-                return None;
-            }
-            Some(a.ident.to_string())
-        })
-        .collect();
-    let min_len = type_generic_names.iter().map(|x| x.len()).max();
+    let has_type_generics = target.generics.iter().any(|g| match g.kind {
+        GenericKind::Type => true,
+        _ => false,
+    });
+    if !has_type_generics {
+        return;
+    }
     for field in fields {
-        if let Some(min_length) = min_len {
-            for tt in field.ty {
-                let TokenTree::Ident(ident) = tt else {
-                    continue;
-                };
-                let ident = ident.to_string();
-                if ident.len() < min_length {
-                    continue;
-                }
-                if type_generic_names.iter().any(|x| ident == *x) {
-                    field.flags |= Field::GENERIC;
-                    if field.flags & Field::WITH_FLATTEN != 0 {
-                        if field.with(FROM_TOML).is_none() && field.with(TO_TOML).is_none() {
-                            target.generic_flatten_field_types.push(field.ty);
-                        }
-                    } else {
-                        let ty = if field.flags & Field::WITH_FROM_TOML_OPTION != 0 {
-                            if let [TokenTree::Ident(id), _, inner @ .., TokenTree::Punct(close)] =
-                                field.ty
-                            {
-                                if id.to_string() == "Option" && close.as_char() == '>' {
-                                    inner
-                                } else {
-                                    field.ty
-                                }
-                            } else {
-                                field.ty
-                            }
-                        } else {
-                            field.ty
-                        };
-                        target.generic_field_types.push(ty);
-                    }
-                    break;
-                }
+        for tt in field.ty {
+            let TokenTree::Ident(ident) = tt else {
+                continue;
+            };
+            let ident_str = ident.to_string();
+            let is_generic = target.generics.iter().any(|g| {
+                (match g.kind {
+                    GenericKind::Type => true,
+                    _ => false,
+                }) && g.ident.to_string() == ident_str
+            });
+            if !is_generic {
+                continue;
             }
+            field.flags |= Field::GENERIC;
+            if field.flags & Field::WITH_FLATTEN != 0 {
+                if field.with(FROM_TOML).is_none() && field.with(TO_TOML).is_none() {
+                    target.generic_flatten_field_types.push(field.ty);
+                }
+            } else {
+                let ty = if field.flags & Field::WITH_FROM_TOML_OPTION != 0 {
+                    option_inner_ty_ast(field.ty)
+                } else {
+                    field.ty
+                };
+                target.generic_field_types.push(ty);
+            }
+            break;
         }
     }
 }
@@ -857,63 +859,55 @@ pub fn parse_enum<'a>(
     field_buf: &'a mut Vec<Field<'a>>,
     attr_buf: &mut Allocator<'a, FieldAttrs>,
 ) -> Vec<EnumVariant<'a>> {
-    let mut temp = parse_inner_enum_variants(fields, tt_buf, attr_buf);
-    {
-        for variant in &mut temp {
-            match variant.kind {
-                EnumKind::Tuple => {
-                    target.enum_flags |= ENUM_CONTAINS_TUPLE_VARIANT;
-                    let start = field_buf.len();
-                    parse_tuple_fields(
-                        variant.name,
-                        field_buf,
-                        &tt_buf[variant.start..variant.end],
-                        attr_buf,
-                    );
-                    variant.start = start;
-                    variant.end = field_buf.len();
-                }
-                EnumKind::Struct => {
-                    target.enum_flags |= ENUM_CONTAINS_STRUCT_VARIANT;
-                    let start = field_buf.len();
-                    parse_struct_fields(field_buf, &tt_buf[variant.start..variant.end], attr_buf);
-                    variant.start = start;
-                    variant.end = field_buf.len();
-                }
-                EnumKind::None => {
-                    target.enum_flags |= ENUM_CONTAINS_UNIT_VARIANT;
-                }
+    let mut variants = parse_inner_enum_variants(fields, tt_buf, attr_buf);
+    for variant in &mut variants {
+        match variant.kind {
+            EnumKind::Tuple => {
+                target.enum_flags |= ENUM_CONTAINS_TUPLE_VARIANT;
+                let start = field_buf.len();
+                parse_tuple_fields(
+                    variant.name,
+                    field_buf,
+                    &tt_buf[variant.buf_start..variant.buf_end],
+                    attr_buf,
+                );
+                variant.buf_start = start;
+                variant.buf_end = field_buf.len();
+            }
+            EnumKind::Struct => {
+                target.enum_flags |= ENUM_CONTAINS_STRUCT_VARIANT;
+                let start = field_buf.len();
+                parse_struct_fields(
+                    field_buf,
+                    &tt_buf[variant.buf_start..variant.buf_end],
+                    attr_buf,
+                );
+                variant.buf_start = start;
+                variant.buf_end = field_buf.len();
+            }
+            EnumKind::None => {
+                target.enum_flags |= ENUM_CONTAINS_UNIT_VARIANT;
             }
         }
     }
     scan_fields(target, field_buf);
-    temp.into_iter()
-        .map(|var| EnumVariant {
-            name: var.name,
-            fields: if match var.kind {
-                EnumKind::None => true,
-                _ => false,
-            } {
-                &[]
-            } else {
-                &field_buf[var.start..var.end]
-            },
-            kind: var.kind,
-            rename_all: var.rename_all,
-            attr: var.attr,
-            try_if: var.try_if,
-            final_if: var.final_if,
-            other: var.other,
-        })
-        .collect()
+    for variant in &mut variants {
+        if !match variant.kind {
+            EnumKind::None => true,
+            _ => false,
+        } {
+            variant.fields = &field_buf[variant.buf_start..variant.buf_end];
+        }
+    }
+    variants
 }
 fn parse_inner_enum_variants<'a>(
     fields: &'a [TokenTree],
     tt_buffer: &mut Vec<TokenTree>,
     attr_buffer: &mut Allocator<'a, FieldAttrs>,
-) -> Vec<VariantTemp<'a>> {
+) -> Vec<EnumVariant<'a>> {
     let mut f = fields.iter().enumerate();
-    let mut enums: Vec<VariantTemp<'a>> = Vec::new();
+    let mut enums: Vec<EnumVariant<'a>> = Vec::new();
     let mut next_attr: Option<&'a mut FieldAttrs> = None;
     let mut next_rename_all = RenameRule::None;
     let mut next_try_if: Option<Vec<TokenTree>> = None;
@@ -975,7 +969,7 @@ fn parse_inner_enum_variants<'a>(
                             next_other = true;
                             return;
                         }
-                        let attr = next_attr.get_or_insert_with(|| attr_buffer.alloc_default());
+                        let attr = ensure_attr(&mut next_attr, attr_buffer);
                         parse_single_field_attr(attr, set, ident, buf);
                     });
                 }
@@ -1052,10 +1046,11 @@ fn parse_inner_enum_variants<'a>(
             TokenTree::Ident(ident) => (ident, EnumKind::None),
             tok => Error::span_msg("Expected either an ident or group", tok.span()),
         };
-        enums.push(VariantTemp {
+        enums.push(EnumVariant {
             name,
-            start,
-            end: tt_buffer.len(),
+            fields: &[],
+            buf_start: start,
+            buf_end: tt_buffer.len(),
             attr: if let Some(attr) = next_attr.take() {
                 attr
             } else {
@@ -1212,7 +1207,7 @@ pub fn parse_struct_fields<'a>(
         };
         if let [TokenTree::Ident(ident), TokenTree::Punct(punct), ..] = &fields[i + 1..end] {
             if punct.as_char() == '<' && ident_eq(ident, "Option") {
-                let attr = next_attr.get_or_insert_with(|| attr_buf.alloc_default());
+                let attr = ensure_attr(&mut next_attr, attr_buf);
                 let oo_mask_item = (FROM_TOML as u64) << (1u64 * TRAIT_COUNT);
                 if attr.flags & oo_mask_item == 0 {
                     attr.flags |= OPTION_AUTO_DETECTED;
