@@ -2,7 +2,7 @@
 source: snapshot-tests/tests/parser.rs
 expression: error
 ---
-error[wanted]: 
+error[wanted]: expected the literal `false`, found something else at foo
   ┌─ leading_f:1:7
   │
 1 │ foo = f2

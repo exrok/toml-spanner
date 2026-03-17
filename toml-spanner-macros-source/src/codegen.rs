@@ -359,7 +359,7 @@ fn emit_table_field_deser(
         if has_aliases {
             splat!(out;
                 if [#: field.name].is_some() {
-                    return Err(__ctx.report_duplicate_field([@name_lit.into()], __key.span));
+                    return Err(__ctx.report_duplicate_field([@name_lit.into()], __key.span, __item));
                 }
             );
         }
@@ -390,9 +390,7 @@ fn emit_table_field_deser(
     } else if ctx.target.deny_unknown_fields {
         splat!(out;
             _ => {
-                __ctx.error_message_at(
-                    [@TokenTree::Literal(Literal::string("unexpected key"))], __key.span
-                );
+                __ctx.error_unexpected_key(__item, __key.span);
             }
         );
     } else {
@@ -424,7 +422,7 @@ fn emit_table_field_deser(
             splat!(out; let Some([#: field.name]) = [#: field.name].take() else);
             let else_at = out.buf.len();
             splat!(out;
-                return Err(__ctx.report_missing_field([@name_lit.into()], __item.span()));
+                return Err(__ctx.report_missing_field([@name_lit.into()], __item));
             );
             out.tt_group(Delimiter::Brace, else_at);
             splat!(out; ;);
@@ -1030,7 +1028,10 @@ fn enum_from_toml_external(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVari
                 EnumKind::Struct => {
                     splat!(out; [@name_lit.into()] =>);
                     let arm_at = out.buf.len();
-                    splat!(out; let __subtable = value.expect_table(__ctx)?;);
+                    splat!(out;
+                        let __item = value;
+                        let __subtable = value.expect_table(__ctx)?;
+                    );
                     emit_table_field_deser(
                         out,
                         ctx,
@@ -1088,7 +1089,7 @@ fn enum_from_toml_internal(
     splat!(out; let Some(__tag) = __tag else);
     let else_at = out.buf.len();
     splat!(out;
-        return Err(__ctx.report_missing_field([@tag_lit.clone().into()], __item.span()));
+        return Err(__ctx.report_missing_field([@tag_lit.clone().into()], __item));
     );
     out.tt_group(Delimiter::Brace, else_at);
     splat!(out; ;);
@@ -1109,9 +1110,7 @@ fn enum_from_toml_internal(
                 if ctx.target.deny_unknown_fields {
                     splat!(out;
                         if __key.name != [@tag_lit.clone().into()] {
-                            __ctx.error_message_at(
-                                [@TokenTree::Literal(Literal::string("unexpected key"))], __key.span
-                            );
+                            __ctx.error_unexpected_key(__item, __key.span);
                         }
                     );
                 } else {
@@ -1177,9 +1176,7 @@ fn enum_from_toml_adjacent(
     if ctx.target.deny_unknown_fields {
         splat!(out;
             _ => {
-                __ctx.error_message_at(
-                    [@TokenTree::Literal(Literal::string("unexpected key"))], __key.span
-                );
+                __ctx.error_unexpected_key(__item, __key.span);
             }
         );
     } else {
@@ -1192,7 +1189,7 @@ fn enum_from_toml_adjacent(
     splat!(out; let Some(__tag) = __tag else);
     let else_at = out.buf.len();
     splat!(out;
-        return Err(__ctx.report_missing_field([@tag_lit.clone().into()], __item.span()));
+        return Err(__ctx.report_missing_field([@tag_lit.clone().into()], __item));
     );
     out.tt_group(Delimiter::Brace, else_at);
     splat!(out; ;);
@@ -1216,7 +1213,7 @@ fn enum_from_toml_adjacent(
                 splat!(out; let Some(__content) = __content else);
                 let ce_at = out.buf.len();
                 splat!(out;
-                    return Err(__ctx.report_missing_field([@content_lit.clone().into()], __item.span()));
+                    return Err(__ctx.report_missing_field([@content_lit.clone().into()], __item));
                 );
                 out.tt_group(Delimiter::Brace, ce_at);
                 splat!(out; ;);
@@ -1233,7 +1230,10 @@ fn enum_from_toml_adjacent(
                         );
                     }
                     EnumKind::Struct => {
-                        splat!(out; let __subtable = __content.expect_table(__ctx)?;);
+                        splat!(out;
+                            let __item = __content;
+                            let __subtable = __content.expect_table(__ctx)?;
+                        );
                         emit_table_field_deser(
                             out,
                             ctx,

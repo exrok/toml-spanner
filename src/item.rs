@@ -113,6 +113,7 @@ impl ItemMetadata {
     }
 
     #[inline]
+    #[allow(dead_code)]
     pub(crate) fn is_auto_style(&self) -> bool {
         self.end_and_flag & (HINTS_BIT | AUTO_STYLE_BIT) == (HINTS_BIT | AUTO_STYLE_BIT)
     }
@@ -125,16 +126,16 @@ impl ItemMetadata {
     /// Returns `true` if this metadata carries a source span (parser-produced).
     #[inline]
     pub(crate) fn is_span_mode(&self) -> bool {
-        self.end_and_flag & HINTS_BIT == 0
+        (self.end_and_flag as i32) >= 0
     }
 
     /// Returns the source span, or `0..0` if in format-hints mode.
     #[inline]
     pub fn span(&self) -> Span {
-        if self.is_span_mode() {
+        if (self.end_and_flag as i32) >= 0 {
             self.span_unchecked()
         } else {
-            Span::default()
+            Span { start: 0, end: 0 }
         }
     }
 
@@ -237,10 +238,9 @@ union Payload<'de> {
 ///
 /// ```
 /// let arena = toml_spanner::Arena::new();
-/// let table = toml_spanner::parse("x = 42", &arena)?;
+/// let table = toml_spanner::parse("x = 42", &arena).unwrap();
 /// assert_eq!(table["x"].as_i64(), Some(42));
 /// assert_eq!(table["missing"].as_i64(), None);
-/// # Ok::<(), toml_spanner::Error>(())
 /// ```
 #[repr(C)]
 pub struct Item<'de> {
@@ -620,12 +620,11 @@ impl<'de> Item<'de> {
 /// use toml_spanner::{Arena, Value};
 ///
 /// let arena = Arena::new();
-/// let table = toml_spanner::parse("n = 10", &arena)?;
+/// let table = toml_spanner::parse("n = 10", &arena).unwrap();
 /// match table["n"].item().unwrap().value() {
 ///     Value::Integer(i) => assert_eq!(*i, 10),
 ///     _ => panic!("expected integer"),
 /// }
-/// # Ok::<(), toml_spanner::Error>(())
 /// ```
 #[derive(Debug)]
 pub enum Value<'a, 'de> {
@@ -1212,7 +1211,7 @@ impl<'de> std::ops::Index<usize> for MaybeItem<'de> {
 /// [server]
 /// host = "localhost"
 /// port = 8080
-/// "#, &arena)?;
+/// "#, &arena).unwrap();
 ///
 /// // Successful nested lookup.
 /// assert_eq!(table["server"]["host"].as_str(), Some("localhost"));
@@ -1225,7 +1224,6 @@ impl<'de> std::ops::Index<usize> for MaybeItem<'de> {
 /// // Convert back to an Option<&Item> when needed.
 /// assert!(table["server"]["host"].item().is_some());
 /// assert!(table["nope"].item().is_none());
-/// # Ok::<(), toml_spanner::Error>(())
 /// ```
 #[repr(C)]
 pub struct MaybeItem<'de> {

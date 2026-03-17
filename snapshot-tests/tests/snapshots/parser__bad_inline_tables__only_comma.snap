@@ -2,7 +2,7 @@
 source: snapshot-tests/tests/parser.rs
 expression: error
 ---
-error[wanted]: 
+error[wanted]: expected a table key, found a comma at a
   ┌─ only_comma:1:6
   │
 1 │ a = {,}

@@ -2,7 +2,7 @@
 source: snapshot-tests/tests/de.rs
 expression: error
 ---
-error[unexpected-key]: unexpected key `this-field-is-not-known`
+error[unexpected-key]: unexpected key `this-field-is-not-known` at this-field-is-not-known
   ┌─ unknown_field:2:1
   │
 2 │ this-field-is-not-known = 20

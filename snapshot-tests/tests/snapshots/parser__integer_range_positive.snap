@@ -6,4 +6,4 @@ error[invalid-integer]:
   ┌─ integer_range_positive:1:5
   │
 1 │ a = 9223372036854775808
-  │     ^^^^^^^^^^^^^^^^^^^ invalid integer: integer overflow
+  │     ^^^^^^^^^^^^^^^^^^^ invalid integer: integer overflow at a

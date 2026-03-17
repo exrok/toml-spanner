@@ -2,7 +2,7 @@
 source: snapshot-tests/tests/annotate_snippets.rs
 expression: rendered
 ---
-error: invalid basic string, expected `"`
+error: invalid basic string, expected `"` at a
  --> newline_string:1:6
   |
 1 | a = "

@@ -6,4 +6,4 @@ error[invalid-float]:
   ┌─ trailing_pos:1:5
   │
 1 │ a = 0.0e+
-  │     ^ invalid float: exponent requires at least one digit
+  │     ^ invalid float: exponent requires at least one digit at a

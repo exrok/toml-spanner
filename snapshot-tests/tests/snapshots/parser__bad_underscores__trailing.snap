@@ -6,4 +6,4 @@ error[invalid-integer]:
   ┌─ trailing:1:8
   │
 1 │ foo = 0_
-  │        ^ invalid integer: underscores must be between two digits
+  │        ^ invalid integer: underscores must be between two digits at foo

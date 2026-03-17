@@ -2,7 +2,7 @@
 source: snapshot-tests/tests/parser.rs
 expression: error
 ---
-error[wanted]: 
+error[wanted]: expected a table key, found a right bracket
   ┌─ empty:1:2
   │
 1 │ []

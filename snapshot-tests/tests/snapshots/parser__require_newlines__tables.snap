@@ -2,7 +2,7 @@
 source: snapshot-tests/tests/parser.rs
 expression: error
 ---
-error[wanted]: 
+error[wanted]: expected newline, found a left bracket at 0000l0[0].0
   ┌─ tables:3:6
   │
 3 │ 0="0"[[0000l0]]

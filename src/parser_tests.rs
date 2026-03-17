@@ -30,7 +30,7 @@ impl TestCtx {
             .into_table()
     }
 
-    fn parse_err(&self, input: &str) -> crate::Error {
+    fn parse_err<'a>(&'a self, input: &'a str) -> crate::Error {
         match crate::parser::parse(input, &self.arena) {
             Ok(_) => panic!("For input `{input}` expected error but parsed successfully"),
             Err(err) => err,
@@ -2157,4 +2157,222 @@ fn parse_error_token_descriptions() {
     // Array with trailing error
     let e = ctx.parse_err("a = [1, 2  ");
     assert!(matches!(e.kind(), ErrorKind::UnclosedArray));
+}
+
+#[test]
+fn error_paths() {
+    let ctx = TestCtx::new();
+
+    let path = |e: crate::Error| -> String {
+        let components = e.path().expect("expected non-empty path");
+        use std::fmt::Write;
+        let mut out = String::new();
+        for (i, c) in components.iter().enumerate() {
+            match c {
+                crate::error::PathComponent::Key(k) => {
+                    if i > 0 {
+                        out.push('.');
+                    }
+                    out.push_str(k.name);
+                }
+                crate::error::PathComponent::Index(idx) => {
+                    write!(out, "[{idx}]").unwrap();
+                }
+            }
+        }
+        out
+    };
+
+    // Simple top-level duplicate key
+    let e = ctx.parse_err("a = 1\na = 2");
+    assert_eq!(path(e), "a");
+
+    // Dotted key error shows full path
+    let e = ctx.parse_err("[fruit.apple.taste]\n[fruit]\napple.taste.sweet = true");
+    assert_eq!(path(e), "fruit.apple.taste");
+
+    // Table header intermediate error
+    let e = ctx.parse_err("[a]\nb = 1\n[a]\nc = 2");
+    assert_eq!(path(e), "a");
+
+    // Duplicate key inside a section
+    let e = ctx.parse_err("[section]\na = 1\na = 2");
+    assert_eq!(path(e), "section.a");
+
+    // AOT shows index
+    let e = ctx.parse_err(
+        "[[servers]]\nname = 'a'\n[[servers]]\nname = 'b'\n[[servers]]\nname = 'c'\nname = 'd'",
+    );
+    assert_eq!(path(e), "servers[2].name");
+
+    // Nested AOT intermediate
+    let e = ctx.parse_err("[[a]]\n[[a.b]]\nx = 1\n[[a.b]]\nx = 2\nx = 3");
+    assert_eq!(path(e), "a[0].b[1].x");
+
+    // Header key error (trailing period)
+    let e = ctx.parse_err("[a.]");
+    assert_eq!(path(e), "a");
+}
+
+// --- parse_recoverable tests ---
+
+#[cfg(feature = "from-toml")]
+mod recovering {
+    use crate::arena::Arena;
+
+    #[test]
+    fn valid_input_no_errors() {
+        let arena = Arena::new();
+        let doc = crate::parser::parse_recoverable("key = 'value'\nnum = 42\n", &arena);
+        assert!(doc.errors().is_empty());
+        assert_eq!(doc["key"].as_str(), Some("value"));
+        assert_eq!(doc["num"].as_i64(), Some(42));
+    }
+
+    #[test]
+    fn multiple_value_errors() {
+        let input = "good = 1\nbad =\nalso_good = 2\nworse = [}\n";
+        let arena = Arena::new();
+        let doc = crate::parser::parse_recoverable(input, &arena);
+        assert!(doc.errors().len() >= 2);
+        assert_eq!(doc["good"].as_i64(), Some(1));
+        assert_eq!(doc["also_good"].as_i64(), Some(2));
+    }
+
+    #[test]
+    fn bad_table_header_recovery() {
+        let input = "[valid]\na = 1\n[bad.]\n[another]\nb = 2\n";
+        let arena = Arena::new();
+        let doc = crate::parser::parse_recoverable(input, &arena);
+        assert!(!doc.errors().is_empty());
+        assert_eq!(doc["valid"].as_table().unwrap()["a"].as_i64(), Some(1));
+        assert_eq!(doc["another"].as_table().unwrap()["b"].as_i64(), Some(2));
+    }
+
+    #[test]
+    fn error_limit() {
+        let mut input = String::new();
+        for _ in 0..50 {
+            input.push_str("bad =\n");
+        }
+        let arena = Arena::new();
+        let doc = crate::parser::parse_recoverable(&input, &arena);
+        assert_eq!(
+            doc.errors().len(),
+            crate::parser::Parser::MAX_RECOVER_ERRORS
+        );
+    }
+
+    #[test]
+    fn eof_mid_error() {
+        let arena = Arena::new();
+        let doc = crate::parser::parse_recoverable("[incomplete", &arena);
+        assert!(!doc.errors().is_empty());
+    }
+
+    #[test]
+    fn bare_cr_recovery() {
+        let input = "a = 1\n\rb = 2\nc = 3\n";
+        let arena = Arena::new();
+        let doc = crate::parser::parse_recoverable(input, &arena);
+        assert!(!doc.errors().is_empty());
+        assert_eq!(doc["a"].as_i64(), Some(1));
+        assert_eq!(doc["c"].as_i64(), Some(3));
+    }
+
+    #[test]
+    fn multiline_inline_table_error() {
+        let input = "a = {\n  b = 1,\n  c = \n}\nd = 2\n";
+        let arena = Arena::new();
+        let doc = crate::parser::parse_recoverable(input, &arena);
+        assert!(!doc.errors().is_empty());
+        assert_eq!(doc["d"].as_i64(), Some(2));
+    }
+
+    #[test]
+    fn multiline_array_error() {
+        let input = "a = [\n  1,\n  bad,\n  3\n]\nb = 2\n";
+        let arena = Arena::new();
+        let doc = crate::parser::parse_recoverable(input, &arena);
+        assert!(!doc.errors().is_empty());
+        assert_eq!(doc["b"].as_i64(), Some(2));
+    }
+
+    #[test]
+    fn nested_inline_structure_error() {
+        let input = "a = {b = [1, {c = }, 3]}\nd = 2\n";
+        let arena = Arena::new();
+        let doc = crate::parser::parse_recoverable(input, &arena);
+        assert!(!doc.errors().is_empty());
+        assert_eq!(doc["d"].as_i64(), Some(2));
+    }
+
+    #[test]
+    fn string_with_brackets_not_confused() {
+        let input = "a = \"hello [\"\nb = \"world }\"\nc = 3\n";
+        let arena = Arena::new();
+        let doc = crate::parser::parse_recoverable(input, &arena);
+        assert!(doc.errors().is_empty());
+        assert_eq!(doc["a"].as_str(), Some("hello ["));
+        assert_eq!(doc["b"].as_str(), Some("world }"));
+        assert_eq!(doc["c"].as_i64(), Some(3));
+    }
+
+    #[test]
+    fn unclosed_inline_table_at_eof() {
+        let input = "a = 1\nb = {c = \n";
+        let arena = Arena::new();
+        let doc = crate::parser::parse_recoverable(input, &arena);
+        assert!(!doc.errors().is_empty());
+        assert_eq!(doc["a"].as_i64(), Some(1));
+    }
+
+    #[test]
+    fn unclosed_array_at_eof() {
+        let input = "a = 1\nb = [1, 2\n";
+        let arena = Arena::new();
+        let doc = crate::parser::parse_recoverable(input, &arena);
+        assert!(!doc.errors().is_empty());
+        assert_eq!(doc["a"].as_i64(), Some(1));
+    }
+
+    #[test]
+    fn multiline_array_single_bad_element() {
+        let input = "before = true\narr = [\n  1,\n  ,\n  3,\n]\nafter = true\n";
+        let arena = Arena::new();
+        let doc = crate::parser::parse_recoverable(input, &arena);
+        assert!(!doc.errors().is_empty());
+        assert_eq!(doc["before"].as_bool(), Some(true));
+        assert_eq!(doc["after"].as_bool(), Some(true));
+    }
+
+    #[test]
+    fn error_inside_multiline_string_does_not_cascade() {
+        let input = "a = 1\nb = \"unterminated\nc = 2\nd = 3\n";
+        let arena = Arena::new();
+        let doc = crate::parser::parse_recoverable(input, &arena);
+        assert!(!doc.errors().is_empty());
+        assert_eq!(doc["a"].as_i64(), Some(1));
+        assert_eq!(doc["d"].as_i64(), Some(3));
+    }
+
+    #[test]
+    fn multiple_sections_with_errors() {
+        let input = "\
+[s1]
+a = 1
+b = {bad
+[s2]
+c = 2
+d = [broken
+[s3]
+e = 3
+";
+        let arena = Arena::new();
+        let doc = crate::parser::parse_recoverable(input, &arena);
+        assert!(doc.errors().len() >= 2);
+        assert_eq!(doc["s1"].as_table().unwrap()["a"].as_i64(), Some(1));
+        assert_eq!(doc["s2"].as_table().unwrap()["c"].as_i64(), Some(2));
+        assert_eq!(doc["s3"].as_table().unwrap()["e"].as_i64(), Some(3));
+    }
 }

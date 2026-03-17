@@ -6,4 +6,4 @@ error[invalid-integer]:
   ┌─ two_zeros:1:5
   │
 1 │ a = 00
-  │     ^^ invalid integer: leading zeros are not allowed
+  │     ^^ invalid integer: leading zeros are not allowed at a

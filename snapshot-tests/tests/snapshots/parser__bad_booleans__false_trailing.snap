@@ -2,7 +2,7 @@
 source: snapshot-tests/tests/parser.rs
 expression: error
 ---
-error[wanted]: 
+error[wanted]: expected newline, found an identifier at foo
   ┌─ false_trailing:1:12
   │
 1 │ foo = false2

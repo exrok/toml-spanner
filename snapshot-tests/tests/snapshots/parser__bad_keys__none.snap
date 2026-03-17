@@ -2,7 +2,7 @@
 source: snapshot-tests/tests/parser.rs
 expression: error
 ---
-error[wanted]: 
+error[wanted]: expected a table key, found an equals
   ┌─ none:1:1
   │
 1 │ =3

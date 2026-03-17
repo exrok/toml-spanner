@@ -6,4 +6,4 @@ error[invalid-float]:
   ┌─ trailing_dec:1:7
   │
 1 │ a = 0.
-  │       ^ invalid float: nothing after decimal point
+  │       ^ invalid float: nothing after decimal point at a

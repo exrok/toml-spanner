@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 
 use snapshot_tests::{invalid_de_snippet, invalid_snippet};
-use toml_spanner::{Context, Failed, FromToml, Item, Spanned};
+use toml_spanner::{Context, Failed, FromToml, Spanned};
 
 // Parse errors
 invalid_snippet!(newline_string, "a = \"\n\"");
@@ -20,7 +20,10 @@ struct Boop {
 }
 
 impl<'de> FromToml<'de> for Boop {
-    fn from_toml(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
+    fn from_toml(
+        ctx: &mut Context<'de>,
+        value: &toml_spanner::Item<'de>,
+    ) -> Result<Self, Failed> {
         let mut th = value.table_helper(ctx)?;
         let s = th.required("s")?;
         let os = th.optional("os");
@@ -42,7 +45,10 @@ struct Ohno {
 }
 
 impl<'de> FromToml<'de> for Ohno {
-    fn from_toml(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
+    fn from_toml(
+        ctx: &mut Context<'de>,
+        value: &toml_spanner::Item<'de>,
+    ) -> Result<Self, Failed> {
         let mut th = value.table_helper(ctx)?;
         let year = th.required("year")?;
 

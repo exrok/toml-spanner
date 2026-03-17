@@ -5,11 +5,8 @@
 //!
 //! Use [`parse`] with a TOML string and an [`Arena`] to get a [`Document`].
 //! ```
-//! # fn main() -> Result<(), toml_spanner::Error> {
 //! let arena = toml_spanner::Arena::new();
-//! let doc = toml_spanner::parse("key = 'value'", &arena)?;
-//! # Ok(())
-//! # }
+//! let doc = toml_spanner::parse("key = 'value'", &arena).unwrap();
 //! ```
 //! Traverse the tree for inspection via index operators which return a [`MaybeItem`]:
 //! ```
@@ -46,13 +43,10 @@
 //! rather than failing on the first error.
 //!
 //! ```
-//! # fn main() -> Result<(), toml_spanner::Error> {
 //! # let arena = toml_spanner::Arena::new();
-//! # let mut doc = toml_spanner::parse("name = 'hello'", &arena)?;
+//! # let mut doc = toml_spanner::parse("name = 'hello'", &arena).unwrap();
 //! let mut helper = doc.helper();
 //! let name: String = helper.required("name").ok().unwrap();
-//! # Ok(())
-//! # }
 //! ```
 //!
 //! Extract values with [`Item::parse`] which uses [`std::str::FromStr`] expecting a String kinded TOML Value.
@@ -60,7 +54,7 @@
 //! ```
 //! # fn main() -> Result<(), toml_spanner::Error> {
 //! # let arena = toml_spanner::Arena::new();
-//! # let doc = toml_spanner::parse("ip-address = '127.0.0.1'", &arena)?;
+//! # let doc = toml_spanner::parse("ip-address = '127.0.0.1'", &arena).unwrap();
 //! let item = doc["ip-address"].item().unwrap();
 //! let ip: std::net::Ipv4Addr = item.parse()?;
 //! # Ok(())
@@ -82,10 +76,7 @@
 //!
 //! impl<'de> FromToml<'de> for Things {
 //!     fn from_toml(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
-//!         let Some(table) = value.as_table() else {
-//!             return Err(ctx.error_expected_but_found(&"a table", value));
-//!         };
-//!         let mut th = TableHelper::new(ctx, table);
+//!         let mut th = value.table_helper(ctx)?;
 //!         let name = th.required("name")?;
 //!         let value = th.required("value")?;
 //!         let color = th.optional("color");
@@ -108,7 +99,7 @@
 //! "#;
 //!
 //! let arena = Arena::new();
-//! let mut doc = toml_spanner::parse(content, &arena)?;
+//! let mut doc = toml_spanner::parse(content, &arena).unwrap();
 //!
 //! // Null-coalescing index operators — missing keys return a None-like
 //! // MaybeItem instead of panicking.
@@ -125,7 +116,6 @@
 //! assert_eq!(things.len(), 2);
 //! assert_eq!(things[0].name, "hammer");
 //! assert!(dev_mode);
-//! # Ok::<(), toml_spanner::Error>(())
 //! ```
 //!
 //! </details>
@@ -167,10 +157,12 @@ use emit::reproject;
 pub use emit::{EmitConfig, NormalizedTable, emit, emit_with_config};
 #[cfg(all(feature = "to-toml", not(fuzzing)))]
 use emit::{EmitConfig, emit, emit_with_config};
-pub use error::{Error, ErrorKind};
+pub use error::{Error, ErrorKind, TomlPath};
 pub use item::array::Array;
 pub use item::table::Table;
 pub use item::{ArrayStyle, Item, Key, Kind, MaybeItem, TableStyle, Value, ValueMut};
+#[cfg(feature = "from-toml")]
+pub use parser::parse_recoverable;
 pub use parser::{Document, parse};
 #[cfg(feature = "to-toml")]
 pub use ser::ToTomlError;
@@ -196,12 +188,9 @@ pub mod impl_serde;
 /// parses — use the lower-level API instead:
 ///
 /// ```
-/// # fn main() -> Result<(), toml_spanner::FromTomlError> {
 /// let arena = toml_spanner::Arena::new();
-/// let mut doc = toml_spanner::parse("key = 'value'", &arena)?;
-/// let config = doc.to::<std::collections::HashMap<String, String>>()?;
-/// # Ok(())
-/// # }
+/// let mut doc = toml_spanner::parse("key = 'value'", &arena).unwrap();
+/// let config = doc.to::<std::collections::HashMap<String, String>>().unwrap();
 /// ```
 ///
 /// Note that [`to_string_with`] with [`Formatting::of`]
@@ -216,7 +205,12 @@ pub mod impl_serde;
 #[cfg(feature = "from-toml")]
 pub fn from_str<T: for<'a> FromToml<'a>>(document: &str) -> Result<T, FromTomlError> {
     let arena = Arena::new();
-    let mut doc = parse(document, &arena)?;
+    let mut doc = match parse(document, &arena) {
+        Ok(doc) => doc,
+        Err(e) => {
+            return Err(FromTomlError { errors: vec![e] });
+        }
+    };
     doc.to()
 }
 

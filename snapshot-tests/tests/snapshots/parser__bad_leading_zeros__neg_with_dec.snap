@@ -6,4 +6,4 @@ error[invalid-float]:
   ┌─ neg_with_dec:1:5
   │
 1 │ a = -00.0
-  │     ^^^ invalid float: leading zeros are not allowed
+  │     ^^^ invalid float: leading zeros are not allowed at a

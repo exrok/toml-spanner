@@ -42,8 +42,8 @@ pub fn parse_lock_toml_spanner(
     let mut doc = toml_spanner::parse(s, &arena).map_err(|e| vec![e])?;
     match doc.to::<lockfile::TomlLockfile>() {
         Ok(lockfile) if !doc.has_errors() => Ok(lockfile),
-        Ok(_) => Err(doc.ctx.errors),
-        Err(_) => Err(doc.ctx.errors),
+        Ok(_) => Err(doc.ctx.errors.into_iter().collect()),
+        Err(_) => Err(doc.ctx.errors.into_iter().collect()),
     }
 }
 
@@ -66,8 +66,8 @@ pub fn parse_manifest_toml_spanner(
     let mut doc = toml_spanner::parse(s, &arena).map_err(|e| vec![e])?;
     match doc.to::<manifest::TomlManifest>() {
         Ok(manifest) if !doc.has_errors() => Ok(manifest),
-        Ok(_) => Err(doc.ctx.errors),
-        Err(_) => Err(doc.ctx.errors),
+        Ok(_) => Err(doc.ctx.errors.into_iter().collect()),
+        Err(_) => Err(doc.ctx.errors.into_iter().collect()),
     }
 }
 
@@ -97,7 +97,7 @@ mod tests {
                 for err in errs {
                     eprintln!(
                         "Error: {err}, {}",
-                        &static_input::ZED_CARGO_TOML[err.span.range()]
+                        &static_input::ZED_CARGO_TOML[err.span().range()]
                     );
                 }
                 panic!()

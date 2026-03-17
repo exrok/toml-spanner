@@ -6,4 +6,4 @@ error[invalid-integer]:
   ┌─ basic:1:4
   │
 1 │ 0=0r=false
-  │    ^ invalid integer: contains non-digit character
+  │    ^ invalid integer: contains non-digit character at 0

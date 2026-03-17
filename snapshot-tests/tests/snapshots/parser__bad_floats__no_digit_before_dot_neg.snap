@@ -6,4 +6,4 @@ error[invalid-integer]:
   ┌─ no_digit_before_dot_neg:1:5
   │
 1 │ a = -.7
-  │     ^ invalid integer: expected digit after sign
+  │     ^ invalid integer: expected digit after sign at a

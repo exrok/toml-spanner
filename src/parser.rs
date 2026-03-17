@@ -11,7 +11,7 @@ use crate::de::TableHelper;
 use crate::{
     Failed, MaybeItem, Span,
     arena::Arena,
-    error::{Error, ErrorKind},
+    error::{Error, ErrorKind, PathComponent},
     item::{
         self, Item, Key,
         table::{InnerTable, Table},
@@ -126,9 +126,18 @@ struct Parser<'de> {
     error_span: Span,
     error_kind: Option<ErrorKind<'static>>,
 
+    // TOML path tracking for error context (zero-cost on happy path)
+    path: [PathComponent<'de>; 16],
+    path_len: u8,
+
     // Global key-index for O(1) lookups in large tables.
     // Maps (table-discriminator, key-name) → entry index in the table.
     index: foldhash::HashMap<KeyRef<'de>, usize>,
+
+    // Recovery mode: when true, parse errors are accumulated instead of
+    // immediately returned, and parsing continues from the next line.
+    recovering: bool,
+    errors: Vec<Error>,
 }
 
 impl<'de> Parser<'de> {
@@ -146,11 +155,15 @@ impl<'de> Parser<'de> {
             arena,
             error_span: Span::new(0, 0),
             error_kind: None,
+            path: [PathComponent::Index(0); 16],
+            path_len: 0,
             // initialize to about ~ 8 KB
             index: foldhash::HashMap::with_capacity_and_hasher(
                 256,
                 foldhash::fast::RandomState::default(),
             ),
+            recovering: false,
+            errors: Vec::new(),
         }
     }
 
@@ -178,6 +191,21 @@ impl<'de> Parser<'de> {
         }
     }
 
+    #[inline]
+    fn push_path(&mut self, component: PathComponent<'de>) {
+        let len = self.path_len as usize;
+        if len < self.path.len() {
+            self.path[len] = component;
+        }
+        self.path_len = self.path_len.saturating_add(1);
+    }
+
+    #[cold]
+    fn build_error_path(&self) -> crate::error::MaybeTomlPath {
+        let depth = (self.path_len as usize).min(self.path.len());
+        crate::error::MaybeTomlPath::from_components(&self.path[..depth])
+    }
+
     #[cold]
     fn set_duplicate_key_error(&mut self, first: Span, second: Span) -> Failed {
         self.error_span = second;
@@ -198,13 +226,14 @@ impl<'de> Parser<'de> {
             .take()
             .expect("take_error called without error");
         let span = self.error_span;
+        let path = self.build_error_path();
 
         // Black Magic Optimization:
         // Removing the following introduces 8% performance
         // regression across the board.
         std::hint::black_box(&self.bytes.iter().enumerate().next());
 
-        Error::new(kind, span)
+        Error::new_with_path(kind, span, path)
     }
 
     #[inline]
@@ -1479,6 +1508,7 @@ impl<'de> Parser<'de> {
             } else if existing.is_aot() {
                 // unwrap is safe since we just check it's an array of tables and thus a array.
                 let arr = existing.as_array_mut().unwrap();
+                self.push_path(PathComponent::Index(arr.len() - 1));
                 // unwrap is safe as array's of tables always have atleast one value by construction
                 let last = arr.last_mut().unwrap();
                 if !last.is_table() {
@@ -1601,6 +1631,7 @@ impl<'de> Parser<'de> {
                     Item::table_header(InnerTable::new(), entry_span),
                     self.arena,
                 );
+                self.push_path(PathComponent::Index(arr.len() - 1));
                 let entry = arr.last_mut().unwrap();
                 Ok(Ctx {
                     // SAFETY: Item::table_header() produces a table-tagged item.
@@ -1625,6 +1656,7 @@ impl<'de> Parser<'de> {
                 array_span,
             );
             let inserted = self.insert_value_known_to_be_unique(table, key, array_val);
+            self.push_path(PathComponent::Index(0));
             // SAFETY: Item::array_aot() produces an array-tagged item.
             let (end_flag, arr) = unsafe { inserted.split_array_end_flag() };
             let entry = arr.last_mut().unwrap();
@@ -1694,18 +1726,132 @@ impl<'de> Parser<'de> {
         }
     }
 
+    fn skip_recovery_string(&mut self) {
+        let delim = self.bytes[self.cursor];
+        self.cursor += 1;
+        let multiline = self.peek_byte() == Some(delim) && self.peek_byte_at(1) == Some(delim);
+        if multiline {
+            self.cursor += 2;
+            loop {
+                match self.peek_byte() {
+                    None => return,
+                    Some(b)
+                        if b == delim
+                            && self.peek_byte_at(1) == Some(delim)
+                            && self.peek_byte_at(2) == Some(delim) =>
+                    {
+                        self.cursor += 3;
+                        while self.peek_byte() == Some(delim) {
+                            self.cursor += 1;
+                        }
+                        return;
+                    }
+                    Some(b'\\') if delim == b'"' => self.cursor += 2,
+                    _ => self.cursor += 1,
+                }
+            }
+        }
+        loop {
+            match self.peek_byte() {
+                None | Some(b'\n') => return,
+                Some(b) if b == delim => {
+                    self.cursor += 1;
+                    return;
+                }
+                Some(b'\\') if delim == b'"' => self.cursor += 2,
+                _ => self.cursor += 1,
+            }
+        }
+    }
+
+    fn at_statement_start(&self) -> bool {
+        matches!(self.peek_byte(), None | Some(b'[') | Some(b'#'))
+            || matches!(self.peek_byte(), Some(b) if is_keylike_byte(b) || b == b'"' || b == b'\'')
+    }
+
+    fn skip_to_next_statement(&mut self) {
+        loop {
+            match self.peek_byte() {
+                None => return,
+                Some(b'\n') => {
+                    self.cursor += 1;
+                    let saved = self.cursor;
+                    while matches!(self.peek_byte(), Some(b' ' | b'\t')) {
+                        self.cursor += 1;
+                    }
+                    if self.at_statement_start() {
+                        self.cursor = saved;
+                        return;
+                    }
+                    self.cursor = saved;
+                }
+                Some(b'"' | b'\'') => self.skip_recovery_string(),
+                Some(b'#') => {
+                    self.cursor += 1;
+                    while let Some(b) = self.peek_byte() {
+                        if b == b'\n' {
+                            break;
+                        }
+                        self.cursor += 1;
+                    }
+                }
+                _ => self.cursor += 1,
+            }
+        }
+    }
+
+    const MAX_RECOVER_ERRORS: usize = 25;
+
+    fn try_recover(&mut self) -> bool {
+        if !self.recovering {
+            return false;
+        }
+        let error = self.take_error();
+        self.errors.push(error);
+        self.path_len = 0;
+        let at_line_start = self.cursor == 0 || self.bytes.get(self.cursor - 1) == Some(&b'\n');
+        if at_line_start && self.at_statement_start() {
+            return self.errors.len() < Self::MAX_RECOVER_ERRORS;
+        }
+        let _before = self.cursor;
+        self.skip_to_next_statement();
+        debug_assert!(
+            self.cursor > _before || self.cursor >= self.bytes.len(),
+            "skip_to_next_statement did not advance cursor from {_before}",
+        );
+        self.errors.len() < Self::MAX_RECOVER_ERRORS
+    }
+
     fn parse_document(&mut self, root_st: &mut Table<'de>) -> Result<(), Failed> {
         let mut ctx = Ctx {
             table: root_st,
             array_end_span: None,
         };
 
+        #[cfg(debug_assertions)]
+        let mut _prev_loop_cursor = usize::MAX;
+
         loop {
+            #[cfg(debug_assertions)]
+            if self.recovering {
+                debug_assert!(
+                    self.cursor != _prev_loop_cursor || self.peek_byte().is_none(),
+                    "parse_document recovery loop stalled at cursor {}",
+                    self.cursor,
+                );
+                _prev_loop_cursor = self.cursor;
+            }
+
             self.eat_whitespace();
             match self.eat_comment() {
                 Ok(true) => continue,
                 Ok(false) => {}
-                Err(e) => return Err(e),
+                Err(_) => {
+                    if !self.try_recover() {
+                        return Err(Failed);
+                    }
+                    continue;
+                }
             }
             if self.eat_newline() {
                 continue;
@@ -1716,15 +1862,29 @@ impl<'de> Parser<'de> {
                 Some(b'[') => {
                     ctx = match self.process_table_header(root_st) {
                         Ok(c) => c,
-                        Err(e) => return Err(e),
+                        Err(_) => {
+                            if !self.try_recover() {
+                                return Err(Failed);
+                            }
+                            Ctx {
+                                table: root_st,
+                                array_end_span: None,
+                            }
+                        }
                     };
                 }
                 Some(b'\r') => {
-                    return Err(self.set_error(self.cursor, None, ErrorKind::Unexpected('\r')));
+                    self.set_error(self.cursor, None, ErrorKind::Unexpected('\r'));
+                    if !self.try_recover() {
+                        return Err(Failed);
+                    }
+                    continue;
                 }
                 Some(_) => {
-                    if let Err(e) = self.process_key_value(&mut ctx) {
-                        return Err(e);
+                    if let Err(_) = self.process_key_value(&mut ctx) {
+                        if !self.try_recover() {
+                            return Err(Failed);
+                        }
                     }
                 }
             }
@@ -1736,6 +1896,7 @@ impl<'de> Parser<'de> {
         &mut self,
         root_st: &'b mut Table<'de>,
     ) -> Result<Ctx<'b, 'de>, Failed> {
+        self.path_len = 0;
         let header_start = self.cursor as u32;
         if let Err(e) = self.expect_byte(b'[') {
             return Err(e);
@@ -1753,6 +1914,7 @@ impl<'de> Parser<'de> {
             if self.eat_whitespace_to() == Some(b'.') {
                 self.cursor += 1;
                 self.eat_whitespace();
+                self.push_path(PathComponent::Key(key));
                 current = match self.navigate_header_intermediate(current, key) {
                     Ok(p) => p,
                     Err(e) => return Err(e),
@@ -1784,6 +1946,7 @@ impl<'de> Parser<'de> {
         }
         let header_end = self.cursor as u32;
 
+        self.push_path(PathComponent::Key(key));
         if is_array {
             self.navigate_header_array_final(current, key, header_start, header_end)
         } else {
@@ -1792,6 +1955,7 @@ impl<'de> Parser<'de> {
     }
 
     fn process_key_value(&mut self, ctx: &mut Ctx<'_, 'de>) -> Result<(), Failed> {
+        let saved_path_len = self.path_len;
         let line_start = self.cursor as u32;
         // Borrow the Table payload from the Table. NLL drops this
         // borrow at its last use (the insert_value call), freeing ctx.st
@@ -1806,6 +1970,7 @@ impl<'de> Parser<'de> {
 
         while self.eat_byte(b'.') {
             self.eat_whitespace();
+            self.push_path(PathComponent::Key(key));
             table_ref = match self.navigate_dotted_key(table_ref, key) {
                 Ok(t) => t,
                 Err(e) => return Err(e),
@@ -1816,6 +1981,8 @@ impl<'de> Parser<'de> {
             };
             self.eat_whitespace();
         }
+
+        self.push_path(PathComponent::Key(key));
 
         if let Err(e) = self.expect_byte(b'=') {
             return Err(e);
@@ -1841,6 +2008,8 @@ impl<'de> Parser<'de> {
         if let Err(e) = self.insert_value(table_ref, key, val) {
             return Err(e);
         }
+
+        self.path_len = saved_path_len;
 
         let start = ctx.table.span_start();
         ctx.table.set_span_start(start.min(line_start));
@@ -1869,9 +2038,8 @@ impl<'de> Parser<'de> {
 ///
 /// ```
 /// let arena = toml_spanner::Arena::new();
-/// let doc = toml_spanner::parse("name = 'world'", &arena)?;
+/// let doc = toml_spanner::parse("name = 'world'", &arena).unwrap();
 /// assert_eq!(doc["name"].as_str(), Some("world"));
-/// # Ok::<(), toml_spanner::Error>(())
 /// ```
 pub struct Document<'de> {
     pub(crate) table: Table<'de>,
@@ -1940,6 +2108,7 @@ impl<'de> Document<'de> {
         T: crate::de::FromToml<'de>,
     {
         let result = T::from_toml(&mut self.ctx, self.table.as_item());
+        crate::de::compute_paths(&self.table, &mut self.ctx.errors);
         match result {
             Ok(v) if self.ctx.errors.is_empty() => Ok(v),
             _ => Err(crate::de::FromTomlError {
@@ -1987,9 +2156,8 @@ impl std::fmt::Debug for Document<'_> {
 ///
 /// ```
 /// let arena = toml_spanner::Arena::new();
-/// let doc = toml_spanner::parse("key = 'value'", &arena)?;
+/// let doc = toml_spanner::parse("key = 'value'", &arena).unwrap();
 /// assert_eq!(doc["key"].as_str(), Some("value"));
-/// # Ok::<(), toml_spanner::Error>(())
 /// ```
 #[inline(never)]
 pub fn parse<'de>(document: &'de str, arena: &'de Arena) -> Result<Document<'de>, Error> {
@@ -2022,6 +2190,71 @@ pub fn parse<'de>(document: &'de str, arena: &'de Arena) -> Result<Document<'de>
             source: document,
         },
     })
+}
+
+/// Parses a TOML document in recovery mode, accumulating errors instead of
+/// stopping on the first one.
+///
+/// Unlike [`parse`], this function always returns a [`Document`] (never
+/// `Err`). Syntax errors are collected into the document's
+/// [`Context::errors`](crate::Context) alongside any later deserialization
+/// errors. Valid portions of the input are still parsed into the tree.
+///
+/// Recovery is line-based: when a statement fails to parse, the parser
+/// skips to the next line and continues. At most 25 errors are collected
+/// before parsing stops.
+///
+/// # Examples
+///
+/// ```
+/// let arena = toml_spanner::Arena::new();
+/// let mut doc = toml_spanner::parse_recoverable("key = 'value'\nbad =\n", &arena);
+/// assert_eq!(doc["key"].as_str(), Some("value"));
+/// assert!(!doc.errors().is_empty());
+/// ```
+#[cfg(feature = "from-toml")]
+pub fn parse_recoverable<'de>(document: &'de str, arena: &'de Arena) -> Document<'de> {
+    const MAX_SIZE: usize = (1u32 << 28) as usize;
+    let mut parser = Parser::new(document, arena);
+    parser.recovering = true;
+
+    if document.len() >= MAX_SIZE {
+        parser
+            .errors
+            .push(Error::new(ErrorKind::FileTooLarge, Span::new(0, 0)));
+        return Document {
+            table: Table::new_spanned(Span::new(0, 0)),
+            ctx: crate::de::Context {
+                errors: parser.errors,
+                index: parser.index,
+                arena,
+                source: document,
+            },
+        };
+    }
+
+    let mut root_st = Table::new_spanned(Span::new(0, document.len() as u32));
+    let failed = parser.parse_document(&mut root_st).is_err();
+
+    if failed {
+        if let Some(kind) = parser.error_kind.take() {
+            parser.errors.push(Error::new_with_path(
+                kind,
+                parser.error_span,
+                parser.build_error_path(),
+            ));
+        }
+    }
+
+    Document {
+        table: root_st,
+        ctx: crate::de::Context {
+            errors: parser.errors,
+            index: parser.index,
+            arena,
+            source: document,
+        },
+    }
 }
 
 #[inline]

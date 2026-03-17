@@ -6,4 +6,4 @@ error[invalid-float]:
   ┌─ underscore_before_exp:1:5
   │
 1 │ a = 73_e3
-  │     ^^^^^ invalid float: underscores must be between two digits
+  │     ^^^^^ invalid float: underscores must be between two digits at a

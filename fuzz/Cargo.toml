@@ -106,3 +106,10 @@ path = "fuzz_targets/emit_reproject_exact.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "parse_recoverable"
+path = "fuzz_targets/parse_recoverable.rs"
+test = false
+doc = false
+bench = false

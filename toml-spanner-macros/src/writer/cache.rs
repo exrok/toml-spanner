@@ -1,6 +1,6 @@
 use proc_macro::{Punct, Spacing};
 pub static BLIT_SRC: &[u8] =
-b"\n\t>;\x05\x08\n\tp\x05\x08\x01H\x01\r\n\t/\x05\x08Gr}\t\x06o\n\t,\x05\x08\x01\rz\t\x06\n\t`\x05\x08\x0b\x01\n\t\\\n\tJ\n\tC\x05y\r\n\t.\x01\n\tgH\n\tg\r\n\t0\rGf\x05\x08\x06\x08e\rw\t\x06\x08\n\t\x12\n\t1\x01|s\n\t\x15\n\t*vx\n\t1\n\t:|oE\x03\n\t ~\x02\x03W\x02\x03W\n\t\x05\x01\x02tm\x00[\x04\x01\x7f\x00!~}\x00%\rm\x00k\x03s\x04\x01vx\x04\x01\x7f\ru\x04\x01|u\x03\n\th}\rm\rb\r\x06oE}\x00Fu\x04\x01\x7f\n\t\x1e}\rE\x07\x02\x00&~Y}\x00U\rz\x00k~\x00+\x0f\x0e\x00@~\x02\x03-\n\t9~\x02\x06e\x00n|s\x00h\n\ta\n\tc\n\tf\x00M\n\tD\n\t\rw\r\n\tg\n\t(\rq\n\tg\n\tfn\x10\n\t\'\rw\r\x06oy\n\t|X\x03z\x00dX\x00i~|O\x03\x05\x01\x01\n\tr}\rz\x07\x02{\n\t\\\n\t8\n\t\x14\n\t:\x07\x02t\n\t\\\n\t8\n\t\x16\n\t)\x04\x01{\rx\x04\x01x}\x00\"\n\t\x13\n\t\x1b^\rz\x00k~\n\t`\n\tKu\x04\x01{u\x04\x01x}\x00Z}\rb|V\x03z\x00\x1d\x07\x02tV}\x00\x1ctej\x00i~S\rwj\x00h\x07\rw\rT\x00h\rj\x00i~\rw\rT\x00i~vtV\x03z\x005~|j\x03z\x00d\x07\x02|Q\x03j\x00Q~\x02Q\x00I~\x04\x03<\rL\x03\x06Qt<\x00[\n\tp\n\tr}\rL|P\x03L\x00d|ol\tB\x05\x06=\x01\x03W\x02nm\x00[\x04\x03l\x03s\x02\x19\x02\x03lYtlnm\x00[\x11\x03|u\x03m\x02|P\x03X\x02\x07\x02|ol\tB\x05\x06=\x01\x03W\x02|o]\tB\x05\x06\x01\x01\x03W\x02]\x03s\x03]Y}\r]|P\x03]\x00dn4\x04\x03v{\x04\x01v{}\x00R\x00?|N\x03}\x00R\x00I~\x02|P\x03z\x00d|N\x03}\x00R\x00I~\x02|3\t\n\t\\\n\tJ\n\tC\x05y\r\n\t.\x01\x03~\x02t3|2\tG\x01\r\x06\x0b\x01\x18\x03\x02n2\x1a\n\t#7u\t~\x03";
+b"\n\t>;\x05\x08\n\tp\x05\x08\x00H\x00\r\n\t/\x05\x08Gr|\t\x06o\n\t,\x05\x08\x00\r{\t\x06\n\t`\x05\x08\x0b\x00\n\t]\n\tJ\n\tC\x05y\r\n\t.\x00\n\thH\n\th\r\n\t0\rGg\x05\x08\x06\x08f\rw\t\x06\x08\n\t\x12\n\t1\x00}s\n\t\x15\n\t*vx\n\t1\n\t:}oE\x03\n\t ~\x02\x03W\x02\x03W\n\t\x05\x00\x02tm\x01[\x04\x00\x7f\x01!~|\x01%\rm\x01\\\r{\x03s\x04\x00vx\x04\x00\x7f\ru\x04\x00}u\x03\n\ti|\rm\rc\r\x06oE|\x01F{\rm\x01\\u\x04\x00\x7f\n\t\x1e|\rE\x07\x02\x01&~Y|\x01T\x01+\x0f\x0e\x01@~\x02\x03-\n\t9~\x02\x06f\x01n}s\x01i\n\ta\n\td\n\tg\x01L\n\tD\n\t\rw\r\n\th\n\t(\rq\n\th\n\tgn\x10\n\t\'\rw\r\x06oy\n\t}X\x03{\x01eX\x01j~}N\x03\x05\x00\x00\n\tr|\r{\x07\x02z\n\t]\n\t8\n\t\x14\n\t:\x07\x02t\n\t]\n\t8\n\t\x16\n\t)\x04\x00z\rx\x04\x00x|\x01\"\n\t\x13\n\t\x1b^\r{\x01\\~\n\t`\n\tKu\x04\x00zu\x04\x00x|\x01Z|\rc}U\x03{\x01\x1d\x07\x02tU|\x01\x1ctfk\x01j~R\rwk\x01i\x07\rw\rS\x01i\rk\x01j~\rw\rS\x01j~vtU\x03{\x015~}k\x03{\x01e\x07\x02}P\x03k\x01P~\x02P\x01I~\x04\x03<\rV\x03\x06Pt<\x01[\n\tp\n\tr|\rV}{\x03V\x02}O\x03V\x01e}ol\tB\x05\x06=\x00\x03W\x02nm\x01[\x04\x03l\x03s\x02\x19\x02\x03lYtlnm\x01[\x11\x03}u\x03m\x02}O\x03X\x02\x07\x02}ol\tB\x05\x06=\x00\x03W\x02}ob\tB\x05\x06\x00\x00\x03W\x02b\x03s\x03bY|\rb}{\x03b\x02}O\x03b\x01en4\x04\x03vz\x04\x00vz|\x01Q\x01?}M\x03|\x01Q\x01I~\x02}O\x03{\x01e}M\x03|\x01Q\x01I~\x02}3\t\n\t]\n\tJ\n\tC\x05y\r\n\t.\x00\x03~\x02t3}2\tG\x00\r\x06\x0b\x00\x18\x03\x02n2\x1a\n\t#7u\t~\x03";
 pub const IDENT_SIZE: usize = 108;
 pub static NAMES: [&str; 108] = [
     "Arena",
@@ -55,13 +55,12 @@ pub static NAMES: [&str; 108] = [
     "Result",
     "TableStyle",
     "__flatten_partial",
-    "error_message_at",
+    "error_unexpected_key",
     "fn",
     "for",
     "len",
     "result",
     "string",
-    "value",
     "with_style_of_array_or_table",
     "__err_len",
     "__proxy",
@@ -72,17 +71,19 @@ pub static NAMES: [&str; 108] = [
     "outer",
     "report_missing_field",
     "s",
+    "value",
     "None",
     "__table",
     "else",
     "error_expected_but_found",
     "name",
+    "span",
     "std",
-    "__content",
     "__e",
     "as",
     "Item",
     "Key",
+    "__content",
     "__value",
     "anon",
     "expect_table",
@@ -92,7 +93,6 @@ pub static NAMES: [&str; 108] = [
     "insert",
     "into_item",
     "table",
-    "span",
     "__tag",
     "__key",
     "if",
@@ -107,16 +107,16 @@ pub static NAMES: [&str; 108] = [
     "__arena",
     "Err",
     "Self",
-    "__item",
     "Ok",
-    "let",
+    "__item",
     "__ctx",
+    "let",
 ];
 pub const PUNCT_SIZE: usize = 18;
 pub fn punct_cache_initial_state() -> [Punct; PUNCT_SIZE] {
     [
-        Punct::new('.', Spacing::Alone),
         Punct::new('>', Spacing::Alone),
+        Punct::new('.', Spacing::Alone),
         Punct::new(';', Spacing::Alone),
         Punct::new('=', Spacing::Alone),
         Punct::new('=', Spacing::Joint),

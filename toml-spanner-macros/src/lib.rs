@@ -40,7 +40,10 @@ impl Error {
             toks.push(TokenTree::Punct(Punct::new(':', Spacing::Joint)));
             toks.push(TokenTree::Punct(Punct::new(':', Spacing::Alone)));
             toks.push(TokenTree::Ident(Ident::new("new", self.0.span)));
-            toks.push(TokenTree::Group(Group::new(Delimiter::Parenthesis, TokenStream::new())));
+            toks.push(TokenTree::Group(Group::new(
+                Delimiter::Parenthesis,
+                TokenStream::new(),
+            )));
             let inner = TokenStream::from_iter(toks.drain(..));
             toks.push(TokenTree::Group(Group::new(Delimiter::Brace, inner)));
             TokenStream::from_iter(toks.drain(..))

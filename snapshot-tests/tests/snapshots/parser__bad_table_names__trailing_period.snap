@@ -2,7 +2,7 @@
 source: snapshot-tests/tests/parser.rs
 expression: error
 ---
-error[wanted]: 
+error[wanted]: expected a table key, found a right bracket at a
   ┌─ trailing_period:1:4
   │
 1 │ [a.]

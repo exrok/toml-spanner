@@ -4,15 +4,236 @@
 #[path = "./error_tests.rs"]
 mod tests;
 
-use crate::Span;
-use std::fmt::{self, Debug, Display};
+use crate::{Item, Key, Span};
+use std::fmt::{self, Debug, Display, Write as _};
 
-pub struct Error {
-    kind: ErrorInner,
-    span: Span,
+#[derive(Clone, Copy)]
+pub enum PathComponent<'de> {
+    Key(Key<'de>),
+    Index(usize),
 }
 
-enum ErrorInner {
+#[repr(transparent)]
+pub struct TomlPath<'a>([PathComponent<'a>]);
+
+impl<'a> std::ops::Deref for TomlPath<'a> {
+    type Target = [PathComponent<'a>];
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+macro_rules! rtry {
+    ($($tt:tt)*) => {
+        if let Err(err) = $($tt)* {
+            return Err(err);
+        }
+    };
+}
+
+impl Display for TomlPath<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut first = true;
+        for component in &self.0 {
+            match component {
+                PathComponent::Key(key) => {
+                    if !first {
+                        rtry!(f.write_char('.'));
+                    }
+                    first = false;
+                    if is_bare_key(key.name) {
+                        rtry!(f.write_str(key.name));
+                    } else {
+                        rtry!(f.write_char('"'));
+                        for ch in key.name.chars() {
+                            rtry!(match ch {
+                                '"' => f.write_str("\\\""),
+                                '\\' => f.write_str("\\\\"),
+                                '\n' => f.write_str("\\n"),
+                                '\r' => f.write_str("\\r"),
+                                '\t' => f.write_str("\\t"),
+                                c if c.is_control() => write!(f, "\\u{:04X}", c as u32),
+                                c => f.write_char(c),
+                            })
+                        }
+                        rtry!(f.write_char('"'));
+                    }
+                }
+                PathComponent::Index(idx) => {
+                    rtry!(write!(f, "[{idx}]"));
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
+fn is_bare_key(key: &str) -> bool {
+    if key.is_empty() {
+        return false;
+    }
+    for &b in key.as_bytes() {
+        match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'_' | b'-' => (),
+            _ => return false,
+        }
+    }
+    true
+}
+
+pub(crate) struct MaybeTomlPath {
+    ptr: std::ptr::NonNull<PathComponent<'static>>,
+    len: u32,
+    size: u32,
+}
+
+impl MaybeTomlPath {
+    pub(crate) fn empty() -> Self {
+        MaybeTomlPath {
+            ptr: std::ptr::NonNull::dangling(),
+            len: u32::MAX,
+            size: 0,
+        }
+    }
+
+    pub(crate) fn has_path(&self) -> bool {
+        self.size > 0
+    }
+
+    // pub(crate) fn is_empty(&self) -> bool {
+    //     self.len == u32::MAX
+    // }
+
+    pub(crate) fn from_components(components: &[PathComponent<'_>]) -> MaybeTomlPath {
+        if components.is_empty() {
+            return Self::empty();
+        }
+
+        let len = components.len();
+        let mut total_string_bytes: usize = 0;
+        for comp in components {
+            if let PathComponent::Key(key) = comp {
+                total_string_bytes += key.name.len();
+            }
+        }
+
+        let comp_size = len * std::mem::size_of::<PathComponent<'static>>();
+        let size = comp_size + total_string_bytes;
+
+        // SAFETY: size > 0 because len >= 1 and size_of::<PathComponent>() > 0.
+        let layout = std::alloc::Layout::from_size_align(
+            size,
+            std::mem::align_of::<PathComponent<'static>>(),
+        )
+        .unwrap();
+        // SAFETY: layout has non-zero size
+        let raw = unsafe { std::alloc::alloc(layout) };
+        if raw.is_null() {
+            std::alloc::handle_alloc_error(layout);
+        }
+
+        let base = raw.cast::<PathComponent<'static>>();
+        let mut string_cursor = unsafe { raw.add(comp_size) };
+
+        for (i, comp) in components.iter().enumerate() {
+            let stored = match comp {
+                PathComponent::Key(key) => {
+                    let name_bytes = key.name.as_bytes();
+                    let name_len = name_bytes.len();
+                    // SAFETY: string_cursor points into the trailing region we allocated
+                    unsafe {
+                        std::ptr::copy_nonoverlapping(name_bytes.as_ptr(), string_cursor, name_len);
+                    }
+                    // SAFETY: we just wrote valid UTF-8 bytes here
+                    let name: &'static str = unsafe {
+                        std::str::from_utf8_unchecked(std::slice::from_raw_parts(
+                            string_cursor,
+                            name_len,
+                        ))
+                    };
+                    string_cursor = unsafe { string_cursor.add(name_len) };
+                    PathComponent::Key(Key {
+                        name,
+                        span: key.span,
+                    })
+                }
+                PathComponent::Index(idx) => PathComponent::Index(*idx),
+            };
+            // SAFETY: we allocated space for `len` PathComponents
+            unsafe {
+                base.add(i).write(stored);
+            }
+        }
+
+        MaybeTomlPath {
+            // SAFETY: raw was checked non-null above
+            ptr: unsafe { std::ptr::NonNull::new_unchecked(base) },
+            len: len as u32,
+            size: size as u32,
+        }
+    }
+    #[inline(always)]
+    pub(crate) fn uncomputed(item_ptr: *const Item<'_>) -> Self {
+        MaybeTomlPath {
+            // SAFETY: item_ptr is non-null (points to an Item on the stack or in the arena).
+            // We store it cast to PathComponent just to reuse the ptr field.
+            ptr: unsafe {
+                std::ptr::NonNull::new_unchecked(item_ptr as *mut PathComponent<'static>)
+            },
+            len: 0,
+            size: 0,
+        }
+    }
+
+    pub(crate) fn is_uncomputed(&self) -> bool {
+        self.size == 0 && self.len != u32::MAX
+    }
+
+    pub(crate) fn uncomputed_ptr(&self) -> *const () {
+        self.ptr.as_ptr() as *const ()
+    }
+
+    fn as_toml_path<'a>(&'a self) -> Option<&'a TomlPath<'a>> {
+        if !self.has_path() {
+            return None;
+        }
+        // SAFETY: components live in the allocation, strings point into
+        // the same allocation. The returned TomlPath borrows self, so the
+        // inner 'static is shortened to 'a, preventing it from escaping.
+        let slice = unsafe { std::slice::from_raw_parts(self.ptr.as_ptr(), self.len as usize) };
+        Some(unsafe { &*(slice as *const [PathComponent<'static>] as *const TomlPath<'a>) })
+    }
+}
+
+impl Drop for MaybeTomlPath {
+    fn drop(&mut self) {
+        let size = self.size as usize;
+        if size > 0 {
+            let layout = std::alloc::Layout::from_size_align(
+                size,
+                std::mem::align_of::<PathComponent<'static>>(),
+            )
+            .unwrap();
+            // SAFETY: ptr was allocated with this layout
+            unsafe {
+                std::alloc::dealloc(self.ptr.as_ptr() as *mut u8, layout);
+            }
+        }
+    }
+}
+
+// SAFETY: TomlPath owns its allocation entirely and contains no thread-local state.
+unsafe impl Send for MaybeTomlPath {}
+// SAFETY: &TomlPath only gives &[PathComponent] access, which is safe to share.
+unsafe impl Sync for MaybeTomlPath {}
+
+pub struct Error {
+    pub(crate) kind: ErrorInner,
+    pub(crate) span: Span,
+    pub(crate) path: MaybeTomlPath,
+}
+
+pub(crate) enum ErrorInner {
     Static(ErrorKind<'static>),
     Custom(Box<str>),
 }
@@ -151,8 +372,6 @@ struct Escape(char);
 
 impl fmt::Display for Escape {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        use std::fmt::Write as _;
-
         if self.0.is_control() {
             for esc in self.0.escape_default() {
                 f.write_char(esc)?;
@@ -162,14 +381,6 @@ impl fmt::Display for Escape {
             f.write_char(self.0)
         }
     }
-}
-
-macro_rules! rtry {
-    ($($tt:tt)*) => {
-        if let Err(err) = $($tt)* {
-            return Err(err);
-        }
-    };
 }
 
 impl Error {
@@ -186,27 +397,44 @@ impl Error {
         }
     }
 
+    /// Returns the TOML path where this error occurred, if available.
+    pub fn path<'a>(&'a self) -> Option<&'a TomlPath<'a>> {
+        self.path.as_toml_path()
+    }
+
     /// Creates an error with a custom message at the given source span.
-    pub fn custom(message: impl ToString, span: Span) -> Self {
-        Self {
+    pub fn custom(message: impl ToString, span: Span) -> Error {
+        Error {
             kind: ErrorInner::Custom(message.to_string().into()),
             span,
+            path: MaybeTomlPath::empty(),
         }
     }
 
     /// Creates an error with a static message at the given source span.
-    pub(crate) fn custom_static(message: &'static str, span: Span) -> Self {
-        Self {
+    pub(crate) fn custom_static(message: &'static str, span: Span) -> Error {
+        Error {
             kind: ErrorInner::Static(ErrorKind::Custom(message)),
             span,
+            path: MaybeTomlPath::empty(),
         }
     }
 
     /// Creates an error from a known error kind and span.
-    pub(crate) fn new(kind: ErrorKind<'static>, span: Span) -> Self {
-        Self {
+    pub(crate) fn new(kind: ErrorKind<'static>, span: Span) -> Error {
+        Error {
             kind: ErrorInner::Static(kind),
             span,
+            path: MaybeTomlPath::empty(),
+        }
+    }
+
+    /// Creates an error from a known error kind, span, and TOML path.
+    pub(crate) fn new_with_path(kind: ErrorKind<'static>, span: Span, path: MaybeTomlPath) -> Self {
+        Error {
+            kind: ErrorInner::Static(kind),
+            span,
+            path,
         }
     }
 }
@@ -382,7 +610,12 @@ impl Display for Error {
                 f.write_str("missing comma in inline table, expected `,`")
             }
             ErrorKind::UnclosedInlineTable => f.write_str("unclosed inline table, expected `}`"),
+        }?;
+        if let Some(path) = self.path() {
+            f.write_str(" at ")?;
+            Display::fmt(path, f)?;
         }
+        Ok(())
     }
 }
 
@@ -399,6 +632,7 @@ impl From<(ErrorKind<'static>, Span)> for Error {
         Self {
             kind: ErrorInner::Static(kind),
             span,
+            path: MaybeTomlPath::empty(),
         }
     }
 }
@@ -430,17 +664,25 @@ impl Error {
             }
             ErrorKind::UnexpectedKey => {
                 if let Some(key_name) = source.get(span.clone()) {
-                    format!("unexpected key `{key_name}`")
+                    let mut msg = format!("unexpected key `{key_name}`");
+                    if let Some(p) = self.path() {
+                        msg.push_str(&format!(" at {p}"));
+                    }
+                    msg
                 } else {
                     self.to_string()
                 }
             }
             ErrorKind::UnexpectedVariant { .. } => {
                 if let Some(value) = source.get(span.clone()) {
-                    match value.split_once('\n') {
+                    let mut msg = match value.split_once('\n') {
                         Some((first, _)) => format!("unknown variant {first}..."),
                         None => format!("unknown variant {value}"),
+                    };
+                    if let Some(p) = self.path() {
+                        msg.push_str(&format!(" at {p}"));
                     }
+                    msg
                 } else {
                     self.to_string()
                 }
@@ -662,12 +904,19 @@ impl Error {
             | ErrorKind::InvalidDateTime(_) => diag.with_labels(vec![
                 Label::primary(fid, error_span).with_message(self.to_string()),
             ]),
-            ErrorKind::OutOfRange(ty) => diag
-                .with_message(format!("number is out of range of '{ty}'"))
-                .with_labels(vec![Label::primary(fid, error_span)]),
-            ErrorKind::Wanted { expected, .. } => diag.with_labels(vec![
-                Label::primary(fid, error_span).with_message(format!("expected {expected}")),
-            ]),
+            ErrorKind::OutOfRange(ty) => {
+                let mut msg = format!("number is out of range of '{ty}'");
+                if let Some(p) = self.path() {
+                    msg.push_str(&format!(" at {p}"));
+                }
+                diag.with_message(msg)
+                    .with_labels(vec![Label::primary(fid, error_span)])
+            }
+            ErrorKind::Wanted { expected, .. } => {
+                diag.with_message(self.to_string()).with_labels(vec![
+                    Label::primary(fid, error_span).with_message(format!("expected {expected}")),
+                ])
+            }
             ErrorKind::MultilineStringKey => diag.with_labels(vec![
                 Label::primary(fid, error_span).with_message("multiline keys are not allowed"),
             ]),
@@ -693,23 +942,37 @@ impl Error {
             ]),
             ErrorKind::UnexpectedKey => {
                 let msg = match source.get(self.span().range()) {
-                    Some(key_name) => format!("unexpected key `{key_name}`"),
+                    Some(key_name) => {
+                        let mut m = format!("unexpected key `{key_name}`");
+                        if let Some(p) = self.path() {
+                            m.push_str(&format!(" at {p}"));
+                        }
+                        m
+                    }
                     None => "unexpected key".into(),
                 };
                 diag.with_message(msg).with_labels(vec![
                     Label::primary(fid, error_span).with_message("unexpected key"),
                 ])
             }
-            ErrorKind::MissingField(field) => diag
-                .with_message(format!("missing field '{field}'"))
-                .with_labels(vec![
+            ErrorKind::MissingField(field) => {
+                let mut msg = format!("missing field '{field}'");
+                if let Some(p) = self.path() {
+                    msg.push_str(&format!(" at {p}"));
+                }
+                diag.with_message(msg).with_labels(vec![
                     Label::primary(fid, error_span).with_message("table with missing field"),
-                ]),
-            ErrorKind::DuplicateField(field) => diag
-                .with_message(format!("duplicate field '{field}'"))
-                .with_labels(vec![
+                ])
+            }
+            ErrorKind::DuplicateField(field) => {
+                let mut msg = format!("duplicate field '{field}'");
+                if let Some(p) = self.path() {
+                    msg.push_str(&format!(" at {p}"));
+                }
+                diag.with_message(msg).with_labels(vec![
                     Label::primary(fid, error_span).with_message("duplicate field"),
-                ]),
+                ])
+            }
             ErrorKind::Deprecated { new, .. } => diag
                 .with_message(format!(
                     "deprecated field encountered, '{new}' should be used instead"

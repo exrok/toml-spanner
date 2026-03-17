@@ -6,4 +6,4 @@ error[invalid-datetime]:
   ┌─ bad_month:1:5
   │
 1 │ a = 2016-13-01
-  │     ^^^^^^^^^^ invalid datetime: month is out of range
+  │     ^^^^^^^^^^ invalid datetime: month is out of range at a

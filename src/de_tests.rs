@@ -1094,3 +1094,71 @@ fn to_toml_wrapper_types() {
     let item = ch_multi.to_toml(&arena).unwrap();
     assert_eq!(item.as_str(), Some("\u{1F600}"));
 }
+
+#[test]
+fn toml_path_on_unexpected_key() {
+    use crate::error::ErrorKind;
+
+    let arena = Arena::new();
+
+    // Nested table: unexpected key in a sub-table gets a path
+    let input = r#"
+[server]
+host = "localhost"
+port = 8080
+unknown_field = true
+"#;
+    let mut doc = crate::parser::parse(input, &arena).unwrap();
+    let result = {
+        let (ctx, table) = doc.split();
+        let server_entry = table.get("server").unwrap();
+        let server_table = server_entry.as_table().unwrap();
+        let mut th = super::TableHelper::new(ctx, server_table);
+        let _: String = th.required("host").unwrap();
+        let _: i64 = th.required("port").unwrap();
+        let r = th.expect_empty();
+        super::compute_paths(table, &mut ctx.errors);
+        r
+    };
+    assert!(result.is_err());
+    assert_eq!(doc.ctx.errors.len(), 1);
+    assert!(matches!(doc.ctx.errors[0].kind(), ErrorKind::UnexpectedKey));
+    assert!(doc.ctx.errors[0].path().is_some());
+    assert_eq!(format!("{}", doc.ctx.errors[0]), "unexpected key at server.unknown_field");
+
+    // Deeply nested: array of tables with unexpected key
+    let input = r#"
+[[items]]
+name = "a"
+bogus = 1
+"#;
+    let mut doc = crate::parser::parse(input, &arena).unwrap();
+    let result = {
+        let (ctx, table) = doc.split();
+        let items_entry = table.get("items").unwrap();
+        let items_array = items_entry.as_array().unwrap();
+        let elem = &items_array.as_slice()[0];
+        let elem_table = elem.as_table().unwrap();
+        let mut th = super::TableHelper::new(ctx, elem_table);
+        let _: String = th.required("name").unwrap();
+        let r = th.expect_empty();
+        super::compute_paths(table, &mut ctx.errors);
+        r
+    };
+    assert!(result.is_err());
+    assert_eq!(doc.ctx.errors.len(), 1);
+    assert!(doc.ctx.errors[0].path().is_some());
+
+    // Display includes path in error message
+    let display = format!("{}", doc.ctx.errors[0]);
+    assert_eq!(display, "unexpected key at items[0].bogus");
+
+    // No item means empty path (backward compat)
+    let mut doc = crate::parser::parse("a = 1\nb = 2", &arena).unwrap();
+    {
+        let mut helper = doc.helper();
+        let _: i64 = helper.required("a").unwrap();
+        assert!(helper.expect_empty().is_err());
+    }
+    assert!(doc.ctx.errors[0].path().is_none());
+}

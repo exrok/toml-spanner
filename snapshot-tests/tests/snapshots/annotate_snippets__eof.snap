@@ -1,9 +1,8 @@
 ---
 source: snapshot-tests/tests/annotate_snippets.rs
-assertion_line: 15
 expression: rendered
 ---
-error: unexpected eof encountered
+error: unexpected eof encountered at key
  --> eof:1:6
   |
 1 | key =

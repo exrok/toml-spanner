@@ -12,12 +12,113 @@ use foldhash::HashMap;
 
 use std::fmt::{self, Debug, Display};
 
+use crate::Value;
+use crate::error::ErrorInner;
 use crate::{
     Arena, Key, Span, Table,
-    error::{Error, ErrorKind},
+    error::{Error, ErrorKind, MaybeTomlPath, PathComponent},
     item::{self, Item},
     parser::{INDEXED_TABLE_THRESHOLD, KeyRef},
 };
+
+/// Walks the parsed item tree and resolves uncomputed TOML paths in errors.
+///
+/// After `FromToml` runs, errors contain raw item pointers (via `TomlPath::uncomputed`).
+/// This function walks the tree to find which table entry or array element each
+/// pointer belongs to, then replaces the uncomputed path with a real one.
+pub(crate) fn compute_paths(root: &Table<'_>, errors: &mut [Error]) {
+    let mut pending: Vec<(*const u8, &mut MaybeTomlPath)> = Vec::new();
+    for error in errors.iter_mut() {
+        if error.path.is_uncomputed() {
+            pending.push((error.path.uncomputed_ptr() as *const u8, &mut error.path));
+        }
+    }
+    if pending.is_empty() {
+        return;
+    }
+
+    let mut path_stack: [PathComponent<'_>; 32] = [PathComponent::Index(0); 32];
+    compute_paths_walk(root.as_item(), &mut pending, &mut path_stack, 0);
+}
+
+fn compute_paths_walk<'de>(
+    item: &Item<'de>,
+    pending: &mut Vec<(*const u8, &mut MaybeTomlPath)>,
+    path_stack: &mut [PathComponent<'de>; 32],
+    path_depth: usize,
+) {
+    if path_depth >= path_stack.len() {
+        return;
+    }
+    match item.value() {
+        Value::Table(table) => {
+            let entries = table.entries();
+            if entries.is_empty() {
+                return;
+            }
+            let entry_size = std::mem::size_of::<(Key<'_>, Item<'_>)>();
+            let base = entries.as_ptr() as *const u8;
+            // SAFETY: entries is a valid slice; pointer arithmetic stays in bounds.
+            let end = unsafe { base.add(entries.len() * entry_size) };
+
+            let mut i = 0;
+            while let Some((ptr, path)) = pending.get_mut(i) {
+                let ptr: *const u8 = *ptr;
+                // SAFETY: base+key_size is the address of the first Item in entries.
+                if ptr >= base && ptr < end {
+                    let byte_offset = unsafe { ptr.byte_offset_from(base) } as usize;
+                    let entry_index = byte_offset / entry_size;
+                    if entry_index < entries.len() {
+                        path_stack[path_depth] = PathComponent::Key(entries[entry_index].0);
+                        **path = MaybeTomlPath::from_components(&path_stack[..path_depth + 1]);
+                        pending.swap_remove(i);
+                        continue;
+                    }
+                }
+                i += 1;
+            }
+
+            for (key, child) in table {
+                path_stack[path_depth] = PathComponent::Key(*key);
+                compute_paths_walk(child, pending, path_stack, path_depth + 1);
+            }
+        }
+        Value::Array(array) => {
+            let slice = array.as_slice();
+            if slice.is_empty() {
+                return;
+            }
+            let item_size = std::mem::size_of::<Item<'_>>();
+            let base = slice.as_ptr() as *const u8;
+            // SAFETY: slice is a valid slice; pointer arithmetic stays in bounds.
+            let end = unsafe { base.add(slice.len() * item_size) };
+
+            let mut i = 0;
+            while let Some((ptr, path)) = pending.get_mut(i) {
+                let ptr = *ptr;
+                if ptr >= base && ptr < end {
+                    let byte_offset = unsafe { ptr.byte_offset_from(base) } as usize;
+                    let elem_index = byte_offset / item_size;
+                    if elem_index < slice.len() {
+                        path_stack[path_depth] = PathComponent::Index(elem_index);
+                        **path = MaybeTomlPath::from_components(&path_stack[..path_depth + 1]);
+                        pending.swap_remove(i);
+                        continue;
+                    }
+                }
+                i += 1;
+            }
+
+            let mut idx = 0; // For some reason more efficent then iter() enumerate()
+            for child in array {
+                path_stack[path_depth] = PathComponent::Index(idx);
+                compute_paths_walk(child, pending, path_stack, path_depth + 1);
+                idx += 1;
+            }
+        }
+        _ => (),
+    }
+}
 
 /// Guides extraction from a [`Table`] by tracking which fields have been
 /// consumed.
@@ -43,8 +144,8 @@ use crate::{
 /// }
 ///
 /// impl<'de> FromToml<'de> for Config {
-///     fn from_toml(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
-///         let mut th = value.table_helper(ctx)?;
+///     fn from_toml(ctx: &mut Context<'de>, item: &Item<'de>) -> Result<Self, Failed> {
+///         let mut th = item.table_helper(ctx)?;
 ///         let name = th.required("name")?;
 ///         let port = th.required("port")?;
 ///         let debug = th.optional("debug").unwrap_or(false);
@@ -117,7 +218,6 @@ impl RemainingEntriesIter<'_, '_> {
         };
         debug_assert!(self.entries.len() > 64);
         let Some(remaining) = self.entries.get(64..) else {
-            // Shouldn't occur in practice, but no need to panic here.
             return false;
         };
         self.entries = remaining;
@@ -149,8 +249,7 @@ impl<'ctx, 't, 'de> TableHelper<'ctx, 't, 'de> {
     /// Prefer [`Item::table_helper`] when implementing [`FromToml`], or
     /// [`Document::helper`](crate::Document::helper) for the root table.
     pub fn new(ctx: &'ctx mut Context<'de>, table: &'t Table<'de>) -> Self {
-        let table_id = if table.len() > INDEXED_TABLE_THRESHOLD {
-            // Note due to 512MB limit this will fit in i32.
+        let table_id = if table.len() > INDEXED_TABLE_THRESHOLD && table.meta.is_span_mode() {
             table.entries()[0].0.span.start as i32
         } else {
             -1
@@ -163,6 +262,7 @@ impl<'ctx, 't, 'de> TableHelper<'ctx, 't, 'de> {
             used_count: 0,
         }
     }
+
     /// Looks up a key-value entry without marking it as consumed.
     ///
     /// This is useful for peeking at a field before deciding how to
@@ -205,10 +305,10 @@ impl<'ctx, 't, 'de> TableHelper<'ctx, 't, 'de> {
             return Err(self.report_missing_field(name));
         };
 
-        func(item).map_err(|err| {
-            self.ctx
-                .push_error(Error::custom(err, item.span_unchecked()))
-        })
+        match func(item) {
+            Ok(t) => Ok(t),
+            Err(e) => Err(self.ctx.push_error(Error::custom(e, item.span_unchecked()))),
+        }
     }
 
     /// Extracts an optional field and transforms it with `func`.
@@ -226,12 +326,13 @@ impl<'ctx, 't, 'de> TableHelper<'ctx, 't, 'de> {
             return None;
         };
 
-        func(item)
-            .map_err(|err| {
-                self.ctx
-                    .push_error(Error::custom(err, item.span_unchecked()))
-            })
-            .ok()
+        match func(item) {
+            Ok(t) => Some(t),
+            Err(e) => {
+                self.ctx.push_error(Error::custom(e, item.span_unchecked()));
+                None
+            }
+        }
     }
 
     /// Returns the raw [`Item`] for a required field.
@@ -245,7 +346,11 @@ impl<'ctx, 't, 'de> TableHelper<'ctx, 't, 'de> {
     /// [`MissingField`](crate::ErrorKind::MissingField) error if the key is
     /// absent.
     pub fn required_item(&mut self, name: &'static str) -> Result<&'t Item<'de>, Failed> {
-        self.required_entry(name).map(|(_, value)| value)
+        if let Ok((_, item)) = self.required_entry(name) {
+            Ok(item)
+        } else {
+            Err(self.report_missing_field(name))
+        }
     }
 
     /// Returns the raw [`Item`] for an optional field.
@@ -254,7 +359,11 @@ impl<'ctx, 't, 'de> TableHelper<'ctx, 't, 'de> {
     /// direct access to the parsed value. Returns [`None`] when the key is
     /// missing (no error recorded). The field is marked as consumed.
     pub fn optional_item(&mut self, name: &'static str) -> Option<&'t Item<'de>> {
-        self.optional_entry(name).map(|(_, value)| value)
+        if let Some((_, item)) = self.optional_entry(name) {
+            Some(item)
+        } else {
+            None
+        }
     }
 
     /// Returns the `(`[`Key`]`, `[`Item`]`)` pair for a required field.
@@ -283,7 +392,9 @@ impl<'ctx, 't, 'de> TableHelper<'ctx, 't, 'de> {
     /// this when you need the key's [`Span`](crate::Span) in addition to
     /// the value. The field is marked as consumed.
     pub fn optional_entry(&mut self, key: &str) -> Option<&'t (Key<'de>, Item<'de>)> {
-        let entry = self.get_entry(key)?;
+        let Some(entry) = self.get_entry(key) else {
+            return None;
+        };
         // SAFETY: `entry` was returned by get_entry(), which either performs a
         // linear scan of self.table.entries() or indexes into that same slice
         // via the hash index. In both cases `entry` points to an element within
@@ -301,11 +412,23 @@ impl<'ctx, 't, 'de> TableHelper<'ctx, 't, 'de> {
         Some(entry)
     }
 
+    // #[cold]
+    // fn report_missing_field(&mut self, name: &'static str) -> Failed {
+    //     self.ctx.errors.push(Error::new_with_path(
+    //         ErrorKind::MissingField(name),
+    //         self.table.span(),
+    //         TomlPath::uncomputed(self.table.as_item()),
+    //     ));
+    //     Failed
+    // }
+
     #[cold]
     fn report_missing_field(&mut self, name: &'static str) -> Failed {
-        self.ctx
-            .errors
-            .push(Error::new(ErrorKind::MissingField(name), self.table.span()));
+        self.ctx.errors.push(Error::new_with_path(
+            ErrorKind::MissingField(name),
+            self.table.span(),
+            MaybeTomlPath::uncomputed(self.table.as_item()),
+        ));
         Failed
     }
 
@@ -340,7 +463,6 @@ impl<'ctx, 't, 'de> TableHelper<'ctx, 't, 'de> {
         #[allow(clippy::manual_ok_err)]
         match T::from_toml(self.ctx, val) {
             Ok(value) => Some(value),
-            // Note: The parent will already have recorded the error
             Err(_) => None,
         }
     }
@@ -374,7 +496,7 @@ impl<'ctx, 't, 'de> TableHelper<'ctx, 't, 'de> {
     ///
     /// # Errors
     ///
-    /// Returns [`Failed`] and pushes an [`ErrorKind::UnexpectedKeys`](crate::ErrorKind::UnexpectedKeys)
+    /// Returns [`Failed`] and pushes an [`ErrorKind::UnexpectedKey`](crate::ErrorKind::UnexpectedKey)
     /// error if unconsumed fields remain.
     #[inline(never)]
     pub fn expect_empty(self) -> Result<(), Failed> {
@@ -383,11 +505,14 @@ impl<'ctx, 't, 'de> TableHelper<'ctx, 't, 'de> {
         }
 
         let mut had_unexpected = false;
-        for (i, (key, _)) in self.table.entries().iter().enumerate() {
+        for (i, (key, item)) in self.table.entries().iter().enumerate() {
             if !self.used.get(i) {
-                self.ctx
-                    .errors
-                    .push(Error::new(ErrorKind::UnexpectedKey, key.span));
+                self.ctx.errors.push(Error {
+                    kind: ErrorInner::Static(ErrorKind::UnexpectedKey),
+                    span: key.span,
+                    path: MaybeTomlPath::uncomputed(item),
+                });
+
                 had_unexpected = true;
             }
         }
@@ -416,19 +541,22 @@ impl<'de> Context<'de> {
     pub fn source(&self) -> &'de str {
         self.source
     }
+
     /// Records a "expected X, found Y" type-mismatch error and returns [`Failed`].
     #[cold]
     pub fn error_expected_but_found(
         &mut self,
         message: &'static &'static str,
-        found: &Item<'_>,
+        found: &Item<'de>,
     ) -> Failed {
-        self.errors.push(Error::new(
+        let path = MaybeTomlPath::uncomputed(found);
+        self.errors.push(Error::new_with_path(
             ErrorKind::Wanted {
                 expected: message,
                 found: found.type_str(),
             },
-            found.span_unchecked(),
+            found.span(),
+            path,
         ));
         Failed
     }
@@ -438,11 +566,13 @@ impl<'de> Context<'de> {
     pub fn error_unexpected_variant(
         &mut self,
         expected: &'static [&'static str],
-        found: &Item<'_>,
+        found: &Item<'de>,
     ) -> Failed {
-        self.errors.push(Error::new(
+        let path = MaybeTomlPath::uncomputed(found);
+        self.errors.push(Error::new_with_path(
             ErrorKind::UnexpectedVariant { expected },
-            found.span_unchecked(),
+            found.span(),
+            path,
         ));
         Failed
     }
@@ -462,9 +592,13 @@ impl<'de> Context<'de> {
 
     /// Records an out-of-range error for the type `name` and returns [`Failed`].
     #[cold]
-    pub fn error_out_of_range(&mut self, name: &'static str, span: Span) -> Failed {
-        self.errors
-            .push(Error::new(ErrorKind::OutOfRange(name), span));
+    pub fn error_out_of_range(&mut self, name: &'static str, found: &Item<'de>) -> Failed {
+        let path = MaybeTomlPath::uncomputed(found);
+        self.errors.push(Error::new_with_path(
+            ErrorKind::OutOfRange(name),
+            found.span(),
+            path,
+        ));
         Failed
     }
 
@@ -473,9 +607,13 @@ impl<'de> Context<'de> {
     /// Used by generated `FromToml` implementations that iterate over table
     /// entries instead of using [`TableHelper`].
     #[cold]
-    pub fn report_missing_field(&mut self, name: &'static str, span: Span) -> Failed {
-        self.errors
-            .push(Error::new(ErrorKind::MissingField(name), span));
+    pub fn report_missing_field(&mut self, name: &'static str, item: &Item<'de>) -> Failed {
+        let path = MaybeTomlPath::uncomputed(item);
+        self.errors.push(Error::new_with_path(
+            ErrorKind::MissingField(name),
+            item.span(),
+            path,
+        ));
         Failed
     }
 
@@ -484,9 +622,28 @@ impl<'de> Context<'de> {
     /// Used by generated `FromToml` implementations when a field with aliases
     /// is set more than once (e.g. both the primary key and an alias appear).
     #[cold]
-    pub fn report_duplicate_field(&mut self, name: &'static str, span: Span) -> Failed {
-        self.errors
-            .push(Error::new(ErrorKind::DuplicateField(name), span));
+    pub fn report_duplicate_field(
+        &mut self,
+        name: &'static str,
+        key_span: Span,
+        item: &Item<'de>,
+    ) -> Failed {
+        self.push_error(Error::new_with_path(
+            ErrorKind::DuplicateField(name),
+            key_span,
+            MaybeTomlPath::uncomputed(item),
+        ))
+    }
+
+    /// Records an unexpected-key error with TOML path information.
+    #[cold]
+    pub fn error_unexpected_key(&mut self, item: &Item<'de>, key_span: Span) -> Failed {
+        let path = MaybeTomlPath::uncomputed(item);
+        self.errors.push(Error::new_with_path(
+            ErrorKind::UnexpectedKey,
+            key_span,
+            path,
+        ));
         Failed
     }
 }
@@ -511,8 +668,8 @@ pub use crate::Failed;
 /// }
 ///
 /// impl<'de> FromToml<'de> for Point {
-///     fn from_toml(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
-///         let mut th = value.table_helper(ctx)?;
+///     fn from_toml(ctx: &mut Context<'de>, item: &Item<'de>) -> Result<Self, Failed> {
+///         let mut th = item.table_helper(ctx)?;
 ///         let x = th.required("x")?;
 ///         let y = th.required("y")?;
 ///         th.expect_empty()?;
@@ -522,9 +679,6 @@ pub use crate::Failed;
 /// ```
 pub trait FromToml<'de>: Sized {
     /// Attempts to construct `Self` from a TOML [`Item`].
-    ///
-    /// On failure, records one or more errors in `ctx` and returns
-    /// `Err(`[`Failed`]`)`.
     fn from_toml(ctx: &mut Context<'de>, item: &Item<'de>) -> Result<Self, Failed>;
 }
 
@@ -740,17 +894,16 @@ impl<'de> FromToml<'de> for bool {
     }
 }
 
-fn deser_integer_ctx(
-    ctx: &mut Context<'_>,
-    value: &Item<'_>,
+fn deser_integer_ctx<'de>(
+    ctx: &mut Context<'de>,
+    value: &Item<'de>,
     min: i64,
     max: i64,
     name: &'static str,
 ) -> Result<i64, Failed> {
-    let span = value.span_unchecked();
     match value.as_i64() {
         Some(i) if i >= min && i <= max => Ok(i),
-        Some(_) => Err(ctx.error_out_of_range(name, span)),
+        Some(_) => Err(ctx.error_out_of_range(name, value)),
         None => Err(ctx.error_expected_but_found(&"an integer", value)),
     }
 }

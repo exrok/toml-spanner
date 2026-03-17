@@ -6,4 +6,4 @@ error[invalid-integer]:
   ┌─ plus_bin:1:5
   │
 1 │ a = +0b0
-  │     ^^^^ invalid integer: signs are not allowed on prefixed integers
+  │     ^^^^ invalid integer: signs are not allowed on prefixed integers at a
