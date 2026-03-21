@@ -99,7 +99,6 @@ impl Default for EmitConfig<'_> {
     }
 }
 
-
 fn trim_trailing_newline(buf: &mut Vec<u8>) {
     if buf.last() == Some(&b'\n') {
         buf.pop();
@@ -1413,12 +1412,7 @@ fn format_inline_dotted_kv(
     }
 }
 
-fn format_expanded_array(
-    arr: &Array<'_>,
-    emit: &Emitter<'_, '_>,
-    out: &mut Vec<u8>,
-    depth: u32,
-) {
+fn format_expanded_array(arr: &Array<'_>, emit: &Emitter<'_, '_>, out: &mut Vec<u8>, depth: u32) {
     if arr.is_empty() {
         out.extend_from_slice(b"[]");
         return;

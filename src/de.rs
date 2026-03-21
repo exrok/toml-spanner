@@ -123,14 +123,14 @@ fn compute_paths_walk<'de>(
 /// Guides extraction from a [`Table`] by tracking which fields have been
 /// consumed.
 ///
-/// Create one via [`Document::helper`](crate::Document::helper) for the root table,
-/// or [`Item::table_helper`] / [`TableHelper::new`] for nested tables.
-/// Then extract fields with [`required`](Self::required) and
-/// [`optional`](Self::optional), and finish with
+/// Create via [`Document::helper`](crate::Document::helper) for the root
+/// table, or [`Item::table_helper`] / [`TableHelper::new`] for nested
+/// tables. Extract fields with [`required`](Self::required) and
+/// [`optional`](Self::optional), then call
 /// [`expect_empty`](Self::expect_empty) to reject unknown keys.
 ///
-/// Errors are accumulated in the shared [`Context`] rather than failing on
-/// the first problem, so a single parse pass can report multiple issues.
+/// Errors accumulate in the shared [`Context`] rather than failing on the
+/// first problem, so a single pass can report multiple issues.
 ///
 /// # Examples
 ///
@@ -246,7 +246,7 @@ impl<'t, 'de> Iterator for RemainingEntriesIter<'t, 'de> {
 impl<'ctx, 't, 'de> TableHelper<'ctx, 't, 'de> {
     /// Creates a new helper for the given table.
     ///
-    /// Prefer [`Item::table_helper`] when implementing [`FromToml`], or
+    /// Prefer [`Item::table_helper`] inside [`FromToml`] implementations, or
     /// [`Document::helper`](crate::Document::helper) for the root table.
     pub fn new(ctx: &'ctx mut Context<'de>, table: &'t Table<'de>) -> Self {
         let table_id = if table.len() > INDEXED_TABLE_THRESHOLD && table.meta.is_span_mode() {
@@ -265,9 +265,9 @@ impl<'ctx, 't, 'de> TableHelper<'ctx, 't, 'de> {
 
     /// Looks up a key-value entry without marking it as consumed.
     ///
-    /// This is useful for peeking at a field before deciding how to
-    /// convert it. The entry will still be flagged as unexpected by
-    /// [`expect_empty`](Self::expect_empty) unless it is later consumed by
+    /// Useful for peeking at a field before deciding how to convert it.
+    /// The entry will still be flagged as unexpected by
+    /// [`expect_empty`](Self::expect_empty) unless later consumed by
     /// [`required`](Self::required) or [`optional`](Self::optional).
     pub fn get_entry(&self, key: &str) -> Option<&'t (Key<'de>, Item<'de>)> {
         if self.table_id < 0 {
@@ -288,9 +288,8 @@ impl<'ctx, 't, 'de> TableHelper<'ctx, 't, 'de> {
     /// Extracts a required field and transforms it with `func`.
     ///
     /// Looks up `name`, marks it as consumed, and passes the [`Item`] to
-    /// `func`. This is useful for parsing string values via
-    /// [`Item::parse`] or applying custom validation without implementing
-    /// [`FromToml`].
+    /// `func`. Useful for parsing string values via [`Item::parse`] or
+    /// applying custom validation without implementing [`FromToml`].
     ///
     /// # Errors
     ///
@@ -337,8 +336,8 @@ impl<'ctx, 't, 'de> TableHelper<'ctx, 't, 'de> {
 
     /// Returns the raw [`Item`] for a required field.
     ///
-    /// Like [`required`](Self::required) but skips conversion, giving
-    /// direct access to the parsed value. The field is marked as consumed.
+    /// Like [`required`](Self::required) but skips conversion, giving direct
+    /// access to the parsed value. The field is marked as consumed.
     ///
     /// # Errors
     ///
@@ -355,9 +354,9 @@ impl<'ctx, 't, 'de> TableHelper<'ctx, 't, 'de> {
 
     /// Returns the raw [`Item`] for an optional field.
     ///
-    /// Like [`optional`](Self::optional) but skips conversion, giving
-    /// direct access to the parsed value. Returns [`None`] when the key is
-    /// missing (no error recorded). The field is marked as consumed.
+    /// Like [`optional`](Self::optional) but skips conversion, giving direct
+    /// access to the parsed value. Returns [`None`] when the key is missing
+    /// (no error recorded). The field is marked as consumed.
     pub fn optional_item(&mut self, name: &'static str) -> Option<&'t Item<'de>> {
         if let Some((_, item)) = self.optional_entry(name) {
             Some(item)
@@ -368,7 +367,7 @@ impl<'ctx, 't, 'de> TableHelper<'ctx, 't, 'de> {
 
     /// Returns the `(`[`Key`]`, `[`Item`]`)` pair for a required field.
     ///
-    /// Use this when you need the key's [`Span`](crate::Span) in addition to
+    /// Useful when the key's [`Span`](crate::Span) is needed in addition to
     /// the value. The field is marked as consumed.
     ///
     /// # Errors
@@ -388,9 +387,9 @@ impl<'ctx, 't, 'de> TableHelper<'ctx, 't, 'de> {
 
     /// Returns the `(`[`Key`]`, `[`Item`]`)` pair for an optional field.
     ///
-    /// Returns [`None`] when the key is missing (no error recorded). Use
-    /// this when you need the key's [`Span`](crate::Span) in addition to
-    /// the value. The field is marked as consumed.
+    /// Returns [`None`] when the key is missing (no error recorded). Useful
+    /// when the key's [`Span`](crate::Span) is needed in addition to the
+    /// value. The field is marked as consumed.
     pub fn optional_entry(&mut self, key: &str) -> Option<&'t (Key<'de>, Item<'de>)> {
         let Some(entry) = self.get_entry(key) else {
             return None;
@@ -487,12 +486,12 @@ impl<'ctx, 't, 'de> TableHelper<'ctx, 't, 'de> {
         }
     }
 
-    /// Finishes field extraction, recording an error if any fields were not
+    /// Finishes field extraction, recording an error for any fields not
     /// consumed by [`required`](Self::required) or
     /// [`optional`](Self::optional).
     ///
-    /// Call this as the last step in a [`FromToml`] implementation to
-    /// reject unknown keys.
+    /// Call as the last step in a [`FromToml`] implementation to reject
+    /// unknown keys.
     ///
     /// # Errors
     ///
@@ -523,12 +522,12 @@ impl<'ctx, 't, 'de> TableHelper<'ctx, 't, 'de> {
 
 /// Shared state that accumulates errors and holds the arena.
 ///
-/// A `Context` is created by [`parse`](crate::parse) and lives inside
+/// Created by [`parse`](crate::parse) and stored inside
 /// [`Document`](crate::Document). Pass it into [`TableHelper::new`] or
 /// [`Item::table_helper`] when implementing [`FromToml`].
 ///
-/// Multiple errors can be recorded during a single conversion pass;
-/// inspect them afterwards via [`Document::errors`](crate::Document::errors).
+/// Multiple errors can be recorded during a single conversion pass.
+/// Inspect them via [`Document::errors`](crate::Document::errors).
 pub struct Context<'de> {
     pub arena: &'de Arena,
     pub(crate) index: HashMap<KeyRef<'de>, usize>,
@@ -652,10 +651,9 @@ pub use crate::Failed;
 
 /// Trait for types that can be constructed from a TOML [`Item`].
 ///
-/// Implement this on your own types to enable extraction via
-/// [`TableHelper::required`] and [`TableHelper::optional`].
-/// Built-in implementations are provided for primitive types, `String`,
-/// `Vec<T>`, `Box<T>`, `Option<T>` (via `optional`), and more.
+/// Implement this to enable extraction via [`TableHelper::required`] and
+/// [`TableHelper::optional`]. Built-in implementations cover primitive types,
+/// `String`, `Vec<T>`, `Box<T>`, `Option<T>`, and more.
 ///
 /// # Examples
 ///
@@ -685,11 +683,11 @@ pub trait FromToml<'de>: Sized {
 /// Trait for types that can be constructed from flattened TOML table entries.
 ///
 /// Used with `#[toml(flatten)]` on struct fields. Built-in implementations
-/// exist for `HashMap` and `BTreeMap`.
+/// cover `HashMap` and `BTreeMap`.
 ///
-/// If your type already implements [`FromToml`], you do not need to implement
-/// this trait. Use `#[toml(flatten, with = flatten_any)]` in your derive
-/// instead. See [`helper::flatten_any`](crate::helper::flatten_any).
+/// If your type implements [`FromToml`], use
+/// `#[toml(flatten, with = flatten_any)]` in your derive instead of
+/// implementing this trait. See [`helper::flatten_any`](crate::helper::flatten_any).
 #[diagnostic::on_unimplemented(
     message = "`{Self}` does not implement `FromFlattened`",
     note = "if `{Self}` implements `FromToml`, you can use `#[toml(flatten, with = flatten_any)]` instead of a manual `FromFlattened` impl"
@@ -1039,8 +1037,8 @@ where
 impl<'de> Item<'de> {
     /// Returns a string, or records an error with a custom `expected` message.
     ///
-    /// Use this instead of [`expect_string`](Self::expect_string) when the
-    /// expected value is more specific than just "a string" — for example,
+    /// Use instead of [`expect_string`](Self::expect_string) when the
+    /// expected value is more specific than "a string", for example
     /// `"an IPv4 address"` or `"a hex color"`.
     pub fn expect_custom_string(
         &self,
@@ -1076,9 +1074,10 @@ impl<'de> Item<'de> {
         }
     }
 
-    /// Creates a [`TableHelper`] for this item, returning an error if it is not a table.
+    /// Creates a [`TableHelper`] for this item, returning an error if it is
+    /// not a table.
     ///
-    /// This is the typical entry point for implementing [`FromToml`].
+    /// Typical entry point for implementing [`FromToml`].
     pub fn table_helper<'ctx, 'item>(
         &'item self,
         ctx: &'ctx mut Context<'de>,
@@ -1090,7 +1089,7 @@ impl<'de> Item<'de> {
     }
 }
 
-/// Collects all errors encountered during parsing and conversion.
+/// Collects errors encountered during parsing and conversion.
 ///
 /// Returned by [`from_str`](crate::from_str) and [`Document::to`](crate::Document::to).
 /// Contains one or more [`Error`] values, each with its own source span.

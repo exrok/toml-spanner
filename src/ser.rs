@@ -31,7 +31,7 @@ fn required_to_optional<'a>(
 /// Trait for types that can be converted into a TOML [`Item`] tree.
 ///
 /// Implement either [`to_toml`](Self::to_toml) or
-/// [`to_optional_toml`](Self::to_optional_toml); default implementations
+/// [`to_optional_toml`](Self::to_optional_toml). Default implementations
 /// bridge between them. Built-in implementations cover primitive types,
 /// `String`, `Vec<T>`, `HashMap`, `BTreeMap`, `Option<T>`, and more.
 ///
@@ -55,18 +55,17 @@ fn required_to_optional<'a>(
 pub trait ToToml {
     /// Produces a TOML [`Item`] representing this value.
     ///
-    /// Override this method when the value is always present. The default
-    /// implementation delegates to [`to_optional_toml`](Self::to_optional_toml)
-    /// and returns an error if `None` is produced.
+    /// Override when the value is always present. The default delegates to
+    /// [`to_optional_toml`](Self::to_optional_toml) and returns an error if
+    /// `None` is produced.
     fn to_toml<'a>(&'a self, arena: &'a Arena) -> Result<Item<'a>, ToTomlError> {
         optional_to_required(self.to_optional_toml(arena))
     }
     /// Produces an optional TOML [`Item`] representing this value.
     ///
-    /// Override this method when the value may be absent (e.g. `Option<T>`
-    /// returning `None` to omit the field). The default implementation
-    /// delegates to [`to_toml`](Self::to_toml) and wraps the result in
-    /// [`Some`].
+    /// Override when the value may be absent (e.g. `Option<T>` returning
+    /// `None` to omit the field). The default delegates to
+    /// [`to_toml`](Self::to_toml) and wraps the result in [`Some`].
     fn to_optional_toml<'a>(&'a self, arena: &'a Arena) -> Result<Option<Item<'a>>, ToTomlError> {
         required_to_optional(self.to_toml(arena))
     }
@@ -250,11 +249,11 @@ direct_upcast_integers!(u8, i8, i16, u16, i32, u32, i64);
 /// Trait for types that can be converted into flattened TOML table entries.
 ///
 /// Used with `#[toml(flatten)]` on struct fields. Built-in implementations
-/// exist for `HashMap` and `BTreeMap`.
+/// cover `HashMap` and `BTreeMap`.
 ///
-/// If your type already implements [`ToToml`], you do not need to implement
-/// this trait. Use `#[toml(flatten, with = flatten_any)]` in your derive
-/// instead. See [`helper::flatten_any`](crate::helper::flatten_any).
+/// If your type implements [`ToToml`], use
+/// `#[toml(flatten, with = flatten_any)]` in your derive instead of
+/// implementing this trait. See [`helper::flatten_any`](crate::helper::flatten_any).
 #[diagnostic::on_unimplemented(
     message = "`{Self}` does not implement `ToFlattened`",
     note = "if `{Self}` implements `ToToml`, you can use `#[toml(flatten, with = flatten_any)]` instead of a manual `ToFlattened` impl"

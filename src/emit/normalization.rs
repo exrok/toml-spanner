@@ -195,7 +195,7 @@ fn inline_width(item: &Item<'_>) -> Option<usize> {
             Some(s.len() + 2) // quotes
         }
         Value::Integer(_) => Some(6), // conservative estimate
-        Value::Float(_) => Some(8), // conservative estimate
+        Value::Float(_) => Some(8),   // conservative estimate
         Value::Boolean(b) => Some(if *b { 4 } else { 5 }),
         Value::DateTime(_) => Some(25), // conservative estimate
         Value::Array(a) if a.is_empty() => Some(2),

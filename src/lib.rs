@@ -8,14 +8,14 @@
 //! let arena = toml_spanner::Arena::new();
 //! let doc = toml_spanner::parse("key = 'value'", &arena).unwrap();
 //! ```
-//! Traverse the tree for inspection via index operators which return a [`MaybeItem`]:
+//! Traverse the tree via index operators, which return a [`MaybeItem`]:
 //! ```
 //! # let arena = toml_spanner::Arena::new();
 //! # let doc = toml_spanner::parse("", &arena).unwrap();
 //! let name: Option<&str> = doc["name"].as_str();
 //! let numbers: Option<i64> = doc["numbers"][50].as_i64();
 //! ```
-//! Use the [`MaybeItem::item()`] method get an [`Item`] which contains a [`Value`] and [`Span`].
+//! Use [`MaybeItem::item()`] to get an [`Item`] containing a [`Value`] and [`Span`].
 //! ```rust
 //! # use toml_spanner::{Value, Span};
 //! # let arena = toml_spanner::Arena::new();
@@ -38,9 +38,9 @@
 //!
 //! ## Deserialization
 //!
-//! Use [`Document::helper()`] to create a [`TableHelper`] for type-safe field extraction
-//! via the [`FromToml`] trait. Errors are accumulated in the [`Document`]'s context
-//! rather than failing on the first error.
+//! [`Document::helper()`] creates a [`TableHelper`] for type-safe field extraction
+//! via [`FromToml`]. Errors accumulate in the [`Document`]'s context rather than
+//! failing on the first error.
 //!
 //! ```
 //! # let arena = toml_spanner::Arena::new();
@@ -49,7 +49,7 @@
 //! let name: String = helper.required("name").ok().unwrap();
 //! ```
 //!
-//! Extract values with [`Item::parse`] which uses [`std::str::FromStr`] expecting a String kinded TOML Value.
+//! [`Item::parse`] extracts values from string items via [`std::str::FromStr`].
 //!
 //! ```
 //! # fn main() -> Result<(), toml_spanner::Error> {
@@ -101,7 +101,7 @@
 //! let arena = Arena::new();
 //! let mut doc = toml_spanner::parse(content, &arena).unwrap();
 //!
-//! // Null-coalescing index operators — missing keys return a None-like
+//! // Null-coalescing index operators: missing keys return a None-like
 //! // MaybeItem instead of panicking.
 //! assert_eq!(doc["things"][0]["color"].as_str(), None);
 //! assert_eq!(doc["things"][1]["color"].as_str(), Some("green"));
@@ -123,8 +123,8 @@
 //! ## Derive Macro
 //!
 //! The [`Toml`] derive macro generates [`FromToml`] and [`ToToml`]
-//! implementations for structs and enums. A bare `#[derive(Toml)]` generates
-//! [`FromToml`] only; annotate with `#[toml(Toml)]` for both directions.
+//! implementations. A bare `#[derive(Toml)]` generates [`FromToml`] only.
+//! Annotate with `#[toml(Toml)]` for both directions.
 //!
 //! ```
 //! use toml_spanner::{Arena, Toml};
@@ -147,14 +147,13 @@
 //! assert!(output.contains("name = \"app\""));
 //! ```
 //!
-//! See the [`Toml`] macro documentation for the full set of container and field
-//! attributes (`rename`, `default`, `flatten`, `skip`, tagged enums, etc.).
+//! See the [`Toml`] macro documentation for all supported attributes
+//! (`rename`, `default`, `flatten`, `skip`, tagged enums, etc.).
 //!
 //! ## Serialization
 //!
-//! Any type implementing [`ToToml`] (including via derive) can be written back
-//! to TOML text with [`to_string`] or the [`Formatting`] builder for more
-//! control.
+//! Types implementing [`ToToml`] can be written back to TOML text with
+//! [`to_string`] or the [`Formatting`] builder for more control.
 //!
 //! ```
 //! use toml_spanner::{Arena, Formatting};
@@ -192,8 +191,8 @@ mod time;
 
 /// Zero-size sentinel indicating that a conversion step failed.
 ///
-/// Real error details are recorded in the shared [`Context`] rather than
-/// carried inside `Failed` itself. This allows multiple errors to accumulate
+/// Error details are recorded in the shared [`Context`] rather than
+/// carried inside `Failed` itself, allowing multiple errors to accumulate
 /// during a single [`FromToml`] pass.
 #[derive(Debug)]
 pub struct Failed;
@@ -231,13 +230,13 @@ pub mod impl_serde;
 
 /// Parses and deserializes a TOML document in one step.
 ///
-/// This is a convenience wrapper that allocates its own [`Arena`] and
-/// calls [`parse`] followed by [`Document::to`]. Because the arena is
-/// local, the resulting type `T` cannot borrow from the input.
+/// Allocates its own [`Arena`] and calls [`parse`] followed by
+/// [`Document::to`]. Because the arena is local, the resulting type `T`
+/// cannot borrow from the input.
 ///
-/// For more control over lifetimes — for example, to borrow `&'de str`
-/// fields directly from the input, or to reuse an arena across multiple
-/// parses — use the lower-level API instead:
+/// For more control over lifetimes (borrowing `&'de str` fields directly
+/// from the input or reusing an arena across multiple parses), use the
+/// lower-level API instead:
 ///
 /// ```
 /// let arena = toml_spanner::Arena::new();
@@ -245,10 +244,9 @@ pub mod impl_serde;
 /// let config = doc.to::<std::collections::HashMap<String, String>>().unwrap();
 /// ```
 ///
-/// Note that [`Formatting::preserved_from`] requires a [`Document`] to reproject
-/// formatting from, but it does not have to be the same `Document`
-/// that produced the converted value. Any parsed TOML tree can serve
-/// as a formatting template.
+/// [`Formatting::preserved_from`] requires a [`Document`] as a formatting
+/// template, but it does not have to be the same `Document` that produced
+/// the converted value.
 ///
 /// # Errors
 ///
@@ -268,9 +266,8 @@ pub fn from_str<T: for<'a> FromToml<'a>>(document: &str) -> Result<T, FromTomlEr
 
 /// Serializes a [`ToToml`] value into a TOML string with default formatting.
 ///
-/// The value must serialize to a table at the top level. For control over
-/// formatting (e.g. preserving the layout of a previously parsed document),
-/// use [`Formatting::preserved_from`].
+/// The value must serialize to a table at the top level. For format
+/// preservation or custom indentation, use [`Formatting`].
 ///
 /// # Errors
 ///
@@ -295,9 +292,8 @@ pub fn to_string(value: &dyn ToToml) -> Result<String, ToTomlError> {
 
 /// Controls how TOML output is formatted when serializing.
 ///
-/// Use [`Formatting::preserved_from`] to preserve formatting from a previously parsed
-/// document. The default produces clean formatted output with no source
-/// template.
+/// [`Formatting::preserved_from`] preserves formatting from a previously
+/// parsed document. The default produces clean output with no source template.
 ///
 /// # Examples
 ///
@@ -337,8 +333,8 @@ impl Default for Formatting<'_> {
 impl<'a> Formatting<'a> {
     /// Creates a formatting template from a parsed document.
     ///
-    /// Indent style is auto-detected from the source text. If no
-    /// indentation is found, defaults to 4 spaces.
+    /// Indent style is auto-detected from the source text, defaulting to
+    /// 4 spaces when no indentation is found.
     pub fn preserved_from(doc: &'a Document<'a>) -> Self {
         let indent = doc.detect_indent();
         Self {
@@ -354,18 +350,16 @@ impl<'a> Formatting<'a> {
     /// target. With span projection identity enabled, spans of the target
     /// are assumed to correspond to spans of the formatting reference.
     /// This allows precise identity tracking of array elements through
-    /// reordering, removal, and deep mutation, avoiding the best-effort
-    /// content-based matching used by default.
+    /// reordering, removal, and deep mutation instead of the default
+    /// best-effort content-based matching.
     ///
-    /// This is intended for use with the lower-level [`Table`] mutation
-    /// APIs where the target was produced by parsing the same text as
-    /// the formatting reference. When round-tripping through
-    /// [`FromToml`] and [`ToToml`], spans are not preserved and this
-    /// flag should not be used.
+    /// Intended for the lower-level [`Table`] mutation APIs where the
+    /// target was produced by parsing the same text as the formatting
+    /// reference. When round-tripping through [`FromToml`] and [`ToToml`],
+    /// spans are not preserved and this flag should not be used.
     ///
     /// Breaking the span correspondence assumption leads to unspecified
-    /// behavior, including the possibility of panics or invalid TOML
-    /// generation.
+    /// behavior, including panics or invalid TOML generation.
     ///
     /// [`FromToml`]: crate::FromToml
     /// [`ToToml`]: crate::ToToml
@@ -408,10 +402,9 @@ impl<'a> Formatting<'a> {
 
     /// Formats a [`Table`] directly into bytes.
     ///
-    /// This is the low-level primitive. The table is normalized and
-    /// (when a source document is set) reprojected before emission.
-    /// The provided arena is used for temporary allocations during
-    /// emission.
+    /// Low-level primitive that normalizes and (when a source document
+    /// is set) reprojects the table before emission. The provided arena
+    /// is used for temporary allocations during emission.
     pub fn format_table_to_bytes(&self, mut table: Table<'_>, arena: &Arena) -> Vec<u8> {
         let mut items = Vec::new();
         let mut buffer = Vec::new();
@@ -445,4 +438,3 @@ impl<'a> Formatting<'a> {
         buffer
     }
 }
-

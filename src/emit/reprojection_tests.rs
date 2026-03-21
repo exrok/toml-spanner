@@ -1569,13 +1569,12 @@ fn ignore_source_style_per_table() {
         "section 'b' without ignore_source_style: inner 'w' should get Dotted from source"
     );
 }
-// todo should put text in Context.
-fn to_toml(reference: &Document<'_>, text: &str, mut table: Table<'_>) -> String {
+fn to_toml(reference: &Document<'_>, mut table: Table<'_>) -> String {
     let scratch = Arena::new();
     let mut buf = Vec::new();
     reproject(&reference, &mut table, &mut buf);
     let emit_config = EmitConfig {
-        projected_source_text: text,
+        projected_source_text: reference.ctx.source(),
         projected_source_items: &buf,
         ..EmitConfig::default()
     };
@@ -1608,11 +1607,7 @@ vim = { workspace = true, features = ["spelling"] }
     // let expected_preserve_style = parse(expected_ignored_source_style_text, &arena).unwrap();
     let expected_ignore_style = parse(expected_ignored_source_style_text, &arena).unwrap();
 
-    let output = to_toml(
-        &src_doc,
-        src_text,
-        expected_ignore_style.table().clone_in(&arena),
-    );
+    let output = to_toml(&src_doc, expected_ignore_style.table().clone_in(&arena));
     assert_eq!(output, expected_preserve_style_text);
 
     let mut table = expected_ignore_style.into_table();
@@ -1623,7 +1618,7 @@ vim = { workspace = true, features = ["spelling"] }
         .unwrap()
         .set_ignore_source_style();
 
-    let output = to_toml(&src_doc, src_text, table);
+    let output = to_toml(&src_doc, table);
     assert_eq!(output, expected_ignored_source_style_text);
 }
 
@@ -1684,7 +1679,7 @@ eta = "0.1"
 
     dep_table.set_ignore_source_order();
 
-    let output = to_toml(&src_doc, src_text, copy.clone_in(&arena));
+    let output = to_toml(&src_doc, copy.clone_in(&arena));
     if output != sorted_by_style_kept {
         println!("=== Expected ===\n {}", sorted_by_style_kept);
         println!("=== Got ===\n {}", output);
@@ -1703,7 +1698,7 @@ eta = "0.1"
             table.set_ignore_source_style();
         }
     }
-    let output = to_toml(&src_doc, src_text, copy);
+    let output = to_toml(&src_doc, copy);
     if output != sorted_by_style_discarded {
         println!("=== Expected ===\n {}", sorted_by_style_discarded);
         println!("=== Got ===\n {}", output);

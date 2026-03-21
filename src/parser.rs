@@ -38,7 +38,7 @@ struct Ctx<'b, 'de> {
 /// Note: Looking purely at parsing benchmarks you might be inclined to raise
 ///  this value higher, however the same index is then used during deserialization
 ///  where the loss of initializing the index is recouped.
-pub const INDEXED_TABLE_THRESHOLD: usize = 6;
+pub(crate) const INDEXED_TABLE_THRESHOLD: usize = 6;
 
 const fn build_hex_table() -> [i8; 256] {
     let mut table = [-1i8; 256];
@@ -2027,11 +2027,11 @@ impl<'de> Parser<'de> {
 
 /// The result of parsing a TOML document.
 ///
-/// A `Document` wraps the parsed [`Table`] tree and, when the `from-toml`
-/// feature is enabled, a [`Context`](crate::Context) that accumulates errors.
+/// Wraps the parsed [`Table`] tree and a [`Context`](crate::Context) that
+/// accumulates errors.
 ///
 /// Access values via index operators (`doc["key"]`) which return
-/// [`MaybeItem`](crate::MaybeItem), or use [`helper`](Self::helper) /
+/// [`MaybeItem`](crate::MaybeItem), or use [`helper`](Self::helper) and
 /// [`to`](Self::to) for typed conversion.
 ///
 /// # Examples
@@ -2066,7 +2066,7 @@ impl<'de> Document<'de> {
     /// Returns disjoint borrows of the [`Context`](crate::Context) and the
     /// root [`Table`].
     ///
-    /// This is useful when you need to pass the context into
+    /// Useful when passing the context into
     /// [`TableHelper::new`](crate::TableHelper::new) while still holding
     /// a reference to the table.
     #[cfg(feature = "from-toml")]
@@ -2101,8 +2101,8 @@ impl<'de> Document<'de> {
 impl<'de> Document<'de> {
     /// Creates a [`TableHelper`] for the root table.
     ///
-    /// This is the typical entry point for typed extraction. Extract fields
-    /// with [`TableHelper::required`](crate::TableHelper::required) and
+    /// Typical entry point for typed extraction. Extract fields with
+    /// [`TableHelper::required`](crate::TableHelper::required) and
     /// [`TableHelper::optional`](crate::TableHelper::optional), then call
     /// [`TableHelper::expect_empty`](crate::TableHelper::expect_empty) to
     /// reject unknown keys.
@@ -2158,8 +2158,8 @@ impl std::fmt::Debug for Document<'_> {
 /// Parses a TOML document and returns a [`Document`] containing the parsed tree.
 ///
 /// Both `s` and `arena` must outlive the returned [`Document`] because parsed
-/// values borrow directly from the input string and allocate escaped strings
-/// into the arena.
+/// values borrow from the input string and allocate escaped strings into the
+/// arena.
 ///
 /// # Errors
 ///
@@ -2192,7 +2192,6 @@ pub fn parse<'de>(document: &'de str, arena: &'de Arena) -> Result<Document<'de>
     }
     // Note that root is about the drop (but doesn't implement drop), so we can take
     // ownership of this table.
-    // todo don't do this
     Ok(Document {
         table: root_st,
         #[cfg(feature = "from-toml")]
@@ -2208,14 +2207,14 @@ pub fn parse<'de>(document: &'de str, arena: &'de Arena) -> Result<Document<'de>
 /// Parses a TOML document in recovery mode, accumulating errors instead of
 /// stopping on the first one.
 ///
-/// Unlike [`parse`], this function always returns a [`Document`] (never
-/// `Err`). Syntax errors are collected into the document's
-/// [`Context::errors`](crate::Context) alongside any later deserialization
-/// errors. Valid portions of the input are still parsed into the tree.
+/// Always returns a [`Document`] (never `Err`). Syntax errors are collected
+/// into the document's [`Context::errors`](crate::Context) alongside any
+/// later deserialization errors. Valid portions of the input are still
+/// parsed into the tree.
 ///
-/// Recovery is line-based: when a statement fails to parse, the parser
-/// skips to the next line and continues. At most 25 errors are collected
-/// before parsing stops.
+/// Recovery is line-based: when a statement fails, the parser skips to the
+/// next line and continues. At most 25 errors are collected before parsing
+/// stops.
 ///
 /// # Examples
 ///

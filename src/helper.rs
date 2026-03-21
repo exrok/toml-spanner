@@ -2,13 +2,12 @@
 
 use crate::{Item, Table};
 
-/// Converts a TOML string value into any type that implements [`FromStr`].
+/// Converts a TOML string value into any type implementing [`FromStr`].
 ///
-/// Pair this with the `with` field attribute to store types like
-/// [`IpAddr`] or [`SocketAddr`] as plain TOML strings.
-/// At parse time the string is passed through [`str::parse`], and any
-/// [`std::str::FromStr::Err`] is reported as a custom error with the
-/// span of the original value.
+/// Pair with the `with` field attribute to store types like [`IpAddr`] or
+/// [`SocketAddr`] as plain TOML strings. At parse time the string is passed
+/// through [`str::parse`], and any [`std::str::FromStr::Err`] is reported
+/// as a custom error with the span of the original value.
 ///
 /// For the reverse direction, see [`display`].
 ///
@@ -55,12 +54,11 @@ pub mod parse_string {
     }
 }
 
-/// Converts any type that implements [`Display`] into a TOML string [`Item`].
+/// Converts any type implementing [`Display`] into a TOML string [`Item`].
 ///
-/// Pair this with the `with` field attribute to emit types like
-/// [`IpAddr`] or [`SocketAddr`] as plain TOML strings.
-/// The value is formatted with [`Display`] and the resulting string is
-/// allocated in the arena.
+/// Pair with the `with` field attribute to emit types like [`IpAddr`] or
+/// [`SocketAddr`] as plain TOML strings. The value is formatted with
+/// [`Display`] and the resulting string is allocated in the arena.
 ///
 /// For the reverse direction, see [`parse_string`].
 ///
@@ -116,14 +114,11 @@ pub struct ShallowTable<'de, 'b> {
     __marker: std::marker::PhantomData<&'b Item<'de>>,
 }
 
-/// Flattens any type that already implements [`FromToml`] or [`ToToml`]
-/// into a parent struct, without an explicit [`FromFlattened`] or
-/// [`ToFlattened`] implementation.
+/// Flattens any type implementing [`FromToml`] or [`ToToml`] into a parent
+/// struct without a [`FromFlattened`] or [`ToFlattened`] implementation.
 ///
-/// This is the easiest way to flatten structs, tagged enums, adjacently
-/// tagged enums, and other complex types. It works with any type the derive
-/// macro can produce, including all enum representations (`tag`,
-/// `tag`+`content`, `untagged`).
+/// Works with any type the derive macro can produce, including all enum
+/// representations (`tag`, `tag`+`content`, `untagged`).
 ///
 /// # Examples
 ///
@@ -160,12 +155,11 @@ pub struct ShallowTable<'de, 'b> {
 ///
 /// # Performance
 ///
-/// `flatten_any` works by collecting unrecognized key-value pairs into a
-/// temporary table and then passing that table through the regular
-/// [`FromToml`] path (and vice-versa for [`ToToml`]).
-/// This is not as efficient as a native [`FromFlattened`]/[`ToFlattened`]
-/// implementation could be, but it is plenty fast for virtually all use
-/// cases and extremely flexible.
+/// `flatten_any` collects unrecognized key-value pairs into a temporary
+/// table and passes it through the regular [`FromToml`] path (and
+/// vice-versa for [`ToToml`]). Not as efficient as a native
+/// [`FromFlattened`]/[`ToFlattened`] implementation, but fast enough for
+/// virtually all use cases.
 ///
 /// [`FromToml`]: crate::FromToml
 /// [`ToToml`]: crate::ToToml

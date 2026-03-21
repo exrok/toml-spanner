@@ -213,26 +213,24 @@ union Payload<'de> {
 
 /// A parsed TOML value with span information.
 ///
-/// Use the `as_*` methods ([`as_str`](Self::as_str),
-/// [`as_i64`](Self::as_i64), [`as_table`](Self::as_table), etc.) to
-/// extract the value, or call [`value`](Self::value) /
-/// [`value_mut`](Self::value_mut) to pattern match via the [`Value`] /
-/// [`ValueMut`] enums.
+/// Extract values with the `as_*` methods ([`as_str`](Self::as_str),
+/// [`as_i64`](Self::as_i64), [`as_table`](Self::as_table), etc.) or
+/// pattern match via [`value`](Self::value) and [`value_mut`](Self::value_mut).
 ///
 /// Items support indexing with `&str` (table lookup) and `usize` (array
-/// access). These operators return [`MaybeItem`] and never panic — missing
+/// access). These operators return [`MaybeItem`] and never panic. Missing
 /// keys or out-of-bounds indices produce a `None` variant instead.
 ///
 /// # Lookup performance
 ///
 /// String-key lookups (`item["key"]`, [`as_table`](Self::as_table) +
-/// [`Table::get`]) perform a linear scan over the table entries — O(n) in
+/// [`Table::get`]) perform a linear scan over the table entries, O(n) in
 /// the number of keys. For small tables or a handful of lookups, as is
-/// typical in TOML, this is well fast enough.
+/// typical in TOML, this is fast enough.
 ///
 /// For structured conversion of larger tables, use
 /// [`TableHelper`](crate::de::TableHelper) with the [`Context`](crate::de::Context)
-/// returned by [`parse`](crate::parse).
+/// from [`parse`](crate::parse).
 ///
 /// # Examples
 ///
@@ -574,9 +572,9 @@ impl<'de> Item<'de> {
         self.flag() == FLAG_DOTTED
     }
 
-    /// Returns `true` if this is an implicit intermediate table — a plain
+    /// Returns `true` if this is an implicit intermediate table, a plain
     /// table that is neither a `[header]` section, a dotted-key intermediate,
-    /// nor a frozen inline `{ }` table.  These entries act as structural
+    /// nor a frozen inline `{ }` table. These entries act as structural
     /// parents for header sections and have no text of their own.
     #[inline]
     pub(crate) fn is_implicit_table(&self) -> bool {
@@ -656,7 +654,7 @@ pub enum ValueMut<'a, 'de> {
     Float(&'a mut f64),
     /// A boolean value.
     Boolean(&'a mut bool),
-    /// A datetime value (read-only; datetime fields are not mutable).
+    /// A datetime value (read-only, datetime fields are not mutable).
     DateTime(&'a DateTime),
     /// A table value.
     Table(&'a mut Table<'de>),
@@ -915,8 +913,8 @@ impl<'de> Item<'de> {
     /// Deep-clones this item into `arena`.
     ///
     /// Scalar values are copied directly. Tables and arrays are recursively
-    /// cloned with new arena-allocated storage, but string keys and string
-    /// values continue to reference their original memory.
+    /// cloned with new arena-allocated storage. String keys and values
+    /// continue to reference their original memory.
     pub fn clone_in(&self, arena: &'de Arena) -> Item<'de> {
         if self.is_scalar() {
             // SAFETY: Scalar items have tags 0..=4 (STRING, INTEGER, FLOAT,
@@ -1078,6 +1076,12 @@ impl PartialEq for Key<'_> {
 
 impl Eq for Key<'_> {}
 
+impl std::hash::Hash for Key<'_> {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.name.hash(state);
+    }
+}
+
 pub(crate) fn equal_items(a: &Item<'_>, b: &Item<'_>, index: Option<&TableIndex<'_>>) -> bool {
     if a.kind() != b.kind() {
         return false;
@@ -1197,11 +1201,20 @@ impl<'de> std::ops::Index<usize> for MaybeItem<'de> {
     }
 }
 
+impl fmt::Debug for MaybeItem<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.item() {
+            Some(item) => item.fmt(f),
+            None => f.write_str("None"),
+        }
+    }
+}
+
 /// A nullable reference to a parsed TOML value.
 ///
 /// `MaybeItem` is returned by the index operators (`[]`) on [`Item`],
 /// [`Table`], [`Array`], and `MaybeItem` itself. It acts like an
-/// [`Option<&Item>`] that can be further indexed without panicking — chained
+/// [`Option<&Item>`] that can be further indexed without panicking. Chained
 /// lookups on missing keys simply propagate the `None` state.
 ///
 /// Use the `as_*` accessors to extract a value, or call [`item`](Self::item)

@@ -190,7 +190,6 @@ impl<'de> InnerTable<'de> {
     }
 
     #[inline]
-    // TODO make (crate)
     pub fn entries_mut(&mut self) -> &mut [TableEntry<'de>] {
         // SAFETY: same as entries() — ptr is valid for len initialized entries.
         unsafe { std::slice::from_raw_parts_mut(self.ptr.as_ptr(), self.len as usize) }
@@ -352,9 +351,9 @@ impl ExactSizeIterator for IntoIter<'_> {}
 ///
 /// # Accessing values
 ///
-/// - **Index operators** — `table["key"]` returns a [`MaybeItem`] that never
+/// - **Index operators**: `table["key"]` returns a [`MaybeItem`] that never
 ///   panics on missing keys, and supports chained indexing.
-/// - **`get` / `get_mut`** — return `Option<&Item>` / `Option<&mut Item>`.
+/// - **`get` / `get_mut`**: return `Option<&Item>` / `Option<&mut Item>`.
 ///
 /// For type-safe extraction, use [`Item::table_helper`](crate::Item::table_helper)
 /// to create a [`TableHelper`](crate::de::TableHelper).
@@ -362,22 +361,20 @@ impl ExactSizeIterator for IntoIter<'_> {}
 /// # Lookup performance
 ///
 /// Direct lookups ([`get`](Self::get), `table["key"]`) perform a linear scan
-/// over entries — O(n) in the number of keys. For small tables or a handful
-/// of lookups, as is typical in TOML, this is well fast enough.
+/// over entries, O(n) in the number of keys. For small tables or a handful
+/// of lookups, as is typical in TOML, this is fast enough.
 ///
 /// For structured conversion of larger tables, use
 /// [`TableHelper`](crate::de::TableHelper) via
 /// [`Document::helper`](crate::Document::helper) or
-/// [`Item::table_helper`](crate::Item::table_helper). The
-/// [`Context`](crate::de::Context) returned by [`parse`](crate::parse)
-/// carries the parser's hash index.
+/// [`Item::table_helper`](crate::Item::table_helper), which use the
+/// parser's hash index for O(1) lookups.
 ///
 /// # Constructing tables
 ///
-/// Tables are normally obtained from [`parse`](crate::parse). To build one
-/// programmatically, create a table with [`Table::new`] and insert entries
-/// with [`Table::insert`]. An [`Arena`](crate::Arena) is required for
-/// insertion because entries are arena-allocated.
+/// To build a table programmatically, create one with [`Table::new`] and
+/// insert entries with [`Table::insert`]. An [`Arena`](crate::Arena) is
+/// required because entries are arena-allocated.
 ///
 /// # Iteration
 ///
@@ -499,7 +496,6 @@ impl<'de> Table<'de> {
     }
     /// Returns a slice of all entries.
     #[inline]
-    // todo remove
     pub fn entries_mut(&mut self) -> &mut [TableEntry<'de>] {
         self.value.entries_mut()
     }

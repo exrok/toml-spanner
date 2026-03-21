@@ -6,17 +6,17 @@ High-performance, fast compiling, TOML serialization and deserialization library
 [![Docs.rs](https://img.shields.io/docsrs/toml-spanner?style=flat-square)](https://docs.rs/toml-spanner/latest/toml_spanner/)
 [![License](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue?style=flat-square)](LICENSE-MIT)
 
-toml-spanner is a complete TOML libary featuring:
+toml-spanner is a complete TOML library featuring:
 
-- High Performance: [See Benchmarks](#Benchmarks)
-- Fast (Increment & Clean) Complilation: [See Compile Time Benchmarks](https://github.com/exrok/rust-serialization-build-time-benchmarks/blob/main/README.md)
+- High Performance: [See Benchmarks](#benchmarks)
+- Fast (Increment & Clean) Compilation: [See Compile Time Benchmarks](https://github.com/exrok/rust-serialization-build-time-benchmarks/blob/main/README.md)
 - Compact Span Preserving Tree: See Item on docs.rs
 - Derive macros: optional, powerful, zero-dependency <!-- TODO add docs.rs link -->
 - Format Preserving Serialization, even through mutation on your own data types.
-- Full TOML 1.1, including date-time support, passing 100% of offical TOML test-suite
+- Full TOML 1.1, including date-time support, passing 100% of official TOML test-suite
 - Tiny Binary Size <!-- TODO add link to benchmarks once I post them -->
-- Extensively tested with miri and fuzzing under memory santizers and debug assertions.
-- High quality error messages: [See Examples](#Error-Examples)
+- Extensively tested with miri and fuzzing under memory sanitizers and debug assertions.
+- High quality error messages: [See Examples](#error-examples)
 
 ## Example
 

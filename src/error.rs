@@ -222,60 +222,60 @@ unsafe impl Sync for MaybeTomlPath {}
 
 /// A single error from parsing or converting a TOML document.
 ///
-/// Errors arise from two distinct phases:
+/// Errors arise from two phases:
 ///
-/// - **Parsing** -- syntax errors such as unterminated strings, duplicate keys,
+/// - Parsing: syntax errors such as unterminated strings, duplicate keys,
 ///   or unexpected characters. [`parse`](crate::parse) returns the first such
 ///   error as `Err(Error)`.
 ///
-/// - **Conversion** -- type mismatches, missing fields, unknown keys, and
-///   other constraint violations detected by [`FromToml`](crate::FromToml)
-///   when extracting typed values from the parsed [`Item`](crate::Item) tree.
-///   These are accumulated (not short-circuited) so that a single pass
-///   surfaces as many problems as possible.
+/// - Conversion: type mismatches, missing fields, unknown keys, and
+///   other constraint violations detected by [`FromToml`](crate::FromToml).
+///   These accumulate so that a single pass surfaces as many problems as
+///   possible.
 ///
-/// Both phases can also be combined with
-/// [`parse_recoverable`](crate::parse_recoverable), which continues past
-/// syntax errors and collects them alongside later conversion errors
-/// into a single [`Document::errors`](crate::Document::errors) list.
+/// [`parse_recoverable`](crate::parse_recoverable) combines both phases,
+/// continuing past syntax errors and collecting them alongside conversion
+/// errors into a single [`Document::errors`](crate::Document::errors) list.
 ///
 /// # Extracting information
 ///
-/// | Method                | Returns |
-/// |-----------------------|---------|
-/// | [`kind()`](Self::kind)               | The [`ErrorKind`] variant for this error |
-/// | [`span()`](Self::span)               | Source [`Span`] (byte offsets), `0..0` when no location applies |
-/// | [`path()`](Self::path)               | Optional [`TomlPath`] to the offending value |
-/// | [`message(source)`](Self::message)   | Human-readable diagnostic message |
-/// | [`primary_label()`](Self::primary_label)   | Optional `(Span, String)` label for the error site |
-/// | [`secondary_label()`](Self::secondary_label) | Optional `(Span, String)` for related locations |
+/// | Method                                        | Returns                                                         |
+/// |-----------------------------------------------|-----------------------------------------------------------------|
+/// | [`kind()`](Self::kind)                        | The [`ErrorKind`] variant for this error                        |
+/// | [`span()`](Self::span)                        | Source [`Span`] (byte offsets), `0..0` when no location applies |
+/// | [`path()`](Self::path)                        | Optional [`TomlPath`] to the offending value                    |
+/// | [`message(source)`](Self::message)            | Human-readable diagnostic message                               |
+/// | [`primary_label()`](Self::primary_label)      | Optional `(Span, String)` label for the error site              |
+/// | [`secondary_label()`](Self::secondary_label)  | Optional `(Span, String)` for related locations                 |
 ///
-/// The `message`, `primary_label`, and `secondary_label` methods provide the
-/// building blocks for rich diagnostics. They map directly onto the label model
-/// used by [`codespan-reporting`](https://docs.rs/codespan-reporting) and
+/// The `message`, `primary_label`, and `secondary_label` methods provide
+/// building blocks for rich diagnostics, mapping onto the label model used by
+/// [`codespan-reporting`](https://docs.rs/codespan-reporting) and
 /// [`annotate-snippets`](https://docs.rs/annotate-snippets).
 ///
 /// # Integration with error reporting libraries
 ///
-/// [`Span`] implements `Into<Range<usize>>`, so it can be passed directly to
-/// [`codespan_reporting::diagnostic::Label`] or
-/// [`annotate_snippets::AnnotationKind`] without conversion.
-///
-/// [`codespan_reporting::diagnostic::Label`]: https://docs.rs/codespan-reporting/latest/codespan_reporting/diagnostic/struct.Label.html
-/// [`annotate_snippets::AnnotationKind`]: https://docs.rs/annotate-snippets/latest/annotate_snippets/enum.AnnotationKind.html
-///
-/// A typical `codespan-reporting` integration:
+/// <details>
+/// <summary><code>codespan-reporting</code> example</summary>
 ///
 /// ```ignore
 /// use codespan_reporting::diagnostic::{Diagnostic, Label};
 ///
-/// fn to_diagnostic(error: &toml_spanner::Error, source: &str) -> Diagnostic<()> {
+/// fn error_to_diagnostic(
+///     error: &toml_spanner::Error,
+///     source: &str,
+/// ) -> Diagnostic<()> {
 ///     let mut labels = Vec::new();
 ///     if let Some((span, text)) = error.secondary_label() {
 ///         labels.push(Label::secondary((), span).with_message(text));
 ///     }
 ///     if let Some((span, label)) = error.primary_label() {
-///         labels.push(Label::primary((), span).with_message(label));
+///         let l = Label::primary((), span);
+///         labels.push(if label.is_empty() {
+///             l
+///         } else {
+///             l.with_message(label)
+///         });
 ///     }
 ///     Diagnostic::error()
 ///         .with_code(error.kind().kind_name())
@@ -284,19 +284,53 @@ unsafe impl Sync for MaybeTomlPath {}
 /// }
 /// ```
 ///
+/// </details>
+///
+/// <details>
+/// <summary><code>annotate-snippets</code> example</summary>
+///
+/// ```ignore
+/// use annotate_snippets::{AnnotationKind, Group, Level, Snippet};
+///
+/// fn error_to_snippet<'s>(
+///     error: &toml_spanner::Error,
+///     source: &'s str,
+///     path: &'s str,
+/// ) -> Group<'s> {
+///     let message = error.message(source);
+///     let mut snippet = Snippet::source(source).path(path).fold(true);
+///     if let Some((span, text)) = error.secondary_label() {
+///         snippet = snippet.annotation(
+///             AnnotationKind::Context.span(span.range()).label(text),
+///         );
+///     }
+///     if let Some((span, label)) = error.primary_label() {
+///         let ann = AnnotationKind::Primary.span(span.range());
+///         snippet = snippet.annotation(if label.is_empty() {
+///             ann
+///         } else {
+///             ann.label(label)
+///         });
+///     }
+///     Level::ERROR.primary_title(message).element(snippet)
+/// }
+/// ```
+///
+/// </details>
+///
 /// # Multiple error accumulation
 ///
 /// During [`FromToml`](crate::FromToml) conversion, errors are pushed into a
 /// shared [`Context`](crate::Context) rather than causing an immediate abort.
 /// The sentinel type [`Failed`](crate::Failed) signals that a branch failed
 /// without carrying error details itself. When
-/// [`Document::to`](crate::Document::to) (or
-/// [`from_str`](crate::from_str)) finishes, all accumulated errors are
-/// returned together in [`FromTomlError::errors`](crate::FromTomlError).
+/// [`Document::to`](crate::Document::to) or [`from_str`](crate::from_str)
+/// finishes, all accumulated errors are returned in
+/// [`FromTomlError::errors`](crate::FromTomlError).
 ///
 /// [`parse_recoverable`](crate::parse_recoverable) extends this to the
-/// parsing phase: syntax errors are collected into the same list so that
-/// valid portions of the document are still available for inspection.
+/// parsing phase, collecting syntax errors into the same list so valid
+/// portions of the document remain available for inspection.
 pub struct Error {
     pub(crate) kind: ErrorInner,
     pub(crate) span: Span,
@@ -479,8 +513,7 @@ impl Error {
     /// Returns the source span where this error occurred.
     ///
     /// A span of `0..0` ([`Span::is_empty`]) means the error has no specific
-    /// source location. This occurs for pre-parse conditions like
-    /// [`ErrorKind::FileTooLarge`].
+    /// source location, as with [`ErrorKind::FileTooLarge`].
     pub fn span(&self) -> Span {
         self.span
     }
@@ -872,9 +905,6 @@ impl Error {
     }
 
     /// Returns the primary label span and text for this error, if any.
-    ///
-    /// Not all error kinds produce a primary label. Callers should handle `None`
-    /// gracefully.
     pub fn primary_label(&self) -> Option<(Span, String)> {
         let mut out = String::new();
         self.primary_label_inner(&mut out);
@@ -955,8 +985,7 @@ impl Error {
     /// Returns the secondary label span and text, if any.
     ///
     /// Some errors reference a related location (for example, the first
-    /// definition of a duplicate key). Returns `None` for error kinds that
-    /// have no secondary site.
+    /// definition of a duplicate key).
     pub fn secondary_label(&self) -> Option<(Span, String)> {
         let (first, text) = match self.kind() {
             ErrorKind::DuplicateKey { first } => (first, "first key instance"),

@@ -35,9 +35,7 @@ static EMPTY_SLAB: SlabHeader = SlabHeader {
 ///
 /// Create an `Arena` before calling [`parse`](crate::parse) and pass it by
 /// reference. The arena must outlive the returned [`Document`](crate::Document)
-/// because parsed values borrow from it.
-///
-/// All memory is freed when the arena is dropped.
+/// because parsed values borrow from it. All memory is freed on drop.
 ///
 /// # Examples
 ///

@@ -326,10 +326,10 @@ impl<'de> std::ops::Index<usize> for InternalArray<'de> {
 ///
 /// # Accessing elements
 ///
-/// - **Index operator** — `array[i]` returns a [`MaybeItem`] that never
+/// - **Index operator**: `array[i]` returns a [`MaybeItem`] that never
 ///   panics on out-of-bounds access.
-/// - **`get` / `get_mut`** — return `Option<&Item>` / `Option<&mut Item>`.
-/// - **Iteration** — `for item in &array { ... }`.
+/// - **`get` / `get_mut`**: return `Option<&Item>` / `Option<&mut Item>`.
+/// - **Iteration**: `for item in &array { ... }`.
 ///
 /// # Mutation
 ///
