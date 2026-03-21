@@ -33,6 +33,48 @@ struct Prefix<'a, 'de> {
     parent: Option<&'a Prefix<'a, 'de>>,
 }
 
+/// Indentation unit for expanded inline arrays.
+///
+/// Each nesting level repeats this unit once.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum Indent {
+    /// N spaces per level (e.g. `Spaces(4)` for 4-space indent).
+    Spaces(u8),
+    /// One tab character per level.
+    Tab,
+}
+
+impl Default for Indent {
+    fn default() -> Self {
+        Indent::Spaces(4)
+    }
+}
+
+impl Indent {
+    fn write(&self, out: &mut Vec<u8>, depth: u32) {
+        match self {
+            Indent::Spaces(n) => {
+                let total = depth as usize * *n as usize;
+                for _ in 0..total {
+                    out.push(b' ');
+                }
+            }
+            Indent::Tab => {
+                for _ in 0..depth {
+                    out.push(b'\t');
+                }
+            }
+        }
+    }
+
+    fn width(&self) -> usize {
+        match self {
+            Indent::Spaces(n) => *n as usize,
+            Indent::Tab => 1,
+        }
+    }
+}
+
 /// Configuration for [`emit_with_config`].
 ///
 /// When both fields are non-empty, scalar values whose reprojected source
@@ -48,6 +90,8 @@ pub struct EmitConfig<'a> {
     /// position so that interleaved headers and dotted keys preserve
     /// their original ordering from the source document.
     pub reprojected_order: bool,
+    /// Indentation unit for expanded inline arrays. Defaults to 4 spaces.
+    pub indent: Indent,
 }
 
 struct Emitter<'a, 'b> {
@@ -55,6 +99,7 @@ struct Emitter<'a, 'b> {
     src: &'a [u8],
     src_items: &'a [&'a Item<'a>],
     reprojected_order: bool,
+    indent: Indent,
 }
 
 impl Default for EmitConfig<'_> {
@@ -63,6 +108,7 @@ impl Default for EmitConfig<'_> {
             projected_source_text: "",
             projected_source_items: &[],
             reprojected_order: false,
+            indent: Indent::default(),
         }
     }
 }
@@ -105,6 +151,7 @@ pub fn emit_with_config(table: &NormalizedTable<'_>, config: &EmitConfig<'_>, bu
         src: config.projected_source_text.as_bytes(),
         src_items: config.projected_source_items,
         reprojected_order: config.reprojected_order,
+        indent: config.indent,
     };
 
     if !emit.src.is_empty() {
@@ -985,7 +1032,8 @@ fn try_emit_array_partial(
             );
         } else {
             out.extend_from_slice(indent);
-            format_value(elem, emit, out);
+            let depth = (indent.len() / emit.indent.width()) as u32;
+            format_value_at(elem, emit, out, depth);
             out.extend_from_slice(b",\n");
         }
     }
@@ -1063,9 +1111,10 @@ fn try_emit_inline_table_partial(
             );
         } else {
             out.extend_from_slice(indent);
+            let depth = (indent.len() / emit.indent.width()) as u32;
             write_inline_leaf_key(leaf, emit, out);
             out.extend_from_slice(b" = ");
-            format_value(val, emit, out);
+            format_value_at(val, emit, out, depth);
             out.extend_from_slice(b",\n");
         }
     }
@@ -1110,6 +1159,10 @@ fn is_fully_projected(item: &Item<'_>, emit: &Emitter<'_, '_>) -> bool {
 }
 
 fn format_value(item: &Item<'_>, emit: &Emitter<'_, '_>, out: &mut Vec<u8>) {
+    format_value_at(item, emit, out, 0);
+}
+
+fn format_value_at(item: &Item<'_>, emit: &Emitter<'_, '_>, out: &mut Vec<u8>, depth: u32) {
     match item.value() {
         Value::Array(arr) => {
             if let Some(src_item) = projected_source(item, emit) {
@@ -1129,7 +1182,11 @@ fn format_value(item: &Item<'_>, emit: &Emitter<'_, '_>, out: &mut Vec<u8>) {
                     }
                 }
             }
-            format_array(arr, emit, out);
+            if arr.is_expanded() {
+                format_expanded_array(arr, emit, out, depth);
+            } else {
+                format_array(arr, emit, out);
+            }
         }
         Value::Table(tab) => {
             if let Some(src_item) = projected_source(item, emit) {
@@ -1149,7 +1206,7 @@ fn format_value(item: &Item<'_>, emit: &Emitter<'_, '_>, out: &mut Vec<u8>) {
                     }
                 }
             }
-            format_inline_table(tab, emit, out);
+            format_inline_table(tab, emit, out, depth);
         }
         _ => {
             if let Some(text) = projected_text(item, emit) {
@@ -1286,7 +1343,7 @@ fn collect_and_sort_leaves<'a, 'de>(
     (leaves, order)
 }
 
-fn format_inline_table(tab: &Table<'_>, emit: &Emitter<'_, '_>, out: &mut Vec<u8>) {
+fn format_inline_table(tab: &Table<'_>, emit: &Emitter<'_, '_>, out: &mut Vec<u8>, depth: u32) {
     if tab.is_empty() {
         out.extend_from_slice(b"{}");
         return;
@@ -1320,7 +1377,7 @@ fn format_inline_table(tab: &Table<'_>, emit: &Emitter<'_, '_>, out: &mut Vec<u8
                 first = false;
                 write_inline_leaf_key(leaf, emit, out);
                 out.extend_from_slice(b" = ");
-                format_value(leaf.item, emit, out);
+                format_value_at(leaf.item, emit, out, depth);
             }
             out.extend_from_slice(b" }");
             return;
@@ -1337,7 +1394,7 @@ fn format_inline_table(tab: &Table<'_>, emit: &Emitter<'_, '_>, out: &mut Vec<u8
                     key_span: key.span,
                     parent: None,
                 };
-                format_inline_dotted_kv(sub, &node, emit, out, &mut first);
+                format_inline_dotted_kv(sub, &node, emit, out, &mut first, depth);
                 continue;
             }
         }
@@ -1347,7 +1404,7 @@ fn format_inline_table(tab: &Table<'_>, emit: &Emitter<'_, '_>, out: &mut Vec<u8
         first = false;
         emit_key(key.name, key.span, emit, out);
         out.extend_from_slice(b" = ");
-        format_value(val, emit, out);
+        format_value_at(val, emit, out, depth);
     }
     out.extend_from_slice(b" }");
 }
@@ -1358,6 +1415,7 @@ fn format_inline_dotted_kv(
     emit: &Emitter<'_, '_>,
     out: &mut Vec<u8>,
     first: &mut bool,
+    depth: u32,
 ) {
     for (key, val) in table {
         if let Some(sub) = val.as_table() {
@@ -1367,7 +1425,7 @@ fn format_inline_dotted_kv(
                     key_span: key.span,
                     parent: Some(prefix),
                 };
-                format_inline_dotted_kv(sub, &node, emit, out, first);
+                format_inline_dotted_kv(sub, &node, emit, out, first, depth);
                 continue;
             }
         }
@@ -1379,8 +1437,29 @@ fn format_inline_dotted_kv(
         out.push(b'.');
         emit_key(key.name, key.span, emit, out);
         out.extend_from_slice(b" = ");
-        format_value(val, emit, out);
+        format_value_at(val, emit, out, depth);
     }
+}
+
+fn format_expanded_array(
+    arr: &Array<'_>,
+    emit: &Emitter<'_, '_>,
+    out: &mut Vec<u8>,
+    depth: u32,
+) {
+    if arr.is_empty() {
+        out.extend_from_slice(b"[]");
+        return;
+    }
+    out.extend_from_slice(b"[\n");
+    let child = depth + 1;
+    for elem in arr {
+        emit.indent.write(out, child);
+        format_value_at(elem, emit, out, child);
+        out.extend_from_slice(b",\n");
+    }
+    emit.indent.write(out, depth);
+    out.push(b']');
 }
 
 fn format_array(arr: &Array<'_>, emit: &Emitter<'_, '_>, out: &mut Vec<u8>) {

@@ -157,6 +157,7 @@ fn run_emit_roundtrip(path: &str) {
         projected_source_text: text,
         projected_source_items: &items,
         reprojected_order: false,
+        ..Default::default()
     };
     let mut out_buf = Vec::new();
     toml_spanner::emit_with_config(norm, &config, &mut out_buf);
@@ -235,6 +236,7 @@ fn run_reproject_identity(path: &str) {
         projected_source_text: &text,
         projected_source_items: &items,
         reprojected_order: false,
+        ..Default::default()
     };
     let mut buf = Vec::new();
     toml_spanner::emit_with_config(norm, &config, &mut buf);
@@ -312,6 +314,7 @@ fn run_reproject_identity(path: &str) {
         projected_source_text: &output,
         projected_source_items: &items2,
         reprojected_order: false,
+        ..Default::default()
     };
     let mut buf2 = Vec::new();
     toml_spanner::emit_with_config(norm2, &cfg2, &mut buf2);
@@ -463,6 +466,7 @@ fn run_reproject_edit(path: &str) {
         projected_source_text: &src_text,
         projected_source_items: &items,
         reprojected_order: false,
+        ..Default::default()
     };
     let mut buf = Vec::new();
     toml_spanner::emit_with_config(norm, &config, &mut buf);
@@ -526,6 +530,7 @@ fn run_reproject_edit(path: &str) {
         projected_source_text: &output,
         projected_source_items: &items2,
         reprojected_order: false,
+        ..Default::default()
     };
     let mut buf2 = Vec::new();
     toml_spanner::emit_with_config(norm2, &cfg2, &mut buf2);
@@ -624,6 +629,7 @@ fn run_reproject_reorder(path: &str) {
         projected_source_text: &src_text,
         projected_source_items: &items,
         reprojected_order: true,
+        ..Default::default()
     };
     let mut buf = Vec::new();
     toml_spanner::emit_with_config(norm, &config, &mut buf);
@@ -687,6 +693,7 @@ fn run_reproject_reorder(path: &str) {
         projected_source_text: &output,
         projected_source_items: &items2,
         reprojected_order: true,
+        ..Default::default()
     };
     let mut buf2 = Vec::new();
     toml_spanner::emit_with_config(norm2, &cfg2, &mut buf2);
@@ -933,6 +940,7 @@ fn run_reproject_exact(path: &str) {
                 projected_source_text: source_text,
                 projected_source_items: &items,
                 reprojected_order: false,
+        ..Default::default()
             };
             let mut buf = Vec::new();
             toml_spanner::emit_with_config(norm, &config, &mut buf);
@@ -984,6 +992,7 @@ fn run_reproject_exact(path: &str) {
                 projected_source_text: source_text,
                 projected_source_items: &items,
                 reprojected_order: false,
+        ..Default::default()
             };
             let mut buf = Vec::new();
             toml_spanner::emit_with_config(norm, &config, &mut buf);
@@ -1035,6 +1044,7 @@ fn run_reproject_exact(path: &str) {
                 projected_source_text: source_text,
                 projected_source_items: &items,
                 reprojected_order: false,
+        ..Default::default()
             };
             let mut buf = Vec::new();
             toml_spanner::emit_with_config(norm, &config, &mut buf);
@@ -1074,6 +1084,7 @@ fn check_idempotency_verbose(output: &str, buf: &[u8], source_text: &str) {
         projected_source_text: output,
         projected_source_items: &items2,
         reprojected_order: false,
+        ..Default::default()
     };
     let mut buf2 = Vec::new();
     toml_spanner::emit_with_config(norm2, &cfg2, &mut buf2);

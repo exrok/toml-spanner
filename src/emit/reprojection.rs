@@ -206,6 +206,9 @@ fn reproject_table<'de>(
                     if has_non_frozen {
                         da.set_style(kind);
                     }
+                } else if kind == ArrayStyle::Inline && da.is_auto_style() {
+                    // Progressive: preserve auto-style so normalization can
+                    // set EXPANDED_BIT if content warrants it
                 } else {
                     da.set_style(kind);
                 }
@@ -216,7 +219,9 @@ fn reproject_table<'de>(
                 for (key, item) in &mut entries[..i] {
                     if key.span.is_empty() {
                         if let Some(dt) = item.as_array_mut() {
-                            dt.set_style(kind);
+                            if !dt.is_auto_style() {
+                                dt.set_style(kind);
+                            }
                         }
                     }
                 }

@@ -120,6 +120,7 @@ fn normalize_inline(item: &mut Item<'_>, allow_dotted: bool) {
         }
         ValueMut::Array(arr) => {
             arr.set_style(ArrayStyle::Inline);
+            arr.clear_expanded();
             for elem in &mut *arr {
                 normalize_inline(elem, false);
             }
@@ -214,18 +215,72 @@ fn resolve_auto_table(sub: &mut Table<'_>, body_emitted: bool) {
     sub.set_style(TableStyle::Inline);
 }
 
+/// Estimates the inline rendered width of a value in characters.
+/// Returns `None` if the value cannot be reasonably inlined (e.g.
+/// non-empty nested containers).
+fn inline_width(item: &Item<'_>) -> Option<usize> {
+    match item.value() {
+        Value::String(s) => {
+            if s.len() > 40 {
+                return None;
+            }
+            for &b in s.as_bytes() {
+                if b.is_ascii_control() {
+                    return None;
+                }
+            }
+            Some(s.len() + 2) // quotes
+        }
+        Value::Integer(_) => Some(6), // conservative estimate
+        Value::Float(_) => Some(8), // conservative estimate
+        Value::Boolean(b) => Some(if *b { 4 } else { 5 }),
+        Value::DateTime(_) => Some(25), // conservative estimate
+        Value::Array(a) if a.is_empty() => Some(2),
+        Value::Table(t) if t.is_empty() => Some(2),
+        _ => None,
+    }
+}
+
 fn resolve_auto_array(arr: &mut Array<'_>) {
     if !arr.meta.is_auto_style() {
         return;
     }
     arr.meta.clear_auto_style();
-    let style = match arr.as_slice() {
-        [a, b] if is_small_value(a) && is_small_value(b) => ArrayStyle::Inline,
-        [a] if is_small_value(a) => ArrayStyle::Inline,
-        [] => ArrayStyle::Inline,
-        _ => ArrayStyle::Header, // Note: We resolve before normalization, so if Header is not possible it will be fixed
-    };
-    arr.set_style(style);
+
+    if arr.is_empty() {
+        arr.set_style(ArrayStyle::Inline);
+        return;
+    }
+
+    let all_tables = arr.iter().all(|e| e.kind() == Kind::Table);
+    if all_tables {
+        arr.set_style(ArrayStyle::Header);
+        return;
+    }
+
+    // Estimate inline width: `[` + elements + `, ` separators + `]`
+    let mut width: usize = 2; // brackets
+    let mut fits_inline = true;
+    for (i, elem) in arr.iter().enumerate() {
+        if i > 0 {
+            width += 2; // ", "
+        }
+        let Some(w) = inline_width(elem) else {
+            fits_inline = false;
+            break;
+        };
+        width += w;
+        if width > 40 {
+            fits_inline = false;
+            break;
+        }
+    }
+    if fits_inline {
+        arr.set_style(ArrayStyle::Inline);
+    } else {
+        arr.set_expanded();
+        arr.set_style(ArrayStyle::Inline);
+    }
 }
 
 fn normalize_entries(entries: &mut [(crate::Key<'_>, Item<'_>)], body_emitted: bool) -> bool {
@@ -338,6 +393,7 @@ fn normalize_table(sub: &mut Table<'_>, body_emitted: bool) -> bool {
                 }
                 ValueMut::Array(arr) => {
                     if arr.style() == ArrayStyle::Header {
+                        arr.set_expanded();
                         arr.set_style(ArrayStyle::Inline);
                         demoted_has_body |= normalize_array(arr);
                     } else {
@@ -360,6 +416,33 @@ fn normalize_table(sub: &mut Table<'_>, body_emitted: bool) -> bool {
     has_body
 }
 
+/// Normalizes an element inside an expanded array.
+///
+/// Like `normalize_inline` but allows nested arrays to stay expanded.
+/// `allow_dotted` is true for named table entries, false for array elements.
+fn normalize_expanded_child(item: &mut Item<'_>, allow_dotted: bool) {
+    match item.value_mut() {
+        ValueMut::Table(sub) => {
+            if allow_dotted {
+                match sub.style() {
+                    TableStyle::Inline | TableStyle::Dotted => {}
+                    _ => sub.set_style(TableStyle::Inline),
+                }
+            } else {
+                sub.set_style(TableStyle::Inline);
+            }
+            for (_, child) in sub.value.entries_mut().iter_mut() {
+                normalize_expanded_child(child, true);
+            }
+        }
+        ValueMut::Array(arr) => {
+            resolve_auto_array(arr);
+            normalize_array(arr);
+        }
+        _ => {}
+    }
+}
+
 fn normalize_array(arr: &mut Array<'_>) -> bool {
     let mut kind = arr.style();
 
@@ -374,6 +457,7 @@ fn normalize_array(arr: &mut Array<'_>) -> bool {
         }
         if !all_tables {
             kind = ArrayStyle::Inline;
+            arr.set_expanded();
         }
     }
     arr.set_style(kind);
@@ -389,6 +473,12 @@ fn normalize_array(arr: &mut Array<'_>) -> bool {
                 ensure_body_order(sub.value.entries_mut());
             }
             false
+        }
+        ArrayStyle::Inline if arr.is_expanded() => {
+            for elem in &mut *arr {
+                normalize_expanded_child(elem, false);
+            }
+            true
         }
         ArrayStyle::Inline => {
             for elem in &mut *arr {

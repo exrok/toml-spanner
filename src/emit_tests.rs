@@ -750,7 +750,7 @@ fn auto_style_empty_containers_are_small() {
 fn auto_style_array_mixed_types_downgraded_from_header() {
     // resolve_auto_array sets Header for arrays that don't meet inline
     // small-value criteria. normalize_array must downgrade to Inline when
-    // elements are not all tables.
+    // elements are not all tables. Large non-table arrays get expanded.
     let arena = Arena::new();
     let mut root = table! { in arena; arr: [1, 2, 3] };
     let s = emit_normalized(&mut root);
@@ -763,4 +763,374 @@ fn auto_style_array_mixed_types_downgraded_from_header() {
         "mixed array must be inline, not AOT: {s2}"
     );
     assert!(!s2.contains("[["), "must not contain AOT header: {s2}");
+}
+
+#[test]
+fn expanded_array_basic() {
+    let arena = Arena::new();
+    let mut root = table! { in arena; values: ["alpha", "beta", "gamma"] };
+    let s = emit_normalized(&mut root);
+    assert_eq!(s, "values = [\"alpha\", \"beta\", \"gamma\"]\n");
+
+    // Long enough to exceed 80 chars
+    let mut root2 = table! { in arena;
+        values: ["alpha-one", "beta-two", "gamma-three", "delta-four", "epsilon-five"]
+    };
+    let s2 = emit_normalized(&mut root2);
+    assert_eq!(
+        s2,
+        "values = [\n    \"alpha-one\",\n    \"beta-two\",\n    \"gamma-three\",\n    \"delta-four\",\n    \"epsilon-five\",\n]\n"
+    );
+}
+
+#[test]
+fn expanded_array_small_stays_inline() {
+    let arena = Arena::new();
+    let mut root = table! { in arena; a: [1, 2] };
+    let s = emit_normalized(&mut root);
+    assert_eq!(s, "a = [1, 2]\n");
+
+    let mut root2 = table! { in arena; a: ["short"] };
+    let s2 = emit_normalized(&mut root2);
+    assert_eq!(s2, "a = [\"short\"]\n");
+
+    let mut root3 = table! { in arena; a: [] };
+    let s3 = emit_normalized(&mut root3);
+    assert_eq!(s3, "a = []\n");
+}
+
+#[test]
+fn expanded_array_nested() {
+    let arena = Arena::new();
+    // Inner array is short enough to stay inline
+    let mut inner = Array::default();
+    inner.push(Item::from("system"), &arena);
+    inner.push(Item::from("override"), &arena);
+    inner.push(Item::from("absolute"), &arena);
+
+    let mut outer = Array::default();
+    outer.push(Item::from("alpha"), &arena);
+    outer.push(inner.into_item(), &arena);
+    outer.push(Item::from("beta"), &arena);
+
+    let mut root = Table::default();
+    root.insert(Key::anon("values"), outer.into_item(), &arena);
+    let s = emit_normalized(&mut root);
+    assert_eq!(
+        s,
+        "\
+values = [
+    \"alpha\",
+    [\"system\", \"override\", \"absolute\"],
+    \"beta\",
+]
+"
+    );
+
+    // Inner array long enough to expand
+    let mut inner2 = Array::default();
+    for s in ["system", "override", "absolute", "threshold", "exceeded"] {
+        inner2.push(Item::from(s), &arena);
+    }
+    let mut outer2 = Array::default();
+    outer2.push(Item::from("alpha"), &arena);
+    outer2.push(inner2.into_item(), &arena);
+    outer2.push(Item::from("beta"), &arena);
+
+    let mut root2 = Table::default();
+    root2.insert(Key::anon("values"), outer2.into_item(), &arena);
+    let s2 = emit_normalized(&mut root2);
+    assert_eq!(
+        s2,
+        "\
+values = [
+    \"alpha\",
+    [
+        \"system\",
+        \"override\",
+        \"absolute\",
+        \"threshold\",
+        \"exceeded\",
+    ],
+    \"beta\",
+]
+"
+    );
+}
+
+#[test]
+fn expanded_array_nested_small_inner_stays_inline() {
+    let arena = Arena::new();
+    let mut inner = Array::default();
+    inner.push(Item::from("a"), &arena);
+    inner.push(Item::from("b"), &arena);
+
+    let mut outer = Array::default();
+    outer.push(Item::from("x"), &arena);
+    outer.push(inner.into_item(), &arena);
+    outer.push(Item::from("y"), &arena);
+
+    let mut root = Table::default();
+    root.insert(Key::anon("arr"), outer.into_item(), &arena);
+    let s = emit_normalized(&mut root);
+    assert_eq!(
+        s,
+        "arr = [\n    \"x\",\n    [\"a\", \"b\"],\n    \"y\",\n]\n"
+    );
+}
+
+#[test]
+fn expanded_array_roundtrip() {
+    let arena = Arena::new();
+    let input = "values = [\n    \"alpha\",\n    \"beta\",\n    \"gamma\",\n]\n";
+    let doc = parse(input, &arena).unwrap();
+    let mut table = doc.into_table();
+    check_normalize(&mut table);
+}
+
+#[test]
+fn expanded_array_inside_inline_table_forced_inline() {
+    let arena = Arena::new();
+    let mut arr = Array::default();
+    arr.push(Item::from(1), &arena);
+    arr.push(Item::from(2), &arena);
+    arr.push(Item::from(3), &arena);
+
+    let mut inner = Table::default();
+    inner.set_style(TableStyle::Inline);
+    inner.insert(Key::anon("nums"), arr.into_item(), &arena);
+
+    let mut root = Table::default();
+    root.insert(Key::anon("t"), inner.into_item(), &arena);
+    let s = emit_normalized(&mut root);
+    assert_eq!(s, "t = { nums = [1, 2, 3] }\n");
+}
+
+#[test]
+fn expanded_explicit_set() {
+    let arena = Arena::new();
+    let mut arr = Array::default();
+    arr.push(Item::from(1), &arena);
+    arr.push(Item::from(2), &arena);
+    arr.set_style(ArrayStyle::Inline);
+    arr.set_expanded();
+
+    let mut root = Table::default();
+    root.insert(Key::anon("x"), arr.into_item(), &arena);
+    let s = emit_normalized(&mut root);
+    assert_eq!(s, "x = [\n    1,\n    2,\n]\n");
+}
+
+#[test]
+fn expanded_array_in_inline_table() {
+    let arena = Arena::new();
+
+    let mut then_arr = Array::default();
+    for s in ["--", "--config", "../libra.sim.config.js", "--config", "../libra.config.js"] {
+        then_arr.push(Item::from(s), &arena);
+    }
+
+    let mut condition = Table::default();
+    condition.set_style(TableStyle::Dotted);
+    condition.insert(Key::anon("profile"), Item::from("sim"), &arena);
+
+    let mut obj = Table::default();
+    obj.set_style(TableStyle::Inline);
+    obj.insert(Key::anon("if"), condition.into_item(), &arena);
+    obj.insert(Key::anon("then"), then_arr.into_item(), &arena);
+
+    let mut cmd = Array::default();
+    cmd.push(Item::from("cargo"), &arena);
+    cmd.push(Item::from("run"), &arena);
+    cmd.push(obj.into_item(), &arena);
+
+    let mut backend = Table::default();
+    backend.insert(Key::anon("pwd"), Item::from("backend/webserver"), &arena);
+    backend.insert(Key::anon("cmd"), cmd.into_item(), &arena);
+
+    let mut service = Table::default();
+    service.insert(Key::anon("backend"), backend.into_item(), &arena);
+
+    let mut root = Table::default();
+    root.insert(Key::anon("service"), service.into_item(), &arena);
+
+    let s = emit_normalized(&mut root);
+    assert_eq!(
+        s,
+        "\
+[service.backend]
+pwd = \"backend/webserver\"
+cmd = [
+    \"cargo\",
+    \"run\",
+    { if.profile = \"sim\", then = [
+        \"--\",
+        \"--config\",
+        \"../libra.sim.config.js\",
+        \"--config\",
+        \"../libra.config.js\",
+    ] },
+]
+"
+    );
+}
+
+#[track_caller]
+fn emit_with_indent(table: &mut Table<'_>, indent: crate::emit::Indent) -> String {
+    use crate::emit::{EmitConfig, emit_with_config};
+    let mut buf = Vec::new();
+    emit_with_config(
+        table.normalize(),
+        &EmitConfig {
+            indent,
+            ..EmitConfig::default()
+        },
+        &mut buf,
+    );
+    String::from_utf8(buf).unwrap()
+}
+
+#[test]
+fn expanded_array_indent_spaces_2() {
+    use crate::emit::Indent;
+    let arena = Arena::new();
+    let mut arr = Array::default();
+    arr.push(Item::from("alpha"), &arena);
+    arr.push(Item::from("beta"), &arena);
+    arr.push(Item::from("gamma"), &arena);
+    arr.set_style(ArrayStyle::Inline);
+    arr.set_expanded();
+    let mut root = Table::default();
+    root.insert(Key::anon("values"), arr.into_item(), &arena);
+    let s = emit_with_indent(&mut root, Indent::Spaces(2));
+    assert_eq!(
+        s,
+        "values = [\n  \"alpha\",\n  \"beta\",\n  \"gamma\",\n]\n"
+    );
+}
+
+#[test]
+fn expanded_array_indent_tab() {
+    use crate::emit::Indent;
+    let arena = Arena::new();
+    let mut arr = Array::default();
+    arr.push(Item::from(1), &arena);
+    arr.push(Item::from(2), &arena);
+    arr.push(Item::from(3), &arena);
+    arr.set_style(ArrayStyle::Inline);
+    arr.set_expanded();
+    let mut root = Table::default();
+    root.insert(Key::anon("values"), arr.into_item(), &arena);
+    let s = emit_with_indent(&mut root, Indent::Tab);
+    assert_eq!(
+        s,
+        "values = [\n\t1,\n\t2,\n\t3,\n]\n"
+    );
+}
+
+#[test]
+fn expanded_array_nested_indent_tab() {
+    use crate::emit::Indent;
+    let arena = Arena::new();
+    // Use explicit expanded to force multiline on inner array
+    let mut inner = Array::default();
+    inner.push(Item::from("a"), &arena);
+    inner.push(Item::from("b"), &arena);
+    inner.push(Item::from("c"), &arena);
+    inner.set_style(ArrayStyle::Inline);
+    inner.set_expanded();
+
+    let mut outer = Array::default();
+    outer.push(Item::from("x"), &arena);
+    outer.push(inner.into_item(), &arena);
+    outer.push(Item::from("y"), &arena);
+
+    let mut root = Table::default();
+    root.insert(Key::anon("v"), outer.into_item(), &arena);
+    let s = emit_with_indent(&mut root, Indent::Tab);
+    assert_eq!(
+        s,
+        "\
+v = [
+\t\"x\",
+\t[
+\t\t\"a\",
+\t\t\"b\",
+\t\t\"c\",
+\t],
+\t\"y\",
+]
+"
+    );
+}
+
+#[test]
+fn expanded_array_nested_indent_spaces_2() {
+    use crate::emit::Indent;
+    let arena = Arena::new();
+    let mut inner = Array::default();
+    inner.push(Item::from("a"), &arena);
+    inner.push(Item::from("b"), &arena);
+    inner.push(Item::from("c"), &arena);
+    inner.set_style(ArrayStyle::Inline);
+    inner.set_expanded();
+
+    let mut outer = Array::default();
+    outer.push(Item::from("x"), &arena);
+    outer.push(inner.into_item(), &arena);
+    outer.push(Item::from("y"), &arena);
+
+    let mut root = Table::default();
+    root.insert(Key::anon("v"), outer.into_item(), &arena);
+    let s = emit_with_indent(&mut root, Indent::Spaces(2));
+    assert_eq!(
+        s,
+        "\
+v = [
+  \"x\",
+  [
+    \"a\",
+    \"b\",
+    \"c\",
+  ],
+  \"y\",
+]
+"
+    );
+}
+
+#[test]
+fn detect_indent_from_source() {
+    use crate::emit::Indent;
+    let arena = Arena::new();
+
+    let src2 = "arr = [\n  1,\n  2,\n  3,\n]\n";
+    let doc2 = parse(src2, &arena).unwrap();
+    let f = crate::Formatting::of(&doc2);
+    assert_eq!(f.indent, Indent::Spaces(2));
+
+    let src4 = "arr = [\n    1,\n    2,\n]\n";
+    let doc4 = parse(src4, &arena).unwrap();
+    let f = crate::Formatting::of(&doc4);
+    assert_eq!(f.indent, Indent::Spaces(4));
+
+    let src_tab = "arr = [\n\t1,\n\t2,\n]\n";
+    let doc_tab = parse(src_tab, &arena).unwrap();
+    let f = crate::Formatting::of(&doc_tab);
+    assert_eq!(f.indent, Indent::Tab);
+
+    let src_none = "key = \"value\"\n";
+    let doc_none = parse(src_none, &arena).unwrap();
+    let f = crate::Formatting::of(&doc_none);
+    assert_eq!(f.indent, Indent::Spaces(4));
+}
+
+#[test]
+fn formatting_indent_override() {
+    use crate::emit::Indent;
+    let arena = Arena::new();
+    let src = "arr = [\n  1,\n  2,\n]\n";
+    let doc = parse(src, &arena).unwrap();
+    let f = crate::Formatting::of(&doc).indent(Indent::Tab);
+    assert_eq!(f.indent, Indent::Tab);
 }

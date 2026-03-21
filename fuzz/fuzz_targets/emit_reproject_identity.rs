@@ -57,6 +57,7 @@ fuzz_target!(|data: &[u8]| -> Corpus {
         projected_source_text: text,
         projected_source_items: &items,
         reprojected_order: false,
+        ..Default::default()
     };
     let mut buf = Vec::new();
     toml_spanner::emit_with_config(norm, &config, &mut buf);
@@ -88,6 +89,7 @@ fuzz_target!(|data: &[u8]| -> Corpus {
             projected_source_text: output,
             projected_source_items: &items2,
             reprojected_order: false,
+        ..Default::default()
         };
         let mut buf2 = Vec::new();
         toml_spanner::emit_with_config(norm2, &cfg2, &mut buf2);

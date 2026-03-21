@@ -429,6 +429,7 @@ pub fn check_insert_preservation(
         projected_source_text: source_text,
         projected_source_items: &items,
         reprojected_order: false,
+        ..Default::default()
     };
     let mut buf2 = Vec::new();
     toml_spanner::emit_with_config(norm, &config, &mut buf2);

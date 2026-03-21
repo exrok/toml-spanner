@@ -154,9 +154,11 @@ pub use emit::reproject;
 #[cfg(all(feature = "to-toml", not(fuzzing)))]
 use emit::reproject;
 #[cfg(all(feature = "to-toml", fuzzing))]
-pub use emit::{EmitConfig, NormalizedTable, emit, emit_with_config};
+pub use emit::{EmitConfig, NormalizedTable, emit_with_config};
 #[cfg(all(feature = "to-toml", not(fuzzing)))]
-use emit::{EmitConfig, emit, emit_with_config};
+use emit::{EmitConfig, emit_with_config};
+#[cfg(feature = "to-toml")]
+pub use emit::{Indent, emit};
 pub use error::{Error, ErrorKind, TomlPath};
 pub use item::array::Array;
 pub use item::table::Table;
@@ -264,26 +266,53 @@ pub fn to_string(value: &dyn ToToml) -> Result<String, ToTomlError> {
 /// assert!(output.contains("key = \"updated\""));
 /// ```
 #[cfg(feature = "to-toml")]
-#[derive(Default)]
 pub struct Formatting<'a> {
     formatting_from: Option<&'a Document<'a>>,
+    indent: Indent,
+}
+
+#[cfg(feature = "to-toml")]
+impl Default for Formatting<'_> {
+    fn default() -> Self {
+        Self {
+            formatting_from: None,
+            indent: Indent::default(),
+        }
+    }
 }
 
 #[cfg(feature = "to-toml")]
 impl<'a> Formatting<'a> {
+    /// Creates a formatting template from a parsed document.
+    ///
+    /// Indent style is auto-detected from the source text. If no
+    /// indentation is found, defaults to 4 spaces.
     pub fn of(doc: &'a Document<'a>) -> Self {
+        let indent = detect_indent(doc.ctx.source().as_bytes());
         Self {
             formatting_from: Some(doc),
+            indent,
         }
     }
+
     /// Sets a parsed [`Document`] as the formatting template.
     ///
     /// When provided, the emitter reprojects structural styles, key ordering,
     /// and source positions from the template onto the serialized output. This
     /// preserves comments, blank lines, and layout from the original document
     /// where possible.
+    ///
+    /// Indent style is auto-detected from the source text.
     pub fn with_formatting_of(mut self, doc: &'a Document<'a>) -> Self {
         self.formatting_from = Some(doc);
+        self.indent = detect_indent(doc.ctx.source().as_bytes());
+        self
+    }
+
+    /// Sets the indentation style for expanded inline arrays.
+    /// Overrides auto-detection.
+    pub fn indent(mut self, indent: Indent) -> Self {
+        self.indent = indent;
         self
     }
 }
@@ -310,6 +339,7 @@ pub fn to_string_with(
             message: "Top-level item must be a table".into(),
         });
     };
+    let indent = formatting.indent;
     let mut items = Vec::new();
     let mut buffer = Vec::new();
     if let Some(formatting_from) = formatting.formatting_from {
@@ -320,16 +350,101 @@ pub fn to_string_with(
                 projected_source_items: &items,
                 projected_source_text: formatting_from.ctx.source(),
                 reprojected_order: true,
+                indent,
             },
             &mut buffer,
         );
     } else {
-        emit(table.normalize(), &mut buffer);
+        emit_with_config(
+            table.normalize(),
+            &EmitConfig {
+                indent,
+                ..EmitConfig::default()
+            },
+            &mut buffer,
+        );
     }
     match String::from_utf8(buffer) {
         Ok(s) => Ok(s),
         Err(_) => Err(ToTomlError {
             message: "Failed to convert emitted bytes into a UTF-8 string".into(),
         }),
+    }
+}
+
+/// Detects the indent style used in TOML source text by finding the first
+/// indented line inside a multiline bracket (`[` or `{`). Returns
+/// `Indent::Spaces(4)` if no indentation pattern is found.
+#[cfg(feature = "to-toml")]
+fn detect_indent(src: &[u8]) -> Indent {
+    let mut depth: u32 = 0;
+    let mut i = 0;
+    while i < src.len() {
+        match src[i] {
+            b'[' | b'{' => depth += 1,
+            b']' | b'}' => depth = depth.saturating_sub(1),
+            b'"' | b'\'' => {
+                i = skip_string(src, i);
+                continue;
+            }
+            b'#' => {
+                while i < src.len() && src[i] != b'\n' {
+                    i += 1;
+                }
+                continue;
+            }
+            b'\n' if depth > 0 => {
+                i += 1;
+                if i < src.len() && src[i] == b'\t' {
+                    return Indent::Tab;
+                }
+                let mut spaces = 0u8;
+                while i < src.len() && src[i] == b' ' {
+                    spaces = spaces.saturating_add(1);
+                    i += 1;
+                }
+                if spaces > 0 && i < src.len() && src[i] != b'\n' && src[i] != b']' && src[i] != b'}' {
+                    return Indent::Spaces(spaces);
+                }
+                continue;
+            }
+            _ => {}
+        }
+        i += 1;
+    }
+    Indent::default()
+}
+
+#[cfg(feature = "to-toml")]
+fn skip_string(src: &[u8], start: usize) -> usize {
+    let delim = src[start];
+    let mut i = start + 1;
+    let multiline = i + 1 < src.len() && src[i] == delim && src[i + 1] == delim;
+    if multiline {
+        i += 2;
+        let end_seq = [delim, delim, delim];
+        while i + 2 < src.len() {
+            if src[i] == b'\\' && delim == b'"' {
+                i += 2;
+                continue;
+            }
+            if src[i..i + 3] == end_seq {
+                return i + 3;
+            }
+            i += 1;
+        }
+        src.len()
+    } else {
+        while i < src.len() {
+            if src[i] == b'\\' && delim == b'"' {
+                i += 2;
+                continue;
+            }
+            if src[i] == delim || src[i] == b'\n' {
+                return i + 1;
+            }
+            i += 1;
+        }
+        src.len()
     }
 }

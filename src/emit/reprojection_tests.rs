@@ -706,6 +706,7 @@ fn emit_with_projection(input: &str) -> String {
         projected_source_text: input,
         projected_source_items: &items,
         reprojected_order: false,
+        ..EmitConfig::default()
     };
     let mut buf = Vec::new();
     emit::emit_with_config(normalized, &config, &mut buf);
@@ -732,6 +733,7 @@ fn emit_projected_after_mutation(
         projected_source_text: input,
         projected_source_items: &items,
         reprojected_order: false,
+        ..EmitConfig::default()
     };
     let mut buf = Vec::new();
     emit::emit_with_config(normalized, &config, &mut buf);
@@ -1032,6 +1034,7 @@ fn assert_reproject_edit(src_text: &str, dest_text: &str) {
         projected_source_text: src_text,
         projected_source_items: &items,
         reprojected_order: false,
+        ..EmitConfig::default()
     };
     let mut buf = Vec::new();
     emit::emit_with_config(norm, &config, &mut buf);
@@ -1105,6 +1108,7 @@ fn reproject_edit_output(src_text: &str, dest_text: &str) -> String {
         projected_source_text: src_text,
         projected_source_items: &items,
         reprojected_order: false,
+        ..EmitConfig::default()
     };
     let mut buf = Vec::new();
     emit::emit_with_config(norm, &config, &mut buf);
@@ -1137,6 +1141,7 @@ fn emit_with_reorder(input: &str) -> String {
         projected_source_text: input,
         projected_source_items: &items,
         reprojected_order: true,
+        ..EmitConfig::default()
     };
     let mut buf = Vec::new();
     emit::emit_with_config(normalized, &config, &mut buf);
@@ -1158,6 +1163,7 @@ fn reproject_edit_reorder(src_text: &str, dest_text: &str) -> String {
         projected_source_text: src_text,
         projected_source_items: &items,
         reprojected_order: true,
+        ..EmitConfig::default()
     };
     let mut buf = Vec::new();
     emit::emit_with_config(norm, &config, &mut buf);
@@ -1200,6 +1206,7 @@ fn run_edit_ordered(src_text: &str, dest_text: &str) {
         projected_source_text: src_text,
         projected_source_items: &items,
         reprojected_order: true,
+        ..EmitConfig::default()
     };
     let mut buf = Vec::new();
     emit::emit_with_config(norm, &config, &mut buf);
@@ -1259,6 +1266,7 @@ fn run_edit_ordered(src_text: &str, dest_text: &str) {
         projected_source_text: &output,
         projected_source_items: &items2,
         reprojected_order: true,
+        ..EmitConfig::default()
     };
     let mut buf2 = Vec::new();
     emit::emit_with_config(norm2, &config2, &mut buf2);
@@ -1390,6 +1398,7 @@ fn assert_reproject_exact(source: &str, modified: &str, expected: &str) {
         projected_source_text: source,
         projected_source_items: &items,
         reprojected_order: true,
+        ..EmitConfig::default()
     };
     let mut buf = Vec::new();
     emit::emit_with_config(norm, &config, &mut buf);
@@ -1446,6 +1455,7 @@ fn ignore_source_order_skips_reordering() {
         projected_source_text: src_text,
         projected_source_items: &items,
         reprojected_order: true,
+        ..EmitConfig::default()
     };
     let mut buf = Vec::new();
     emit::emit_with_config(norm, &config, &mut buf);
@@ -1577,6 +1587,7 @@ fn to_toml(reference: &Document<'_>, text: &str, mut table: Table<'_>) -> String
         projected_source_text: text,
         projected_source_items: &buf,
         reprojected_order: true,
+        ..EmitConfig::default()
     };
     let mut output = Vec::new();
     emit_with_config(table.normalize(), &emit_config, &mut output);

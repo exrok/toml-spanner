@@ -15,6 +15,10 @@ pub(crate) const IGNORE_SOURCE_STYLE_BIT: u32 = 1 << 28;
 /// its original source position in the parent array, without affecting
 /// source-ordering of the element's own children.
 pub(crate) const ARRAY_REORDERED_BIT: u32 = 1 << 27;
+/// Bit 25 of `end_and_flag`: when set in format-hints mode, indicates that
+/// an inline array should be emitted in multiline format with one element
+/// per line and trailing commas.
+pub(crate) const EXPANDED_BIT: u32 = 1 << 25;
 
 impl ItemMetadata {
     /// Returns the projected index (bits 3-31 of `start_and_tag`).
@@ -100,6 +104,21 @@ impl ItemMetadata {
         self.end_and_flag & (HINTS_BIT | IGNORE_SOURCE_STYLE_BIT)
             == (HINTS_BIT | IGNORE_SOURCE_STYLE_BIT)
     }
+
+    #[inline]
+    pub(crate) fn set_expanded(&mut self) {
+        self.end_and_flag |= HINTS_BIT | EXPANDED_BIT;
+    }
+
+    #[inline]
+    pub(crate) fn is_expanded(&self) -> bool {
+        self.end_and_flag & (HINTS_BIT | EXPANDED_BIT) == (HINTS_BIT | EXPANDED_BIT)
+    }
+
+    #[inline]
+    pub(crate) fn clear_expanded(&mut self) {
+        self.end_and_flag &= !EXPANDED_BIT;
+    }
 }
 
 impl<'de> Item<'de> {
@@ -176,5 +195,22 @@ impl<'de> Array<'de> {
     #[must_use]
     pub fn is_auto_style(&self) -> bool {
         self.meta.is_auto_style()
+    }
+
+    /// Returns `true` if this inline array should be emitted in multiline
+    /// format with one element per line.
+    #[must_use]
+    pub fn is_expanded(&self) -> bool {
+        self.meta.is_expanded()
+    }
+
+    /// Marks this inline array for multiline emission.
+    pub fn set_expanded(&mut self) {
+        self.meta.set_expanded();
+    }
+
+    /// Clears the multiline emission hint.
+    pub fn clear_expanded(&mut self) {
+        self.meta.clear_expanded();
     }
 }
