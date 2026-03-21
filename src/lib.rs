@@ -286,7 +286,7 @@ impl<'a> Formatting<'a> {
     /// Indent style is auto-detected from the source text. If no
     /// indentation is found, defaults to 4 spaces.
     pub fn preserved_from(doc: &'a Document<'a>) -> Self {
-        let indent = detect_indent(doc.ctx.source().as_bytes());
+        let indent = doc.detect_indent();
         Self {
             formatting_from: Some(doc),
             indent,
@@ -392,84 +392,3 @@ impl<'a> Formatting<'a> {
     }
 }
 
-/// Detects the indent style used in TOML source text by finding the first
-/// indented line inside a multiline bracket (`[` or `{`). Returns
-/// `Indent::Spaces(4)` if no indentation pattern is found.
-#[cfg(feature = "to-toml")]
-fn detect_indent(src: &[u8]) -> Indent {
-    let mut depth: u32 = 0;
-    let mut i = 0;
-    while i < src.len() {
-        match src[i] {
-            b'[' | b'{' => depth += 1,
-            b']' | b'}' => depth = depth.saturating_sub(1),
-            b'"' | b'\'' => {
-                i = skip_string(src, i);
-                continue;
-            }
-            b'#' => {
-                while i < src.len() && src[i] != b'\n' {
-                    i += 1;
-                }
-                continue;
-            }
-            b'\n' if depth > 0 => {
-                i += 1;
-                if i < src.len() && src[i] == b'\t' {
-                    return Indent::Tab;
-                }
-                let mut spaces = 0u8;
-                while i < src.len() && src[i] == b' ' {
-                    spaces = spaces.saturating_add(1);
-                    i += 1;
-                }
-                if spaces > 0
-                    && i < src.len()
-                    && src[i] != b'\n'
-                    && src[i] != b']'
-                    && src[i] != b'}'
-                {
-                    return Indent::Spaces(spaces);
-                }
-                continue;
-            }
-            _ => {}
-        }
-        i += 1;
-    }
-    Indent::default()
-}
-
-#[cfg(feature = "to-toml")]
-fn skip_string(src: &[u8], start: usize) -> usize {
-    let delim = src[start];
-    let mut i = start + 1;
-    let multiline = i + 1 < src.len() && src[i] == delim && src[i + 1] == delim;
-    if multiline {
-        i += 2;
-        let end_seq = [delim, delim, delim];
-        while i + 2 < src.len() {
-            if src[i] == b'\\' && delim == b'"' {
-                i += 2;
-                continue;
-            }
-            if src[i..i + 3] == end_seq {
-                return i + 3;
-            }
-            i += 1;
-        }
-        src.len()
-    } else {
-        while i < src.len() {
-            if src[i] == b'\\' && delim == b'"' {
-                i += 2;
-                continue;
-            }
-            if src[i] == delim || src[i] == b'\n' {
-                return i + 1;
-            }
-            i += 1;
-        }
-        src.len()
-    }
-}

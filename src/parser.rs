@@ -2082,6 +2082,19 @@ impl<'de> Document<'de> {
         // `to-toml` implies `from-toml`, so ctx is always available here.
         &self.ctx.index
     }
+
+    /// Detects the indent style from parsed item spans.
+    ///
+    /// Finds the first array element or inline table entry on its own
+    /// line and measures the preceding whitespace.
+    #[cfg(feature = "to-toml")]
+    pub(crate) fn detect_indent(&self) -> crate::emit::Indent {
+        let src = self.ctx.source().as_bytes();
+        if let Some(indent) = detect_indent_in_table(&self.table, src) {
+            return indent;
+        }
+        crate::emit::Indent::default()
+    }
 }
 
 #[cfg(feature = "from-toml")]
@@ -2279,4 +2292,76 @@ fn byte_describe(b: u8) -> &'static &'static str {
         _ if is_keylike_byte(b) => &"an identifier",
         _ => &"a character",
     }
+}
+
+#[cfg(feature = "to-toml")]
+fn detect_indent_in_table(table: &Table<'_>, src: &[u8]) -> Option<crate::emit::Indent> {
+    use crate::item::{ArrayStyle, TableStyle, Value};
+    for (_, item) in table {
+        match item.value() {
+            Value::Array(arr) => {
+                if arr.style() == ArrayStyle::Inline {
+                    for elem in arr {
+                        let span = elem.span();
+                        if !span.is_empty() {
+                            if let Some(indent) = indent_from_span(src, span.start as usize) {
+                                return Some(indent);
+                            }
+                        }
+                    }
+                }
+                for elem in arr {
+                    if let Some(sub) = elem.as_table() {
+                        if let Some(indent) = detect_indent_in_table(sub, src) {
+                            return Some(indent);
+                        }
+                    }
+                }
+            }
+            Value::Table(sub) => {
+                if sub.style() == TableStyle::Inline {
+                    for (key, _) in sub {
+                        if !key.span.is_empty() {
+                            if let Some(indent) = indent_from_span(src, key.span.start as usize) {
+                                return Some(indent);
+                            }
+                        }
+                    }
+                }
+                if let Some(indent) = detect_indent_in_table(sub, src) {
+                    return Some(indent);
+                }
+            }
+            _ => (),
+        }
+    }
+    None
+}
+
+#[cfg(feature = "to-toml")]
+fn indent_from_span(src: &[u8], pos: usize) -> Option<crate::emit::Indent> {
+    let mut i = pos;
+    if i >= src.len() {
+        return None;
+    }
+    while i > 0 {
+        i -= 1;
+        match src[i] {
+            b' ' => continue,
+            b'\t' => return Some(crate::emit::Indent::Tab),
+            b'\n' => {
+                let spaces = (pos - i - 1) as u8;
+                if spaces > 0 {
+                    return Some(crate::emit::Indent::Spaces(if spaces > 8 {
+                        8
+                    } else {
+                        spaces as u8
+                    }));
+                }
+                return None;
+            }
+            _ => return None,
+        }
+    }
+    None
 }
