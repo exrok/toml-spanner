@@ -9,6 +9,7 @@ mod tests;
 
 pub(crate) use normalization::NormalizedTable;
 pub(crate) use reprojection::reproject;
+pub(crate) use reprojection::reproject_with_span_identity;
 
 use crate::Array;
 use crate::Table;

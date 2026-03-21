@@ -97,6 +97,20 @@ impl<'de> InternalArray<'de> {
         }
     }
 
+    pub(crate) fn remove(&mut self, index: usize) -> Item<'de> {
+        assert!(index < self.len as usize, "index out of bounds");
+        let len = self.len as usize;
+        // SAFETY: index < len is asserted, so ptr.add(index) is in bounds.
+        // copy within the same allocation shifts elements left by one.
+        unsafe {
+            let ptr = self.ptr.as_ptr().add(index);
+            let removed = ptr.read();
+            std::ptr::copy(ptr.add(1), ptr, len - index - 1);
+            self.len -= 1;
+            removed
+        }
+    }
+
     #[inline]
     pub(crate) fn pop(&mut self) -> Option<Item<'de>> {
         if self.len == 0 {
@@ -408,6 +422,17 @@ impl<'de> Array<'de> {
     #[inline]
     pub fn get_mut(&mut self, index: usize) -> Option<&mut Item<'de>> {
         self.value.get_mut(index)
+    }
+
+    /// Removes and returns the element at `index`, shifting subsequent
+    /// elements to the left.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `index` is out of bounds.
+    #[inline]
+    pub fn remove(&mut self, index: usize) -> Item<'de> {
+        self.value.remove(index)
     }
 
     /// Removes and returns the last element, or `None` if empty.

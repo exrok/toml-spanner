@@ -3,7 +3,7 @@ fn main() {
     if args.len() < 3 {
         eprintln!("usage: fuzz <target> <artifact_path>");
         eprintln!(
-            "targets: normalize, emit_roundtrip, emit_reproject_identity, emit_reproject_edit, emit_reproject_reorder, emit_reproject_exact, parse_recoverable"
+            "targets: normalize, emit_roundtrip, emit_reproject_identity, emit_reproject_edit, emit_reproject_reorder, emit_reproject_reorder_span_identity, emit_reproject_exact, parse_recoverable"
         );
         std::process::exit(1);
     }
@@ -16,12 +16,13 @@ fn main() {
         "emit_reproject_identity" => run_reproject_identity(path),
         "emit_reproject_edit" => run_reproject_edit(path),
         "emit_reproject_reorder" => run_reproject_reorder(path),
+        "emit_reproject_reorder_span_identity" => run_reproject_reorder_span_identity(path),
         "emit_reproject_exact" => run_reproject_exact(path),
         "parse_recoverable" => fuzz::recoverable::run_cli(path),
         _ => {
             eprintln!("unknown target: {target}");
             eprintln!(
-                "targets: normalize, emit_roundtrip, emit_reproject_identity, emit_reproject_edit, emit_reproject_reorder, emit_reproject_exact, parse_recoverable"
+                "targets: normalize, emit_roundtrip, emit_reproject_identity, emit_reproject_edit, emit_reproject_reorder, emit_reproject_reorder_span_identity, emit_reproject_exact, parse_recoverable"
             );
             std::process::exit(1);
         }
@@ -687,6 +688,157 @@ fn check_order_preserved(
             std::process::exit(1);
         }
     }
+}
+
+// ── reproject_reorder_span_identity ──
+
+fn run_reproject_reorder_span_identity(path: &str) {
+    let data = std::fs::read(path).expect("failed to read artifact");
+
+    println!("artifact: {path}");
+    println!("bytes ({len}): {data:?}\n", len = data.len());
+
+    if data.len() < 4 {
+        println!("artifact too short (< 4 bytes), fuzzer would reject");
+        return;
+    }
+
+    let split = data.len() * 3 / 4;
+    let gen_data = &data[..split];
+    let mut_data = &data[split..];
+
+    let mut buffer = String::new();
+    fuzz::gen_toml::random_roundtrip_toml(&mut buffer, gen_data);
+    if buffer.is_empty() {
+        println!("empty generated text, fuzzer would reject");
+        return;
+    }
+    let text = buffer.clone();
+
+    println!(
+        "── source text ({} bytes) ──\n{text:?}\n",
+        text.len()
+    );
+
+    let arena = toml_spanner::Arena::new();
+    let doc = match toml_spanner::parse(&text, &arena) {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("source does not parse: {e:?}");
+            std::process::exit(1);
+        }
+    };
+    fuzz::gen_tree::print_table(doc.table(), "parsed source");
+    println!();
+
+    let mut table = doc.table().clone_in(&arena);
+
+    let mut g = fuzz::Gen::new(mut_data);
+    let mutated = fuzz::gen_toml::mutate_arrays(&mut table, &mut g);
+    if !mutated {
+        println!("no mutations applied, fuzzer would reject");
+        return;
+    }
+
+    fuzz::gen_tree::print_table(&table, "mutated table");
+    println!();
+
+    let ref_table = table.clone_in(&arena);
+
+    // Collect projected source key positions.
+    let mut src_positions: Vec<(Vec<String>, u32)> = Vec::new();
+    collect_table_key_positions(doc.table(), &mut Vec::new(), &mut src_positions);
+    println!("── source key positions ({}) ──", src_positions.len());
+    for (path, pos) in &src_positions {
+        println!("  {} @ {pos}", path.join("."));
+    }
+    println!();
+
+    // Reproject with span identity.
+    let buf = toml_spanner::Formatting::of(&doc)
+        .with_span_projection_identity()
+        .format_table_to_bytes(table, &arena);
+
+    // Invariant 1: valid UTF-8.
+    let output = match std::str::from_utf8(&buf) {
+        Ok(s) => s.to_owned(),
+        Err(e) => {
+            eprintln!(
+                "FAILURE: emit produced invalid UTF-8: {e}\n\
+                 raw bytes: {buf:?}"
+            );
+            std::process::exit(1);
+        }
+    };
+
+    println!("── emit output ({} bytes) ──\n{output:?}\n", output.len());
+
+    // Invariant 2: parses as valid TOML.
+    let out_root = match toml_spanner::parse(&output, &arena) {
+        Ok(r) => {
+            fuzz::gen_tree::print_table(r.table(), "re-parsed output");
+            println!();
+            r
+        }
+        Err(e) => {
+            eprintln!(
+                "FAILURE: emit output does not parse: {e:?}\n\
+                 source:\n{text:?}\n\
+                 output:\n{output:?}"
+            );
+            std::process::exit(1);
+        }
+    };
+
+    // Invariant 3: semantically equal to mutated table.
+    if ref_table.as_item() != out_root.table().as_item() {
+        eprintln!(
+            "FAILURE: emit output differs semantically from mutated table!\n\
+             source:\n{text:?}\n\
+             output:\n{output:?}"
+        );
+        std::process::exit(1);
+    }
+    println!("── items equal: OK ──");
+
+    // Invariant 4: idempotent.
+    let arena_s2 = toml_spanner::Arena::new();
+    let src2 = toml_spanner::parse(&output, &arena_s2).unwrap();
+    let dest2 = src2.table().clone_in(&arena_s2);
+    let buf2 = toml_spanner::Formatting::of(&src2)
+        .with_span_projection_identity()
+        .format_table_to_bytes(dest2, &arena_s2);
+
+    if buf == buf2 {
+        println!("── idempotency: OK ──");
+    } else {
+        let output2 = String::from_utf8_lossy(&buf2);
+        eprintln!(
+            "FAILURE: not idempotent!\n\
+             source:\n{text:?}\n\
+             first:\n{output:?}\n\
+             second:\n{output2:?}"
+        );
+        std::process::exit(1);
+    }
+
+    // Invariant 5: projected entries preserve source-relative ordering.
+    let mut out_positions: Vec<(Vec<String>, u32)> = Vec::new();
+    collect_table_key_positions(out_root.table(), &mut Vec::new(), &mut out_positions);
+    println!("── output key positions ({}) ──", out_positions.len());
+    for (path, pos) in &out_positions {
+        println!("  {} @ {pos}", path.join("."));
+    }
+    println!();
+
+    check_order_preserved(
+        &src_positions,
+        &out_positions,
+        &text,
+        &text,
+        &output,
+    );
+    println!("── order_preserved: OK ──");
 }
 
 // ── reproject_exact ──

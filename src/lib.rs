@@ -150,11 +150,11 @@ pub use de::FromTomlError;
 #[cfg(feature = "from-toml")]
 pub use de::{Context, FromFlattened, FromToml, TableHelper};
 #[cfg(feature = "to-toml")]
-use emit::reproject;
+pub use emit::Indent;
+#[cfg(feature = "to-toml")]
+use emit::{reproject, reproject_with_span_identity};
 #[cfg(feature = "to-toml")]
 use emit::{EmitConfig, emit_with_config};
-#[cfg(feature = "to-toml")]
-pub use emit::Indent;
 pub use error::{Error, ErrorKind, TomlPath};
 pub use item::array::Array;
 pub use item::table::Table;
@@ -265,6 +265,7 @@ pub fn to_string(value: &dyn ToToml) -> Result<String, ToTomlError> {
 pub struct Formatting<'a> {
     formatting_from: Option<&'a Document<'a>>,
     indent: Indent,
+    span_projection_identity: bool,
 }
 
 #[cfg(feature = "to-toml")]
@@ -273,6 +274,7 @@ impl Default for Formatting<'_> {
         Self {
             formatting_from: None,
             indent: Indent::default(),
+            span_projection_identity: false,
         }
     }
 }
@@ -288,7 +290,34 @@ impl<'a> Formatting<'a> {
         Self {
             formatting_from: Some(doc),
             indent,
+            span_projection_identity: false,
         }
+    }
+
+    /// Enables span projection identity for array reprojection.
+    ///
+    /// By default, no assumptions are made about the spans of the format
+    /// target. With span projection identity enabled, spans of the target
+    /// are assumed to correspond to spans of the formatting reference.
+    /// This allows precise identity tracking of array elements through
+    /// reordering, removal, and deep mutation, avoiding the best-effort
+    /// content-based matching used by default.
+    ///
+    /// This is intended for use with the lower-level [`Table`] mutation
+    /// APIs where the target was produced by parsing the same text as
+    /// the formatting reference. When round-tripping through
+    /// [`FromToml`] and [`ToToml`], spans are not preserved and this
+    /// flag should not be used.
+    ///
+    /// Breaking the span correspondence assumption leads to unspecified
+    /// behavior, including the possibility of panics or invalid TOML
+    /// generation.
+    ///
+    /// [`FromToml`]: crate::FromToml
+    /// [`ToToml`]: crate::ToToml
+    pub fn with_span_projection_identity(mut self) -> Self {
+        self.span_projection_identity = true;
+        self
     }
 
     /// Sets the indentation style for expanded inline arrays.
@@ -329,15 +358,15 @@ impl<'a> Formatting<'a> {
     /// (when a source document is set) reprojected before emission.
     /// The provided arena is used for temporary allocations during
     /// emission.
-    pub fn format_table_to_bytes(
-        &self,
-        mut table: Table<'_>,
-        arena: &Arena,
-    ) -> Vec<u8> {
+    pub fn format_table_to_bytes(&self, mut table: Table<'_>, arena: &Arena) -> Vec<u8> {
         let mut items = Vec::new();
         let mut buffer = Vec::new();
         if let Some(formatting_from) = self.formatting_from {
-            reproject(formatting_from, &mut table, &mut items);
+            if self.span_projection_identity {
+                reproject_with_span_identity(formatting_from, &mut table, &mut items);
+            } else {
+                reproject(formatting_from, &mut table, &mut items);
+            }
             emit_with_config(
                 table.normalize(),
                 &EmitConfig {
@@ -394,7 +423,12 @@ fn detect_indent(src: &[u8]) -> Indent {
                     spaces = spaces.saturating_add(1);
                     i += 1;
                 }
-                if spaces > 0 && i < src.len() && src[i] != b'\n' && src[i] != b']' && src[i] != b'}' {
+                if spaces > 0
+                    && i < src.len()
+                    && src[i] != b'\n'
+                    && src[i] != b']'
+                    && src[i] != b'}'
+                {
                     return Indent::Spaces(spaces);
                 }
                 continue;

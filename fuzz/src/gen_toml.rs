@@ -1000,3 +1000,109 @@ pub fn random_double_toml(buffer: &mut String, random: &[u8]) -> usize {
     }
     output_split
 }
+
+/// Applies random array mutations to a parsed table. Returns true if at
+/// least one mutation was applied.
+///
+/// Operations (selected by random bytes):
+///   0 = reverse an array
+///   1 = swap two elements
+///   2 = remove an element
+///   3 = sort by kind tag (stable, deterministic)
+///   4 = mutate a scalar inside an array element
+pub fn mutate_arrays(table: &mut toml_spanner::Table<'_>, g: &mut Gen<'_>) -> bool {
+    let mut arrays: Vec<*mut toml_spanner::Array<'_>> = Vec::new();
+    collect_arrays(table, &mut arrays);
+    if arrays.is_empty() {
+        return false;
+    }
+
+    let n_ops = (g.next() % 4) as usize + 1;
+    let mut applied = false;
+    for _ in 0..n_ops {
+        if arrays.is_empty() {
+            break;
+        }
+        let idx = g.next() as usize % arrays.len();
+        // SAFETY: pointers come from live mutable references into the table
+        // tree. Each iteration picks one array at a time and the mutations
+        // don't invalidate other array pointers (they modify contents, not
+        // the table structure that owns them).
+        let arr = unsafe { &mut *arrays[idx] };
+        if arr.len() == 0 {
+            continue;
+        }
+        let op = g.next() % 5;
+        match op {
+            0 => {
+                arr.as_mut_slice().reverse();
+                applied = true;
+            }
+            1 => {
+                if arr.len() >= 2 {
+                    let a = g.next() as usize % arr.len();
+                    let b = g.next() as usize % arr.len();
+                    if a != b {
+                        arr.as_mut_slice().swap(a, b);
+                        applied = true;
+                    }
+                }
+            }
+            2 => {
+                if arr.len() >= 2 {
+                    let i = g.next() as usize % arr.len();
+                    arr.remove(i);
+                    applied = true;
+                }
+            }
+            3 => {
+                arr.as_mut_slice()
+                    .sort_by_key(|item| item.kind() as u8);
+                applied = true;
+            }
+            _ => {
+                let i = g.next() as usize % arr.len();
+                let elem = &mut arr.as_mut_slice()[i];
+                if let Some(t) = elem.as_table_mut() {
+                    for (_, val) in t.entries_mut() {
+                        if let Some(v) = val.as_i64() {
+                            *val = toml_spanner::Item::from(v ^ 1);
+                            applied = true;
+                            break;
+                        }
+                        if let Some(v) = val.as_bool() {
+                            *val = toml_spanner::Item::from(!v);
+                            applied = true;
+                            break;
+                        }
+                    }
+                } else if let Some(v) = elem.as_i64() {
+                    *elem = toml_spanner::Item::from(v ^ 1);
+                    applied = true;
+                } else if let Some(v) = elem.as_bool() {
+                    *elem = toml_spanner::Item::from(!v);
+                    applied = true;
+                }
+            }
+        }
+    }
+    applied
+}
+
+fn collect_arrays<'a, 'de>(
+    table: &'a mut toml_spanner::Table<'de>,
+    out: &mut Vec<*mut toml_spanner::Array<'de>>,
+) {
+    for (_, item) in table.entries_mut() {
+        if let Some(arr) = item.as_array_mut() {
+            out.push(arr as *mut _);
+            for elem in arr.as_mut_slice() {
+                if let Some(sub) = elem.as_table_mut() {
+                    collect_arrays(sub, out);
+                }
+            }
+        } else if let Some(sub) = item.as_table_mut() {
+            collect_arrays(sub, out);
+        }
+    }
+}

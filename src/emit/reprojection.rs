@@ -45,9 +45,26 @@ pub fn reproject<'de>(
     dest: &mut Table<'_>,
     items: &mut Vec<&'de Item<'de>>,
 ) {
+    reproject_with_options(src, dest, items, false);
+}
+
+pub fn reproject_with_span_identity<'de>(
+    src: &'de Document<'de>,
+    dest: &mut Table<'_>,
+    items: &mut Vec<&'de Item<'de>>,
+) {
+    reproject_with_options(src, dest, items, true);
+}
+
+fn reproject_with_options<'de>(
+    src: &'de Document<'de>,
+    dest: &mut Table<'_>,
+    items: &mut Vec<&'de Item<'de>>,
+    span_identity: bool,
+) {
     let index = src.table_index();
     let src_table = src.table();
-    reproject_table(index, src_table, dest, items);
+    reproject_table(index, src_table, dest, items, span_identity);
 }
 
 /// Returns `true` when the entire subtree is fully matched (same structure,
@@ -63,6 +80,7 @@ fn reproject_item<'de>(
     src: &'de Item<'de>,
     dest: &mut Item<'_>,
     items: &mut Vec<&'de Item<'de>>,
+    span_identity: bool,
 ) -> bool {
     let mut container_match = false;
     let full_match = match (src.value(), dest.value_mut()) {
@@ -73,11 +91,11 @@ fn reproject_item<'de>(
         (Value::DateTime(a), ValueMut::DateTime(b)) => a == b,
         (Value::Table(src_table), ValueMut::Table(dest_table)) => {
             container_match = true;
-            reproject_table(index, src_table, dest_table, items)
+            reproject_table(index, src_table, dest_table, items, span_identity)
         }
         (Value::Array(src_array), ValueMut::Array(dest_array)) => {
             container_match = true;
-            reproject_array(index, src_array, dest_array, items)
+            reproject_array(index, src_array, dest_array, items, span_identity)
         }
         _ => false,
     };
@@ -104,6 +122,7 @@ fn reproject_table<'de>(
     src: &'de Table<'de>,
     dest: &mut Table<'_>,
     items: &mut Vec<&'de Item<'de>>,
+    span_identity: bool,
 ) -> bool {
     let is_body_parent = matches!(dest.style(), TableStyle::Dotted | TableStyle::Inline);
     let ignore_style = dest.meta.ignore_source_style();
@@ -150,7 +169,7 @@ fn reproject_table<'de>(
         };
         dst_key.span = src_key.span;
 
-        let item_full = reproject_item(index, &src_item, dst_item, items);
+        let item_full = reproject_item(index, &src_item, dst_item, items, span_identity);
         if !item_full {
             all_matched = false;
         }
@@ -471,11 +490,17 @@ const INDEX_LIMIT: usize = 32;
 /// consumed elements within each group.
 ///
 /// Returns `true` when every dest element fully matched a src element.
+///
+/// When `span_identity` is true, matches by `span.start` (exact identity)
+/// instead of content hash (best-effort). Span identity avoids collision
+/// groups and `equal_items` verification since each parsed element has a
+/// unique byte offset.
 fn reproject_array<'de>(
     index: &TableIndex<'_>,
     src: &'de Array<'de>,
     dest: &mut Array<'_>,
     items: &mut Vec<&'de Item<'de>>,
+    span_identity: bool,
 ) -> bool {
     let n = src.len();
     let m = dest.len();
@@ -494,11 +519,21 @@ fn reproject_array<'de>(
         return reproject_array_positional(index, src, dest, items);
     }
 
+    // Content-based prefix optimization: skip leading elements that are
+    // identical in both arrays. Not applicable to span identity mode
+    // where modified elements must still match by position.
     let mut prefix = 0;
-
+    let mut prefix_all_full = true;
     while let (Some(src_head), Some(dst_head)) = (src.get(prefix), dest.get_mut(prefix)) {
-        if crate::item::equal_items(src_head, dst_head, Some(index)) {
-            reproject_item(index, src_head, dst_head, items);
+        let same = if span_identity {
+            src_head.span() == dst_head.span()
+        } else {
+            crate::item::equal_items(src_head, dst_head, Some(index))
+        };
+        if same {
+            if !reproject_item(index, src_head, dst_head, items, span_identity) {
+                prefix_all_full = false;
+            }
             prefix += 1;
         } else {
             break;
@@ -509,26 +544,39 @@ fn reproject_array<'de>(
     let n = src.len();
     let m = dest.len();
 
-    let build = foldhash::quality::RandomState::default();
-
-    // Pack (hash47, index16) into u64. Bit 63 reserved as matched flag.
+    // Pack (key, index) into u64. Bit 63 reserved as matched flag.
+    // Key is content hash (bits 62..16) or span.start depending on mode.
     let mut buf: Vec<u64> = Vec::with_capacity(n + m);
-    for (i, item) in src.iter().enumerate() {
-        let mut h = build.build_hasher();
-        hash_item(item, &mut h, &build);
-        buf.push(((maybe_force_collision(h.finish()) << HASH_SHIFT) & !MATCHED_BIT) | (i as u64));
-    }
-    for (i, item) in dest.iter().enumerate() {
-        let mut h = build.build_hasher();
-        hash_item(item, &mut h, &build);
-        buf.push(((maybe_force_collision(h.finish()) << HASH_SHIFT) & !MATCHED_BIT) | (i as u64));
+    if span_identity {
+        for (i, item) in src.iter().enumerate() {
+            buf.push(((item.span().start as u64) << HASH_SHIFT) | (i as u64));
+        }
+        for (i, item) in dest.iter().enumerate() {
+            buf.push(((item.span().start as u64) << HASH_SHIFT) | (i as u64));
+        }
+    } else {
+        let build = foldhash::quality::RandomState::default();
+        for (i, item) in src.iter().enumerate() {
+            let mut h = build.build_hasher();
+            hash_item(item, &mut h, &build);
+            buf.push(
+                ((maybe_force_collision(h.finish()) << HASH_SHIFT) & !MATCHED_BIT) | (i as u64),
+            );
+        }
+        for (i, item) in dest.iter().enumerate() {
+            let mut h = build.build_hasher();
+            hash_item(item, &mut h, &build);
+            buf.push(
+                ((maybe_force_collision(h.finish()) << HASH_SHIFT) & !MATCHED_BIT) | (i as u64),
+            );
+        }
     }
 
     let (src_sorted, dest_sorted) = buf.split_at_mut(n);
     src_sorted.sort_unstable();
     dest_sorted.sort_unstable();
 
-    // Merge-join on hash bits. Matched entries are tagged in-place:
+    // Merge-join on key bits. Matched entries are tagged in-place:
     //   src_sorted:  MATCHED_BIT is set on consumed entries.
     //   dest_sorted: rewritten to MATCHED_BIT | (src_idx << 16) | dest_idx.
     let mut matched_count: usize = 0;
@@ -541,8 +589,17 @@ fn reproject_array<'de>(
             si += 1;
         } else if sh > dh {
             di += 1;
+        } else if span_identity {
+            // Span identity: key equality is sufficient, no content check.
+            let src_idx = (src_sorted[si] & INDEX_MASK) as usize;
+            dest_sorted[di] =
+                MATCHED_BIT | ((src_idx as u64) << HASH_SHIFT) | (dest_sorted[di] & INDEX_MASK);
+            src_sorted[si] |= MATCHED_BIT;
+            matched_count += 1;
+            si += 1;
+            di += 1;
         } else {
-            // Collect the collision group with this hash.
+            // Content hash: collision group with equal_items verification.
             let group_hash = sh;
             let si_start = si;
             let di_start = di;
@@ -556,9 +613,6 @@ fn reproject_array<'de>(
             let group_n = si - si_start;
             let group_m = di - di_start;
 
-            // Fast prefix: within a collision group entries are sorted by
-            // original index, so leading elements that are equal 1:1 can be
-            // matched linearly before the quadratic cross-product remainder.
             let prefix_len = group_n.min(group_m);
             let mut prefix_matched = 0;
             for k in 0..prefix_len {
@@ -611,7 +665,6 @@ fn reproject_array<'de>(
     }
 
     // Build fallback list: compact unconsumed src indices, sort by index.
-    // Reuses the src_sorted buffer in-place.
     let mut fc = 0;
     for i in 0..n {
         if src_sorted[i] & MATCHED_BIT == 0 {
@@ -622,7 +675,6 @@ fn reproject_array<'de>(
     src_sorted[..fc].sort_unstable();
 
     // Detect reordering across ALL assignments (content matches + fallbacks).
-    // Array order is semantic, so any reordering must preserve dest order.
     let mut reordered = false;
     let mut prev_src = 0u64;
     let mut fbi = 0usize;
@@ -643,25 +695,21 @@ fn reproject_array<'de>(
         prev_src = si + 1;
     }
 
-    // Apply content matches and fallback.
+    // Apply matches and fallback.
     // Reordered arrays are not fully matched: verbatim source copy would
     // restore source order, changing semantic meaning.
-    let mut all_matched = matched_count == n && n == m && !reordered;
+    let mut all_matched = matched_count == n && n == m && !reordered && prefix_all_full;
     let mut fi = 0;
     for (di, entry) in dest_sorted.iter().enumerate() {
         let dest_entry = &mut dest[di];
         if *entry & MATCHED_BIT != 0 {
             let src_idx = ((*entry >> HASH_SHIFT) & INDEX_MASK) as usize;
-            if !reproject_item(index, &src[src_idx], dest_entry, items) {
-                // Currently unreachable: content-matched elements (verified
-                // by equal_items) always produce a full match in reproject_item.
-                // Kept as a defensive guard.
+            if !reproject_item(index, &src[src_idx], dest_entry, items, span_identity) {
                 all_matched = false;
             }
         } else if fi < fc {
-            // Fallback: pair with next unconsumed src for partial match.
             let src_idx = src_sorted[fi] as usize;
-            reproject_item(index, &src[src_idx], dest_entry, items);
+            reproject_item(index, &src[src_idx], dest_entry, items, span_identity);
             fi += 1;
             all_matched = false;
         } else {
@@ -691,7 +739,7 @@ fn reproject_array_positional<'de>(
     let mut i = 0;
     for dest_item in dest.as_mut_slice() {
         if let Some(src_item) = src.get(i) {
-            if !reproject_item(index, src_item, dest_item, items) {
+            if !reproject_item(index, src_item, dest_item, items, false) {
                 all_matched = false;
             }
         } else {

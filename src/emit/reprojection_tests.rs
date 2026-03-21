@@ -1824,3 +1824,199 @@ fn positional_fallback_large_array() {
         "positional fallback should preserve dest semantics"
     );
 }
+
+// ─── span_projection_identity tests ───
+//
+// These tests demonstrate cases where content-based array matching
+// produces wrong results but span-based matching (enabled by
+// Formatting::with_span_projection_identity) produces correct results.
+
+fn format_with_span_identity(source: &str, mutate: impl for<'a> FnOnce(&mut Table<'a>)) -> String {
+    let arena = Arena::new();
+    let doc = parse(source, &arena).unwrap();
+    let mut table = doc.table().clone_in(&arena);
+    mutate(&mut table);
+    crate::Formatting::of(&doc)
+        .with_span_projection_identity()
+        .format_table_to_bytes(table, &arena)
+        .pipe(|b| String::from_utf8(b).unwrap())
+}
+
+fn format_without_span_identity(
+    source: &str,
+    mutate: impl for<'a> FnOnce(&mut Table<'a>),
+) -> String {
+    let arena = Arena::new();
+    let doc = parse(source, &arena).unwrap();
+    let mut table = doc.table().clone_in(&arena);
+    mutate(&mut table);
+    crate::Formatting::of(&doc)
+        .format_table_to_bytes(table, &arena)
+        .pipe(|b| String::from_utf8(b).unwrap())
+}
+
+trait Pipe: Sized {
+    fn pipe<R>(self, f: impl FnOnce(Self) -> R) -> R {
+        f(self)
+    }
+}
+impl<T> Pipe for T {}
+
+#[test]
+fn span_identity_duplicate_removal_keeps_correct_comment() {
+    let source = "a = [\n  1, # first\n  1, # second\n  2, # two\n]\n";
+
+    // Remove the first element (index 0). The remaining `1` is the second one.
+    let remove_first = |table: &mut Table<'_>| {
+        let arr = table.get_mut("a").unwrap().as_array_mut().unwrap();
+        arr.remove(0);
+    };
+
+    let without = format_without_span_identity(source, remove_first);
+    let with = format_with_span_identity(source, remove_first);
+
+    // Without span identity, content matching pairs the remaining `1`
+    // with the FIRST `1` in source, giving it "# first" instead of "# second".
+    assert!(
+        without.contains("# first"),
+        "without span_identity should (incorrectly) pick up the first comment: {without}"
+    );
+
+    // With span identity, span matching correctly pairs the remaining `1`
+    // with the second `1` in source, preserving "# second".
+    assert!(
+        with.contains("# second"),
+        "with span_identity should preserve the correct comment: {with}"
+    );
+    assert!(
+        with.contains("# two"),
+        "the non-duplicate element should keep its comment: {with}"
+    );
+}
+
+#[test]
+fn span_identity_swap_duplicates_preserve_comments() {
+    // Source: [1(#first), 1(#second)]. Swap them → [1(#second), 1(#first)].
+    // Stable sort descending has no effect since values are equal and order
+    // is preserved. Instead, manually swap to force reordering of duplicates.
+    let source = "a = [\n  1, # first\n  1, # second\n]\n";
+
+    let swap_elements = |table: &mut Table<'_>| {
+        let arr = table.get_mut("a").unwrap().as_array_mut().unwrap();
+        arr.as_mut_slice().swap(0, 1);
+    };
+
+    let without = format_without_span_identity(source, swap_elements);
+    let with = format_with_span_identity(source, swap_elements);
+
+    // With span identity, dest[0] has src[1]'s span (#second) and
+    // dest[1] has src[0]'s span (#first). Comments follow the swap.
+    let with_lines: Vec<&str> = with.lines().collect();
+    let second_pos = with_lines.iter().position(|l| l.contains("# second"));
+    let first_pos = with_lines.iter().position(|l| l.contains("# first"));
+    assert!(
+        second_pos.is_some() && first_pos.is_some() && second_pos < first_pos,
+        "with span_identity: # second should come before # first after swap: {with}"
+    );
+
+    // Without span identity, content matching can't distinguish the two
+    // identical `1`s. It matches them in source order, so # first stays
+    // first regardless of the swap.
+    let wo_lines: Vec<&str> = without.lines().collect();
+    let wo_first = wo_lines.iter().position(|l| l.contains("# first"));
+    let wo_second = wo_lines.iter().position(|l| l.contains("# second"));
+    assert!(
+        wo_first < wo_second,
+        "without span_identity: content matching should keep original order: {without}"
+    );
+}
+
+#[test]
+fn span_identity_deep_mutation_makes_equal_then_remove() {
+    // Two AOT entries with different content and formatting.
+    // Mutate the first to deeply match the second, then remove the second.
+    // Content matching will pair the survivor with the wrong source entry.
+    let source = "\
+[[items]] # primary instance
+name = \"alice\"
+port = 8000
+
+[[items]] # backup instance
+name = \"bob\"
+port = 9000
+";
+
+    let mutate_and_remove = |table: &mut Table<'_>| {
+        let arr = table.get_mut("items").unwrap().as_array_mut().unwrap();
+        // Mutate first element to look identical to the second
+        let first = arr.get_mut(0).unwrap().as_table_mut().unwrap();
+        *first.get_mut("name").unwrap() = Item::from("bob");
+        *first.get_mut("port").unwrap() = Item::from(9000i64);
+        // Remove the second element
+        arr.remove(1);
+    };
+
+    let without = format_without_span_identity(source, mutate_and_remove);
+    let with = format_with_span_identity(source, mutate_and_remove);
+
+    // Without span identity: the remaining {name="bob", port=9000} matches
+    // src[1] by content, so it picks up "# backup instance" even though
+    // the surviving element is the original first one.
+    assert!(
+        without.contains("# backup instance"),
+        "without span_identity should (incorrectly) use backup's comment: {without}"
+    );
+
+    // With span identity: the surviving element has src[0]'s span, so
+    // it pairs with src[0] and preserves "# primary instance".
+    assert!(
+        with.contains("# primary instance"),
+        "with span_identity should preserve the original element's comment: {with}"
+    );
+}
+
+#[test]
+fn span_identity_reordered_aot_preserves_comment_association() {
+    // Regression: without set_array_reordered, the gap handler gobbles
+    // all three comments to the top of the output instead of keeping
+    // each comment attached to its AOT element.
+    let source = "\
+delta = 5
+
+# comment A
+[[servers]]
+name = \"a\"
+
+# comment B
+[[servers]]
+name = \"a\"
+
+# comment C
+[[servers]]
+name = \"a\"
+";
+
+    let swap = |table: &mut Table<'_>| {
+        let arr = table.get_mut("servers").unwrap().as_array_mut().unwrap();
+        arr.as_mut_slice().swap(0, 2);
+    };
+
+    let result = format_with_span_identity(source, swap);
+
+    let expected = "\
+delta = 5
+
+# comment C
+[[servers]]
+name = \"a\"
+
+# comment B
+[[servers]]
+name = \"a\"
+
+# comment A
+[[servers]]
+name = \"a\"
+";
+    assert_eq!(result, expected, "result: {result:?}");
+}

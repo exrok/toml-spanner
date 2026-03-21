@@ -108,6 +108,13 @@ doc = false
 bench = false
 
 [[bin]]
+name = "emit_reproject_reorder_span_identity"
+path = "fuzz_targets/emit_reproject_reorder_span_identity.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
 name = "parse_recoverable"
 path = "fuzz_targets/parse_recoverable.rs"
 test = false
