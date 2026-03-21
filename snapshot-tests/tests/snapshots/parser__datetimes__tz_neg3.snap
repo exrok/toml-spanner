@@ -2,7 +2,7 @@
 source: snapshot-tests/tests/parser.rs
 expression: error
 ---
-error[wanted]: expected newline, found an identifier at tz
+error[Wanted]: expected newline, found an identifier at tz
   ┌─ tz_neg3:1:26
   │
 1 │ tz = 2016-09-09T09:09:09Z-2:00

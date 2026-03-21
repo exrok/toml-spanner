@@ -5,7 +5,7 @@ edition = "2024"
 publish = false
 
 [dependencies]
-toml-spanner = { path = "..", features = ["annotate-snippets"] }
+toml-spanner = { path = ".." }
 toml-spanner-macros = { path = "../toml-spanner-macros" }
 annotate-snippets = "0.12.13"
 anstream = "0.6"

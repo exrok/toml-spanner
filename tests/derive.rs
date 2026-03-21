@@ -746,8 +746,7 @@ fn derive_generic_with_default_bound() {
     let input = r#"value = "hello""#;
     let mut doc = toml_spanner::parse(input, &arena).unwrap();
     let (ctx, table) = doc.split();
-    let result: GenericWithDefault =
-        GenericWithDefault::from_toml(ctx, table.as_item()).unwrap();
+    let result: GenericWithDefault = GenericWithDefault::from_toml(ctx, table.as_item()).unwrap();
     assert_eq!(result.value, "hello");
 }
 

@@ -2,8 +2,8 @@
 source: snapshot-tests/tests/parser.rs
 expression: error
 ---
-error[invalid-integer]: 
+error[InvalidInteger]: invalid integer: contains non-digit character at 0
   ┌─ basic2:1:4
   │
 1 │ 0=0r0=0r=false
-  │    ^ invalid integer: contains non-digit character at 0
+  │    ^ invalid integer: contains non-digit character

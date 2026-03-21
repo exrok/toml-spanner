@@ -2,8 +2,8 @@
 source: snapshot-tests/tests/parser.rs
 expression: error
 ---
-error[invalid-datetime]: 
+error[InvalidDateTime]: invalid datetime: expected 4-digit year at a
   ┌─ short_year:1:5
   │
 1 │ a = 25-01-01T00:00:00Z
-  │     ^^^^^^^^^^^^^^^^^^ invalid datetime: expected 4-digit year at a
+  │     ^^^^^^^^^^^^^^^^^^ invalid datetime: expected 4-digit year

@@ -2,8 +2,8 @@
 source: snapshot-tests/tests/parser.rs
 expression: error
 ---
-error[invalid-integer]: 
+error[InvalidInteger]: invalid integer: signs are not allowed on prefixed integers at a
   ┌─ plus_hex:1:5
   │
 1 │ a = +0x0
-  │     ^^^^ invalid integer: signs are not allowed on prefixed integers at a
+  │     ^^^^ invalid integer: signs are not allowed on prefixed integers

@@ -2,7 +2,7 @@
 source: snapshot-tests/tests/parser.rs
 expression: error
 ---
-error[multiline-string-key]: 
+error[MultilineStringKey]: multiline strings are not allowed for key
   ┌─ multi_empty:1:2
   │
 1 │ ['''''']

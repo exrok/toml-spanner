@@ -2,7 +2,7 @@
 source: snapshot-tests/tests/parser.rs
 expression: error
 ---
-error[wanted]: expected a table key, found a character
+error[Wanted]: expected a table key, found a character
   ┌─ exclamation:1:2
   │
 1 │ [!]

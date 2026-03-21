@@ -2,8 +2,8 @@
 source: snapshot-tests/tests/parser.rs
 expression: error
 ---
-error[invalid-datetime]: 
+error[InvalidDateTime]: invalid datetime: minute is out of range at a
   ┌─ bad_minute:1:5
   │
 1 │ a = 2016-09-09T09:60:00
-  │     ^^^^^^^^^^^^^^^^^^^ invalid datetime: minute is out of range at a
+  │     ^^^^^^^^^^^^^^^^^^^ invalid datetime: minute is out of range

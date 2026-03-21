@@ -1124,7 +1124,10 @@ unknown_field = true
     assert_eq!(doc.ctx.errors.len(), 1);
     assert!(matches!(doc.ctx.errors[0].kind(), ErrorKind::UnexpectedKey));
     assert!(doc.ctx.errors[0].path().is_some());
-    assert_eq!(format!("{}", doc.ctx.errors[0]), "unexpected key at server.unknown_field");
+    assert_eq!(
+        format!("{}", doc.ctx.errors[0]),
+        "unexpected key at `server.unknown_field`"
+    );
 
     // Deeply nested: array of tables with unexpected key
     let input = r#"
@@ -1151,7 +1154,7 @@ bogus = 1
 
     // Display includes path in error message
     let display = format!("{}", doc.ctx.errors[0]);
-    assert_eq!(display, "unexpected key at items[0].bogus");
+    assert_eq!(display, "unexpected key at `items[0].bogus`");
 
     // No item means empty path (backward compat)
     let mut doc = crate::parser::parse("a = 1\nb = 2", &arena).unwrap();

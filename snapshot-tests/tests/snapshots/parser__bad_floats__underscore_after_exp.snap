@@ -2,8 +2,8 @@
 source: snapshot-tests/tests/parser.rs
 expression: error
 ---
-error[invalid-float]: 
+error[InvalidFloat]: invalid float: underscores must be between two digits at a
   ┌─ underscore_after_exp:1:5
   │
 1 │ a = 73e_3
-  │     ^^^^^ invalid float: underscores must be between two digits at a
+  │     ^^^^^ invalid float: underscores must be between two digits

@@ -2,7 +2,7 @@
 source: snapshot-tests/tests/parser.rs
 expression: error
 ---
-error[dotted-key-invalid-type]: dotted key attempted to extend non-table type at fruit.apple.taste
+error[DottedKeyInvalidType]: dotted key attempted to extend non-table type at fruit.apple.taste
   ┌─ table_9_reverse_invalid:6:7
   │
 2 │ [fruit.apple.taste]  # INVALID

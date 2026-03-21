@@ -2,7 +2,7 @@
 source: snapshot-tests/tests/parser.rs
 expression: error
 ---
-error[invalid-hex-escape]: 
+error[InvalidHexEscape]: invalid hex escape character in string: `"` at foo
   ┌─ hex2:1:10
   │
 1 │ foo = "\u"

@@ -2,7 +2,7 @@
 source: snapshot-tests/tests/parser.rs
 expression: error
 ---
-error[dotted-key-invalid-type]: dotted key attempted to extend non-table type at a
+error[DottedKeyInvalidType]: dotted key attempted to extend non-table type at a
   ┌─ dotted:2:1
   │
 1 │ a = 1

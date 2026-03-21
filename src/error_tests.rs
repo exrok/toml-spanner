@@ -1,105 +1,6 @@
 use super::*;
 
 #[test]
-fn display_all_error_kinds() {
-    let cases: Vec<(ErrorKind<'_>, &str)> = vec![
-        (ErrorKind::UnexpectedEof, "unexpected-eof"),
-        (ErrorKind::FileTooLarge, "file-too-large"),
-        (
-            ErrorKind::DottedKeyInvalidType {
-                first: Span::new(0, 1),
-            },
-            "dotted-key-invalid-type",
-        ),
-        (
-            ErrorKind::DuplicateKey {
-                first: Span::new(0, 1),
-            },
-            "duplicate-key",
-        ),
-        (
-            ErrorKind::DuplicateTable {
-                name: Span::new(0, 1),
-                first: Span::new(0, 1),
-            },
-            "duplicate-table",
-        ),
-        (ErrorKind::UnexpectedKey, "unexpected-key"),
-        (ErrorKind::UnquotedString, "unquoted-string"),
-        (ErrorKind::MultilineStringKey, "multiline-string-key"),
-        (ErrorKind::RedefineAsArray, "redefine-as-array"),
-        (
-            ErrorKind::InvalidCharInString('x'),
-            "invalid-char-in-string",
-        ),
-        (ErrorKind::InvalidEscape('z'), "invalid-escape"),
-        (
-            ErrorKind::InvalidEscapeValue(0xDEAD),
-            "invalid-escape-value",
-        ),
-        (ErrorKind::InvalidHexEscape('g'), "invalid-hex-escape"),
-        (ErrorKind::Unexpected('!'), "unexpected"),
-        (ErrorKind::UnterminatedString('"'), "unterminated-string"),
-        (ErrorKind::InvalidInteger(""), "invalid-integer"),
-        (
-            ErrorKind::InvalidInteger("integer overflow"),
-            "invalid-integer",
-        ),
-        (ErrorKind::InvalidFloat(""), "invalid-float"),
-        (ErrorKind::InvalidFloat("float overflow"), "invalid-float"),
-        (ErrorKind::InvalidDateTime(""), "invalid-datetime"),
-        (
-            ErrorKind::InvalidDateTime("month is out of range"),
-            "invalid-datetime",
-        ),
-        (ErrorKind::OutOfRange("i8"), "out-of-range"),
-        (
-            ErrorKind::Wanted {
-                expected: &"a string",
-                found: &"an integer",
-            },
-            "wanted",
-        ),
-        (ErrorKind::MissingField("name"), "missing-field"),
-        (ErrorKind::DuplicateField("x"), "duplicate-field"),
-        (
-            ErrorKind::Deprecated {
-                old: &"old_field",
-                new: &"new_field",
-            },
-            "deprecated",
-        ),
-        (
-            ErrorKind::UnexpectedValue {
-                expected: &["a", "b"],
-            },
-            "unexpected-value",
-        ),
-        (
-            ErrorKind::UnexpectedVariant {
-                expected: &["a", "b"],
-            },
-            "unexpected-variant",
-        ),
-        (ErrorKind::MissingArrayComma, "missing-array-comma"),
-        (ErrorKind::UnclosedArray, "unclosed-array"),
-        (
-            ErrorKind::MissingInlineTableComma,
-            "missing-inline-table-comma",
-        ),
-        (ErrorKind::UnclosedInlineTable, "unclosed-inline-table"),
-    ];
-
-    for (kind, expected) in &cases {
-        assert_eq!(
-            format!("{kind}"),
-            *expected,
-            "Display mismatch for {expected}"
-        );
-    }
-}
-
-#[test]
 fn error_display_all_variants() {
     let span = Span::new(0, 1);
     let cases: Vec<(Error, &str)> = vec![
@@ -129,7 +30,7 @@ fn error_display_all_variants() {
         ),
         (
             Error::new(ErrorKind::InvalidEscapeValue(0xDEAD), span),
-            "invalid escape value: `57005`",
+            "invalid escape value: `\\uDEAD`",
         ),
         (
             Error::new(ErrorKind::Unexpected('!'), span),
@@ -288,7 +189,7 @@ fn duplicate_field_display() {
     assert_eq!(format!("{err}"), "duplicate field 'name'");
 
     let kind = ErrorKind::DuplicateField("x");
-    assert_eq!(format!("{kind}"), "duplicate-field");
+    assert_eq!(kind.kind_name(), "DuplicateField");
 }
 
 #[cfg(feature = "from-toml")]

@@ -2,7 +2,7 @@
 source: snapshot-tests/tests/annotate_snippets.rs
 expression: rendered
 ---
-error: out of range of 'u8' at year
+error: out of range of 'u8' at `year`
  --> custom_error:1:8
   |
 1 | year = 40_000

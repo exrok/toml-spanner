@@ -1,5 +1,61 @@
 #![allow(missing_docs)]
 
+pub fn error_to_diagnostic(
+    error: &toml_spanner::Error,
+    source: &str,
+    fid: (),
+) -> codespan_reporting::diagnostic::Diagnostic<()> {
+    use codespan_reporting::diagnostic::Label;
+
+    let message = error.message(source);
+
+    let mut labels = Vec::new();
+    if let Some((span, text)) = error.secondary_label() {
+        labels.push(Label::secondary(fid, span).with_message(text));
+    }
+
+    if let Some((span, label)) = error.primary_label() {
+        let l = Label::primary(fid, span);
+        labels.push(if label.is_empty() {
+            l
+        } else {
+            l.with_message(label)
+        });
+    }
+
+    codespan_reporting::diagnostic::Diagnostic::error()
+        .with_code(error.kind().kind_name())
+        .with_message(message)
+        .with_labels(labels)
+}
+
+pub fn error_to_snippet<'s>(
+    error: &toml_spanner::Error,
+    source: &'s str,
+    path: &'s str,
+) -> annotate_snippets::Group<'s> {
+    use annotate_snippets::{AnnotationKind, Level, Snippet};
+
+    let message = error.message(source);
+
+    let mut snippet = Snippet::source(source).path(path).fold(true);
+
+    if let Some((span, text)) = error.secondary_label() {
+        snippet = snippet.annotation(AnnotationKind::Context.span(span.range()).label(text));
+    }
+
+    if let Some((span, label)) = error.primary_label() {
+        let ann = AnnotationKind::Primary.span(span.range());
+        snippet = snippet.annotation(if label.is_empty() {
+            ann
+        } else {
+            ann.label(label)
+        });
+    }
+
+    Level::ERROR.primary_title(message).element(snippet)
+}
+
 /// Loads a valid toml file and does a snapshot assertion against `toml`
 #[macro_export]
 macro_rules! valid {
@@ -45,7 +101,10 @@ macro_rules! valid_de {
                 }
                 Err(e) => {
                     let file = $crate::File::new(stringify!($name), &toml_str);
-                    let diags = e.errors.iter().map(|e| e.to_diagnostic(&toml_str, ()));
+                    let diags = e
+                        .errors
+                        .iter()
+                        .map(|e| $crate::error_to_diagnostic(e, &toml_str, ()));
                     let error = $crate::emit_diags(&file, diags);
                     panic!("unexpected toml deserialization errors:\n{error}");
                 }
@@ -64,7 +123,10 @@ macro_rules! valid_de {
                 }
                 Err(e) => {
                     let file = $crate::File::new(stringify!($name), $toml);
-                    let diags = e.errors.iter().map(|e| e.to_diagnostic($toml, ()));
+                    let diags = e
+                        .errors
+                        .iter()
+                        .map(|e| $crate::error_to_diagnostic(e, $toml, ()));
                     let error = $crate::emit_diags(&file, diags);
                     panic!("unexpected toml deserialization errors:\n{error}");
                 }
@@ -93,7 +155,7 @@ macro_rules! invalid_de {
                     let diags: Vec<_> = e
                         .errors
                         .iter()
-                        .map(|e| e.to_diagnostic(&toml_str, ()))
+                        .map(|e| $crate::error_to_diagnostic(e, &toml_str, ()))
                         .collect();
                     $crate::error_snapshot!($name, diags, &toml_str);
                 }
@@ -114,7 +176,7 @@ macro_rules! invalid_de {
                     let diags: Vec<_> = e
                         .errors
                         .iter()
-                        .map(|e| e.to_diagnostic($toml, ()))
+                        .map(|e| $crate::error_to_diagnostic(e, $toml, ()))
                         .collect();
                     $crate::error_snapshot!($name, diags, $toml);
                 }
@@ -155,10 +217,12 @@ macro_rules! error_snapshot {
     };
 }
 
-use codespan_reporting::diagnostic::Diagnostic;
-
-pub fn collect_spans(key: &str, val: &toml_spanner::Item<'_>, diags: &mut Vec<Diagnostic<()>>) {
-    use codespan_reporting::diagnostic::Label;
+pub fn collect_spans(
+    key: &str,
+    val: &toml_spanner::Item<'_>,
+    diags: &mut Vec<codespan_reporting::diagnostic::Diagnostic<()>>,
+) {
+    use codespan_reporting::diagnostic::{Diagnostic, Label};
     use toml_spanner::Value;
 
     let code = match val.value() {
@@ -217,7 +281,11 @@ macro_rules! invalid {
                     .expect(concat!("failed to load ", stringify!($name), ".toml"));
             let arena = toml_spanner::Arena::new();
             let error = toml_spanner::parse(&toml_str, &arena).unwrap_err();
-            $crate::error_snapshot!($name, Some(error.to_diagnostic(&toml_str, ())), &toml_str);
+            $crate::error_snapshot!(
+                $name,
+                Some($crate::error_to_diagnostic(&error, &toml_str, ())),
+                &toml_str
+            );
         }
     };
     ($name:ident, $toml:expr) => {
@@ -225,7 +293,11 @@ macro_rules! invalid {
         fn $name() {
             let arena = toml_spanner::Arena::new();
             let error = toml_spanner::parse($toml, &arena).unwrap_err();
-            $crate::error_snapshot!($name, Some(error.to_diagnostic($toml, ())), $toml);
+            $crate::error_snapshot!(
+                $name,
+                Some($crate::error_to_diagnostic(&error, $toml, ())),
+                $toml
+            );
         }
     };
 }
@@ -250,7 +322,7 @@ macro_rules! invalid_snippet {
         fn $name() {
             let arena = toml_spanner::Arena::new();
             let error = toml_spanner::parse($toml, &arena).unwrap_err();
-            let group = error.to_snippet($toml, stringify!($name));
+            let group = $crate::error_to_snippet(&error, $toml, stringify!($name));
             $crate::snippet_error_snapshot!($name, [group]);
         }
     };
@@ -272,7 +344,7 @@ macro_rules! invalid_de_snippet {
                     let groups: Vec<_> = e
                         .errors
                         .iter()
-                        .map(|e| e.to_snippet($toml, stringify!($name)))
+                        .map(|e| $crate::error_to_snippet(e, $toml, stringify!($name)))
                         .collect();
                     $crate::snippet_error_snapshot!($name, groups);
                 }

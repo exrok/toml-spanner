@@ -2,8 +2,8 @@
 source: snapshot-tests/tests/parser.rs
 expression: error
 ---
-error[invalid-float]: 
+error[InvalidFloat]: invalid float at a
   ┌─ trailing_neg:1:5
   │
 1 │ a = 0.0e-
-  │     ^ invalid float at a
+  │     ^ invalid float

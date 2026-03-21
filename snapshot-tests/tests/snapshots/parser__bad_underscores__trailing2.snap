@@ -2,8 +2,8 @@
 source: snapshot-tests/tests/parser.rs
 expression: error
 ---
-error[invalid-integer]: 
+error[InvalidInteger]: invalid integer: underscores must be between two digits at foo
   ┌─ trailing2:1:10
   │
 1 │ foo = 1_0_
-  │          ^ invalid integer: underscores must be between two digits at foo
+  │          ^ invalid integer: underscores must be between two digits

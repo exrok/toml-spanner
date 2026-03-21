@@ -2,8 +2,8 @@
 source: snapshot-tests/tests/parser.rs
 expression: error
 ---
-error[invalid-float]: 
+error[InvalidFloat]: invalid float: exponent requires at least one digit at a
   ┌─ trailing_pos:1:5
   │
 1 │ a = 0.0e+
-  │     ^ invalid float: exponent requires at least one digit at a
+  │     ^ invalid float: exponent requires at least one digit

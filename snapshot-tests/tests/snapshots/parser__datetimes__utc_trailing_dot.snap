@@ -2,8 +2,8 @@
 source: snapshot-tests/tests/parser.rs
 expression: error
 ---
-error[invalid-datetime]: 
+error[InvalidDateTime]: invalid datetime: expected fractional digits after decimal point at utc
   ┌─ utc_trailing_dot:1:7
   │
 1 │ utc = 2016-09-09T09:09:09.Z
-  │       ^^^^^^^^^^^^^^^^^^^^^ invalid datetime: expected fractional digits after decimal point at utc
+  │       ^^^^^^^^^^^^^^^^^^^^^ invalid datetime: expected fractional digits after decimal point

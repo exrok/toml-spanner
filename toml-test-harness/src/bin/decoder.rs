@@ -72,22 +72,7 @@ fn main() {
             println!("{}", text.as_str());
         }
         Err(err) => {
-            use codespan_reporting::files::SimpleFiles;
-            use codespan_reporting::term::termcolor::{ColorChoice, StandardStream};
-
-            let mut files = SimpleFiles::new();
-            let file_id = files.add("input.toml", content.to_string());
-            let diagonistic = err.to_diagnostic(file_id);
-            let writer = StandardStream::stderr(ColorChoice::Always);
-            let config = codespan_reporting::term::Config::default();
-
-            codespan_reporting::term::emit_to_io_write(
-                &mut writer.lock(),
-                &config,
-                &files,
-                &diagonistic,
-            )
-            .unwrap();
+            eprintln!("{err}");
             std::process::exit(1)
         }
     }

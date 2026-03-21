@@ -2,7 +2,7 @@
 source: snapshot-tests/tests/parser.rs
 expression: error
 ---
-error[wanted]: expected an equals, found a newline at key
+error[Wanted]: expected an equals, found a newline at key
   ┌─ newline:1:4
   │  
 1 │   key

@@ -2,7 +2,7 @@
 source: snapshot-tests/tests/parser.rs
 expression: error
 ---
-error[unexpected]: 
+error[Unexpected]: unexpected character found: `\r`
   ┌─ single:1:1
   │
 1 │ 

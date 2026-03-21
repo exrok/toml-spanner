@@ -2,8 +2,8 @@
 source: snapshot-tests/tests/parser.rs
 expression: error
 ---
-error[invalid-integer]: 
+error[InvalidInteger]: invalid integer: integer overflow at a
   ┌─ integer_range_positive:1:5
   │
 1 │ a = 9223372036854775808
-  │     ^^^^^^^^^^^^^^^^^^^ invalid integer: integer overflow at a
+  │     ^^^^^^^^^^^^^^^^^^^ invalid integer: integer overflow

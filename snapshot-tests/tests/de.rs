@@ -10,10 +10,7 @@ struct Boop {
 }
 
 impl<'de> FromToml<'de> for Boop {
-    fn from_toml(
-        ctx: &mut Context<'de>,
-        value: &toml_spanner::Item<'de>,
-    ) -> Result<Self, Failed> {
+    fn from_toml(ctx: &mut Context<'de>, value: &toml_spanner::Item<'de>) -> Result<Self, Failed> {
         let mut th = value.table_helper(ctx)?;
         let s = th.required("s")?;
         let os = th.optional("os");
@@ -47,10 +44,7 @@ impl Package {
 }
 
 impl<'de> FromToml<'de> for Package {
-    fn from_toml(
-        ctx: &mut Context<'de>,
-        value: &toml_spanner::Item<'de>,
-    ) -> Result<Self, Failed> {
+    fn from_toml(ctx: &mut Context<'de>, value: &toml_spanner::Item<'de>) -> Result<Self, Failed> {
         if let Some(s) = value.as_str() {
             let (name, version) = Self::from_str(s);
             Ok(Self { name, version })
@@ -95,10 +89,7 @@ struct Array {
 }
 
 impl<'de> FromToml<'de> for Array {
-    fn from_toml(
-        ctx: &mut Context<'de>,
-        value: &toml_spanner::Item<'de>,
-    ) -> Result<Self, Failed> {
+    fn from_toml(ctx: &mut Context<'de>, value: &toml_spanner::Item<'de>) -> Result<Self, Failed> {
         let mut th = value.table_helper(ctx)?;
         let packages = th.required("packages")?;
         Ok(Self { packages })
@@ -128,10 +119,7 @@ impl<'de, T> FromToml<'de> for PackageSpecOrExtended<T>
 where
     T: DeserializeTable<'de>,
 {
-    fn from_toml(
-        ctx: &mut Context<'de>,
-        value: &toml_spanner::Item<'de>,
-    ) -> Result<Self, Failed> {
+    fn from_toml(ctx: &mut Context<'de>, value: &toml_spanner::Item<'de>) -> Result<Self, Failed> {
         if let Some(s) = value.as_str() {
             let (name, version) = Package::from_str(s);
             return Ok(Self {
@@ -163,10 +151,7 @@ impl<'de> DeserializeTable<'de> for Reason {
 }
 
 impl<'de> FromToml<'de> for Reason {
-    fn from_toml(
-        ctx: &mut Context<'de>,
-        value: &toml_spanner::Item<'de>,
-    ) -> Result<Self, Failed> {
+    fn from_toml(ctx: &mut Context<'de>, value: &toml_spanner::Item<'de>) -> Result<Self, Failed> {
         let mut th = value.table_helper(ctx)?;
         let reason = th.required("reason")?;
         th.expect_empty()?;
@@ -180,10 +165,7 @@ struct Flattened {
 }
 
 impl<'de> FromToml<'de> for Flattened {
-    fn from_toml(
-        ctx: &mut Context<'de>,
-        value: &toml_spanner::Item<'de>,
-    ) -> Result<Self, Failed> {
+    fn from_toml(ctx: &mut Context<'de>, value: &toml_spanner::Item<'de>) -> Result<Self, Failed> {
         let mut th = value.table_helper(ctx)?;
         let flattened = th.required("flattened")?;
         Ok(Self { flattened })
@@ -198,10 +180,7 @@ struct Ohno {
 }
 
 impl<'de> FromToml<'de> for Ohno {
-    fn from_toml(
-        ctx: &mut Context<'de>,
-        value: &toml_spanner::Item<'de>,
-    ) -> Result<Self, Failed> {
+    fn from_toml(ctx: &mut Context<'de>, value: &toml_spanner::Item<'de>) -> Result<Self, Failed> {
         let mut th = value.table_helper(ctx)?;
         let year = th.required("year")?;
 
@@ -230,10 +209,7 @@ struct ServerConfig {
 }
 
 impl<'de> FromToml<'de> for ServerConfig {
-    fn from_toml(
-        ctx: &mut Context<'de>,
-        value: &toml_spanner::Item<'de>,
-    ) -> Result<Self, Failed> {
+    fn from_toml(ctx: &mut Context<'de>, value: &toml_spanner::Item<'de>) -> Result<Self, Failed> {
         let mut th = value.table_helper(ctx)?;
         let timeout = th.required("timeout")?;
         th.expect_empty()?;
@@ -248,10 +224,7 @@ struct Server {
 }
 
 impl<'de> FromToml<'de> for Server {
-    fn from_toml(
-        ctx: &mut Context<'de>,
-        value: &toml_spanner::Item<'de>,
-    ) -> Result<Self, Failed> {
+    fn from_toml(ctx: &mut Context<'de>, value: &toml_spanner::Item<'de>) -> Result<Self, Failed> {
         let mut th = value.table_helper(ctx)?;
         let host = th.required("host")?;
         let config = th.required("config")?;
@@ -266,10 +239,7 @@ struct Component {
 }
 
 impl<'de> FromToml<'de> for Component {
-    fn from_toml(
-        ctx: &mut Context<'de>,
-        value: &toml_spanner::Item<'de>,
-    ) -> Result<Self, Failed> {
+    fn from_toml(ctx: &mut Context<'de>, value: &toml_spanner::Item<'de>) -> Result<Self, Failed> {
         let mut th = value.table_helper(ctx)?;
         let servers = th.required("servers")?;
         th.expect_empty()?;
@@ -283,10 +253,7 @@ struct Deployment {
 }
 
 impl<'de> FromToml<'de> for Deployment {
-    fn from_toml(
-        ctx: &mut Context<'de>,
-        value: &toml_spanner::Item<'de>,
-    ) -> Result<Self, Failed> {
+    fn from_toml(ctx: &mut Context<'de>, value: &toml_spanner::Item<'de>) -> Result<Self, Failed> {
         let mut th = value.table_helper(ctx)?;
         let component = th.required("component")?;
         th.expect_empty()?;

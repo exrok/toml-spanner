@@ -4,6 +4,33 @@ use annotate_snippets::Renderer;
 use toml_spanner::Arena;
 use toml_spanner_macros::Toml;
 
+fn error_to_snippet<'s>(
+    error: &toml_spanner::Error,
+    source: &'s str,
+    path: &'s str,
+) -> annotate_snippets::Group<'s> {
+    use annotate_snippets::{AnnotationKind, Level, Snippet};
+
+    let message = error.message(source);
+
+    let mut snippet = Snippet::source(source).path(path).fold(true);
+
+    if let Some((span, text)) = error.secondary_label() {
+        snippet = snippet.annotation(AnnotationKind::Context.span(span.range()).label(text));
+    }
+
+    if let Some((span, label)) = error.primary_label() {
+        let ann = AnnotationKind::Primary.span(span.range());
+        snippet = snippet.annotation(if label.is_empty() {
+            ann
+        } else {
+            ann.label(label)
+        });
+    }
+
+    Level::ERROR.primary_title(message).element(snippet)
+}
+
 fn render(name: &str, groups: &[annotate_snippets::Group<'_>]) {
     let renderer = Renderer::styled();
     let ansi = renderer.render(groups).to_string();
@@ -24,7 +51,7 @@ fn parse_error(name: &str, path: &str, source: &str) {
     let Err(error) = toml_spanner::parse(source, &arena) else {
         panic!("{name}: expected parse error");
     };
-    let group = error.to_snippet(source, path);
+    let group = error_to_snippet(&error, source, path);
     render(name, &[group]);
 }
 
@@ -106,7 +133,7 @@ hidden = "collapsed"
     let groups: Vec<_> = e
         .errors
         .iter()
-        .map(|e| e.to_snippet(source, "devsm.toml"))
+        .map(|e| error_to_snippet(e, source, "devsm.toml"))
         .collect();
     render("deserialization_errors", &groups);
 }

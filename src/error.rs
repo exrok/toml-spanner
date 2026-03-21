@@ -5,7 +5,7 @@
 mod tests;
 
 use crate::{Item, Key, Span};
-use std::fmt::{self, Debug, Display, Write as _};
+use std::fmt::{self, Debug, Display};
 
 #[derive(Clone, Copy)]
 pub enum PathComponent<'de> {
@@ -23,48 +23,19 @@ impl<'a> std::ops::Deref for TomlPath<'a> {
     }
 }
 
-macro_rules! rtry {
-    ($($tt:tt)*) => {
-        if let Err(err) = $($tt)* {
-            return Err(err);
-        }
-    };
+impl Debug for TomlPath<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut out = String::new();
+        push_toml_path(&mut out, self);
+        Debug::fmt(&out, f)
+    }
 }
 
 impl Display for TomlPath<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let mut first = true;
-        for component in &self.0 {
-            match component {
-                PathComponent::Key(key) => {
-                    if !first {
-                        rtry!(f.write_char('.'));
-                    }
-                    first = false;
-                    if is_bare_key(key.name) {
-                        rtry!(f.write_str(key.name));
-                    } else {
-                        rtry!(f.write_char('"'));
-                        for ch in key.name.chars() {
-                            rtry!(match ch {
-                                '"' => f.write_str("\\\""),
-                                '\\' => f.write_str("\\\\"),
-                                '\n' => f.write_str("\\n"),
-                                '\r' => f.write_str("\\r"),
-                                '\t' => f.write_str("\\t"),
-                                c if c.is_control() => write!(f, "\\u{:04X}", c as u32),
-                                c => f.write_char(c),
-                            })
-                        }
-                        rtry!(f.write_char('"'));
-                    }
-                }
-                PathComponent::Index(idx) => {
-                    rtry!(write!(f, "[{idx}]"));
-                }
-            }
-        }
-        Ok(())
+        let mut out = String::new();
+        push_toml_path(&mut out, self);
+        f.write_str(&out)
     }
 }
 
@@ -99,10 +70,6 @@ impl MaybeTomlPath {
     pub(crate) fn has_path(&self) -> bool {
         self.size > 0
     }
-
-    // pub(crate) fn is_empty(&self) -> bool {
-    //     self.len == u32::MAX
-    // }
 
     pub(crate) fn from_components(components: &[PathComponent<'_>]) -> MaybeTomlPath {
         if components.is_empty() {
@@ -368,17 +335,39 @@ pub enum ErrorKind<'a> {
     UnclosedInlineTable,
 }
 
-struct Escape(char);
-
-impl fmt::Display for Escape {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if self.0.is_control() {
-            for esc in self.0.escape_default() {
-                f.write_char(esc)?;
-            }
-            Ok(())
-        } else {
-            f.write_char(self.0)
+impl<'a> ErrorKind<'a> {
+    pub fn kind_name(&self) -> &'static str {
+        match self {
+            ErrorKind::Custom(_) => "Custom",
+            ErrorKind::UnexpectedEof => "UnexpectedEof",
+            ErrorKind::FileTooLarge => "FileTooLarge",
+            ErrorKind::InvalidCharInString(_) => "InvalidCharInString",
+            ErrorKind::InvalidEscape(_) => "InvalidEscape",
+            ErrorKind::InvalidHexEscape(_) => "InvalidHexEscape",
+            ErrorKind::InvalidEscapeValue(_) => "InvalidEscapeValue",
+            ErrorKind::Unexpected(_) => "Unexpected",
+            ErrorKind::UnterminatedString(_) => "UnterminatedString",
+            ErrorKind::InvalidInteger(_) => "InvalidInteger",
+            ErrorKind::InvalidFloat(_) => "InvalidFloat",
+            ErrorKind::InvalidDateTime(_) => "InvalidDateTime",
+            ErrorKind::OutOfRange(_) => "OutOfRange",
+            ErrorKind::Wanted { .. } => "Wanted",
+            ErrorKind::DuplicateTable { .. } => "DuplicateTable",
+            ErrorKind::DuplicateKey { .. } => "DuplicateKey",
+            ErrorKind::RedefineAsArray => "RedefineAsArray",
+            ErrorKind::MultilineStringKey => "MultilineStringKey",
+            ErrorKind::DottedKeyInvalidType { .. } => "DottedKeyInvalidType",
+            ErrorKind::UnexpectedKey => "UnexpectedKey",
+            ErrorKind::UnquotedString => "UnquotedString",
+            ErrorKind::MissingField(_) => "MissingField",
+            ErrorKind::DuplicateField(_) => "DuplicateField",
+            ErrorKind::Deprecated { .. } => "Deprecated",
+            ErrorKind::UnexpectedValue { .. } => "UnexpectedValue",
+            ErrorKind::UnexpectedVariant { .. } => "UnexpectedVariant",
+            ErrorKind::MissingArrayComma => "MissingArrayComma",
+            ErrorKind::UnclosedArray => "UnclosedArray",
+            ErrorKind::MissingInlineTableComma => "MissingInlineTableComma",
+            ErrorKind::UnclosedInlineTable => "UnclosedInlineTable",
         }
     }
 }
@@ -439,181 +428,190 @@ impl Error {
     }
 }
 
-impl<'a> Display for ErrorKind<'a> {
+impl<'a> Debug for ErrorKind<'a> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let text = match self {
-            Self::UnexpectedEof => "unexpected-eof",
-            Self::FileTooLarge => "file-too-large",
-            Self::DottedKeyInvalidType { .. } => "dotted-key-invalid-type",
-            Self::DuplicateKey { .. } => "duplicate-key",
-            Self::DuplicateTable { .. } => "duplicate-table",
-            Self::UnexpectedKey => "unexpected-key",
-            Self::UnquotedString => "unquoted-string",
-            Self::MultilineStringKey => "multiline-string-key",
-            Self::RedefineAsArray => "redefine-as-array",
-            Self::InvalidCharInString(..) => "invalid-char-in-string",
-            Self::InvalidEscape(..) => "invalid-escape",
-            Self::InvalidEscapeValue(..) => "invalid-escape-value",
-            Self::InvalidHexEscape(..) => "invalid-hex-escape",
-            Self::Unexpected(..) => "unexpected",
-            Self::UnterminatedString(..) => "unterminated-string",
-            Self::InvalidInteger(_) => "invalid-integer",
-            Self::InvalidFloat(_) => "invalid-float",
-            Self::InvalidDateTime(_) => "invalid-datetime",
-            Self::OutOfRange(_) => "out-of-range",
-            Self::Wanted { .. } => "wanted",
-            Self::MissingField(..) => "missing-field",
-            Self::DuplicateField(..) => "duplicate-field",
-            Self::Deprecated { .. } => "deprecated",
-            Self::UnexpectedValue { .. } => "unexpected-value",
-            Self::UnexpectedVariant { .. } => "unexpected-variant",
-            Self::MissingArrayComma => "missing-array-comma",
-            Self::UnclosedArray => "unclosed-array",
-            Self::MissingInlineTableComma => "missing-inline-table-comma",
-            Self::UnclosedInlineTable => "unclosed-inline-table",
-            Self::Custom(..) => "custom",
-        };
-        f.write_str(text)
+        f.write_str(self.kind_name())
     }
 }
 
-impl<'a> Debug for ErrorKind<'a> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        Display::fmt(self, f)
+fn kind_message(kind: ErrorKind<'_>) -> String {
+    let mut out = String::new();
+    kind_message_inner(kind, &mut out);
+    out
+}
+
+#[inline(never)]
+fn s_push(out: &mut String, s: &str) {
+    out.push_str(s);
+}
+
+#[inline(never)]
+fn s_push_char(out: &mut String, c: char) {
+    out.push(c);
+}
+
+fn push_escape(out: &mut String, c: char) {
+    if c.is_control() {
+        for esc in c.escape_default() {
+            s_push_char(out, esc);
+        }
+    } else {
+        s_push_char(out, c);
+    }
+}
+
+fn push_u32(out: &mut String, mut n: u32) {
+    let mut buf = [0u8; 10];
+    let mut i = buf.len();
+    if n == 0 {
+        s_push_char(out, '0');
+        return;
+    }
+    while n > 0 {
+        i -= 1;
+        buf[i] = b'0' + (n % 10) as u8;
+        n /= 10;
+    }
+    // SAFETY: digits are always valid ASCII/UTF-8
+    s_push(out, unsafe { std::str::from_utf8_unchecked(&buf[i..]) });
+}
+
+fn kind_message_inner(kind: ErrorKind<'_>, out: &mut String) {
+    match kind {
+        ErrorKind::Custom(message) => s_push(out, message),
+        ErrorKind::UnexpectedEof => s_push(out, "unexpected eof encountered"),
+        ErrorKind::FileTooLarge => s_push(out, "file is too large (maximum 512 MiB)"),
+        ErrorKind::InvalidCharInString(c) => {
+            s_push(out, "invalid character in string: `");
+            push_escape(out, c);
+            s_push_char(out, '`');
+        }
+        ErrorKind::InvalidEscape(c) => {
+            s_push(out, "invalid escape character in string: `");
+            push_escape(out, c);
+            s_push_char(out, '`');
+        }
+        ErrorKind::InvalidHexEscape(c) => {
+            s_push(out, "invalid hex escape character in string: `");
+            push_escape(out, c);
+            s_push_char(out, '`');
+        }
+        ErrorKind::InvalidEscapeValue(c) => {
+            s_push(out, "invalid escape value: `");
+            push_unicode_escape(out, c);
+            s_push_char(out, '`');
+        }
+        ErrorKind::Unexpected(c) => {
+            s_push(out, "unexpected character found: `");
+            push_escape(out, c);
+            s_push_char(out, '`');
+        }
+        ErrorKind::UnterminatedString(delim) => {
+            if delim == '\'' {
+                s_push(out, "invalid literal string, expected `'`");
+            } else {
+                s_push(out, "invalid basic string, expected `\"`");
+            }
+        }
+        ErrorKind::Wanted { expected, found } => {
+            s_push(out, "expected ");
+            s_push(out, expected);
+            s_push(out, ", found ");
+            s_push(out, found);
+        }
+        ErrorKind::InvalidInteger(reason)
+        | ErrorKind::InvalidFloat(reason)
+        | ErrorKind::InvalidDateTime(reason) => {
+            let prefix = match kind {
+                ErrorKind::InvalidInteger(_) => "invalid integer",
+                ErrorKind::InvalidFloat(_) => "invalid float",
+                _ => "invalid datetime",
+            };
+            s_push(out, prefix);
+            if !reason.is_empty() {
+                s_push(out, ": ");
+                s_push(out, reason);
+            }
+        }
+        ErrorKind::OutOfRange(ty) => {
+            s_push(out, "out of range of '");
+            s_push(out, ty);
+            s_push_char(out, '\'');
+        }
+        ErrorKind::DuplicateTable { .. } => s_push(out, "redefinition of table"),
+        ErrorKind::DuplicateKey { .. } => s_push(out, "duplicate key"),
+        ErrorKind::RedefineAsArray => s_push(out, "table redefined as array"),
+        ErrorKind::MultilineStringKey => {
+            s_push(out, "multiline strings are not allowed for key");
+        }
+        ErrorKind::DottedKeyInvalidType { .. } => {
+            s_push(out, "dotted key attempted to extend non-table type");
+        }
+        ErrorKind::UnexpectedKey => s_push(out, "unexpected key"),
+        ErrorKind::UnquotedString => {
+            s_push(
+                out,
+                "invalid TOML value, did you mean to use a quoted string?",
+            );
+        }
+        ErrorKind::MissingField(field) => {
+            s_push(out, "missing field '");
+            s_push(out, field);
+            s_push(out, "' in table");
+        }
+        ErrorKind::DuplicateField(field) => {
+            s_push(out, "duplicate field '");
+            s_push(out, field);
+            s_push_char(out, '\'');
+        }
+        ErrorKind::Deprecated { old, new } => {
+            s_push(out, "field '");
+            s_push(out, old);
+            s_push(out, "' is deprecated, '");
+            s_push(out, new);
+            s_push(out, "' has replaced it");
+        }
+        ErrorKind::UnexpectedValue { expected } => {
+            s_push(out, "expected '[");
+            let mut first = true;
+            for val in expected {
+                if !first {
+                    s_push(out, ", ");
+                }
+                first = false;
+                s_push(out, val);
+            }
+            s_push(out, "]'");
+        }
+        ErrorKind::UnexpectedVariant { expected } => {
+            s_push(out, "unknown variant, expected one of: ");
+            let mut first = true;
+            for val in expected {
+                if !first {
+                    s_push(out, ", ");
+                }
+                first = false;
+                s_push(out, val);
+            }
+        }
+        ErrorKind::MissingArrayComma => {
+            s_push(out, "missing comma between array elements, expected `,`");
+        }
+        ErrorKind::UnclosedArray => s_push(out, "unclosed array, expected `]`"),
+        ErrorKind::MissingInlineTableComma => {
+            s_push(out, "missing comma in inline table, expected `,`");
+        }
+        ErrorKind::UnclosedInlineTable => s_push(out, "unclosed inline table, expected `}`"),
     }
 }
 
 impl Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let kind = self.kind();
-        match kind {
-            ErrorKind::Custom(message) => f.write_str(message),
-            ErrorKind::UnexpectedEof => f.write_str("unexpected eof encountered"),
-            ErrorKind::FileTooLarge => f.write_str("file is too large (maximum 512 MiB)"),
-            ErrorKind::InvalidCharInString(c) => {
-                rtry!(f.write_str("invalid character in string: `"));
-                rtry!(Escape(c).fmt(f));
-                f.write_str("`")
-            }
-            ErrorKind::InvalidEscape(c) => {
-                rtry!(f.write_str("invalid escape character in string: `"));
-                rtry!(Escape(c).fmt(f));
-                f.write_str("`")
-            }
-            ErrorKind::InvalidHexEscape(c) => {
-                rtry!(f.write_str("invalid hex escape character in string: `"));
-                rtry!(Escape(c).fmt(f));
-                f.write_str("`")
-            }
-            ErrorKind::InvalidEscapeValue(c) => {
-                rtry!(f.write_str("invalid escape value: `"));
-                rtry!(std::fmt::Display::fmt(&c, f));
-                f.write_str("`")
-            }
-            ErrorKind::Unexpected(c) => {
-                rtry!(f.write_str("unexpected character found: `"));
-                rtry!(Escape(c).fmt(f));
-                f.write_str("`")
-            }
-            ErrorKind::UnterminatedString(delim) => {
-                if delim == '\'' {
-                    f.write_str("invalid literal string, expected `'`")
-                } else {
-                    f.write_str("invalid basic string, expected `\"`")
-                }
-            }
-            ErrorKind::Wanted { expected, found } => {
-                rtry!(f.write_str("expected "));
-                rtry!(f.write_str(expected));
-                rtry!(f.write_str(", found "));
-                f.write_str(found)
-            }
-            ErrorKind::InvalidInteger(reason)
-            | ErrorKind::InvalidFloat(reason)
-            | ErrorKind::InvalidDateTime(reason) => {
-                rtry!(f.write_str(match kind {
-                    ErrorKind::InvalidInteger(_) => "invalid integer",
-                    ErrorKind::InvalidFloat(_) => "invalid float",
-                    _ => "invalid datetime",
-                }));
-                if !reason.is_empty() {
-                    rtry!(f.write_str(": "));
-                    f.write_str(reason)
-                } else {
-                    Ok(())
-                }
-            }
-            ErrorKind::OutOfRange(ty) => {
-                rtry!(f.write_str("out of range of '"));
-                rtry!(f.write_str(ty));
-                f.write_str("'")
-            }
-            ErrorKind::DuplicateTable { .. } => f.write_str("redefinition of table"),
-            ErrorKind::DuplicateKey { .. } => f.write_str("duplicate key"),
-            ErrorKind::RedefineAsArray => f.write_str("table redefined as array"),
-            ErrorKind::MultilineStringKey => {
-                f.write_str("multiline strings are not allowed for key")
-            }
-            ErrorKind::DottedKeyInvalidType { .. } => {
-                f.write_str("dotted key attempted to extend non-table type")
-            }
-            ErrorKind::UnexpectedKey => f.write_str("unexpected key"),
-            ErrorKind::UnquotedString => {
-                f.write_str("invalid TOML value, did you mean to use a quoted string?")
-            }
-            ErrorKind::MissingField(field) => {
-                rtry!(f.write_str("missing field '"));
-                rtry!(f.write_str(field));
-                f.write_str("' in table")
-            }
-            ErrorKind::DuplicateField(field) => {
-                rtry!(f.write_str("duplicate field '"));
-                rtry!(f.write_str(field));
-                f.write_str("'")
-            }
-            ErrorKind::Deprecated { old, new } => {
-                rtry!(f.write_str("field '"));
-                rtry!(f.write_str(old));
-                rtry!(f.write_str("' is deprecated, '"));
-                rtry!(f.write_str(new));
-                f.write_str("' has replaced it")
-            }
-            ErrorKind::UnexpectedValue { expected } => {
-                rtry!(f.write_str("expected '["));
-                let mut first = true;
-                for val in expected {
-                    if !first {
-                        rtry!(f.write_str(", "));
-                    }
-                    first = false;
-                    rtry!(f.write_str(val));
-                }
-                f.write_str("]'")
-            }
-            ErrorKind::UnexpectedVariant { expected } => {
-                rtry!(f.write_str("unknown variant, expected one of: "));
-                let mut first = true;
-                for val in expected {
-                    if !first {
-                        rtry!(f.write_str(", "));
-                    }
-                    first = false;
-                    rtry!(f.write_str(val));
-                }
-                Ok(())
-            }
-            ErrorKind::MissingArrayComma => {
-                f.write_str("missing comma between array elements, expected `,`")
-            }
-            ErrorKind::UnclosedArray => f.write_str("unclosed array, expected `]`"),
-            ErrorKind::MissingInlineTableComma => {
-                f.write_str("missing comma in inline table, expected `,`")
-            }
-            ErrorKind::UnclosedInlineTable => f.write_str("unclosed inline table, expected `}`"),
-        }?;
+        f.write_str(&kind_message(self.kind()))?;
         if let Some(path) = self.path() {
-            f.write_str(" at ")?;
+            f.write_str(" at `")?;
             Display::fmt(path, f)?;
+            f.write_str("`")?;
         }
         Ok(())
     }
@@ -621,7 +619,13 @@ impl Display for Error {
 
 impl Debug for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        Display::fmt(self, f)
+        let kind = self.kind();
+        f.debug_struct("Error")
+            .field("kind", &kind.kind_name())
+            .field("message", &kind_message(kind))
+            .field("span", &self.span().range())
+            .field("path", &self.path())
+            .finish()
     }
 }
 
@@ -637,395 +641,214 @@ impl From<(ErrorKind<'static>, Span)> for Error {
     }
 }
 
-#[cfg(feature = "annotate-snippets")]
-impl Error {
-    /// Converts this error into an [`annotate_snippets::Group`] for rendering
-    /// with [`annotate_snippets`].
-    pub fn to_snippet<'s>(&self, source: &'s str, path: &'s str) -> annotate_snippets::Group<'s> {
-        use annotate_snippets::{AnnotationKind, Level, Snippet};
-
-        let span = self.span().range();
-        let kind = self.kind();
-
-        let title = match kind {
-            ErrorKind::DuplicateKey { .. } => {
-                if let Some(name) = source.get(span.clone()) {
-                    format!("the key `{name}` is defined multiple times")
+fn push_toml_path(out: &mut String, path: &TomlPath<'_>) {
+    let mut first = true;
+    for component in path.iter() {
+        match component {
+            PathComponent::Key(key) => {
+                if !first {
+                    s_push_char(out, '.');
+                }
+                first = false;
+                if is_bare_key(key.name) {
+                    s_push(out, key.name);
                 } else {
-                    self.to_string()
+                    s_push_char(out, '"');
+                    for ch in key.name.chars() {
+                        match ch {
+                            '"' => s_push(out, "\\\""),
+                            '\\' => s_push(out, "\\\\"),
+                            '\n' => s_push(out, "\\n"),
+                            '\r' => s_push(out, "\\r"),
+                            '\t' => s_push(out, "\\t"),
+                            c if c.is_control() => {
+                                push_unicode_escape(out, c as u32);
+                            }
+                            c => s_push_char(out, c),
+                        }
+                    }
+                    s_push_char(out, '"');
+                }
+            }
+            PathComponent::Index(idx) => {
+                s_push_char(out, '[');
+                push_u32(out, *idx as u32);
+                s_push_char(out, ']');
+            }
+        }
+    }
+}
+
+fn push_unicode_escape(out: &mut String, n: u32) {
+    s_push(out, "\\u");
+    let mut buf = [0u8; 4];
+    let digits = if n <= 0xFFFF { 4 } else { 6 };
+    for i in (0..digits).rev() {
+        let nibble = ((n >> (i * 4)) & 0xF) as u8;
+        buf[digits - 1 - i] = if nibble < 10 {
+            b'0' + nibble
+        } else {
+            b'A' + nibble - 10
+        };
+    }
+    // SAFETY: hex digits are valid ASCII
+    s_push(out, unsafe {
+        std::str::from_utf8_unchecked(&buf[..digits])
+    });
+}
+
+impl Error {
+    /// Returns the diagnostic message for this error.
+    ///
+    /// Some error kinds extract names from `source` for richer messages.
+    pub fn message(&self, source: &str) -> String {
+        let mut out = String::new();
+        self.message_inner(source, &mut out);
+        out
+    }
+
+    fn message_inner(&self, source: &str, out: &mut String) {
+        let span = self.span;
+        let kind = self.kind();
+        let path = self.path();
+
+        match kind {
+            ErrorKind::DuplicateKey { .. } => {
+                if let Some(name) = source.get(span.range()) {
+                    s_push(out, "the key `");
+                    s_push(out, name);
+                    s_push(out, "` is defined multiple times");
+                } else {
+                    kind_message_inner(kind, out);
                 }
             }
             ErrorKind::DuplicateTable { name, .. } => {
                 if let Some(table_name) = source.get(name.range()) {
-                    format!("redefinition of table `{table_name}`")
+                    s_push(out, "redefinition of table `");
+                    s_push(out, table_name);
+                    s_push_char(out, '`');
                 } else {
-                    self.to_string()
+                    kind_message_inner(kind, out);
                 }
             }
-            ErrorKind::UnexpectedKey => {
-                if self.path().is_some() {
-                    self.to_string()
-                } else if let Some(key_name) = source.get(span.clone()) {
-                    format!("unexpected key `{key_name}`")
+            ErrorKind::UnexpectedKey if path.is_none() => {
+                if let Some(key_name) = source.get(span.range()) {
+                    s_push(out, "unexpected key `");
+                    s_push(out, key_name);
+                    s_push_char(out, '`');
                 } else {
-                    self.to_string()
+                    kind_message_inner(kind, out);
                 }
             }
             ErrorKind::UnexpectedVariant { .. } => {
-                if let Some(value) = source.get(span.clone()) {
-                    let mut msg = match value.split_once('\n') {
-                        Some((first, _)) => format!("unknown variant {first}..."),
-                        None => format!("unknown variant {value}"),
-                    };
-                    if let Some(p) = self.path() {
-                        msg.push_str(&format!(" at {p}"));
+                if let Some(value) = source.get(span.range()) {
+                    s_push(out, "unknown variant ");
+                    match value.split_once('\n') {
+                        Some((first, _)) => {
+                            s_push(out, first);
+                            s_push(out, "...");
+                        }
+                        None => s_push(out, value),
                     }
-                    msg
                 } else {
-                    self.to_string()
+                    kind_message_inner(kind, out);
                 }
             }
-            _ => self.to_string(),
-        };
-
-        let mut snippet = Snippet::source(source).path(path).fold(true);
-
-        match kind {
-            ErrorKind::DuplicateKey { first } => {
-                snippet = snippet
-                    .annotation(
-                        AnnotationKind::Context
-                            .span(first.range())
-                            .label("first key instance"),
-                    )
-                    .annotation(AnnotationKind::Primary.span(span).label("duplicate key"));
-            }
-            ErrorKind::Unexpected(c) => {
-                snippet = snippet.annotation(
-                    AnnotationKind::Primary
-                        .span(span)
-                        .label(format!("unexpected character '{}'", Escape(c))),
-                );
-            }
-            ErrorKind::InvalidCharInString(c) => {
-                snippet = snippet.annotation(
-                    AnnotationKind::Primary
-                        .span(span)
-                        .label(format!("invalid character '{}' in string", Escape(c))),
-                );
-            }
-            ErrorKind::InvalidEscape(c) => {
-                snippet = snippet.annotation(AnnotationKind::Primary.span(span).label(format!(
-                    "invalid escape character '{}' in string",
-                    Escape(c)
-                )));
-            }
-            ErrorKind::InvalidEscapeValue(_) => {
-                snippet = snippet.annotation(
-                    AnnotationKind::Primary
-                        .span(span)
-                        .label("invalid escape value"),
-                );
-            }
-            ErrorKind::InvalidInteger(_)
-            | ErrorKind::InvalidFloat(_)
-            | ErrorKind::InvalidDateTime(_) => {
-                snippet =
-                    snippet.annotation(AnnotationKind::Primary.span(span).label(self.to_string()));
-            }
-            ErrorKind::OutOfRange(_) => {
-                snippet = snippet.annotation(AnnotationKind::Primary.span(span));
-            }
-            ErrorKind::Wanted { expected, .. } => {
-                snippet = snippet.annotation(
-                    AnnotationKind::Primary
-                        .span(span)
-                        .label(format!("expected {expected}")),
-                );
-            }
-            ErrorKind::MultilineStringKey => {
-                snippet = snippet.annotation(
-                    AnnotationKind::Primary
-                        .span(span)
-                        .label("multiline keys are not allowed"),
-                );
-            }
-            ErrorKind::UnterminatedString(delim) => {
-                snippet = snippet.annotation(
-                    AnnotationKind::Primary
-                        .span(span)
-                        .label(format!("expected `{delim}`")),
-                );
-            }
-            ErrorKind::DuplicateTable { first, .. } => {
-                snippet = snippet
-                    .annotation(
-                        AnnotationKind::Context
-                            .span(first.range())
-                            .label("first table instance"),
-                    )
-                    .annotation(AnnotationKind::Primary.span(span).label("duplicate table"));
-            }
-            ErrorKind::InvalidHexEscape(c) => {
-                snippet = snippet.annotation(
-                    AnnotationKind::Primary
-                        .span(span)
-                        .label(format!("invalid hex escape '{}'", Escape(c))),
-                );
-            }
-            ErrorKind::UnquotedString => {
-                snippet = snippet.annotation(
-                    AnnotationKind::Primary
-                        .span(span)
-                        .label("string is not quoted"),
-                );
-            }
-            ErrorKind::UnexpectedKey => {
-                snippet =
-                    snippet.annotation(AnnotationKind::Primary.span(span).label("unexpected key"));
-            }
-            ErrorKind::MissingField(_) => {
-                snippet = snippet.annotation(
-                    AnnotationKind::Primary
-                        .span(span)
-                        .label("table with missing field"),
-                );
-            }
-            ErrorKind::DuplicateField(_) => {
-                snippet =
-                    snippet.annotation(AnnotationKind::Primary.span(span).label("duplicate field"));
-            }
-            ErrorKind::Deprecated { .. } => {
-                snippet = snippet
-                    .annotation(AnnotationKind::Primary.span(span).label("deprecated field"));
-            }
-            ErrorKind::UnexpectedValue { .. } => {
-                snippet = snippet
-                    .annotation(AnnotationKind::Primary.span(span).label("unexpected value"));
-            }
-            ErrorKind::UnexpectedVariant { expected } => {
-                let mut label = String::from("expected one of: ");
-                for (i, val) in expected.iter().enumerate() {
-                    if i > 0 {
-                        label.push_str(", ");
-                    }
-                    label.push_str(val);
-                }
-                snippet = snippet.annotation(AnnotationKind::Primary.span(span).label(label));
-            }
-            ErrorKind::UnexpectedEof => {
-                snippet = snippet.annotation(AnnotationKind::Primary.span(span));
-            }
-            ErrorKind::DottedKeyInvalidType { first } => {
-                snippet = snippet
-                    .annotation(
-                        AnnotationKind::Primary
-                            .span(span)
-                            .label("attempted to extend table here"),
-                    )
-                    .annotation(
-                        AnnotationKind::Context
-                            .span(first.range())
-                            .label("non-table"),
-                    );
-            }
-            ErrorKind::RedefineAsArray | ErrorKind::FileTooLarge | ErrorKind::Custom(..) => {
-                snippet = snippet.annotation(AnnotationKind::Primary.span(span));
-            }
-            ErrorKind::MissingArrayComma => {
-                snippet =
-                    snippet.annotation(AnnotationKind::Primary.span(span).label("expected `,`"));
-            }
-            ErrorKind::UnclosedArray => {
-                snippet =
-                    snippet.annotation(AnnotationKind::Primary.span(span).label("expected `]`"));
-            }
-            ErrorKind::MissingInlineTableComma => {
-                snippet =
-                    snippet.annotation(AnnotationKind::Primary.span(span).label("expected `,`"));
-            }
-            ErrorKind::UnclosedInlineTable => {
-                snippet =
-                    snippet.annotation(AnnotationKind::Primary.span(span).label("expected `}`"));
-            }
+            _ => kind_message_inner(kind, out),
         }
 
-        Level::ERROR.primary_title(title).element(snippet)
+        if let Some(p) = path {
+            s_push(out, " at `");
+            push_toml_path(out, p);
+            s_push_char(out, '`');
+        }
     }
-}
 
-#[cfg(feature = "codespan-reporting")]
-impl Error {
-    /// Converts this error into a [`codespan_reporting`](https://docs.rs/codespan-reporting) diagnostic.
-    pub fn to_diagnostic<FileId: Copy + PartialEq>(
-        &self,
-        source: &str,
-        fid: FileId,
-    ) -> codespan_reporting::diagnostic::Diagnostic<FileId> {
-        use codespan_reporting::diagnostic::Label;
+    /// Returns the primary label span and text for this error.
+    pub fn primary_label(&self) -> Option<(Span, String)> {
+        let mut out = String::new();
+        self.primary_label_inner(&mut out);
+        Some((self.span, out))
+    }
 
-        let diag = codespan_reporting::diagnostic::Diagnostic::error();
+    fn primary_label_inner(&self, out: &mut String) {
         let kind = self.kind();
-        let error_span = self.span;
-        let diag = diag.with_code(kind.to_string());
-
         match kind {
-            ErrorKind::DuplicateKey { first } => {
-                let msg = match source.get(self.span().range()) {
-                    Some(name) => format!("the key `{name}` is defined multiple times"),
-                    None => "duplicate key".into(),
-                };
-                diag.with_message(msg).with_labels(vec![
-                    Label::secondary(fid, first).with_message("first key instance"),
-                    Label::primary(fid, error_span).with_message("duplicate key"),
-                ])
+            ErrorKind::DuplicateKey { .. } => s_push(out, "duplicate key"),
+            ErrorKind::DuplicateTable { .. } => s_push(out, "duplicate table"),
+            ErrorKind::DottedKeyInvalidType { .. } => {
+                s_push(out, "attempted to extend table here");
             }
-            ErrorKind::Unexpected(c) => diag.with_labels(vec![
-                Label::primary(fid, error_span)
-                    .with_message(format!("unexpected character '{}'", Escape(c))),
-            ]),
-            ErrorKind::InvalidCharInString(c) => diag.with_labels(vec![
-                Label::primary(fid, error_span)
-                    .with_message(format!("invalid character '{}' in string", Escape(c))),
-            ]),
+            ErrorKind::Unexpected(c) => {
+                s_push(out, "unexpected character '");
+                push_escape(out, c);
+                s_push_char(out, '\'');
+            }
+            ErrorKind::InvalidCharInString(c) => {
+                s_push(out, "invalid character '");
+                push_escape(out, c);
+                s_push(out, "' in string");
+            }
             ErrorKind::InvalidEscape(c) => {
-                diag.with_labels(vec![Label::primary(fid, error_span).with_message(format!(
-                    "invalid escape character '{}' in string",
-                    Escape(c)
-                ))])
+                s_push(out, "invalid escape character '");
+                push_escape(out, c);
+                s_push(out, "' in string");
             }
-            ErrorKind::InvalidEscapeValue(_) => diag.with_labels(vec![
-                Label::primary(fid, error_span).with_message("invalid escape value"),
-            ]),
+            ErrorKind::InvalidEscapeValue(_) => s_push(out, "invalid escape value"),
             ErrorKind::InvalidInteger(_)
             | ErrorKind::InvalidFloat(_)
-            | ErrorKind::InvalidDateTime(_) => diag.with_labels(vec![
-                Label::primary(fid, error_span).with_message(self.to_string()),
-            ]),
-            ErrorKind::OutOfRange(ty) => {
-                let mut msg = format!("number is out of range of '{ty}'");
-                if let Some(p) = self.path() {
-                    msg.push_str(&format!(" at {p}"));
-                }
-                diag.with_message(msg)
-                    .with_labels(vec![Label::primary(fid, error_span)])
+            | ErrorKind::InvalidDateTime(_) => kind_message_inner(kind, out),
+            ErrorKind::InvalidHexEscape(c) => {
+                s_push(out, "invalid hex escape '");
+                push_escape(out, c);
+                s_push_char(out, '\'');
             }
             ErrorKind::Wanted { expected, .. } => {
-                diag.with_message(self.to_string()).with_labels(vec![
-                    Label::primary(fid, error_span).with_message(format!("expected {expected}")),
-                ])
+                s_push(out, "expected ");
+                s_push(out, expected);
             }
-            ErrorKind::MultilineStringKey => diag.with_labels(vec![
-                Label::primary(fid, error_span).with_message("multiline keys are not allowed"),
-            ]),
-            ErrorKind::UnterminatedString(delim) => diag.with_labels(vec![
-                Label::primary(fid, error_span).with_message(format!("expected `{delim}`")),
-            ]),
-            ErrorKind::DuplicateTable { name, first } => {
-                let msg = match source.get(name.range()) {
-                    Some(table_name) => format!("redefinition of table `{table_name}`"),
-                    None => "redefinition of table".into(),
-                };
-                diag.with_message(msg).with_labels(vec![
-                    Label::secondary(fid, first).with_message("first table instance"),
-                    Label::primary(fid, error_span).with_message("duplicate table"),
-                ])
+            ErrorKind::MultilineStringKey => s_push(out, "multiline keys are not allowed"),
+            ErrorKind::UnterminatedString(delim) => {
+                s_push(out, "expected `");
+                s_push_char(out, delim);
+                s_push_char(out, '`');
             }
-            ErrorKind::InvalidHexEscape(c) => diag.with_labels(vec![
-                Label::primary(fid, error_span)
-                    .with_message(format!("invalid hex escape '{}'", Escape(c))),
-            ]),
-            ErrorKind::UnquotedString => diag.with_labels(vec![
-                Label::primary(fid, error_span).with_message("string is not quoted"),
-            ]),
-            ErrorKind::UnexpectedKey => {
-                let msg = if self.path().is_some() {
-                    self.to_string()
-                } else {
-                    match source.get(self.span().range()) {
-                        Some(key_name) => format!("unexpected key `{key_name}`"),
-                        None => "unexpected key".into(),
-                    }
-                };
-                diag.with_message(msg).with_labels(vec![
-                    Label::primary(fid, error_span).with_message("unexpected key"),
-                ])
-            }
-            ErrorKind::MissingField(field) => {
-                let mut msg = format!("missing field '{field}'");
-                if let Some(p) = self.path() {
-                    msg.push_str(&format!(" at {p}"));
-                }
-                diag.with_message(msg).with_labels(vec![
-                    Label::primary(fid, error_span).with_message("table with missing field"),
-                ])
-            }
-            ErrorKind::DuplicateField(field) => {
-                let mut msg = format!("duplicate field '{field}'");
-                if let Some(p) = self.path() {
-                    msg.push_str(&format!(" at {p}"));
-                }
-                diag.with_message(msg).with_labels(vec![
-                    Label::primary(fid, error_span).with_message("duplicate field"),
-                ])
-            }
-            ErrorKind::Deprecated { new, .. } => diag
-                .with_message(format!(
-                    "deprecated field encountered, '{new}' should be used instead"
-                ))
-                .with_labels(vec![
-                    Label::primary(fid, error_span).with_message("deprecated field"),
-                ]),
-            ErrorKind::UnexpectedValue { expected } => diag
-                .with_message(format!("expected '{expected:?}'"))
-                .with_labels(vec![
-                    Label::primary(fid, error_span).with_message("unexpected value"),
-                ]),
+            ErrorKind::UnquotedString => s_push(out, "string is not quoted"),
+            ErrorKind::UnexpectedKey => s_push(out, "unexpected key"),
+            ErrorKind::MissingField(_) => s_push(out, "table with missing field"),
+            ErrorKind::DuplicateField(_) => s_push(out, "duplicate field"),
+            ErrorKind::Deprecated { .. } => s_push(out, "deprecated field"),
+            ErrorKind::UnexpectedValue { .. } => s_push(out, "unexpected value"),
             ErrorKind::UnexpectedVariant { expected } => {
-                let mut label = String::from("expected one of: ");
-                for (i, val) in expected.iter().enumerate() {
-                    if i > 0 {
-                        label.push_str(", ");
+                s_push(out, "expected one of: ");
+                let mut first = true;
+                for val in expected {
+                    if !first {
+                        s_push(out, ", ");
                     }
-                    label.push_str(val);
+                    first = false;
+                    s_push(out, val);
                 }
-                diag.with_message(self.to_string())
-                    .with_labels(vec![Label::primary(fid, error_span).with_message(label)])
             }
-            ErrorKind::UnexpectedEof => diag
-                .with_message("unexpected end of file")
-                .with_labels(vec![Label::primary(fid, error_span)]),
-            ErrorKind::DottedKeyInvalidType { first } => {
-                diag.with_message(self.to_string()).with_labels(vec![
-                    Label::primary(fid, error_span).with_message("attempted to extend table here"),
-                    Label::secondary(fid, first).with_message("non-table"),
-                ])
-            }
-            ErrorKind::RedefineAsArray => diag
-                .with_message(self.to_string())
-                .with_labels(vec![Label::primary(fid, error_span)]),
-            ErrorKind::FileTooLarge => diag
-                .with_message("file is too large (maximum 512 MiB)")
-                .with_labels(vec![Label::primary(fid, error_span)]),
-            ErrorKind::MissingArrayComma => diag.with_message(self.to_string()).with_labels(vec![
-                Label::primary(fid, error_span).with_message("expected `,`"),
-            ]),
-            ErrorKind::UnclosedArray => diag.with_message(self.to_string()).with_labels(vec![
-                Label::primary(fid, error_span).with_message("expected `]`"),
-            ]),
-            ErrorKind::MissingInlineTableComma => {
-                diag.with_message(self.to_string()).with_labels(vec![
-                    Label::primary(fid, error_span).with_message("expected `,`"),
-                ])
-            }
-            ErrorKind::UnclosedInlineTable => {
-                diag.with_message(self.to_string()).with_labels(vec![
-                    Label::primary(fid, error_span).with_message("expected `}`"),
-                ])
-            }
-            ErrorKind::Custom(msg) => diag
-                .with_message(msg.to_string())
-                .with_labels(vec![Label::primary(fid, error_span)]),
+            ErrorKind::MissingArrayComma => s_push(out, "expected `,`"),
+            ErrorKind::UnclosedArray => s_push(out, "expected `]`"),
+            ErrorKind::MissingInlineTableComma => s_push(out, "expected `,`"),
+            ErrorKind::UnclosedInlineTable => s_push(out, "expected `}`"),
+            ErrorKind::OutOfRange(_)
+            | ErrorKind::UnexpectedEof
+            | ErrorKind::RedefineAsArray
+            | ErrorKind::FileTooLarge
+            | ErrorKind::Custom(..) => {}
+        }
+    }
+
+    /// Returns the secondary label span and text, if any.
+    pub fn secondary_label(&self) -> Option<(Span, &'static str)> {
+        match self.kind() {
+            ErrorKind::DuplicateKey { first } => Some((first, "first key instance")),
+            ErrorKind::DuplicateTable { first, .. } => Some((first, "first table instance")),
+            ErrorKind::DottedKeyInvalidType { first } => Some((first, "non-table")),
+            _ => None,
         }
     }
 }

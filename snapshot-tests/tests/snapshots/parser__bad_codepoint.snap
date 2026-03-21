@@ -2,7 +2,7 @@
 source: snapshot-tests/tests/parser.rs
 expression: error
 ---
-error[invalid-escape-value]: 
+error[InvalidEscapeValue]: invalid escape value: `\uD800` at foo
   ┌─ bad_codepoint:1:9
   │
 1 │ foo = "\uD800"

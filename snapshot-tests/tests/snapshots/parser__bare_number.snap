@@ -2,7 +2,7 @@
 source: snapshot-tests/tests/parser.rs
 expression: error
 ---
-error[wanted]: expected an equals, found eof at 4
+error[Wanted]: expected an equals, found eof at 4
   ┌─ bare_number:1:2
   │
 1 │ 4

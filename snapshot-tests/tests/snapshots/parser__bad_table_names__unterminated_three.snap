@@ -2,7 +2,7 @@
 source: snapshot-tests/tests/parser.rs
 expression: error
 ---
-error[unterminated-string]: 
+error[UnterminatedString]: invalid literal string, expected `'`
   ┌─ unterminated_three:1:6
   │
 1 │ [''']

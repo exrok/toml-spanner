@@ -1105,6 +1105,7 @@ impl<'de> Item<'de> {
 /// let err = result.unwrap_err();
 /// assert!(!err.errors.is_empty());
 /// ```
+#[derive(Debug)]
 pub struct FromTomlError {
     /// The accumulated errors.
     pub errors: Vec<Error>,
@@ -1125,14 +1126,6 @@ impl Display for FromTomlError {
             )?;
         }
         Ok(())
-    }
-}
-
-impl Debug for FromTomlError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("FromTomlError")
-            .field("errors", &self.errors)
-            .finish()
     }
 }
 

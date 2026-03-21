@@ -2,7 +2,7 @@
 source: snapshot-tests/tests/annotate_snippets.rs
 expression: rendered
 ---
-error: redefinition of table `"b"`
+error: redefinition of table `"b"` at `a.b`
  --> table_redefinition:2:1
   |
 1 | / [a.b]

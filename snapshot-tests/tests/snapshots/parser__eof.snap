@@ -2,10 +2,8 @@
 source: snapshot-tests/tests/parser.rs
 expression: error
 ---
-error[unexpected-eof]: unexpected end of file
+error[UnexpectedEof]: unexpected eof encountered at key
   ┌─ eof:1:6
   │
 1 │ key =
   │      ^
-
-

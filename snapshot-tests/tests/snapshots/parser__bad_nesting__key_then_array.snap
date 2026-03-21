@@ -1,9 +1,8 @@
 ---
 source: snapshot-tests/tests/parser.rs
-assertion_line: 208
 expression: error
 ---
-error[duplicate-key]: the key `a` is defined multiple times
+error[DuplicateKey]: the key `a` is defined multiple times
   ┌─ key_then_array:3:11
   │
 2 │         a = [2]

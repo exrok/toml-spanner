@@ -2,7 +2,7 @@
 source: snapshot-tests/tests/parser.rs
 expression: error
 ---
-error[wanted]: expected an equals, found a character at key
+error[Wanted]: expected an equals, found a character at key
   ┌─ pipe:1:4
   │
 1 │ key|=3

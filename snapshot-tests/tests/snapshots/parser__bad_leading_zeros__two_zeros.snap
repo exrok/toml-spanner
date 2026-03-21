@@ -2,8 +2,8 @@
 source: snapshot-tests/tests/parser.rs
 expression: error
 ---
-error[invalid-integer]: 
+error[InvalidInteger]: invalid integer: leading zeros are not allowed at a
   ┌─ two_zeros:1:5
   │
 1 │ a = 00
-  │     ^^ invalid integer: leading zeros are not allowed at a
+  │     ^^ invalid integer: leading zeros are not allowed
