@@ -663,12 +663,10 @@ impl Error {
                 }
             }
             ErrorKind::UnexpectedKey => {
-                if let Some(key_name) = source.get(span.clone()) {
-                    let mut msg = format!("unexpected key `{key_name}`");
-                    if let Some(p) = self.path() {
-                        msg.push_str(&format!(" at {p}"));
-                    }
-                    msg
+                if self.path().is_some() {
+                    self.to_string()
+                } else if let Some(key_name) = source.get(span.clone()) {
+                    format!("unexpected key `{key_name}`")
                 } else {
                     self.to_string()
                 }
@@ -941,15 +939,13 @@ impl Error {
                 Label::primary(fid, error_span).with_message("string is not quoted"),
             ]),
             ErrorKind::UnexpectedKey => {
-                let msg = match source.get(self.span().range()) {
-                    Some(key_name) => {
-                        let mut m = format!("unexpected key `{key_name}`");
-                        if let Some(p) = self.path() {
-                            m.push_str(&format!(" at {p}"));
-                        }
-                        m
+                let msg = if self.path().is_some() {
+                    self.to_string()
+                } else {
+                    match source.get(self.span().range()) {
+                        Some(key_name) => format!("unexpected key `{key_name}`"),
+                        None => "unexpected key".into(),
                     }
-                    None => "unexpected key".into(),
                 };
                 diag.with_message(msg).with_labels(vec![
                     Label::primary(fid, error_span).with_message("unexpected key"),
