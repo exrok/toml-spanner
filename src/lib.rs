@@ -120,6 +120,60 @@
 //!
 //! </details>
 //!
+//! ## Derive Macro
+//!
+//! The [`Toml`] derive macro generates [`FromToml`] and [`ToToml`]
+//! implementations for structs and enums. A bare `#[derive(Toml)]` generates
+//! [`FromToml`] only; annotate with `#[toml(Toml)]` for both directions.
+//!
+//! ```
+//! use toml_spanner::{Arena, Toml};
+//!
+//! #[derive(Debug, Toml)]
+//! #[toml(Toml)]
+//! struct Config {
+//!     name: String,
+//!     port: u16,
+//!     #[toml(default)]
+//!     debug: bool,
+//! }
+//!
+//! let arena = Arena::new();
+//! let mut doc = toml_spanner::parse("name = 'app'\nport = 8080", &arena).unwrap();
+//! let config = doc.to::<Config>().unwrap();
+//! assert_eq!(config.name, "app");
+//!
+//! let output = toml_spanner::to_string(&config).unwrap();
+//! assert!(output.contains("name = \"app\""));
+//! ```
+//!
+//! See the [`Toml`] macro documentation for the full set of container and field
+//! attributes (`rename`, `default`, `flatten`, `skip`, tagged enums, etc.).
+//!
+//! ## Serialization
+//!
+//! Any type implementing [`ToToml`] (including via derive) can be written back
+//! to TOML text with [`to_string`] or the [`Formatting`] builder for more
+//! control.
+//!
+//! ```
+//! use toml_spanner::{Arena, Formatting};
+//! use std::collections::BTreeMap;
+//!
+//! let mut map = BTreeMap::new();
+//! map.insert("key", "value");
+//!
+//! // Quick one-liner
+//! let output = toml_spanner::to_string(&map).unwrap();
+//!
+//! // Preserve formatting from a parsed document
+//! let arena = Arena::new();
+//! let doc = toml_spanner::parse("key = \"old\"\n", &arena).unwrap();
+//! let output = Formatting::preserved_from(&doc).format(&map).unwrap();
+//! ```
+//!
+//! See [`Formatting`] for indentation, format preservation, and other options.
+//!
 #![cfg_attr(docsrs, feature(doc_cfg))]
 mod arena;
 #[cfg(feature = "from-toml")]

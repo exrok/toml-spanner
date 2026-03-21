@@ -34,32 +34,59 @@ enabled = true
 number = 12
 ```
 
-Then you can parse the TOML document into an `Item` tree, with the following:
+Parse the TOML document into an `Item` tree:
 
 ```rust
-use toml_spanner::{Arena, Context, Deserialize, Failed, Item, Value};
-
-let arena = Arena::new();
-let mut root = toml_spanner::parse(TOML_DOCUMENT, &arena).unwrap();
+let arena = toml_spanner::Arena::new();
+let doc = toml_spanner::parse(TOML_DOCUMENT, &arena).unwrap();
 ```
 
-You can traverse the tree and inspect values:
+Traverse the tree and inspect values:
 
 ```rust
-assert_eq!(root["nested"][1]["enabled"].as_bool(), Some(true));
+assert_eq!(doc["nested"][1]["enabled"].as_bool(), Some(true));
 
-match root["nested"].value() {
+match doc["nested"].value() {
     Some(Value::Array(array)) => assert_eq!(array.len(), 2),
     Some(other) => panic!("Expected Array but found: {:#?}", other),
     None => panic!("Expected value but found nothing"),
 }
 ```
 
-When the `deserialize` feature is enabled, toml-spanner provides a set of
-helpers and a trait to aid in deserializing `Item` trees into user defined types.
+### Derive Macros
+
+The `Toml` derive macro generates `FromToml` and/or `ToToml` implementations.
+A bare `#[derive(Toml)]` generates `FromToml` only; add `#[toml(Toml)]` for
+both directions.
 
 ```rust
-use toml_spanner::{Arena, Context, Deserialize, Failed, Item};
+use toml_spanner::{Arena, Toml};
+
+#[derive(Debug, Toml)]
+#[toml(Toml)]
+struct Config {
+    name: String,
+    port: u16,
+    #[toml(default)]
+    debug: bool,
+}
+
+let arena = Arena::new();
+let mut doc = toml_spanner::parse("name = 'app'\nport = 8080", &arena).unwrap();
+let config = doc.to::<Config>().unwrap();
+```
+
+See the [`Toml` macro docs](https://docs.rs/toml-spanner/latest/toml_spanner/derive.Toml.html)
+for the full set of attributes (`rename`, `default`, `flatten`, `skip`, tagged enums, etc.).
+
+### Manual `FromToml`
+
+For cases where derive is not flexible enough, implement `FromToml` directly
+using `TableHelper` for type-safe field extraction. Errors are accumulated
+rather than failing on the first problem.
+
+```rust
+use toml_spanner::{Arena, Context, FromToml, Failed, Item};
 
 #[derive(Debug)]
 struct Config {
@@ -68,8 +95,8 @@ struct Config {
     number: u32,
 }
 
-impl<'de> Deserialize<'de> for Config {
-    fn deserialize(ctx: &mut Context<'de>, item: &Item<'de>) -> Result<Self, Failed> {
+impl<'de> FromToml<'de> for Config {
+    fn from_toml(ctx: &mut Context<'de>, item: &Item<'de>) -> Result<Self, Failed> {
         let mut th = item.table_helper(ctx)?;
         let config = Config {
             enabled: th.optional("enabled").unwrap_or(false),
@@ -81,15 +108,33 @@ impl<'de> Deserialize<'de> for Config {
     }
 }
 
-if let Ok(config) = root.deserialize::<Config>() {
-    println!("parsed: {:?}", config);
+let arena = Arena::new();
+let mut doc = toml_spanner::parse(TOML_DOCUMENT, &arena).unwrap();
+
+if let Ok(config) = doc.to::<Config>() {
+    println!("parsed: {config:?}");
 } else {
-    println!("Deserialization Failure");
-    for error in root.errors() {
-        println!("error: {}", error);
+    for error in doc.errors() {
+        println!("error: {error}");
     }
 }
 ```
+
+### Serialization
+
+Any type implementing `ToToml` (including via derive) can be written to TOML
+with `to_string` or the `Formatting` builder for format-preserving output.
+
+```rust
+// Quick one-liner
+let output = toml_spanner::to_string(&config).unwrap();
+
+// Preserve formatting from a parsed document
+let output = toml_spanner::Formatting::preserved_from(&doc).format(&config).unwrap();
+```
+
+See [`Formatting` docs](https://docs.rs/toml-spanner/latest/toml_spanner/struct.Formatting.html)
+for indentation, format preservation, and other options.
 
 Please consult the [API documentation](https://docs.rs/toml-spanner/latest/toml_spanner/) for more details.
 
@@ -199,8 +244,8 @@ Here are some parsing examples using the annotated-snippets feature:
 
 ![duplicate key](error-examples/output/duplicate_key.svg)
 
-Here are some a deserialization error, note how multiple errors are reported instead
-bailing out after first error.
+Here are some conversion errors, note how multiple errors are reported instead of
+bailing out after the first error.
 
 ![deserialization errors](error-examples/output/deserialization_errors.svg)
 
