@@ -3,7 +3,7 @@
 use std::hash::{BuildHasher, Hasher};
 use libfuzzer_sys::{Corpus, fuzz_target};
 
-// Fuzzes `Formatting::of(...).with_span_projection_identity()` with
+// Fuzzes `Formatting::preserved_from(...).with_span_projection_identity()` with
 // direct table mutations on a parsed document.
 //
 // Unlike emit_reproject_reorder which generates two separate TOML documents,
@@ -56,7 +56,7 @@ fuzz_target!(|data: &[u8]| -> Corpus {
     collect_projected_positions(doc.table(), 0, &mut src_positions);
 
     // Reproject with span identity, normalize, and emit.
-    let buf = toml_spanner::Formatting::of(&doc)
+    let buf = toml_spanner::Formatting::preserved_from(&doc)
         .with_span_projection_identity()
         .format_table_to_bytes(table, &arena);
 
@@ -85,7 +85,7 @@ fuzz_target!(|data: &[u8]| -> Corpus {
     {
         let src2 = toml_spanner::parse(output, &arena).unwrap();
         let dest2 = src2.table().clone_in(&arena);
-        let buf2 = toml_spanner::Formatting::of(&src2)
+        let buf2 = toml_spanner::Formatting::preserved_from(&src2)
             .with_span_projection_identity()
             .format_table_to_bytes(dest2, &arena);
         assert!(

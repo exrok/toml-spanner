@@ -28,8 +28,8 @@ fuzz_target!(|data: &[u8]| -> Corpus {
     }
     fuzz::gen_tree::erase_kinds_table(&mut dest);
 
-    let out_buf = toml_spanner::Formatting::of(&doc)
-        .format_table_to_bytes(dest, &arena);
+    let out_buf =
+        toml_spanner::Formatting::preserved_from(&doc).format_table_to_bytes(dest, &arena);
 
     let input = text.as_bytes().trim_ascii();
     // Exact text match — input must be preserved byte-for-byte.

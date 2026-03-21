@@ -229,8 +229,8 @@ fn make_nested<'de>(
     arena: &'de Arena,
 ) -> (Key<'de>, Item<'de>) {
     let mut t = Table::default();
-    t.insert(Key::anon(inner), value, arena);
-    (Key::anon(outer), t.into_item())
+    t.insert(Key::new(inner), value, arena);
+    (Key::new(outer), t.into_item())
 }
 
 /// Parses `input`, applies `mutate` to the dest document, reprojects from
@@ -342,7 +342,7 @@ fn new_sibling_before_match_backfills_dotted() {
     let (k, v) = make_nested("b", "c", Item::from(1i64), &arena);
     section_a.insert(k, v, &arena);
     let mut dest = Table::default();
-    dest.insert(Key::anon("A"), section_a.into_item(), &arena);
+    dest.insert(Key::new("A"), section_a.into_item(), &arena);
 
     let mut items = Vec::new();
     reproject(&src_doc, &mut dest, &mut items);
@@ -364,7 +364,7 @@ fn new_sibling_before_match_backfills_inline() {
     let (k, v) = make_nested("b", "c", Item::from(1i64), &arena);
     section_a.insert(k, v, &arena);
     let mut dest = Table::default();
-    dest.insert(Key::anon("A"), section_a.into_item(), &arena);
+    dest.insert(Key::new("A"), section_a.into_item(), &arena);
 
     let mut items = Vec::new();
     reproject(&src_doc, &mut dest, &mut items);
@@ -377,7 +377,7 @@ fn new_sibling_before_match_backfills_inline() {
 fn new_scalar_alongside_dotted() {
     let result = reproject_after_mutation("[A]\nb.c = 1", |root, arena| {
         let section = root.get_mut("A").unwrap().as_table_mut().unwrap();
-        section.insert(Key::anon("x"), Item::from(42i64), arena);
+        section.insert(Key::new("x"), Item::from(42i64), arena);
     });
     assert_eq!(result, "[A]\nb.c = 1\nx = 42\n");
 }
@@ -386,7 +386,7 @@ fn new_scalar_alongside_dotted() {
 fn new_scalar_alongside_inline() {
     let result = reproject_after_mutation("[A]\nb = { c = 1 }", |root, arena| {
         let section = root.get_mut("A").unwrap().as_table_mut().unwrap();
-        section.insert(Key::anon("x"), Item::from(42i64), arena);
+        section.insert(Key::new("x"), Item::from(42i64), arena);
     });
     assert_eq!(result, "[A]\nb = { c = 1 }\nx = 42\n");
 }
@@ -398,7 +398,7 @@ fn new_sibling_deep_dotted_nesting() {
         let section = root.get_mut("A").unwrap().as_table_mut().unwrap();
         let bc = section.get_mut("b").unwrap().as_table_mut().unwrap();
         let c = bc.get_mut("c").unwrap().as_table_mut().unwrap();
-        c.insert(Key::anon("e"), Item::from(2i64), arena);
+        c.insert(Key::new("e"), Item::from(2i64), arena);
     });
     assert_eq!(result, "[A]\nb.c.d = 1\nb.c.e = 2\n");
 }
@@ -409,7 +409,7 @@ fn new_sibling_deep_inline_nesting() {
         let section = root.get_mut("A").unwrap().as_table_mut().unwrap();
         let b = section.get_mut("b").unwrap().as_table_mut().unwrap();
         let c = b.get_mut("c").unwrap().as_table_mut().unwrap();
-        c.insert(Key::anon("e"), Item::from(2i64), arena);
+        c.insert(Key::new("e"), Item::from(2i64), arena);
     });
     assert_eq!(result, "[A]\nb = { c = { d = 1, e = 2 } }\n");
 }
@@ -418,8 +418,8 @@ fn new_sibling_deep_inline_nesting() {
 fn new_sibling_at_root_alongside_header() {
     let result = reproject_after_mutation("[A]\nx = 1\n\n[B]\ny = 2", |root, arena| {
         let mut section_c = Table::default();
-        section_c.insert(Key::anon("z"), Item::from(3i64), arena);
-        root.insert(Key::anon("C"), section_c.into_item(), arena);
+        section_c.insert(Key::new("z"), Item::from(3i64), arena);
+        root.insert(Key::new("C"), section_c.into_item(), arena);
     });
     // C has no match in src, but A and B are both headers → C inherits header
     assert!(
@@ -432,7 +432,7 @@ fn new_sibling_at_root_alongside_header() {
 #[test]
 fn new_root_scalar_alongside_headers() {
     let result = reproject_after_mutation("top = 1\n\n[A]\nx = 2", |root, arena| {
-        root.insert(Key::anon("extra"), Item::from(99i64), arena);
+        root.insert(Key::new("extra"), Item::from(99i64), arena);
     });
     assert!(result.contains("top = 1"), "{result}");
     assert!(result.contains("extra = 99"), "{result}");
@@ -459,7 +459,7 @@ fn new_sibling_alongside_aot() {
     let result = reproject_after_mutation(
         "[[servers]]\nname = \"alpha\"\n\n[[servers]]\nname = \"beta\"",
         |root, arena| {
-            root.insert(Key::anon("version"), Item::from("1.0"), arena);
+            root.insert(Key::new("version"), Item::from("1.0"), arena);
         },
     );
     assert!(result.contains("version = \"1.0\""), "{result}");
@@ -475,9 +475,9 @@ fn new_array_sibling_inherits_aot_style() {
         |root, arena| {
             let mut arr = crate::Array::new();
             let mut t = Table::default();
-            t.insert(Key::anon("name"), Item::from("build"), arena);
+            t.insert(Key::new("name"), Item::from("build"), arena);
             arr.push(t.into_item(), arena);
-            root.insert(Key::anon("tasks"), arr.into_item(), arena);
+            root.insert(Key::new("tasks"), arr.into_item(), arena);
         },
     );
     assert!(result.contains("[[servers]]"), "{result}");
@@ -503,18 +503,18 @@ fn new_array_sibling_before_match_backfills_aot() {
     // Insert `jobs` first (new, before matched `servers`)
     let mut arr = crate::Array::new();
     let mut t = Table::default();
-    t.insert(Key::anon("id"), Item::from(1i64), &arena);
+    t.insert(Key::new("id"), Item::from(1i64), &arena);
     arr.push(t.into_item(), &arena);
-    dest.insert(Key::anon("jobs"), arr.into_item(), &arena);
+    dest.insert(Key::new("jobs"), arr.into_item(), &arena);
     // Insert `servers` (will match src)
     let mut arr2 = crate::Array::new();
     let mut t1 = Table::default();
-    t1.insert(Key::anon("name"), Item::from("a"), &arena);
+    t1.insert(Key::new("name"), Item::from("a"), &arena);
     arr2.push(t1.into_item(), &arena);
     let mut t2 = Table::default();
-    t2.insert(Key::anon("name"), Item::from("b"), &arena);
+    t2.insert(Key::new("name"), Item::from("b"), &arena);
     arr2.push(t2.into_item(), &arena);
-    dest.insert(Key::anon("servers"), arr2.into_item(), &arena);
+    dest.insert(Key::new("servers"), arr2.into_item(), &arena);
 
     let mut items = Vec::new();
     reproject(&src_doc, &mut dest, &mut items);
@@ -618,12 +618,12 @@ fn new_deep_nested_sibling_inherits_dotted() {
     let result = reproject_after_mutation("[A]\nb.c = 1", |root, arena| {
         let section = root.get_mut("A").unwrap().as_table_mut().unwrap();
         let mut f_table = Table::default();
-        f_table.insert(Key::anon("g"), Item::from(2i64), arena);
+        f_table.insert(Key::new("g"), Item::from(2i64), arena);
         let mut e_table = Table::default();
-        e_table.insert(Key::anon("f"), f_table.into_item(), arena);
+        e_table.insert(Key::new("f"), f_table.into_item(), arena);
         let mut d_table = Table::default();
-        d_table.insert(Key::anon("e"), e_table.into_item(), arena);
-        section.insert(Key::anon("d"), d_table.into_item(), arena);
+        d_table.insert(Key::new("e"), e_table.into_item(), arena);
+        section.insert(Key::new("d"), d_table.into_item(), arena);
     });
     assert_eq!(result, "[A]\nb.c = 1\nd.e.f.g = 2\n");
 }
@@ -633,12 +633,12 @@ fn new_deep_nested_sibling_inherits_inline() {
     let result = reproject_after_mutation("[A]\nb = { c = 1 }", |root, arena| {
         let section = root.get_mut("A").unwrap().as_table_mut().unwrap();
         let mut f_table = Table::default();
-        f_table.insert(Key::anon("g"), Item::from(2i64), arena);
+        f_table.insert(Key::new("g"), Item::from(2i64), arena);
         let mut e_table = Table::default();
-        e_table.insert(Key::anon("f"), f_table.into_item(), arena);
+        e_table.insert(Key::new("f"), f_table.into_item(), arena);
         let mut d_table = Table::default();
-        d_table.insert(Key::anon("e"), e_table.into_item(), arena);
-        section.insert(Key::anon("d"), d_table.into_item(), arena);
+        d_table.insert(Key::new("e"), e_table.into_item(), arena);
+        section.insert(Key::new("d"), d_table.into_item(), arena);
     });
     assert_eq!(
         result,
@@ -759,7 +759,7 @@ fn changed_value_uses_default_format() {
 fn new_value_uses_default_format() {
     let input = "a = 0xFF";
     let result = emit_projected_after_mutation(input, |root, arena| {
-        root.insert(Key::anon("b"), Item::from(42i64), arena);
+        root.insert(Key::new("b"), Item::from(42i64), arena);
     });
     assert!(
         result.contains("a = 0xFF"),
@@ -803,7 +803,7 @@ fn preserves_scalars_in_header_section() {
 fn new_key_uses_default_format() {
     let input = "'existing' = 1";
     let result = emit_projected_after_mutation(input, |root, arena| {
-        root.insert(Key::anon("new key"), Item::from(2i64), arena);
+        root.insert(Key::new("new key"), Item::from(2i64), arena);
     });
     assert!(result.contains("'existing'"), "existing: {result}");
     // New key has no source span, falls back to default (basic quoted)
@@ -853,7 +853,7 @@ fn inline_table_append_preserves_comment() {
     let input = "t = {\n  x = 1,\n  y = 2, # Two is nice\n  z = 3,\n}";
     let result = emit_projected_after_mutation(input, |root, arena| {
         let t = root.get_mut("t").unwrap().as_table_mut().unwrap();
-        t.insert(Key::anon("w"), Item::from(4i64), arena);
+        t.insert(Key::new("w"), Item::from(4i64), arena);
     });
     assert_eq!(
         result,
@@ -1487,10 +1487,10 @@ fn ignore_source_style_uses_dest_structure() {
     // Dest: build programmatically with dotted keys (body-level style).
     let mut pkg = Table::new();
     pkg.set_style(TableStyle::Dotted);
-    pkg.insert(Key::anon("name"), Item::from("test"), &arena);
-    pkg.insert(Key::anon("version"), Item::from("1.0"), &arena);
+    pkg.insert(Key::new("name"), Item::from("test"), &arena);
+    pkg.insert(Key::new("version"), Item::from("1.0"), &arena);
     let mut dest = Table::default();
-    dest.insert(Key::anon("package"), pkg.into_item(), &arena);
+    dest.insert(Key::new("package"), pkg.into_item(), &arena);
 
     // Enable ignore_source_style on root: reprojection must not copy
     // Header style from source onto dest's package table.
@@ -1531,21 +1531,21 @@ fn ignore_source_style_per_table() {
 
     let mut inner_a = Table::new();
     inner_a.set_style(TableStyle::Inline);
-    inner_a.insert(Key::anon("x"), Item::from(1i64), &arena);
+    inner_a.insert(Key::new("x"), Item::from(1i64), &arena);
     let mut sect_a = Table::new();
     sect_a.set_style(TableStyle::Header);
-    sect_a.insert(Key::anon("w"), inner_a.into_item(), &arena);
+    sect_a.insert(Key::new("w"), inner_a.into_item(), &arena);
 
     let mut inner_b = Table::new();
     inner_b.set_style(TableStyle::Inline);
-    inner_b.insert(Key::anon("x"), Item::from(2i64), &arena);
+    inner_b.insert(Key::new("x"), Item::from(2i64), &arena);
     let mut sect_b = Table::new();
     sect_b.set_style(TableStyle::Header);
-    sect_b.insert(Key::anon("w"), inner_b.into_item(), &arena);
+    sect_b.insert(Key::new("w"), inner_b.into_item(), &arena);
 
     let mut dest = Table::default();
-    dest.insert(Key::anon("a"), sect_a.into_item(), &arena);
-    dest.insert(Key::anon("b"), sect_b.into_item(), &arena);
+    dest.insert(Key::new("a"), sect_a.into_item(), &arena);
+    dest.insert(Key::new("b"), sect_b.into_item(), &arena);
 
     // Only set ignore_source_style on section "a".
     dest.get_mut("a")
@@ -1836,7 +1836,7 @@ fn format_with_span_identity(source: &str, mutate: impl for<'a> FnOnce(&mut Tabl
     let doc = parse(source, &arena).unwrap();
     let mut table = doc.table().clone_in(&arena);
     mutate(&mut table);
-    crate::Formatting::of(&doc)
+    crate::Formatting::preserved_from(&doc)
         .with_span_projection_identity()
         .format_table_to_bytes(table, &arena)
         .pipe(|b| String::from_utf8(b).unwrap())
@@ -1850,7 +1850,7 @@ fn format_without_span_identity(
     let doc = parse(source, &arena).unwrap();
     let mut table = doc.table().clone_in(&arena);
     mutate(&mut table);
-    crate::Formatting::of(&doc)
+    crate::Formatting::preserved_from(&doc)
         .format_table_to_bytes(table, &arena)
         .pipe(|b| String::from_utf8(b).unwrap())
 }

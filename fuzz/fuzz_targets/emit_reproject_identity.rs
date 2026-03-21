@@ -26,7 +26,7 @@ fn clear_flags(item: &mut Item<'_>) {
     }
 }
 
-// Fuzzes the `Formatting::of` + reprojection identity round-trip.
+// Fuzzes the `Formatting::preserved_from` + reprojection identity round-trip.
 //
 // For any valid TOML input, parsing as both source and dest, reprojecting,
 // normalizing, and emitting with the reprojection config must:
@@ -49,7 +49,7 @@ fuzz_target!(|data: &[u8]| -> Corpus {
     clear_flags_table(&mut dest);
 
     // Reproject, normalize, and emit via Formatting API.
-    let buf = toml_spanner::Formatting::of(&src_root)
+    let buf = toml_spanner::Formatting::preserved_from(&src_root)
         .format_table_to_bytes(dest, &arena);
 
     // Invariant 1: valid UTF-8.
@@ -72,7 +72,7 @@ fuzz_target!(|data: &[u8]| -> Corpus {
     {
         let src2 = toml_spanner::parse(output, &arena).unwrap();
         let dest2 = toml_spanner::parse(output, &arena).unwrap().into_table();
-        let buf2 = toml_spanner::Formatting::of(&src2)
+        let buf2 = toml_spanner::Formatting::preserved_from(&src2)
             .format_table_to_bytes(dest2, &arena);
         assert!(
             buf == buf2,

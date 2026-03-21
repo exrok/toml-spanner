@@ -421,7 +421,7 @@ pub fn check_insert_preservation(
     }
 
     // Reproject original source onto the (now-reverted) dest and emit.
-    let buf2 = toml_spanner::Formatting::of(&src_root)
+    let buf2 = toml_spanner::Formatting::preserved_from(&src_root)
         .format_table_to_bytes(dest_table, &arena);
 
     let source_bytes = source_text.as_bytes().trim_ascii();

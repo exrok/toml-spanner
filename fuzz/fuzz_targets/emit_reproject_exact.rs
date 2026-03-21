@@ -2,7 +2,7 @@
 
 use libfuzzer_sys::{Corpus, fuzz_target};
 
-// Fuzzes `Formatting::of` with reprojection, checking byte-exact
+// Fuzzes `Formatting::preserved_from` with reprojection, checking byte-exact
 // preservation of unmodified regions.
 //
 // Generates a single TOML document via structured generation, applies ONE
@@ -103,7 +103,7 @@ fuzz_target!(|data: &[u8]| -> Corpus {
             let dest_ref = dest_table.clone_in(&arena);
 
             // Reproject and emit.
-            let buf = toml_spanner::Formatting::of(&src_root)
+            let buf = toml_spanner::Formatting::preserved_from(&src_root)
                 .format_table_to_bytes(dest_table, &arena);
 
             // Invariant 1: valid UTF-8 + valid TOML.
@@ -150,7 +150,7 @@ fuzz_target!(|data: &[u8]| -> Corpus {
             let dest_ref = dest_table.clone_in(&arena);
 
             // Reproject and emit.
-            let buf = toml_spanner::Formatting::of(&src_root)
+            let buf = toml_spanner::Formatting::preserved_from(&src_root)
                 .format_table_to_bytes(dest_table, &arena);
 
             // Invariant 1: valid UTF-8 + valid TOML.
@@ -192,13 +192,13 @@ fuzz_target!(|data: &[u8]| -> Corpus {
             let mut dest_table = src_root.table().clone_in(&arena);
             let target = fuzz::exact::table_at_path_mut(&mut dest_table, table_path);
             let new_item = toml_spanner::Item::from(42i64);
-            target.insert(toml_spanner::Key::anon(fresh_key), new_item, &arena);
+            target.insert(toml_spanner::Key::new(fresh_key), new_item, &arena);
 
             // Keep a reference copy for semantic check.
             let dest_ref = dest_table.clone_in(&arena);
 
             // Reproject and emit.
-            let buf = toml_spanner::Formatting::of(&src_root)
+            let buf = toml_spanner::Formatting::preserved_from(&src_root)
                 .format_table_to_bytes(dest_table, &arena);
 
             // Invariant 1: valid UTF-8 + valid TOML.
@@ -236,8 +236,7 @@ fuzz_target!(|data: &[u8]| -> Corpus {
 fn check_idempotency(output: &str, buf: &[u8], arena: &toml_spanner::Arena) {
     let src2 = toml_spanner::parse(output, arena).unwrap();
     let dest2 = src2.table().clone_in(arena);
-    let buf2 = toml_spanner::Formatting::of(&src2)
-        .format_table_to_bytes(dest2, arena);
+    let buf2 = toml_spanner::Formatting::preserved_from(&src2).format_table_to_bytes(dest2, arena);
     assert!(
         buf == buf2.as_slice(),
         "not idempotent!\nfirst:\n{output}\nsecond:\n{}",

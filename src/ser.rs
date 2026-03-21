@@ -45,9 +45,9 @@ fn required_to_optional<'a>(
 /// impl ToToml for Color {
 ///     fn to_toml<'a>(&'a self, arena: &'a Arena) -> Result<Item<'a>, ToTomlError> {
 ///         let mut table = Table::new();
-///         table.insert(Key::anon("r"), Item::from(self.r as i64), arena);
-///         table.insert(Key::anon("g"), Item::from(self.g as i64), arena);
-///         table.insert(Key::anon("b"), Item::from(self.b as i64), arena);
+///         table.insert(Key::new("r"), Item::from(self.r as i64), arena);
+///         table.insert(Key::new("g"), Item::from(self.g as i64), arena);
+///         table.insert(Key::new("b"), Item::from(self.b as i64), arena);
 ///         Ok(table.into_item())
 ///     }
 /// }
@@ -290,7 +290,7 @@ impl<K: ToToml, V: ToToml> ToFlattened for BTreeMap<K, V> {
             let Some(key_str) = key_to_str(&key_item) else {
                 return map_key_did_not_serialize_to_string();
             };
-            table.insert(Key::anon(key_str), v.to_toml(arena)?, arena);
+            table.insert(Key::new(key_str), v.to_toml(arena)?, arena);
         }
         Ok(())
     }
@@ -307,7 +307,7 @@ impl<K: ToToml, V: ToToml, H> ToFlattened for HashMap<K, V, H> {
             let Some(key_str) = key_to_str(&key_item) else {
                 return map_key_did_not_serialize_to_string();
             };
-            table.insert(Key::anon(key_str), v.to_toml(arena)?, arena);
+            table.insert(Key::new(key_str), v.to_toml(arena)?, arena);
         }
         Ok(())
     }

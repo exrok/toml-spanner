@@ -1019,7 +1019,7 @@ impl<'de> Key<'de> {
     ///
     /// Use this when constructing tables programmatically via
     /// [`Table::insert`].
-    pub fn anon(value: &'de str) -> Self {
+    pub fn new(value: &'de str) -> Self {
         Self {
             name: value,
             span: Span::default(),
@@ -1028,6 +1028,12 @@ impl<'de> Key<'de> {
     /// Returns the key name as a string slice.
     pub fn as_str(&self) -> &'de str {
         self.name
+    }
+}
+
+impl<'de> From<&'de str> for Key<'de> {
+    fn from(value: &'de str) -> Self {
+        Self::new(value)
     }
 }
 

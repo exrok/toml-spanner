@@ -49,7 +49,7 @@ pub fn gen_table_item<'de>(g: &mut Gen<'_>, arena: &'de Arena, depth: u8) -> Ite
             break;
         };
         let child = gen_item(g, arena, depth + 1);
-        table.insert(Key::anon(KEYS[ki]), child, arena);
+        table.insert(Key::new(KEYS[ki]), child, arena);
     }
     table.set_style(random_table_kind(g));
     table.into_item()
@@ -75,7 +75,7 @@ pub fn gen_root_table<'de>(g: &mut Gen<'_>, arena: &'de Arena) -> Table<'de> {
             break;
         };
         let item = gen_item(g, arena, 0);
-        root.insert(Key::anon(KEYS[ki]), item, arena);
+        root.insert(Key::new(KEYS[ki]), item, arena);
     }
     root
 }

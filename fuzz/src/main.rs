@@ -118,7 +118,7 @@ fn run_emit_roundtrip(path: &str) {
     println!();
 
     // Reproject, normalize, and emit via Formatting API.
-    let out_buf = toml_spanner::Formatting::of(&doc)
+    let out_buf = toml_spanner::Formatting::preserved_from(&doc)
         .format_table_to_bytes(dest, &arena);
 
     let output = String::from_utf8_lossy(&out_buf);
@@ -182,7 +182,7 @@ fn run_reproject_identity(path: &str) {
     };
 
     // Reproject, normalize, and emit via Formatting API.
-    let buf = toml_spanner::Formatting::of(&src_root)
+    let buf = toml_spanner::Formatting::preserved_from(&src_root)
         .format_table_to_bytes(dest_table, &arena_dest);
 
     // Invariant 1: valid UTF-8.
@@ -250,7 +250,7 @@ fn run_reproject_identity(path: &str) {
     let dest2 = toml_spanner::parse(&output, &arena_s2)
         .unwrap()
         .into_table();
-    let buf2 = toml_spanner::Formatting::of(&src2)
+    let buf2 = toml_spanner::Formatting::preserved_from(&src2)
         .format_table_to_bytes(dest2, &arena_s2);
 
     if buf == buf2 {
@@ -387,7 +387,7 @@ fn run_reproject_edit(path: &str) {
     };
 
     // Reproject, normalize, and emit via Formatting API.
-    let buf = toml_spanner::Formatting::of(&src_root)
+    let buf = toml_spanner::Formatting::preserved_from(&src_root)
         .format_table_to_bytes(dest_table, &arena_dest);
 
     // Invariant 1: valid UTF-8.
@@ -441,7 +441,7 @@ fn run_reproject_edit(path: &str) {
     let dest2 = toml_spanner::parse(&output, &arena_s2)
         .unwrap()
         .into_table();
-    let buf2 = toml_spanner::Formatting::of(&src2)
+    let buf2 = toml_spanner::Formatting::preserved_from(&src2)
         .format_table_to_bytes(dest2, &arena_s2);
 
     if buf == buf2 {
@@ -525,7 +525,7 @@ fn run_reproject_reorder(path: &str) {
     println!();
 
     // Reproject, normalize, and emit via Formatting API.
-    let buf = toml_spanner::Formatting::of(&src_root)
+    let buf = toml_spanner::Formatting::preserved_from(&src_root)
         .format_table_to_bytes(dest_table, &arena_dest);
 
     // Invariant 1: valid UTF-8.
@@ -579,7 +579,7 @@ fn run_reproject_reorder(path: &str) {
     let dest2 = toml_spanner::parse(&output, &arena_s2)
         .unwrap()
         .into_table();
-    let buf2 = toml_spanner::Formatting::of(&src2)
+    let buf2 = toml_spanner::Formatting::preserved_from(&src2)
         .format_table_to_bytes(dest2, &arena_s2);
 
     if buf == buf2 {
@@ -755,7 +755,7 @@ fn run_reproject_reorder_span_identity(path: &str) {
     println!();
 
     // Reproject with span identity.
-    let buf = toml_spanner::Formatting::of(&doc)
+    let buf = toml_spanner::Formatting::preserved_from(&doc)
         .with_span_projection_identity()
         .format_table_to_bytes(table, &arena);
 
@@ -805,7 +805,7 @@ fn run_reproject_reorder_span_identity(path: &str) {
     let arena_s2 = toml_spanner::Arena::new();
     let src2 = toml_spanner::parse(&output, &arena_s2).unwrap();
     let dest2 = src2.table().clone_in(&arena_s2);
-    let buf2 = toml_spanner::Formatting::of(&src2)
+    let buf2 = toml_spanner::Formatting::preserved_from(&src2)
         .with_span_projection_identity()
         .format_table_to_bytes(dest2, &arena_s2);
 
@@ -964,7 +964,7 @@ fn run_reproject_exact(path: &str) {
             fuzz::exact::set_at_path(&mut dest_table, &entry.path, new_item);
 
             let dest_ref = dest_table.clone_in(&arena);
-            let buf = toml_spanner::Formatting::of(&src_root)
+            let buf = toml_spanner::Formatting::preserved_from(&src_root)
                 .format_table_to_bytes(dest_table, &arena);
 
             let output = String::from_utf8_lossy(&buf);
@@ -1008,7 +1008,7 @@ fn run_reproject_exact(path: &str) {
             fuzz::exact::remove_at_path(&mut dest_table, &entry.path);
 
             let dest_ref = dest_table.clone_in(&arena);
-            let buf = toml_spanner::Formatting::of(&src_root)
+            let buf = toml_spanner::Formatting::preserved_from(&src_root)
                 .format_table_to_bytes(dest_table, &arena);
 
             let output = String::from_utf8_lossy(&buf);
@@ -1049,10 +1049,10 @@ fn run_reproject_exact(path: &str) {
             let mut dest_table = src_root.table().clone_in(&arena);
             let target = fuzz::exact::table_at_path_mut(&mut dest_table, table_path);
             let new_item = toml_spanner::Item::from(42i64);
-            target.insert(toml_spanner::Key::anon(fresh_key), new_item, &arena);
+            target.insert(toml_spanner::Key::new(fresh_key), new_item, &arena);
 
             let dest_ref = dest_table.clone_in(&arena);
-            let buf = toml_spanner::Formatting::of(&src_root)
+            let buf = toml_spanner::Formatting::preserved_from(&src_root)
                 .format_table_to_bytes(dest_table, &arena);
 
             let output = String::from_utf8_lossy(&buf);
@@ -1083,7 +1083,7 @@ fn check_idempotency_verbose(output: &str, buf: &[u8], source_text: &str) {
     let arena = toml_spanner::Arena::new();
     let src2 = toml_spanner::parse(output, &arena).unwrap();
     let dest2 = src2.table().clone_in(&arena);
-    let buf2 = toml_spanner::Formatting::of(&src2)
+    let buf2 = toml_spanner::Formatting::preserved_from(&src2)
         .format_table_to_bytes(dest2, &arena);
     if buf == buf2.as_slice() {
         println!("── idempotency: OK ──");

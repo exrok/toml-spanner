@@ -2,7 +2,7 @@
 
 use libfuzzer_sys::{Corpus, fuzz_target};
 
-// Fuzzes `Formatting::of` with reprojection between TWO different documents.
+// Fuzzes `Formatting::preserved_from` with reprojection between TWO different documents.
 //
 // Generates two related TOML documents (shared key space, different values
 // and structure) via structured generation. Reprojects the first document's
@@ -36,7 +36,7 @@ fuzz_target!(|data: &[u8]| -> Corpus {
     let dest_table = dest_root.into_table();
 
     // Reproject, normalize, and emit via Formatting API.
-    let buf = toml_spanner::Formatting::of(&src_root)
+    let buf = toml_spanner::Formatting::preserved_from(&src_root)
         .format_table_to_bytes(dest_table, &arena);
 
     // Invariant 1: valid UTF-8.
@@ -68,7 +68,7 @@ fuzz_target!(|data: &[u8]| -> Corpus {
     {
         let src2 = toml_spanner::parse(output, &arena).unwrap();
         let dest2 = src2.table().clone_in(&arena);
-        let buf2 = toml_spanner::Formatting::of(&src2)
+        let buf2 = toml_spanner::Formatting::preserved_from(&src2)
             .format_table_to_bytes(dest2, &arena);
         assert!(
             buf == buf2,

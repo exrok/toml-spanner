@@ -519,7 +519,7 @@ fn bench_emit_reprojected<'a>(
     let mut results = Vec::new();
     for (i, (name, _)) in configs.iter().enumerate() {
         let src_root = &src_roots[i];
-        let formatting = toml_spanner::Formatting::of(src_root);
+        let formatting = toml_spanner::Formatting::preserved_from(src_root);
         let stat = bench.func(|| {
             let arena = toml_spanner::Arena::new();
             let dest_table = src_root.table().clone_in(&arena);
@@ -537,7 +537,7 @@ fn bench_emit_reprojected<'a>(
             &src_roots[idx]
         },
         |src_root| {
-            let formatting = toml_spanner::Formatting::of(src_root);
+            let formatting = toml_spanner::Formatting::preserved_from(src_root);
             let arena = toml_spanner::Arena::new();
             let dest_table = src_root.table().clone_in(&arena);
             let buf = formatting.format_table_to_bytes(dest_table, &arena);

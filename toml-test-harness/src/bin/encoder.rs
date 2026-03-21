@@ -51,7 +51,7 @@ fn convert<'a>(toml: &Toml, arena: &'a Arena) -> Item<'a> {
         Toml::Object(map) => {
             let mut table = Table::new();
             for (key, value) in map {
-                let key = Key::anon(arena.alloc_str(key));
+                let key = Key::new(arena.alloc_str(key));
                 table.insert(key, convert(value, arena), arena);
             }
             table.into_item()
@@ -93,7 +93,7 @@ fn main() {
         Toml::Object(map) => {
             let mut table = Table::new();
             for (key, value) in &map {
-                let key = Key::anon(arena.alloc_str(key));
+                let key = Key::new(arena.alloc_str(key));
                 table.insert(key, convert(value, &arena), &arena);
             }
             table

@@ -152,9 +152,9 @@ pub use de::{Context, FromFlattened, FromToml, TableHelper};
 #[cfg(feature = "to-toml")]
 pub use emit::Indent;
 #[cfg(feature = "to-toml")]
-use emit::{reproject, reproject_with_span_identity};
-#[cfg(feature = "to-toml")]
 use emit::{EmitConfig, emit_with_config};
+#[cfg(feature = "to-toml")]
+use emit::{reproject, reproject_with_span_identity};
 pub use error::{Error, ErrorKind, TomlPath};
 pub use item::array::Array;
 pub use item::table::Table;
@@ -191,7 +191,7 @@ pub mod impl_serde;
 /// let config = doc.to::<std::collections::HashMap<String, String>>().unwrap();
 /// ```
 ///
-/// Note that [`Formatting::of`] requires a [`Document`] to reproject
+/// Note that [`Formatting::preserved_from`] requires a [`Document`] to reproject
 /// formatting from, but it does not have to be the same `Document`
 /// that produced the converted value. Any parsed TOML tree can serve
 /// as a formatting template.
@@ -216,7 +216,7 @@ pub fn from_str<T: for<'a> FromToml<'a>>(document: &str) -> Result<T, FromTomlEr
 ///
 /// The value must serialize to a table at the top level. For control over
 /// formatting (e.g. preserving the layout of a previously parsed document),
-/// use [`Formatting::of`].
+/// use [`Formatting::preserved_from`].
 ///
 /// # Errors
 ///
@@ -241,7 +241,7 @@ pub fn to_string(value: &dyn ToToml) -> Result<String, ToTomlError> {
 
 /// Controls how TOML output is formatted when serializing.
 ///
-/// Use [`Formatting::of`] to preserve formatting from a previously parsed
+/// Use [`Formatting::preserved_from`] to preserve formatting from a previously parsed
 /// document. The default produces clean formatted output with no source
 /// template.
 ///
@@ -258,7 +258,7 @@ pub fn to_string(value: &dyn ToToml) -> Result<String, ToTomlError> {
 /// let mut map = BTreeMap::new();
 /// map.insert("key", "updated");
 ///
-/// let output = Formatting::of(&doc).format(&map).unwrap();
+/// let output = Formatting::preserved_from(&doc).format(&map).unwrap();
 /// assert!(output.contains("key = \"updated\""));
 /// ```
 #[cfg(feature = "to-toml")]
@@ -285,7 +285,7 @@ impl<'a> Formatting<'a> {
     ///
     /// Indent style is auto-detected from the source text. If no
     /// indentation is found, defaults to 4 spaces.
-    pub fn of(doc: &'a Document<'a>) -> Self {
+    pub fn preserved_from(doc: &'a Document<'a>) -> Self {
         let indent = detect_indent(doc.ctx.source().as_bytes());
         Self {
             formatting_from: Some(doc),
@@ -322,7 +322,7 @@ impl<'a> Formatting<'a> {
 
     /// Sets the indentation style for expanded inline arrays.
     /// Overrides auto-detection.
-    pub fn indent(mut self, indent: Indent) -> Self {
+    pub fn with_indentation(mut self, indent: Indent) -> Self {
         self.indent = indent;
         self
     }

@@ -33,7 +33,7 @@ fuzz_target!(|data: &[u8]| -> Corpus {
     erase_kinds_table(&mut dest_table);
 
     // Reproject from src onto the erased dest, normalize, and emit.
-    let buf = toml_spanner::Formatting::of(&src_root)
+    let buf = toml_spanner::Formatting::preserved_from(&src_root)
         .format_table_to_bytes(dest_table, &arena_dest);
 
     // Core invariant: reprojected output must match the reference.
