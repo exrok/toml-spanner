@@ -2,7 +2,7 @@
 source: snapshot-tests/tests/parser.rs
 expression: error
 ---
-error[UnexpectedEof]: unexpected eof encountered at key
+error[UnexpectedEof]: unexpected eof encountered at `key`
   ┌─ eof:1:6
   │
 1 │ key =

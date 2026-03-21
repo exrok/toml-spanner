@@ -2,7 +2,7 @@
 source: snapshot-tests/tests/de.rs
 expression: error
 ---
-error[UnexpectedKey]: unexpected key at component.servers[1].config.bogus
+error[UnexpectedKey]: unexpected key at `component.servers[1].config.bogus`
    ┌─ nested_unexpected_key:11:1
    │
 11 │ bogus = true

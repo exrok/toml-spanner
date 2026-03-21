@@ -178,9 +178,10 @@ fn erase_kinds(table: &mut Table<'_>) {
 }
 
 fn emit_table(table: &mut Table<'_>) -> String {
+    let scratch = Arena::new();
     let norm = table.normalize();
     let mut buf = Vec::new();
-    emit::emit(norm, &mut buf);
+    emit::emit_with_config(norm, &EmitConfig::default(), &scratch, &mut buf);
     String::from_utf8(buf).unwrap()
 }
 
@@ -614,7 +615,6 @@ fn new_deep_nested_sibling_inherits_dotted() {
     // Original has b.c = 1, insert d.e.f.g = 2 (3 levels deep).
     // d inherits dotted from b. Normalization demotes inner tables e
     // and f to dotted to keep the parent body-level, preserving
-    // source ordering in reprojected_order mode.
     let result = reproject_after_mutation("[A]\nb.c = 1", |root, arena| {
         let section = root.get_mut("A").unwrap().as_table_mut().unwrap();
         let mut f_table = Table::default();
@@ -705,11 +705,10 @@ fn emit_with_projection(input: &str) -> String {
     let config = EmitConfig {
         projected_source_text: input,
         projected_source_items: &items,
-        reprojected_order: false,
         ..EmitConfig::default()
     };
     let mut buf = Vec::new();
-    emit::emit_with_config(normalized, &config, &mut buf);
+    emit::emit_with_config(normalized, &config, &arena, &mut buf);
     String::from_utf8(buf).unwrap()
 }
 
@@ -732,11 +731,10 @@ fn emit_projected_after_mutation(
     let config = EmitConfig {
         projected_source_text: input,
         projected_source_items: &items,
-        reprojected_order: false,
         ..EmitConfig::default()
     };
     let mut buf = Vec::new();
-    emit::emit_with_config(normalized, &config, &mut buf);
+    emit::emit_with_config(normalized, &config, &arena, &mut buf);
     String::from_utf8(buf).unwrap()
 }
 
@@ -906,7 +904,7 @@ fn plain_emit_ignores_whitespace() {
     let doc = parse("x  =  1 # comment", &arena).unwrap();
     let normalized = doc.table().try_as_normalized().unwrap();
     let mut buf = Vec::new();
-    emit::emit(normalized, &mut buf);
+    emit::emit_with_config(normalized, &EmitConfig::default(), &arena, &mut buf);
     let result = String::from_utf8(buf).unwrap();
     assert_eq!(result, "x = 1\n");
 }
@@ -1033,11 +1031,10 @@ fn assert_reproject_edit(src_text: &str, dest_text: &str) {
     let config = EmitConfig {
         projected_source_text: src_text,
         projected_source_items: &items,
-        reprojected_order: false,
         ..EmitConfig::default()
     };
     let mut buf = Vec::new();
-    emit::emit_with_config(norm, &config, &mut buf);
+    emit::emit_with_config(norm, &config, &arena, &mut buf);
 
     // Check: valid UTF-8.
     let output = String::from_utf8(buf).unwrap_or_else(|e| {
@@ -1107,11 +1104,10 @@ fn reproject_edit_output(src_text: &str, dest_text: &str) -> String {
     let config = EmitConfig {
         projected_source_text: src_text,
         projected_source_items: &items,
-        reprojected_order: false,
         ..EmitConfig::default()
     };
     let mut buf = Vec::new();
-    emit::emit_with_config(norm, &config, &mut buf);
+    emit::emit_with_config(norm, &config, &arena, &mut buf);
     String::from_utf8(buf).unwrap()
 }
 
@@ -1126,7 +1122,7 @@ fn aot_body_entry_at_eof_is_idempotent() {
     assert_eq!(first, second, "emit_with_config must be idempotent");
 }
 
-/// Parse input, self-reproject, emit with `reprojected_order: true`.
+/// Parse input, self-reproject, emit with reordering.
 fn emit_with_reorder(input: &str) -> String {
     let arena = Arena::new();
     let src_doc = parse(input, &arena).unwrap();
@@ -1140,15 +1136,14 @@ fn emit_with_reorder(input: &str) -> String {
     let config = EmitConfig {
         projected_source_text: input,
         projected_source_items: &items,
-        reprojected_order: true,
         ..EmitConfig::default()
     };
     let mut buf = Vec::new();
-    emit::emit_with_config(normalized, &config, &mut buf);
+    emit::emit_with_config(normalized, &config, &arena, &mut buf);
     String::from_utf8(buf).unwrap()
 }
 
-/// Reprojects `src_text` onto `dest_text` with `reprojected_order: true`.
+/// Reprojects `src_text` onto `dest_text` with reordering.
 fn reproject_edit_reorder(src_text: &str, dest_text: &str) -> String {
     let arena = Arena::new();
     let src_doc = parse(src_text, &arena).unwrap();
@@ -1162,11 +1157,10 @@ fn reproject_edit_reorder(src_text: &str, dest_text: &str) -> String {
     let config = EmitConfig {
         projected_source_text: src_text,
         projected_source_items: &items,
-        reprojected_order: true,
         ..EmitConfig::default()
     };
     let mut buf = Vec::new();
-    emit::emit_with_config(norm, &config, &mut buf);
+    emit::emit_with_config(norm, &config, &arena, &mut buf);
     String::from_utf8(buf).unwrap()
 }
 
@@ -1205,11 +1199,10 @@ fn run_edit_ordered(src_text: &str, dest_text: &str) {
     let config = EmitConfig {
         projected_source_text: src_text,
         projected_source_items: &items,
-        reprojected_order: true,
         ..EmitConfig::default()
     };
     let mut buf = Vec::new();
-    emit::emit_with_config(norm, &config, &mut buf);
+    emit::emit_with_config(norm, &config, &arena, &mut buf);
 
     let output = String::from_utf8(buf.clone()).unwrap_or_else(|e| {
         panic!("emit produced invalid UTF-8!\nsrc: {src_text:?}\ndest: {dest_text:?}\nerror: {e}");
@@ -1265,11 +1258,10 @@ fn run_edit_ordered(src_text: &str, dest_text: &str) {
     let config2 = EmitConfig {
         projected_source_text: &output,
         projected_source_items: &items2,
-        reprojected_order: true,
         ..EmitConfig::default()
     };
     let mut buf2 = Vec::new();
-    emit::emit_with_config(norm2, &config2, &mut buf2);
+    emit::emit_with_config(norm2, &config2, &arena, &mut buf2);
     if buf != buf2 {
         let output2 = String::from_utf8_lossy(&buf2);
         panic!(
@@ -1397,11 +1389,10 @@ fn assert_reproject_exact(source: &str, modified: &str, expected: &str) {
     let config = EmitConfig {
         projected_source_text: source,
         projected_source_items: &items,
-        reprojected_order: true,
         ..EmitConfig::default()
     };
     let mut buf = Vec::new();
-    emit::emit_with_config(norm, &config, &mut buf);
+    emit::emit_with_config(norm, &config, &arena, &mut buf);
     let output = String::from_utf8(buf).unwrap();
 
     if output != expected {
@@ -1434,8 +1425,8 @@ fn assert_reproject_exact(source: &str, modified: &str, expected: &str) {
 fn ignore_source_order_skips_reordering() {
     // Source has keys in order: a, b, c.
     // Dest has keys reversed: c, b, a — with ignore_source_order set.
-    // With reprojected_order=true, normally the emitter sorts by source
-    // position (a, b, c). The flag should prevent that, preserving c, b, a.
+    // Normally the emitter sorts by source position (a, b, c). The flag
+    // should prevent that, preserving c, b, a.
     let src_text = "c = 3\nb = 2\na = 1\n";
 
     let arena = Arena::new();
@@ -1454,11 +1445,10 @@ fn ignore_source_order_skips_reordering() {
     let config = EmitConfig {
         projected_source_text: src_text,
         projected_source_items: &items,
-        reprojected_order: true,
         ..EmitConfig::default()
     };
     let mut buf = Vec::new();
-    emit::emit_with_config(norm, &config, &mut buf);
+    emit::emit_with_config(norm, &config, &arena, &mut buf);
     let output = String::from_utf8(buf).unwrap();
 
     // Keys should follow dest insertion order (a, b, c), not source order (c, b, a).
@@ -1581,16 +1571,16 @@ fn ignore_source_style_per_table() {
 }
 // todo should put text in Context.
 fn to_toml(reference: &Document<'_>, text: &str, mut table: Table<'_>) -> String {
+    let scratch = Arena::new();
     let mut buf = Vec::new();
     reproject(&reference, &mut table, &mut buf);
     let emit_config = EmitConfig {
         projected_source_text: text,
         projected_source_items: &buf,
-        reprojected_order: true,
         ..EmitConfig::default()
     };
     let mut output = Vec::new();
-    emit_with_config(table.normalize(), &emit_config, &mut output);
+    emit_with_config(table.normalize(), &emit_config, &scratch, &mut output);
     String::from_utf8(output).expect("serializied TOML to be valid UTF-8")
 }
 
@@ -1825,7 +1815,7 @@ fn positional_fallback_large_array() {
     // Result should be valid TOML and semantically equal to dest.
     let norm = dest_doc.table.normalize();
     let mut buf = Vec::new();
-    emit::emit(norm, &mut buf);
+    emit::emit_with_config(norm, &EmitConfig::default(), &arena, &mut buf);
     let output = String::from_utf8(buf).unwrap();
     let out_root = parse(&output, &arena).unwrap();
     assert_eq!(

@@ -2,7 +2,7 @@
 
 use libfuzzer_sys::{Corpus, fuzz_target};
 
-// Fuzzes `emit_with_config` with reprojection, checking byte-exact
+// Fuzzes `Formatting::of` with reprojection, checking byte-exact
 // preservation of unmodified regions.
 //
 // Generates a single TOML document via structured generation, applies ONE
@@ -42,11 +42,6 @@ fuzz_target!(|data: &[u8]| -> Corpus {
         Ok(r) => r,
         Err(_) => return Corpus::Reject,
     };
-
-    // Must be normalizable.
-    if src_root.table().try_as_normalized().is_none() {
-        return Corpus::Reject;
-    }
 
     let source_bytes = source_text.as_bytes();
 
@@ -104,18 +99,12 @@ fuzz_target!(|data: &[u8]| -> Corpus {
             let mut dest_table = src_root.table().clone_in(&arena);
             fuzz::exact::set_at_path(&mut dest_table, &entry.path, new_item);
 
+            // Keep a reference copy for semantic check.
+            let dest_ref = dest_table.clone_in(&arena);
+
             // Reproject and emit.
-            let mut items = Vec::new();
-            toml_spanner::reproject(&src_root, &mut dest_table, &mut items);
-            let norm = dest_table.normalize();
-            let config = toml_spanner::EmitConfig {
-                projected_source_text: source_text,
-                projected_source_items: &items,
-                reprojected_order: false,
-        ..Default::default()
-            };
-            let mut buf = Vec::new();
-            toml_spanner::emit_with_config(norm, &config, &mut buf);
+            let buf = toml_spanner::Formatting::of(&src_root)
+                .format_table_to_bytes(dest_table, &arena);
 
             // Invariant 1: valid UTF-8 + valid TOML.
             let output = std::str::from_utf8(&buf).expect("must be valid UTF-8");
@@ -137,7 +126,7 @@ fuzz_target!(|data: &[u8]| -> Corpus {
 
             // Invariant 5: semantic correctness.
             assert!(
-                dest_table.as_item() == out_root.table().as_item(),
+                dest_ref.as_item() == out_root.table().as_item(),
                 "semantic mismatch after edit!\nsrc:\n{source_text}\noutput:\n{output}"
             );
 
@@ -157,18 +146,12 @@ fuzz_target!(|data: &[u8]| -> Corpus {
             let mut dest_table = src_root.table().clone_in(&arena);
             fuzz::exact::remove_at_path(&mut dest_table, &entry.path);
 
+            // Keep a reference copy for semantic check.
+            let dest_ref = dest_table.clone_in(&arena);
+
             // Reproject and emit.
-            let mut items = Vec::new();
-            toml_spanner::reproject(&src_root, &mut dest_table, &mut items);
-            let norm = dest_table.normalize();
-            let config = toml_spanner::EmitConfig {
-                projected_source_text: source_text,
-                projected_source_items: &items,
-                reprojected_order: false,
-        ..Default::default()
-            };
-            let mut buf = Vec::new();
-            toml_spanner::emit_with_config(norm, &config, &mut buf);
+            let buf = toml_spanner::Formatting::of(&src_root)
+                .format_table_to_bytes(dest_table, &arena);
 
             // Invariant 1: valid UTF-8 + valid TOML.
             let output = std::str::from_utf8(&buf).expect("must be valid UTF-8");
@@ -188,7 +171,7 @@ fuzz_target!(|data: &[u8]| -> Corpus {
 
             // Invariant 5: semantic correctness.
             assert!(
-                dest_table.as_item() == out_root.table().as_item(),
+                dest_ref.as_item() == out_root.table().as_item(),
                 "semantic mismatch after remove!\nsrc:\n{source_text}\noutput:\n{output}"
             );
 
@@ -211,18 +194,12 @@ fuzz_target!(|data: &[u8]| -> Corpus {
             let new_item = toml_spanner::Item::from(42i64);
             target.insert(toml_spanner::Key::anon(fresh_key), new_item, &arena);
 
+            // Keep a reference copy for semantic check.
+            let dest_ref = dest_table.clone_in(&arena);
+
             // Reproject and emit.
-            let mut items = Vec::new();
-            toml_spanner::reproject(&src_root, &mut dest_table, &mut items);
-            let norm = dest_table.normalize();
-            let config = toml_spanner::EmitConfig {
-                projected_source_text: source_text,
-                projected_source_items: &items,
-                reprojected_order: false,
-        ..Default::default()
-            };
-            let mut buf = Vec::new();
-            toml_spanner::emit_with_config(norm, &config, &mut buf);
+            let buf = toml_spanner::Formatting::of(&src_root)
+                .format_table_to_bytes(dest_table, &arena);
 
             // Invariant 1: valid UTF-8 + valid TOML.
             let output = std::str::from_utf8(&buf).expect("must be valid UTF-8");
@@ -244,7 +221,7 @@ fuzz_target!(|data: &[u8]| -> Corpus {
 
             // Invariant 5: semantic correctness.
             assert!(
-                dest_table.as_item() == out_root.table().as_item(),
+                dest_ref.as_item() == out_root.table().as_item(),
                 "semantic mismatch after insert!\nsrc:\n{source_text}\noutput:\n{output}"
             );
 
@@ -258,18 +235,9 @@ fuzz_target!(|data: &[u8]| -> Corpus {
 
 fn check_idempotency(output: &str, buf: &[u8], arena: &toml_spanner::Arena) {
     let src2 = toml_spanner::parse(output, arena).unwrap();
-    let mut dest2 = src2.table().clone_in(arena);
-    let mut items2 = Vec::new();
-    toml_spanner::reproject(&src2, &mut dest2, &mut items2);
-    let norm2 = dest2.normalize();
-    let cfg2 = toml_spanner::EmitConfig {
-        projected_source_text: output,
-        projected_source_items: &items2,
-        reprojected_order: false,
-        ..Default::default()
-    };
-    let mut buf2 = Vec::with_capacity(buf.len());
-    toml_spanner::emit_with_config(norm2, &cfg2, &mut buf2);
+    let dest2 = src2.table().clone_in(arena);
+    let buf2 = toml_spanner::Formatting::of(&src2)
+        .format_table_to_bytes(dest2, arena);
     assert!(
         buf == buf2.as_slice(),
         "not idempotent!\nfirst:\n{output}\nsecond:\n{}",

@@ -420,19 +420,9 @@ pub fn check_insert_preservation(
         ));
     }
 
-    // Reproject original source onto the (now-reverted) dest.
-    let mut items = Vec::new();
-    toml_spanner::reproject(&src_root, &mut dest_table, &mut items);
-
-    let norm = dest_table.normalize();
-    let config = toml_spanner::EmitConfig {
-        projected_source_text: source_text,
-        projected_source_items: &items,
-        reprojected_order: false,
-        ..Default::default()
-    };
-    let mut buf2 = Vec::new();
-    toml_spanner::emit_with_config(norm, &config, &mut buf2);
+    // Reproject original source onto the (now-reverted) dest and emit.
+    let buf2 = toml_spanner::Formatting::of(&src_root)
+        .format_table_to_bytes(dest_table, &arena);
 
     let source_bytes = source_text.as_bytes().trim_ascii();
     let buf2_trimmed = buf2.trim_ascii();

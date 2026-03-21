@@ -115,7 +115,7 @@ fn reproject_table<'de>(
     let mut first_array_matched = false;
     let mut all_matched = src.len() == entries.len();
 
-    // Source-ordering state for reprojected_order mode.
+    // Source-ordering state for reordering by source position.
     let mut max_stuck_src_pos: u32 = 0;
     let mut has_stuck = false;
 

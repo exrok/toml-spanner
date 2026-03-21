@@ -1,11 +1,9 @@
 #![no_main]
 
 use std::hash::{BuildHasher, Hasher};
-
 use libfuzzer_sys::{Corpus, fuzz_target};
 
-// Fuzzes `emit_with_config` with `reprojected_order: true` between TWO
-// different documents.
+// Fuzzes `Formatting::of` with reprojection between TWO different documents.
 //
 // Generates two related TOML documents via structured generation. Reprojects
 // the first document's formatting onto the second, normalizes, and emits
@@ -31,24 +29,15 @@ fuzz_target!(|data: &[u8]| -> Corpus {
     let Ok(dest_root) = toml_spanner::parse(dest_text, &arena) else {
         return Corpus::Keep;
     };
-    let mut dest_table = dest_root.into_table();
-
-    let mut items = Vec::new();
-    toml_spanner::reproject(&src_root, &mut dest_table, &mut items);
+    let dest_table = dest_root.into_table();
 
     // Collect projected source key positions as (path_hash, key_span_start).
     let mut src_positions = Vec::new();
     collect_projected_positions(src_root.table(), 0, &mut src_positions);
 
-    let norm = dest_table.normalize();
-    let config = toml_spanner::EmitConfig {
-        projected_source_text: src_text,
-        projected_source_items: &items,
-        reprojected_order: true,
-        ..Default::default()
-    };
-    let mut buf = Vec::with_capacity(dest_text.len() + 64);
-    toml_spanner::emit_with_config(norm, &config, &mut buf);
+    // Reproject, normalize, and emit via Formatting API.
+    let buf = toml_spanner::Formatting::of(&src_root)
+        .format_table_to_bytes(dest_table, &arena);
 
     // Invariant 1: valid UTF-8.
     let output = std::str::from_utf8(&buf).expect("emit must produce valid UTF-8");
@@ -66,8 +55,9 @@ fuzz_target!(|data: &[u8]| -> Corpus {
 
     // Invariant 3: semantically equal to dest (values, ignoring structural
     // flags which may differ due to reprojection from src).
+    let dest_ref = toml_spanner::parse(dest_text, &arena).unwrap();
     assert!(
-        dest_table.as_item() == out_root.table().as_item(),
+        dest_ref.table().as_item() == out_root.table().as_item(),
         "emit output differs semantically from dest!\n\
          src:\n{src_text}\n\
          dest:\n{dest_text}\n\
@@ -77,18 +67,9 @@ fuzz_target!(|data: &[u8]| -> Corpus {
     // Invariant 4: idempotent — re-emit the output with self-reprojection.
     {
         let src2 = toml_spanner::parse(output, &arena).unwrap();
-        let mut dest2 = src2.table().clone_in(&arena);
-        items.clear();
-        toml_spanner::reproject(&src2, &mut dest2, &mut items);
-        let norm2 = dest2.normalize();
-        let cfg2 = toml_spanner::EmitConfig {
-            projected_source_text: output,
-            projected_source_items: &items,
-            reprojected_order: true,
-        ..Default::default()
-        };
-        let mut buf2 = Vec::with_capacity(buf.len());
-        toml_spanner::emit_with_config(norm2, &cfg2, &mut buf2);
+        let dest2 = src2.table().clone_in(&arena);
+        let buf2 = toml_spanner::Formatting::of(&src2)
+            .format_table_to_bytes(dest2, &arena);
         assert!(
             buf == buf2,
             "not idempotent!\n\

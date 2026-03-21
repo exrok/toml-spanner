@@ -22,28 +22,14 @@ fuzz_target!(|data: &[u8]| -> Corpus {
         return Corpus::Keep;
     };
 
-    if doc.table().try_as_normalized().is_none() {
-        return Corpus::Keep;
-    }
-
     let mut dest = doc.table().clone_in(&arena);
     if dest.is_empty() {
         return Corpus::Keep;
     }
     fuzz::gen_tree::erase_kinds_table(&mut dest);
 
-    let mut items = Vec::new();
-    toml_spanner::reproject(&doc, &mut dest, &mut items);
-
-    let norm = dest.normalize();
-    let config = toml_spanner::EmitConfig {
-        projected_source_text: text,
-        projected_source_items: &items,
-        reprojected_order: false,
-        ..Default::default()
-    };
-    let mut out_buf = Vec::new();
-    toml_spanner::emit_with_config(norm, &config, &mut out_buf);
+    let out_buf = toml_spanner::Formatting::of(&doc)
+        .format_table_to_bytes(dest, &arena);
 
     let input = text.as_bytes().trim_ascii();
     // Exact text match — input must be preserved byte-for-byte.

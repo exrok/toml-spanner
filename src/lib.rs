@@ -149,16 +149,12 @@ pub use arena::Arena;
 pub use de::FromTomlError;
 #[cfg(feature = "from-toml")]
 pub use de::{Context, FromFlattened, FromToml, TableHelper};
-#[cfg(all(feature = "to-toml", fuzzing))]
-pub use emit::reproject;
-#[cfg(all(feature = "to-toml", not(fuzzing)))]
+#[cfg(feature = "to-toml")]
 use emit::reproject;
-#[cfg(all(feature = "to-toml", fuzzing))]
-pub use emit::{EmitConfig, NormalizedTable, emit_with_config};
-#[cfg(all(feature = "to-toml", not(fuzzing)))]
+#[cfg(feature = "to-toml")]
 use emit::{EmitConfig, emit_with_config};
 #[cfg(feature = "to-toml")]
-pub use emit::{Indent, emit};
+pub use emit::Indent;
 pub use error::{Error, ErrorKind, TomlPath};
 pub use item::array::Array;
 pub use item::table::Table;
@@ -195,10 +191,10 @@ pub mod impl_serde;
 /// let config = doc.to::<std::collections::HashMap<String, String>>().unwrap();
 /// ```
 ///
-/// Note that [`to_string_with`] with [`Formatting::of`]
-/// requires a [`Document`] to reproject formatting from, but it does not
-/// have to be the same `Document` that produced the converted value,
-/// any parsed TOML tree can serve as a formatting template.
+/// Note that [`Formatting::of`] requires a [`Document`] to reproject
+/// formatting from, but it does not have to be the same `Document`
+/// that produced the converted value. Any parsed TOML tree can serve
+/// as a formatting template.
 ///
 /// # Errors
 ///
@@ -220,7 +216,7 @@ pub fn from_str<T: for<'a> FromToml<'a>>(document: &str) -> Result<T, FromTomlEr
 ///
 /// The value must serialize to a table at the top level. For control over
 /// formatting (e.g. preserving the layout of a previously parsed document),
-/// use [`to_string_with`].
+/// use [`Formatting::of`].
 ///
 /// # Errors
 ///
@@ -240,10 +236,10 @@ pub fn from_str<T: for<'a> FromToml<'a>>(document: &str) -> Result<T, FromTomlEr
 /// ```
 #[cfg(feature = "to-toml")]
 pub fn to_string(value: &dyn ToToml) -> Result<String, ToTomlError> {
-    to_string_with(value, Formatting::default())
+    Formatting::default().format(value)
 }
 
-/// Controls how TOML output is formatted when serializing via [`to_string_with`].
+/// Controls how TOML output is formatted when serializing.
 ///
 /// Use [`Formatting::of`] to preserve formatting from a previously parsed
 /// document. The default produces clean formatted output with no source
@@ -252,7 +248,7 @@ pub fn to_string(value: &dyn ToToml) -> Result<String, ToTomlError> {
 /// # Examples
 ///
 /// ```
-/// use toml_spanner::{Arena, Formatting, to_string_with};
+/// use toml_spanner::{Arena, Formatting};
 /// use std::collections::BTreeMap;
 ///
 /// let arena = Arena::new();
@@ -262,7 +258,7 @@ pub fn to_string(value: &dyn ToToml) -> Result<String, ToTomlError> {
 /// let mut map = BTreeMap::new();
 /// map.insert("key", "updated");
 ///
-/// let output = to_string_with(&map, Formatting::of(&doc)).unwrap();
+/// let output = Formatting::of(&doc).format(&map).unwrap();
 /// assert!(output.contains("key = \"updated\""));
 /// ```
 #[cfg(feature = "to-toml")]
@@ -295,80 +291,75 @@ impl<'a> Formatting<'a> {
         }
     }
 
-    /// Sets a parsed [`Document`] as the formatting template.
-    ///
-    /// When provided, the emitter reprojects structural styles, key ordering,
-    /// and source positions from the template onto the serialized output. This
-    /// preserves comments, blank lines, and layout from the original document
-    /// where possible.
-    ///
-    /// Indent style is auto-detected from the source text.
-    pub fn with_formatting_of(mut self, doc: &'a Document<'a>) -> Self {
-        self.formatting_from = Some(doc);
-        self.indent = detect_indent(doc.ctx.source().as_bytes());
-        self
-    }
-
     /// Sets the indentation style for expanded inline arrays.
     /// Overrides auto-detection.
     pub fn indent(mut self, indent: Indent) -> Self {
         self.indent = indent;
         self
     }
-}
 
-/// Serializes a [`ToToml`] value into a TOML string with the given configuration.
-///
-/// When [`Formatting::of`] provides a parsed [`Document`], the emitter reprojects
-/// formatting from that template onto the output, preserving comments, blank
-/// lines, and key ordering where possible.
-///
-/// # Errors
-///
-/// Returns [`ToTomlError`] if serialization fails or the top-level value
-/// is not a table.
-#[cfg(feature = "to-toml")]
-pub fn to_string_with(
-    value: &dyn ToToml,
-    formatting: Formatting<'_>,
-) -> Result<String, ToTomlError> {
-    let arena = Arena::new();
-    let mut item = value.to_toml(&arena)?;
-    let Some(table) = item.as_table_mut() else {
-        return Err(ToTomlError {
-            message: "Top-level item must be a table".into(),
-        });
-    };
-    let indent = formatting.indent;
-    let mut items = Vec::new();
-    let mut buffer = Vec::new();
-    if let Some(formatting_from) = formatting.formatting_from {
-        reproject(formatting_from, table, &mut items);
-        emit_with_config(
-            table.normalize(),
-            &EmitConfig {
-                projected_source_items: &items,
-                projected_source_text: formatting_from.ctx.source(),
-                reprojected_order: true,
-                indent,
-            },
-            &mut buffer,
-        );
-    } else {
-        emit_with_config(
-            table.normalize(),
-            &EmitConfig {
-                indent,
-                ..EmitConfig::default()
-            },
-            &mut buffer,
-        );
+    /// Serializes a [`ToToml`] value into a TOML string.
+    ///
+    /// The value must serialize to a table at the top level.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ToTomlError`] if serialization fails or the top-level value
+    /// is not a table.
+    pub fn format(&self, value: &dyn ToToml) -> Result<String, ToTomlError> {
+        let arena = Arena::new();
+        let item = value.to_toml(&arena)?;
+        let Some(table) = item.into_table() else {
+            return Err(ToTomlError {
+                message: "Top-level item must be a table".into(),
+            });
+        };
+        let buffer = self.format_table_to_bytes(table, &arena);
+        match String::from_utf8(buffer) {
+            Ok(s) => Ok(s),
+            Err(_) => Err(ToTomlError {
+                message: "Failed to convert emitted bytes into a UTF-8 string".into(),
+            }),
+        }
     }
-    match String::from_utf8(buffer) {
-        Ok(s) => Ok(s),
-        Err(_) => Err(ToTomlError {
-            message: "Failed to convert emitted bytes into a UTF-8 string".into(),
-        }),
+
+    /// Formats a [`Table`] directly into bytes.
+    ///
+    /// This is the low-level primitive. The table is normalized and
+    /// (when a source document is set) reprojected before emission.
+    /// The provided arena is used for temporary allocations during
+    /// emission.
+    pub fn format_table_to_bytes(
+        &self,
+        mut table: Table<'_>,
+        arena: &Arena,
+    ) -> Vec<u8> {
+        let mut items = Vec::new();
+        let mut buffer = Vec::new();
+        if let Some(formatting_from) = self.formatting_from {
+            reproject(formatting_from, &mut table, &mut items);
+            emit_with_config(
+                table.normalize(),
+                &EmitConfig {
+                    projected_source_items: &items,
+                    projected_source_text: formatting_from.ctx.source(),
+                    indent: self.indent,
+                },
+                arena,
+                &mut buffer,
+            );
+        } else {
+            emit_with_config(
+                table.normalize(),
+                &EmitConfig {
+                    indent: self.indent,
+                    ..EmitConfig::default()
+                },
+                arena,
+                &mut buffer,
+            );
+        }
+        buffer
     }
 }
 

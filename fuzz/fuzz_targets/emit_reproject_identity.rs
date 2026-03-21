@@ -26,7 +26,7 @@ fn clear_flags(item: &mut Item<'_>) {
     }
 }
 
-// Fuzzes the `emit_with_config` + reprojection identity round-trip.
+// Fuzzes the `Formatting::of` + reprojection identity round-trip.
 //
 // For any valid TOML input, parsing as both source and dest, reprojecting,
 // normalizing, and emitting with the reprojection config must:
@@ -47,23 +47,13 @@ fuzz_target!(|data: &[u8]| -> Corpus {
 
     let mut dest = src_root.table().clone_in(&arena);
     clear_flags_table(&mut dest);
-    // Reproject source structure onto dest.
-    let mut items = Vec::new();
-    toml_spanner::reproject(&src_root, &mut dest, &mut items);
 
-    // Normalize and emit with reprojection config.
-    let norm = dest.normalize();
-    let config = toml_spanner::EmitConfig {
-        projected_source_text: text,
-        projected_source_items: &items,
-        reprojected_order: false,
-        ..Default::default()
-    };
-    let mut buf = Vec::new();
-    toml_spanner::emit_with_config(norm, &config, &mut buf);
+    // Reproject, normalize, and emit via Formatting API.
+    let buf = toml_spanner::Formatting::of(&src_root)
+        .format_table_to_bytes(dest, &arena);
 
     // Invariant 1: valid UTF-8.
-    let output = std::str::from_utf8(&buf).expect("emit_with_config must produce valid UTF-8");
+    let output = std::str::from_utf8(&buf).expect("emit must produce valid UTF-8");
 
     // Invariant 2: parses as valid TOML.
     let out_root = toml_spanner::parse(output, &arena).unwrap_or_else(|e| {
@@ -81,21 +71,12 @@ fuzz_target!(|data: &[u8]| -> Corpus {
     // Invariant 4: idempotent — re-emit through the same pipeline.
     {
         let src2 = toml_spanner::parse(output, &arena).unwrap();
-        let mut dest2 = toml_spanner::parse(output, &arena).unwrap().into_table();
-        let mut items2 = Vec::new();
-        toml_spanner::reproject(&src2, &mut dest2, &mut items2);
-        let norm2 = dest2.normalize();
-        let cfg2 = toml_spanner::EmitConfig {
-            projected_source_text: output,
-            projected_source_items: &items2,
-            reprojected_order: false,
-        ..Default::default()
-        };
-        let mut buf2 = Vec::new();
-        toml_spanner::emit_with_config(norm2, &cfg2, &mut buf2);
+        let dest2 = toml_spanner::parse(output, &arena).unwrap().into_table();
+        let buf2 = toml_spanner::Formatting::of(&src2)
+            .format_table_to_bytes(dest2, &arena);
         assert!(
             buf == buf2,
-            "emit_with_config is not idempotent!\ninput:\n{text}\nfirst:\n{output}\nsecond:\n{}",
+            "emit is not idempotent!\ninput:\n{text}\nfirst:\n{output}\nsecond:\n{}",
             String::from_utf8_lossy(&buf2),
         );
     }

@@ -2,7 +2,7 @@
 source: snapshot-tests/tests/parser.rs
 expression: error
 ---
-error[Wanted]: expected a table key, found eof at a
+error[Wanted]: expected a table key, found eof at `a`
   ┌─ eof:1:6
   │
 1 │ a = {

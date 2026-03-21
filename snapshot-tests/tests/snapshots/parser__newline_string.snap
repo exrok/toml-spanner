@@ -2,7 +2,7 @@
 source: snapshot-tests/tests/parser.rs
 expression: error
 ---
-error[UnterminatedString]: invalid basic string, expected `"` at a
+error[UnterminatedString]: invalid basic string, expected `"` at `a`
   ┌─ newline_string:1:6
   │
 1 │ a = "

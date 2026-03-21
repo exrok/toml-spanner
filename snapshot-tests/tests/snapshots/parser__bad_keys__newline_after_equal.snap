@@ -2,7 +2,7 @@
 source: snapshot-tests/tests/parser.rs
 expression: error
 ---
-error[Unexpected]: unexpected character found: `\n` at key
+error[Unexpected]: unexpected character found: `\n` at `key`
   ┌─ newline_after_equal:1:5
   │  
 1 │   key=

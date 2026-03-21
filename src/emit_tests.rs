@@ -1,4 +1,4 @@
-use crate::emit::emit;
+use crate::emit::{EmitConfig, emit_with_config};
 use crate::item::{Item, Value};
 use crate::{Arena, Array, ArrayStyle, Key, Table, TableStyle, parse};
 
@@ -40,7 +40,7 @@ fn run_emit(input: &str) -> String {
         .try_as_normalized()
         .expect("parsed table should be valid for emission");
     let mut output = Vec::new();
-    emit(normalized, &mut output);
+    emit_with_config(normalized, &EmitConfig::default(), &arena, &mut output);
     let output_str = String::from_utf8(output).unwrap();
 
     // Round-trip: parse the emitted output and verify structural equivalence
@@ -64,7 +64,7 @@ fn run_emit(input: &str) -> String {
         .try_as_normalized()
         .expect("round-tripped table should be valid for emission");
     let mut output2 = Vec::new();
-    emit(normalized2, &mut output2);
+    emit_with_config(normalized2, &EmitConfig::default(), &arena, &mut output2);
     let output_str2 = String::from_utf8(output2).unwrap();
     assert_eq!(
         output_str, output_str2,
@@ -338,8 +338,9 @@ fn normalize_valid_constructed_tree_unchanged() {
 fn check_normalize(root: &mut Table<'_>) {
     let normalized = root.normalize();
 
+    let scratch = Arena::new();
     let mut buf1 = Vec::new();
-    emit(normalized, &mut buf1);
+    emit_with_config(normalized, &EmitConfig::default(), &scratch, &mut buf1);
     let emitted = String::from_utf8(buf1.clone()).expect("emit must produce valid UTF-8");
 
     let arena = Arena::new();
@@ -359,7 +360,7 @@ fn check_normalize(root: &mut Table<'_>) {
         .try_as_normalized()
         .expect("round-tripped table should be valid for emission");
     let mut buf2 = Vec::new();
-    emit(normalized2, &mut buf2);
+    emit_with_config(normalized2, &EmitConfig::default(), &scratch, &mut buf2);
     assert_eq!(
         buf1,
         buf2,
@@ -370,8 +371,9 @@ fn check_normalize(root: &mut Table<'_>) {
 
 #[track_caller]
 fn emit_table(table: &crate::emit::NormalizedTable<'_>) -> String {
+    let scratch = Arena::new();
     let mut buf = Vec::new();
-    emit(table, &mut buf);
+    emit_with_config(table, &EmitConfig::default(), &scratch, &mut buf);
     String::from_utf8(buf).unwrap()
 }
 
@@ -978,6 +980,7 @@ cmd = [
 #[track_caller]
 fn emit_with_indent(table: &mut Table<'_>, indent: crate::emit::Indent) -> String {
     use crate::emit::{EmitConfig, emit_with_config};
+    let scratch = Arena::new();
     let mut buf = Vec::new();
     emit_with_config(
         table.normalize(),
@@ -985,6 +988,7 @@ fn emit_with_indent(table: &mut Table<'_>, indent: crate::emit::Indent) -> Strin
             indent,
             ..EmitConfig::default()
         },
+        &scratch,
         &mut buf,
     );
     String::from_utf8(buf).unwrap()

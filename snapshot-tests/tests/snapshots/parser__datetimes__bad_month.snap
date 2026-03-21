@@ -2,7 +2,7 @@
 source: snapshot-tests/tests/parser.rs
 expression: error
 ---
-error[InvalidDateTime]: invalid datetime: month is out of range at a
+error[InvalidDateTime]: invalid datetime: month is out of range at `a`
   ┌─ bad_month:1:5
   │
 1 │ a = 2016-13-01

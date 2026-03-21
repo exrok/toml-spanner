@@ -903,11 +903,11 @@ fn from_str_and_to_string_roundtrip() {
     assert_eq!(restored["name"], "test");
     assert_eq!(restored["value"], "42");
 
-    // to_string_with preserving formatting
+    // Formatting::of preserving formatting
     let source = "name = \"test\"\nvalue = \"42\"\n";
     let arena = crate::Arena::new();
     let doc = crate::parse(source, &arena).unwrap();
-    let output = crate::to_string_with(&map, crate::Formatting::of(&doc)).unwrap();
+    let output = crate::Formatting::of(&doc).format(&map).unwrap();
     assert!(output.contains("name = \"test\""), "got: {output}");
 
     // to_string with non-table value should error
@@ -918,8 +918,8 @@ fn from_str_and_to_string_roundtrip() {
         err.message
     );
 
-    // to_string_with non-table value should error
-    let err = crate::to_string_with(&42i64, crate::Formatting::of(&doc)).unwrap_err();
+    // Formatting::format with non-table value should error
+    let err = crate::Formatting::of(&doc).format(&42i64).unwrap_err();
     assert!(
         err.message.contains("Top-level item must be a table"),
         "got: {}",

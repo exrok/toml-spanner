@@ -1,8 +1,5 @@
 mod normalization;
 mod partition;
-#[cfg(fuzzing)]
-pub(crate) mod reprojection;
-#[cfg(not(fuzzing))]
 mod reprojection;
 #[cfg(test)]
 pub(crate) mod test_data;
@@ -10,10 +7,7 @@ pub(crate) mod test_data;
 #[path = "emit_tests.rs"]
 mod tests;
 
-pub use normalization::NormalizedTable;
-#[cfg(fuzzing)]
-pub use reprojection::reproject;
-#[cfg(not(fuzzing))]
+pub(crate) use normalization::NormalizedTable;
 pub(crate) use reprojection::reproject;
 
 use crate::Array;
@@ -81,16 +75,9 @@ impl Indent {
 /// item has a valid span will be emitted verbatim from the original text,
 /// preserving formatting such as literal strings, hex/octal/binary
 /// integers, and underscored numbers.
-pub struct EmitConfig<'a> {
-    /// Original TOML source text. Empty means no projection.
+pub(crate) struct EmitConfig<'a> {
     pub projected_source_text: &'a str,
-    /// Items collected by [`reproject`]. Empty means no projection.
     pub projected_source_items: &'a [&'a Item<'a>],
-    /// When `true`, emit reorders output fragments by projected source
-    /// position so that interleaved headers and dotted keys preserve
-    /// their original ordering from the source document.
-    pub reprojected_order: bool,
-    /// Indentation unit for expanded inline arrays. Defaults to 4 spaces.
     pub indent: Indent,
 }
 
@@ -98,7 +85,6 @@ struct Emitter<'a, 'b> {
     arena: &'b Arena,
     src: &'a [u8],
     src_items: &'a [&'a Item<'a>],
-    reprojected_order: bool,
     indent: Indent,
 }
 
@@ -107,27 +93,11 @@ impl Default for EmitConfig<'_> {
         Self {
             projected_source_text: "",
             projected_source_items: &[],
-            reprojected_order: false,
             indent: Indent::default(),
         }
     }
 }
 
-/// Emits a [`NormalizedTable`] as valid TOML text.
-///
-/// Obtain a `NormalizedTable` via [`Table::try_as_normalized`] (read-only
-/// validation) or [`Table::normalize`] (mutating fix-up).
-///
-/// Preserves the structural representation of tables (header sections,
-/// dotted keys, inline tables, array-of-tables) based on the flags set
-/// by the parser. Does not preserve comments, whitespace, or key ordering
-/// beyond insertion order.
-///
-/// The output round-trips: `parse(emit(parse(input)))` produces the same
-/// logical tree with the same flags.
-pub fn emit(table: &NormalizedTable<'_>, buf: &mut Vec<u8>) {
-    emit_with_config(table, &EmitConfig::default(), buf);
-}
 
 fn trim_trailing_newline(buf: &mut Vec<u8>) {
     if buf.last() == Some(&b'\n') {
@@ -143,14 +113,17 @@ fn trim_trailing_newline(buf: &mut Vec<u8>) {
 /// When the config carries reprojection data (from [`reproject`]), scalar
 /// values that match their source are emitted verbatim from the original
 /// text, preserving formatting like literal strings, hex integers, etc.
-pub fn emit_with_config(table: &NormalizedTable<'_>, config: &EmitConfig<'_>, buf: &mut Vec<u8>) {
+pub(crate) fn emit_with_config(
+    table: &NormalizedTable<'_>,
+    config: &EmitConfig<'_>,
+    arena: &Arena,
+    buf: &mut Vec<u8>,
+) {
     let table = table.table();
-    let arena = Arena::new();
     let emit = Emitter {
-        arena: &arena,
+        arena,
         src: config.projected_source_text.as_bytes(),
         src_items: config.projected_source_items,
-        reprojected_order: config.reprojected_order,
         indent: config.indent,
     };
 
@@ -1349,9 +1322,7 @@ fn format_inline_table(tab: &Table<'_>, emit: &Emitter<'_, '_>, out: &mut Vec<u8
         return;
     }
 
-    // When reprojected_order is true, collect all leaves (including
-    // non-dotted entries), sort by source position, then emit.
-    if emit.reprojected_order && !tab.meta.ignore_source_order() {
+    if !emit.src_items.is_empty() && !tab.meta.ignore_source_order() {
         let mut needs_sort = false;
         for (k, v) in tab.entries() {
             if v.has_dotted_bit() || !k.span.is_empty() {

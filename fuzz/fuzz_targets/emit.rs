@@ -15,11 +15,8 @@ fuzz_target!(|data: &[u8]| -> Corpus {
     };
 
     // Emit.
-    let Some(normalized) = doc.table().try_as_normalized() else {
-        return Corpus::Keep;
-    };
-    let mut buf = Vec::new();
-    toml_spanner::emit(normalized, &mut buf);
+    let buf = toml_spanner::Formatting::default()
+        .format_table_to_bytes(doc.table().clone_in(&arena), &arena);
     let emitted = std::str::from_utf8(&buf).expect("emit must produce valid UTF-8");
 
     // Parse the emitted output.
@@ -36,12 +33,8 @@ fuzz_target!(|data: &[u8]| -> Corpus {
     );
 
     // Idempotency: emitting the re-parsed output must produce identical bytes.
-    let normalized2 = doc2
-        .table()
-        .try_as_normalized()
-        .expect("round-tripped table should be valid");
-    let mut buf2 = Vec::new();
-    toml_spanner::emit(normalized2, &mut buf2);
+    let buf2 = toml_spanner::Formatting::default()
+        .format_table_to_bytes(doc2.table().clone_in(&arena2), &arena2);
     assert!(
         buf == buf2,
         "emit is not idempotent!\ninput:\n{text}\nfirst emit:\n{emitted}\nsecond emit:\n{}",

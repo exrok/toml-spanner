@@ -44,19 +44,14 @@ fn run_normalize(path: &str) {
 
     let mut g = fuzz::Gen::new(&data);
     let arena = toml_spanner::Arena::new();
-    let mut root = fuzz::gen_tree::gen_root_table(&mut g, &arena);
+    let root = fuzz::gen_tree::gen_root_table(&mut g, &arena);
 
     fuzz::gen_tree::print_table(&root, "constructed tree (before normalize)");
     println!();
 
-    let normalized = root.normalize();
-
-    fuzz::gen_tree::print_table(normalized.table(), "normalized tree");
-    println!();
-
     // Emit.
-    let mut buf1 = Vec::new();
-    toml_spanner::emit(normalized, &mut buf1);
+    let buf1 = toml_spanner::Formatting::default()
+        .format_table_to_bytes(root, &arena);
     let emitted = String::from_utf8(buf1.clone()).expect("emit must produce valid UTF-8");
     println!("── emitted ({} bytes) ──\n{emitted:?}\n", emitted.len());
 
@@ -73,26 +68,9 @@ fn run_normalize(path: &str) {
     fuzz::gen_tree::print_table(root2.table(), "re-parsed tree");
     println!();
 
-    // Compare normalized vs parsed.
-    match fuzz::gen_tree::items_eq(
-        normalized.table().as_item(),
-        root2.table().as_item(),
-        &mut Vec::new(),
-    ) {
-        Ok(()) => println!("── items_eq: OK ──"),
-        Err(msg) => {
-            println!("FAILURE: {msg}");
-            std::process::exit(1);
-        }
-    }
-
     // Idempotency.
-    let normalized2 = root2
-        .table()
-        .try_as_normalized()
-        .expect("round-tripped table should be valid");
-    let mut buf2 = Vec::new();
-    toml_spanner::emit(normalized2, &mut buf2);
+    let buf2 = toml_spanner::Formatting::default()
+        .format_table_to_bytes(root2.into_table(), &arena2);
     if buf1 == buf2 {
         println!("── idempotency: OK ──");
     } else {
@@ -131,11 +109,6 @@ fn run_emit_roundtrip(path: &str) {
     fuzz::gen_tree::print_table(doc.table(), "parsed input");
     println!();
 
-    if doc.table().try_as_normalized().is_none() {
-        println!("table is not normalizable, skipping");
-        return;
-    }
-
     // Clone and erase all structural kinds.
     let mut dest = doc.table().clone_in(&arena);
     fuzz::gen_tree::erase_kinds_table(&mut dest);
@@ -143,24 +116,9 @@ fn run_emit_roundtrip(path: &str) {
     fuzz::gen_tree::print_table(&dest, "erased kinds");
     println!();
 
-    // Reproject original structure onto erased dest.
-    let mut items = Vec::new();
-    toml_spanner::reproject(&doc, &mut dest, &mut items);
-    println!("── reprojected ({} items) ──", items.len());
-
-    // Normalize and emit with reprojection config.
-    let norm = dest.normalize();
-    fuzz::gen_tree::print_table(norm.table(), "normalized tree");
-    println!();
-
-    let config = toml_spanner::EmitConfig {
-        projected_source_text: text,
-        projected_source_items: &items,
-        reprojected_order: false,
-        ..Default::default()
-    };
-    let mut out_buf = Vec::new();
-    toml_spanner::emit_with_config(norm, &config, &mut out_buf);
+    // Reproject, normalize, and emit via Formatting API.
+    let out_buf = toml_spanner::Formatting::of(&doc)
+        .format_table_to_bytes(dest, &arena);
 
     let output = String::from_utf8_lossy(&out_buf);
     println!(
@@ -212,9 +170,9 @@ fn run_reproject_identity(path: &str) {
     fuzz::gen_tree::print_table(src_root.table(), "source tree");
     println!();
 
-    // Parse as dest (identity — same text).
+    // Parse as dest (identity -- same text).
     let arena_dest = toml_spanner::Arena::new();
-    let mut dest_table = match toml_spanner::parse(&text, &arena_dest) {
+    let dest_table = match toml_spanner::parse(&text, &arena_dest) {
         Ok(r) => r.into_table(),
         Err(e) => {
             eprintln!("input does not parse as dest: {e:?}");
@@ -222,31 +180,16 @@ fn run_reproject_identity(path: &str) {
         }
     };
 
-    // Reproject source structure onto dest.
-    let mut items = Vec::new();
-    toml_spanner::reproject(&src_root, &mut dest_table, &mut items);
-    println!("── reprojected ({} items) ──", items.len());
-
-    // Normalize and emit with reprojection config.
-    let norm = dest_table.normalize();
-    fuzz::gen_tree::print_table(norm.table(), "normalized tree");
-    println!();
-
-    let config = toml_spanner::EmitConfig {
-        projected_source_text: &text,
-        projected_source_items: &items,
-        reprojected_order: false,
-        ..Default::default()
-    };
-    let mut buf = Vec::new();
-    toml_spanner::emit_with_config(norm, &config, &mut buf);
+    // Reproject, normalize, and emit via Formatting API.
+    let buf = toml_spanner::Formatting::of(&src_root)
+        .format_table_to_bytes(dest_table, &arena_dest);
 
     // Invariant 1: valid UTF-8.
     let output = match std::str::from_utf8(&buf) {
         Ok(s) => s.to_owned(),
         Err(e) => {
             eprintln!(
-                "FAILURE: emit_with_config produced invalid UTF-8: {e}\n\
+                "FAILURE: emit produced invalid UTF-8: {e}\n\
                  raw bytes: {buf:?}"
             );
             std::process::exit(1);
@@ -300,31 +243,21 @@ fn run_reproject_identity(path: &str) {
     );
     println!("── flags_match: OK ──");
 
-    // Invariant 4: idempotent — re-emit through the same pipeline.
+    // Invariant 4: idempotent -- re-emit through the same pipeline.
     let arena_s2 = toml_spanner::Arena::new();
     let src2 = toml_spanner::parse(&output, &arena_s2).unwrap();
-    let arena_d2 = toml_spanner::Arena::new();
-    let mut dest2 = toml_spanner::parse(&output, &arena_d2)
+    let dest2 = toml_spanner::parse(&output, &arena_s2)
         .unwrap()
         .into_table();
-    let mut items2 = Vec::new();
-    toml_spanner::reproject(&src2, &mut dest2, &mut items2);
-    let norm2 = dest2.normalize();
-    let cfg2 = toml_spanner::EmitConfig {
-        projected_source_text: &output,
-        projected_source_items: &items2,
-        reprojected_order: false,
-        ..Default::default()
-    };
-    let mut buf2 = Vec::new();
-    toml_spanner::emit_with_config(norm2, &cfg2, &mut buf2);
+    let buf2 = toml_spanner::Formatting::of(&src2)
+        .format_table_to_bytes(dest2, &arena_s2);
 
     if buf == buf2 {
         println!("── idempotency: OK ──");
     } else {
         let output2 = String::from_utf8_lossy(&buf2);
         eprintln!(
-            "FAILURE: emit_with_config is not idempotent!\n\
+            "FAILURE: emit is not idempotent!\n\
              input:\n{text:?}\n\
              first:\n{output:?}\n\
              second:\n{output2:?}"
@@ -444,7 +377,7 @@ fn run_reproject_edit(path: &str) {
 
     // Parse dest (working copy for reproject + normalize).
     let arena_dest = toml_spanner::Arena::new();
-    let mut dest_table = match toml_spanner::parse(&dest_text, &arena_dest) {
+    let dest_table = match toml_spanner::parse(&dest_text, &arena_dest) {
         Ok(r) => r.into_table(),
         Err(e) => {
             eprintln!("dest does not parse (working copy): {e:?}");
@@ -452,31 +385,16 @@ fn run_reproject_edit(path: &str) {
         }
     };
 
-    // Reproject source structure onto dest.
-    let mut items = Vec::new();
-    toml_spanner::reproject(&src_root, &mut dest_table, &mut items);
-    println!("── reprojected ({} items) ──", items.len());
-
-    // Normalize and emit with reprojection config.
-    let norm = dest_table.normalize();
-    fuzz::gen_tree::print_table(norm.table(), "normalized dest tree");
-    println!();
-
-    let config = toml_spanner::EmitConfig {
-        projected_source_text: &src_text,
-        projected_source_items: &items,
-        reprojected_order: false,
-        ..Default::default()
-    };
-    let mut buf = Vec::new();
-    toml_spanner::emit_with_config(norm, &config, &mut buf);
+    // Reproject, normalize, and emit via Formatting API.
+    let buf = toml_spanner::Formatting::of(&src_root)
+        .format_table_to_bytes(dest_table, &arena_dest);
 
     // Invariant 1: valid UTF-8.
     let output = match std::str::from_utf8(&buf) {
         Ok(s) => s.to_owned(),
         Err(e) => {
             eprintln!(
-                "FAILURE: emit_with_config produced invalid UTF-8: {e}\n\
+                "FAILURE: emit produced invalid UTF-8: {e}\n\
                  raw bytes: {buf:?}"
             );
             std::process::exit(1);
@@ -516,31 +434,21 @@ fn run_reproject_edit(path: &str) {
     }
     println!("── items equal: OK ──");
 
-    // Invariant 4: idempotent — re-emit the output with self-reprojection.
+    // Invariant 4: idempotent -- re-emit the output with self-reprojection.
     let arena_s2 = toml_spanner::Arena::new();
     let src2 = toml_spanner::parse(&output, &arena_s2).unwrap();
-    let arena_d2 = toml_spanner::Arena::new();
-    let mut dest2 = toml_spanner::parse(&output, &arena_d2)
+    let dest2 = toml_spanner::parse(&output, &arena_s2)
         .unwrap()
         .into_table();
-    let mut items2 = Vec::new();
-    toml_spanner::reproject(&src2, &mut dest2, &mut items2);
-    let norm2 = dest2.normalize();
-    let cfg2 = toml_spanner::EmitConfig {
-        projected_source_text: &output,
-        projected_source_items: &items2,
-        reprojected_order: false,
-        ..Default::default()
-    };
-    let mut buf2 = Vec::new();
-    toml_spanner::emit_with_config(norm2, &cfg2, &mut buf2);
+    let buf2 = toml_spanner::Formatting::of(&src2)
+        .format_table_to_bytes(dest2, &arena_s2);
 
     if buf == buf2 {
         println!("── idempotency: OK ──");
     } else {
         let output2 = String::from_utf8_lossy(&buf2);
         eprintln!(
-            "FAILURE: emit_with_config is not idempotent!\n\
+            "FAILURE: emit is not idempotent!\n\
              src:\n{src_text:?}\n\
              dest:\n{dest_text:?}\n\
              first:\n{output:?}\n\
@@ -598,7 +506,7 @@ fn run_reproject_reorder(path: &str) {
 
     // Parse dest (working copy for reproject + normalize).
     let arena_dest = toml_spanner::Arena::new();
-    let mut dest_table = match toml_spanner::parse(&dest_text, &arena_dest) {
+    let dest_table = match toml_spanner::parse(&dest_text, &arena_dest) {
         Ok(r) => r.into_table(),
         Err(e) => {
             eprintln!("dest does not parse (working copy): {e:?}");
@@ -615,31 +523,16 @@ fn run_reproject_reorder(path: &str) {
     }
     println!();
 
-    // Reproject source structure onto dest.
-    let mut items = Vec::new();
-    toml_spanner::reproject(&src_root, &mut dest_table, &mut items);
-    println!("── reprojected ({} items) ──", items.len());
-
-    // Normalize and emit with reprojection config + reordering.
-    let norm = dest_table.normalize();
-    fuzz::gen_tree::print_table(norm.table(), "normalized dest tree");
-    println!();
-
-    let config = toml_spanner::EmitConfig {
-        projected_source_text: &src_text,
-        projected_source_items: &items,
-        reprojected_order: true,
-        ..Default::default()
-    };
-    let mut buf = Vec::new();
-    toml_spanner::emit_with_config(norm, &config, &mut buf);
+    // Reproject, normalize, and emit via Formatting API.
+    let buf = toml_spanner::Formatting::of(&src_root)
+        .format_table_to_bytes(dest_table, &arena_dest);
 
     // Invariant 1: valid UTF-8.
     let output = match std::str::from_utf8(&buf) {
         Ok(s) => s.to_owned(),
         Err(e) => {
             eprintln!(
-                "FAILURE: emit_with_config produced invalid UTF-8: {e}\n\
+                "FAILURE: emit produced invalid UTF-8: {e}\n\
                  raw bytes: {buf:?}"
             );
             std::process::exit(1);
@@ -679,31 +572,21 @@ fn run_reproject_reorder(path: &str) {
     }
     println!("── items equal: OK ──");
 
-    // Invariant 4: idempotent — re-emit the output with self-reprojection.
+    // Invariant 4: idempotent -- re-emit the output with self-reprojection.
     let arena_s2 = toml_spanner::Arena::new();
     let src2 = toml_spanner::parse(&output, &arena_s2).unwrap();
-    let arena_d2 = toml_spanner::Arena::new();
-    let mut dest2 = toml_spanner::parse(&output, &arena_d2)
+    let dest2 = toml_spanner::parse(&output, &arena_s2)
         .unwrap()
         .into_table();
-    let mut items2 = Vec::new();
-    toml_spanner::reproject(&src2, &mut dest2, &mut items2);
-    let norm2 = dest2.normalize();
-    let cfg2 = toml_spanner::EmitConfig {
-        projected_source_text: &output,
-        projected_source_items: &items2,
-        reprojected_order: true,
-        ..Default::default()
-    };
-    let mut buf2 = Vec::new();
-    toml_spanner::emit_with_config(norm2, &cfg2, &mut buf2);
+    let buf2 = toml_spanner::Formatting::of(&src2)
+        .format_table_to_bytes(dest2, &arena_s2);
 
     if buf == buf2 {
         println!("── idempotency: OK ──");
     } else {
         let output2 = String::from_utf8_lossy(&buf2);
         eprintln!(
-            "FAILURE: emit_with_config is not idempotent!\n\
+            "FAILURE: emit is not idempotent!\n\
              src:\n{src_text:?}\n\
              dest:\n{dest_text:?}\n\
              first:\n{output:?}\n\
@@ -850,11 +733,6 @@ fn run_reproject_exact(path: &str) {
     fuzz::gen_tree::print_table(src_root.table(), "parsed source");
     println!();
 
-    if src_root.table().try_as_normalized().is_none() {
-        println!("table is not normalizable, skipping");
-        return;
-    }
-
     let source_bytes = source_text.as_bytes();
 
     // Collect body entries.
@@ -933,17 +811,9 @@ fn run_reproject_exact(path: &str) {
             let mut dest_table = src_root.table().clone_in(&arena);
             fuzz::exact::set_at_path(&mut dest_table, &entry.path, new_item);
 
-            let mut items = Vec::new();
-            toml_spanner::reproject(&src_root, &mut dest_table, &mut items);
-            let norm = dest_table.normalize();
-            let config = toml_spanner::EmitConfig {
-                projected_source_text: source_text,
-                projected_source_items: &items,
-                reprojected_order: false,
-        ..Default::default()
-            };
-            let mut buf = Vec::new();
-            toml_spanner::emit_with_config(norm, &config, &mut buf);
+            let dest_ref = dest_table.clone_in(&arena);
+            let buf = toml_spanner::Formatting::of(&src_root)
+                .format_table_to_bytes(dest_table, &arena);
 
             let output = String::from_utf8_lossy(&buf);
             println!("── output ({} bytes) ──\n{output:?}\n", buf.len());
@@ -959,7 +829,7 @@ fn run_reproject_exact(path: &str) {
 
             // Semantic check.
             let out_root = toml_spanner::parse(&output, &arena).unwrap();
-            if dest_table.as_item() != out_root.table().as_item() {
+            if dest_ref.as_item() != out_root.table().as_item() {
                 eprintln!("FAILURE: semantic mismatch after edit");
                 std::process::exit(1);
             }
@@ -985,17 +855,9 @@ fn run_reproject_exact(path: &str) {
             let mut dest_table = src_root.table().clone_in(&arena);
             fuzz::exact::remove_at_path(&mut dest_table, &entry.path);
 
-            let mut items = Vec::new();
-            toml_spanner::reproject(&src_root, &mut dest_table, &mut items);
-            let norm = dest_table.normalize();
-            let config = toml_spanner::EmitConfig {
-                projected_source_text: source_text,
-                projected_source_items: &items,
-                reprojected_order: false,
-        ..Default::default()
-            };
-            let mut buf = Vec::new();
-            toml_spanner::emit_with_config(norm, &config, &mut buf);
+            let dest_ref = dest_table.clone_in(&arena);
+            let buf = toml_spanner::Formatting::of(&src_root)
+                .format_table_to_bytes(dest_table, &arena);
 
             let output = String::from_utf8_lossy(&buf);
             println!("── output ({} bytes) ──\n{output:?}\n", buf.len());
@@ -1010,7 +872,7 @@ fn run_reproject_exact(path: &str) {
 
             // Semantic check.
             let out_root = toml_spanner::parse(&output, &arena).unwrap();
-            if dest_table.as_item() != out_root.table().as_item() {
+            if dest_ref.as_item() != out_root.table().as_item() {
                 eprintln!("FAILURE: semantic mismatch after remove");
                 std::process::exit(1);
             }
@@ -1037,17 +899,9 @@ fn run_reproject_exact(path: &str) {
             let new_item = toml_spanner::Item::from(42i64);
             target.insert(toml_spanner::Key::anon(fresh_key), new_item, &arena);
 
-            let mut items = Vec::new();
-            toml_spanner::reproject(&src_root, &mut dest_table, &mut items);
-            let norm = dest_table.normalize();
-            let config = toml_spanner::EmitConfig {
-                projected_source_text: source_text,
-                projected_source_items: &items,
-                reprojected_order: false,
-        ..Default::default()
-            };
-            let mut buf = Vec::new();
-            toml_spanner::emit_with_config(norm, &config, &mut buf);
+            let dest_ref = dest_table.clone_in(&arena);
+            let buf = toml_spanner::Formatting::of(&src_root)
+                .format_table_to_bytes(dest_table, &arena);
 
             let output = String::from_utf8_lossy(&buf);
             println!("── output ({} bytes) ──\n{output:?}\n", buf.len());
@@ -1062,7 +916,7 @@ fn run_reproject_exact(path: &str) {
 
             // Semantic check.
             let out_root = toml_spanner::parse(&output, &arena).unwrap();
-            if dest_table.as_item() != out_root.table().as_item() {
+            if dest_ref.as_item() != out_root.table().as_item() {
                 eprintln!("FAILURE: semantic mismatch after insert");
                 std::process::exit(1);
             }
@@ -1076,18 +930,9 @@ fn run_reproject_exact(path: &str) {
 fn check_idempotency_verbose(output: &str, buf: &[u8], source_text: &str) {
     let arena = toml_spanner::Arena::new();
     let src2 = toml_spanner::parse(output, &arena).unwrap();
-    let mut dest2 = src2.table().clone_in(&arena);
-    let mut items2 = Vec::new();
-    toml_spanner::reproject(&src2, &mut dest2, &mut items2);
-    let norm2 = dest2.normalize();
-    let cfg2 = toml_spanner::EmitConfig {
-        projected_source_text: output,
-        projected_source_items: &items2,
-        reprojected_order: false,
-        ..Default::default()
-    };
-    let mut buf2 = Vec::new();
-    toml_spanner::emit_with_config(norm2, &cfg2, &mut buf2);
+    let dest2 = src2.table().clone_in(&arena);
+    let buf2 = toml_spanner::Formatting::of(&src2)
+        .format_table_to_bytes(dest2, &arena);
     if buf == buf2.as_slice() {
         println!("── idempotency: OK ──");
     } else {

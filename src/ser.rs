@@ -354,7 +354,7 @@ fn length_of_table_exceeded_maximum<T>() -> Result<T, ToTomlError> {
 /// An error produced during [`ToToml`] conversion or TOML emission.
 ///
 /// Returned by [`to_string`](crate::to_string),
-/// [`to_string_with`](crate::to_string_with), and
+/// [`Formatting::format`](crate::Formatting::format), and
 /// [`ToToml::to_toml`].
 pub struct ToTomlError {
     /// The error message.

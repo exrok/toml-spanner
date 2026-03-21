@@ -2,7 +2,7 @@
 source: snapshot-tests/tests/parser.rs
 expression: error
 ---
-error[DuplicateTable]: redefinition of table `"b"`
+error[DuplicateTable]: redefinition of table `"b"` at `a.b`
   ┌─ redefinition:2:1
   │  
 1 │ ╭ [a.b]

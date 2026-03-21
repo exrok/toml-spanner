@@ -1,7 +1,7 @@
 #![no_main]
 
 use libfuzzer_sys::{Corpus, fuzz_target};
-use toml_spanner::{ArrayStyle, Item, Table, TableStyle};
+use toml_spanner::{ArrayStyle, Item, Table, TableStyle, Arena};
 
 fuzz_target!(|data: &[u8]| -> Corpus {
     let Ok(text) = std::str::from_utf8(data) else {
@@ -16,33 +16,25 @@ fuzz_target!(|data: &[u8]| -> Corpus {
 
     // Emit the original as the reference output.
     let ref_buf = {
-        let arena = toml_spanner::Arena::new();
+        let arena = Arena::new();
         let Ok(r) = toml_spanner::parse(text, &arena) else {
             return Corpus::Keep;
         };
-        let mut t = r.into_table();
-        let norm = t.normalize();
-        let mut buf = Vec::new();
-        toml_spanner::emit(norm, &mut buf);
-        buf
+        let t = r.into_table();
+        toml_spanner::Formatting::default().format_table_to_bytes(t, &arena)
     };
 
     // Parse again as dest and erase all structural kinds.
-    let arena_dest = toml_spanner::Arena::new();
+    let arena_dest = Arena::new();
     let Ok(dest_root) = toml_spanner::parse(text, &arena_dest) else {
         return Corpus::Keep;
     };
     let mut dest_table = dest_root.into_table();
     erase_kinds_table(&mut dest_table);
 
-    // Reproject from src onto the erased dest.
-    let mut items = Vec::new();
-    toml_spanner::reproject(&src_root, &mut dest_table, &mut items);
-
-    // Normalize and emit the reprojected dest.
-    let norm = dest_table.normalize();
-    let mut buf = Vec::new();
-    toml_spanner::emit(norm, &mut buf);
+    // Reproject from src onto the erased dest, normalize, and emit.
+    let buf = toml_spanner::Formatting::of(&src_root)
+        .format_table_to_bytes(dest_table, &arena_dest);
 
     // Core invariant: reprojected output must match the reference.
     assert!(

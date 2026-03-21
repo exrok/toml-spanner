@@ -2,7 +2,7 @@
 source: snapshot-tests/tests/parser.rs
 expression: error
 ---
-error[InvalidDateTime]: invalid datetime: expected 2-digit offset hour at tz
+error[InvalidDateTime]: invalid datetime: expected 2-digit offset hour at `tz`
   ┌─ tz_neg2:1:6
   │
 1 │ tz = 2016-09-09T09:09:09-2:00

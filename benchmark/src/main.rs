@@ -469,38 +469,36 @@ fn bench_emit_toml_spanner<'a>(
     configs: &[(&'a str, &str)],
 ) -> Vec<(&'a str, Stat)> {
     let arenas: Vec<_> = configs.iter().map(|_| toml_spanner::Arena::new()).collect();
-    let mut tables: Vec<_> = configs
+    let tables: Vec<_> = configs
         .iter()
         .zip(arenas.iter())
         .map(|((_, source), arena)| toml_spanner::parse(source, arena).unwrap().into_table())
         .collect();
-    for table in &mut tables {
-        table.normalize();
-    }
 
+    let formatting = toml_spanner::Formatting::default();
     let mut results = Vec::new();
     for (i, (name, _)) in configs.iter().enumerate() {
-        let normalized = tables[i].try_as_normalized().unwrap();
+        let table = &tables[i];
+        let arena = &arenas[i];
         let stat = bench.func(|| {
-            let mut buf = Vec::new();
-            toml_spanner::emit(normalized, &mut buf);
-            std::hint::black_box(&mut buf);
+            let scratch = toml_spanner::Arena::new();
+            let buf = formatting.format_table_to_bytes(table.clone_in(arena), &scratch);
+            std::hint::black_box(buf);
         });
         println!("{name}: {stat}");
         results.push((*name, stat));
     }
 
-    let normalized: Vec<_> = tables
-        .iter()
-        .map(|r| r.try_as_normalized().unwrap())
-        .collect();
     let mut rng = oorandom::Rand32::new(0xdeadbeaf);
     let stat = bench.bench_with_generator(
-        || normalized[rng.rand_range(0..normalized.len() as u32) as usize],
-        |normalized| {
-            let mut buf = Vec::new();
-            toml_spanner::emit(normalized, &mut buf);
-            std::hint::black_box(&mut buf);
+        || {
+            let idx = rng.rand_range(0..tables.len() as u32) as usize;
+            (&tables[idx], &arenas[idx])
+        },
+        |(table, arena)| {
+            let scratch = toml_spanner::Arena::new();
+            let buf = formatting.format_table_to_bytes(table.clone_in(arena), &scratch);
+            std::hint::black_box(buf);
         },
     );
     println!("mixed: {stat}");
@@ -511,8 +509,6 @@ fn bench_emit_reprojected<'a>(
     bench: &mut Bencher,
     configs: &[(&'a str, &str)],
 ) -> Vec<(&'a str, Stat)> {
-    // Benchmark the full pipeline: parse dest, reproject, normalize, emit.
-    // Pre-parse source roots only (they are read-only references).
     let src_arenas: Vec<_> = configs.iter().map(|_| toml_spanner::Arena::new()).collect();
     let src_roots: Vec<_> = configs
         .iter()
@@ -521,48 +517,31 @@ fn bench_emit_reprojected<'a>(
         .collect();
 
     let mut results = Vec::new();
-    for (i, (name, source)) in configs.iter().enumerate() {
+    for (i, (name, _)) in configs.iter().enumerate() {
         let src_root = &src_roots[i];
+        let formatting = toml_spanner::Formatting::of(src_root);
         let stat = bench.func(|| {
             let arena = toml_spanner::Arena::new();
-            let mut dest_table = src_root.table().clone_in(&arena);
-            let mut items = Vec::new();
-            toml_spanner::reproject(src_root, &mut dest_table, &mut items);
-            let normalized = dest_table.normalize();
-            let config = toml_spanner::EmitConfig {
-                projected_source_text: source,
-                projected_source_items: &items,
-                reprojected_order: true,
-            };
-            let mut buf = Vec::new();
-            toml_spanner::emit_with_config(normalized, &config, &mut buf);
-            std::hint::black_box(&mut buf);
+            let dest_table = src_root.table().clone_in(&arena);
+            let buf = formatting.format_table_to_bytes(dest_table, &arena);
+            std::hint::black_box(buf);
         });
         println!("{name}: {stat}");
         results.push((*name, stat));
     }
 
-    let sources: Vec<_> = configs.iter().map(|(_, s)| *s).collect();
     let mut rng = oorandom::Rand32::new(0xdeadbeaf);
     let stat = bench.bench_with_generator(
         || {
-            let idx = rng.rand_range(0..sources.len() as u32) as usize;
-            (sources[idx], &src_roots[idx])
+            let idx = rng.rand_range(0..src_roots.len() as u32) as usize;
+            &src_roots[idx]
         },
-        |(source, src_root)| {
+        |src_root| {
+            let formatting = toml_spanner::Formatting::of(src_root);
             let arena = toml_spanner::Arena::new();
-            let mut dest_table = src_root.table().clone_in(&arena);
-            let mut items = Vec::new();
-            toml_spanner::reproject(src_root, &mut dest_table, &mut items);
-            let normalized = dest_table.normalize();
-            let config = toml_spanner::EmitConfig {
-                projected_source_text: source,
-                projected_source_items: &items,
-                reprojected_order: true,
-            };
-            let mut buf = Vec::new();
-            toml_spanner::emit_with_config(normalized, &config, &mut buf);
-            std::hint::black_box(&mut buf);
+            let dest_table = src_root.table().clone_in(&arena);
+            let buf = formatting.format_table_to_bytes(dest_table, &arena);
+            std::hint::black_box(buf);
         },
     );
     println!("mixed: {stat}");

@@ -2,7 +2,7 @@
 source: snapshot-tests/tests/parser.rs
 expression: error
 ---
-error[InvalidCharInString]: invalid character in string: `\r` at a
+error[InvalidCharInString]: invalid character in string: `\r` at `a`
   ┌─ value_str:1:6
   │
 1 │ a = ""

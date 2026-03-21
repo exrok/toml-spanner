@@ -2,7 +2,7 @@
 source: snapshot-tests/tests/parser.rs
 expression: error
 ---
-error[InvalidFloat]: invalid float: nothing after decimal point at a
+error[InvalidFloat]: invalid float: nothing after decimal point at `a`
   ┌─ trailing_dec:1:7
   │
 1 │ a = 0.

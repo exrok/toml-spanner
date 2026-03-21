@@ -2,7 +2,7 @@
 source: snapshot-tests/tests/parser.rs
 expression: error
 ---
-error[DuplicateKey]: the key `b` is defined multiple times
+error[DuplicateKey]: the key `b` is defined multiple times at `a.b`
   ┌─ inline:4:12
   │
 3 │         b = { c = 2, d = {} }

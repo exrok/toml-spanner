@@ -19,20 +19,7 @@ impl<'de> Table<'de> {
     /// would otherwise be unreachable, downgrades invalid
     /// array-of-tables to inline arrays, and fixes kind mismatches in
     /// nested contexts (e.g. a header table inside an inline table).
-    #[cfg(not(fuzzing))]
     pub(crate) fn normalize(&mut self) -> &'de NormalizedTable<'de> {
-        self.normalize_inner()
-    }
-
-    /// Recursively corrects table and array kinds so the tree is valid
-    /// for emission.
-    ///
-    /// Promotes implicit tables to headers when they contain values that
-    /// would otherwise be unreachable, downgrades invalid
-    /// array-of-tables to inline arrays, and fixes kind mismatches in
-    /// nested contexts (e.g. a header table inside an inline table).
-    #[cfg(fuzzing)]
-    pub fn normalize(&mut self) -> &'de NormalizedTable<'de> {
         self.normalize_inner()
     }
 
@@ -42,7 +29,6 @@ impl<'de> Table<'de> {
     /// Returns `Some` if every item is reachable by the emit algorithm,
     /// `None` otherwise. Use [`normalize`](Self::normalize) to fix an
     /// invalid tree instead.
-    #[cfg(not(fuzzing))]
     #[allow(dead_code)]
     pub(crate) fn try_as_normalized(&self) -> Option<&NormalizedTable<'de>> {
         if is_valid(self, true) {
@@ -53,36 +39,13 @@ impl<'de> Table<'de> {
             None
         }
     }
-
-    /// Checks whether this table tree is already valid for emission
-    /// without modifying it.
-    ///
-    /// Returns `Some` if every item is reachable by the emit algorithm,
-    /// `None` otherwise. Use [`normalize`](Self::normalize) to fix an
-    /// invalid tree instead.
-    #[cfg(fuzzing)]
-    pub fn try_as_normalized(&self) -> Option<&NormalizedTable<'de>> {
-        if is_valid(self, true) {
-            // SAFETY: NormalizedTable is #[repr(transparent)] over Table.
-            // The validation confirmed the tree is emit-safe.
-            Some(unsafe { &*(self as *const Table<'de> as *const NormalizedTable<'de>) })
-        } else {
-            None
-        }
-    }
 }
 
-/// A [`Table`] that has been validated or normalized for emission.
-///
-/// Obtained via [`Table::normalize`] (mutating fix-up) or
-/// [`Table::try_as_normalized`] (read-only validation). Pass to
-/// [`emit`](crate::emit) to produce TOML text.
 #[repr(transparent)]
-pub struct NormalizedTable<'de>(Table<'de>);
+pub(crate) struct NormalizedTable<'de>(Table<'de>);
 
 impl<'de> NormalizedTable<'de> {
-    /// Returns a reference to the inner table.
-    pub fn table(&self) -> &Table<'de> {
+    pub(crate) fn table(&self) -> &Table<'de> {
         &self.0
     }
 }

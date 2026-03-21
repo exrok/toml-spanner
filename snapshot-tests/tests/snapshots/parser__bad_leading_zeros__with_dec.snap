@@ -2,7 +2,7 @@
 source: snapshot-tests/tests/parser.rs
 expression: error
 ---
-error[InvalidFloat]: invalid float: leading zeros are not allowed at a
+error[InvalidFloat]: invalid float: leading zeros are not allowed at `a`
   ┌─ with_dec:1:5
   │
 1 │ a = 00.0

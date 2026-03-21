@@ -2,7 +2,7 @@
 source: snapshot-tests/tests/parser.rs
 expression: error
 ---
-error[DuplicateKey]: the key `taste` is defined multiple times
+error[DuplicateKey]: the key `taste` is defined multiple times at `fruit.apple.taste`
   ┌─ table_9_invalid:6:14
   │
 3 │ apple.taste.sweet = true

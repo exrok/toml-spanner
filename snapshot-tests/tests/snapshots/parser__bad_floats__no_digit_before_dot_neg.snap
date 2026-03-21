@@ -2,7 +2,7 @@
 source: snapshot-tests/tests/parser.rs
 expression: error
 ---
-error[InvalidInteger]: invalid integer: expected digit after sign at a
+error[InvalidInteger]: invalid integer: expected digit after sign at `a`
   ┌─ no_digit_before_dot_neg:1:5
   │
 1 │ a = -.7
