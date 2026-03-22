@@ -441,6 +441,10 @@ pub enum ErrorKind<'a> {
 
     /// A field in the table is deprecated and the new key should be used instead
     Deprecated {
+        /// Developer Provider assoication tag useful for programatic filtering
+        /// or adding addtional messsages or notes to diagnoistics such as verison
+        /// info. Defaults to 0.
+        tag: u32,
         /// The deprecated key name
         old: &'static &'static str,
         /// The key name that should be used instead
@@ -704,7 +708,7 @@ fn kind_message_inner(kind: ErrorKind<'_>, out: &mut String) {
             s_push(out, field);
             s_push_char(out, '\'');
         }
-        ErrorKind::Deprecated { old, new } => {
+        ErrorKind::Deprecated { old, new, .. } => {
             s_push(out, "field '");
             s_push(out, old);
             s_push(out, "' is deprecated, '");

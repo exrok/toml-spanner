@@ -125,6 +125,7 @@ fn error_display_all_variants() {
         (
             Error::new(
                 ErrorKind::Deprecated {
+                    tag: 0,
                     old: &"old_key",
                     new: &"new_key",
                 },

@@ -33,6 +33,10 @@ enum FieldAttrInner {
     With(Vec<TokenTree>),
     Flatten,
     Alias(Literal),
+    DeprecatedAlias {
+        tag: Option<Vec<TokenTree>>,
+        alias: Literal,
+    },
     Style(Ident),
 }
 pub struct FieldAttrs {
@@ -57,7 +61,7 @@ impl FieldAttrs {
         for attr in &self.attrs {
             if attr.enabled & for_trait != 0
                 && match attr.inner {
-                    FieldAttrInner::Alias(_) => true,
+                    FieldAttrInner::Alias(_) | FieldAttrInner::DeprecatedAlias { .. } => true,
                     _ => false,
                 }
             {
@@ -71,6 +75,32 @@ impl FieldAttrs {
             if attr.enabled & for_trait != 0 {
                 if let FieldAttrInner::Alias(lit) = &attr.inner {
                     f(lit);
+                }
+            }
+        }
+    }
+    pub fn has_deprecated_aliases(&self, for_trait: TraitSet) -> bool {
+        for attr in &self.attrs {
+            if attr.enabled & for_trait != 0
+                && match attr.inner {
+                    FieldAttrInner::DeprecatedAlias { .. } => true,
+                    _ => false,
+                }
+            {
+                return true;
+            }
+        }
+        false
+    }
+    pub fn for_each_deprecated_alias(
+        &self,
+        for_trait: TraitSet,
+        f: &mut dyn FnMut(Option<&[TokenTree]>, &Literal),
+    ) {
+        for attr in &self.attrs {
+            if attr.enabled & for_trait != 0 {
+                if let FieldAttrInner::DeprecatedAlias { ref tag, ref alias } = attr.inner {
+                    f(tag.as_deref(), alias);
                 }
             }
         }
@@ -702,6 +732,32 @@ fn parse_single_field_attr(
             });
             return;
         }
+        "deprecated_alias" => {
+            let Some(TokenTree::Literal(alias)) = value.pop() else {
+                Error::span_msg("Expected a string literal", ident.span())
+            };
+            let tag = if let Some(TokenTree::Group(group)) = value.pop() {
+                if group.delimiter() != Delimiter::Bracket {
+                    Error::span_msg("Expected bracket group for tag", ident.span())
+                }
+                if !value.is_empty() {
+                    Error::span_msg("Unexpected tokens", ident.span())
+                }
+                Some(group.stream().into_iter().collect::<Vec<_>>())
+            } else {
+                if !value.is_empty() {
+                    Error::span_msg("Unexpected tokens", ident.span())
+                }
+                None
+            };
+            trait_set &= FROM_TOML;
+            attrs.attrs.push(FieldAttr {
+                enabled: trait_set,
+                span: ident.span(),
+                inner: FieldAttrInner::DeprecatedAlias { tag, alias },
+            });
+            return;
+        }
         _ => Error::span_msg("Unknown attr field", ident.span()),
     };
     let mask = (trait_set as u64) << offset;
@@ -750,6 +806,14 @@ fn parse_attrs(toks: TokenStream, func: &mut dyn FnMut(TraitSet, Ident, &mut Vec
                         }
                         ident = true_ident;
                         continue 'processing;
+                    }
+                    TokenTree::Group(group) if group.delimiter() == Delimiter::Bracket => {
+                        buf.push(TokenTree::Group(group));
+                        let Some(next) = toks.next() else { break };
+                        let TokenTree::Punct(p) = next else {
+                            Error::span_msg("Expected `=` or `,`", next.span());
+                        };
+                        p
                     }
                     _ => {
                         Error::span_msg("Expected either `=` or `,`", sep.span());

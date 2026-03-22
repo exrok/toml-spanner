@@ -348,9 +348,14 @@ fn emit_table_field_deser(
         let is_required = !is_option && !is_default;
         let has_aliases = field.attr.has_aliases(FROM_TOML);
 
-        // Pattern: name | alias1 | alias2 =>
+        let has_deprecated_aliases = field.attr.has_deprecated_aliases(FROM_TOML);
+
+        // Pattern: name | alias1 | deprecated_alias1 =>
         splat!(out; [@name_lit.clone().into()]);
         field.attr.for_each_alias(FROM_TOML, &mut |alias| {
+            splat!(out; | [@alias.clone().into()]);
+        });
+        field.attr.for_each_deprecated_alias(FROM_TOML, &mut |_, alias| {
             splat!(out; | [@alias.clone().into()]);
         });
         splat!(out; =>);
@@ -359,9 +364,30 @@ fn emit_table_field_deser(
         if has_aliases {
             splat!(out;
                 if [#: field.name].is_some() {
-                    return Err(__ctx.report_duplicate_field([@name_lit.into()], __key.span, __item));
+                    return Err(__ctx.report_duplicate_field([@name_lit.clone().into()], __key.span, __item));
                 }
             );
+        }
+
+        if has_deprecated_aliases {
+            let name_for_new = name_lit.clone();
+            field.attr.for_each_deprecated_alias(FROM_TOML, &mut |tag, alias| {
+                splat!(out;
+                    if __key . name == [@alias.clone().into()] {
+                        __ctx . report_deprecated_field(
+                            [if let Some(tag_tokens) = tag {
+                                out.buf.extend_from_slice(tag_tokens);
+                            } else {
+                                out.buf.push(TokenTree::Literal(Literal::u32_suffixed(0)));
+                            }]
+                            , & [@alias.clone().into()]
+                            , & [@name_for_new.clone().into()]
+                            , __key . span
+                            , __item
+                        );
+                    }
+                );
+            });
         }
 
         // match from_toml_call { Ok(__val) => { field = Some(__val); } Err(...) }

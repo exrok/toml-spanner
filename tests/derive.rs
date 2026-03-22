@@ -2927,3 +2927,158 @@ fn deny_unknown_fields_adjacent_tag() {
         "should have error for unknown field"
     );
 }
+
+// --- deprecated_alias tests ---
+
+#[derive(Toml, Debug, PartialEq)]
+struct WithDeprecatedAlias {
+    #[toml(deprecated_alias = "old_name")]
+    new_name: String,
+}
+
+#[test]
+fn deprecated_alias_primary_key() {
+    let v: WithDeprecatedAlias = toml_spanner::from_str("new_name = \"val\"").unwrap();
+    assert_eq!(v.new_name, "val");
+}
+
+#[test]
+fn deprecated_alias_uses_old_key() {
+    let arena = Arena::new();
+    let mut doc = toml_spanner::parse("old_name = \"val\"", &arena).unwrap();
+    let (val, errors) = doc
+        .to_allowing_errors::<WithDeprecatedAlias>()
+        .expect("deprecated alias should still deserialize");
+    assert_eq!(val.new_name, "val");
+    assert!(!errors.errors.is_empty(), "should have a deprecation error");
+    let err = &errors.errors[0];
+    assert!(
+        format!("{err}").contains("deprecated"),
+        "error should mention deprecated: {err}"
+    );
+}
+
+const TEST_TAG: u32 = 0x1000;
+
+#[derive(Toml, Debug, PartialEq)]
+struct WithTaggedDeprecatedAlias {
+    #[toml(deprecated_alias[TEST_TAG] = "old_field")]
+    new_field: u32,
+}
+
+#[test]
+fn deprecated_alias_with_tag() {
+    let arena = Arena::new();
+    let mut doc = toml_spanner::parse("old_field = 42", &arena).unwrap();
+    let (val, errors) = doc
+        .to_allowing_errors::<WithTaggedDeprecatedAlias>()
+        .expect("deprecated alias should still deserialize");
+    assert_eq!(val.new_field, 42);
+    assert!(!errors.errors.is_empty());
+    let kind = errors.errors[0].kind();
+    match kind {
+        toml_spanner::ErrorKind::Deprecated { tag, .. } => {
+            assert_eq!(tag, TEST_TAG);
+        }
+        _ => panic!("expected Deprecated error, got {kind:?}"),
+    }
+}
+
+#[derive(Toml, Debug, PartialEq)]
+struct MultiDeprecatedAlias {
+    #[toml(deprecated_alias = "v1_name", deprecated_alias[2] = "v2_name")]
+    current_name: String,
+}
+
+#[test]
+fn multi_deprecated_alias_v1() {
+    let arena = Arena::new();
+    let mut doc = toml_spanner::parse("v1_name = \"a\"", &arena).unwrap();
+    let (val, errors) = doc
+        .to_allowing_errors::<MultiDeprecatedAlias>()
+        .expect("should deserialize");
+    assert_eq!(val.current_name, "a");
+    assert!(!errors.errors.is_empty());
+    match errors.errors[0].kind() {
+        toml_spanner::ErrorKind::Deprecated { tag, .. } => assert_eq!(tag, 0),
+        k => panic!("expected Deprecated, got {k:?}"),
+    }
+}
+
+#[test]
+fn multi_deprecated_alias_v2() {
+    let arena = Arena::new();
+    let mut doc = toml_spanner::parse("v2_name = \"b\"", &arena).unwrap();
+    let (val, errors) = doc
+        .to_allowing_errors::<MultiDeprecatedAlias>()
+        .expect("should deserialize");
+    assert_eq!(val.current_name, "b");
+    assert!(!errors.errors.is_empty());
+    match errors.errors[0].kind() {
+        toml_spanner::ErrorKind::Deprecated { tag, .. } => assert_eq!(tag, 2),
+        k => panic!("expected Deprecated, got {k:?}"),
+    }
+}
+
+#[derive(Toml, Debug, PartialEq)]
+struct MixedAliasAndDeprecated {
+    #[toml(alias = "alt", deprecated_alias = "old")]
+    name: String,
+}
+
+#[test]
+fn mixed_alias_no_error() {
+    let v: MixedAliasAndDeprecated = toml_spanner::from_str("alt = \"val\"").unwrap();
+    assert_eq!(v.name, "val");
+}
+
+#[test]
+fn mixed_deprecated_alias_emits_error() {
+    let arena = Arena::new();
+    let mut doc = toml_spanner::parse("old = \"val\"", &arena).unwrap();
+    let (val, errors) = doc
+        .to_allowing_errors::<MixedAliasAndDeprecated>()
+        .expect("should deserialize");
+    assert_eq!(val.name, "val");
+    assert!(!errors.errors.is_empty());
+}
+
+#[test]
+fn deprecated_alias_duplicate_error() {
+    let result: Result<WithDeprecatedAlias, _> =
+        toml_spanner::from_str("new_name = \"a\"\nold_name = \"b\"");
+    assert!(
+        result.is_err(),
+        "should error on duplicate via deprecated alias"
+    );
+}
+
+#[derive(Toml, Debug, PartialEq)]
+#[toml(rename_all = "kebab-case")]
+struct KebabWithDeprecated {
+    #[toml(deprecated_alias[TEST_TAG] = "default_features")]
+    default_features: bool,
+}
+
+#[test]
+fn deprecated_alias_with_rename_all() {
+    let v: KebabWithDeprecated = toml_spanner::from_str("default-features = true").unwrap();
+    assert!(v.default_features);
+}
+
+#[test]
+fn deprecated_alias_with_rename_all_old_key() {
+    let arena = Arena::new();
+    let mut doc = toml_spanner::parse("default_features = true", &arena).unwrap();
+    let (val, errors) = doc
+        .to_allowing_errors::<KebabWithDeprecated>()
+        .expect("should deserialize via deprecated alias");
+    assert!(val.default_features);
+    assert!(!errors.errors.is_empty());
+    match errors.errors[0].kind() {
+        toml_spanner::ErrorKind::Deprecated { tag, .. } => {
+            assert_eq!(tag, TEST_TAG);
+        }
+        k => panic!("expected Deprecated, got {k:?}"),
+    }
+}

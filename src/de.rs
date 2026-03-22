@@ -634,6 +634,26 @@ impl<'de> Context<'de> {
         ))
     }
 
+    /// Records a deprecated-field warning with TOML path information.
+    ///
+    /// Unlike other `report_*` methods this is **non-fatal**: it pushes
+    /// an error but does not return [`Failed`], so deserialization continues.
+    #[cold]
+    pub fn report_deprecated_field(
+        &mut self,
+        tag: u32,
+        old: &'static &'static str,
+        new: &'static &'static str,
+        key_span: Span,
+        item: &Item<'de>,
+    ) {
+        self.errors.push(Error::new_with_path(
+            ErrorKind::Deprecated { tag, old, new },
+            key_span,
+            MaybeTomlPath::uncomputed(item),
+        ));
+    }
+
     /// Records an unexpected-key error with TOML path information.
     #[cold]
     pub fn error_unexpected_key(&mut self, item: &Item<'de>, key_span: Span) -> Failed {
