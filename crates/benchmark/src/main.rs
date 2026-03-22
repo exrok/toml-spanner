@@ -291,7 +291,8 @@ impl Plotter {
                 if rel > max_rel {
                     max_rel = rel;
                 }
-                writeln!(data, "\"{lib_name}\" {rel:.2} {}", idx + 1).unwrap();
+                let escaped = lib_name.replace('_', "\\\\_");
+                writeln!(data, "\"{escaped}\" {rel:.2} {}", idx + 1).unwrap();
             }
         }
 

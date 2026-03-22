@@ -143,24 +143,27 @@ Please consult the [API documentation](https://docs.rs/toml-spanner/latest/toml_
 Measured on AMD Ryzen 9 5950X, 64GB RAM, Linux 6.18, rustc 1.93.0.
 Relative parse time across real-world TOML files (lower is better):
 
-![bench](https://github.com/user-attachments/assets/59a8dfca-8987-4ea9-8023-faab553edab0)
+<!-- bench here -->
 
-Crate Versions: `toml-spanner = 0.4.0`, `toml = 1.0.3+spec-1.1.0`, `toml-span = 0.7.0`
+Crate Versions: toml-spanner 1.0.0, toml 1.0.7+spec-1.1.0, toml_edit 0.25.5+spec-1.1.0, toml-span 0.7.1
 
 ```
                   time(μs)  cycles(K)   instr(K)  branch(K)
 zed/Cargo.toml
-  toml-spanner        24.6        116        439         91
-  toml               255.4       1212       3088        608
-  toml-span          389.3       1821       5049       1047
+  toml-spanner        24.5        115        440         93
+  toml               228.5       1088       2912        523
+  toml_edit          306.6       1460       4252        861
+  toml-span          393.8       1866       5024       1045
 extask.toml
-  toml-spanner         8.8         41        149         28
-  toml                78.8        372       1005        192
-  toml-span          105.1        492       1337        264
+  toml-spanner         8.9         43        149         29
+  toml                78.5        374       1031        177
+  toml_edit          106.7        505       1470        290
+  toml-span          105.8        500       1331        263
 devsm.toml
-  toml-spanner         3.7         17         69         14
-  toml                32.6        155        424         81
-  toml-span           56.8        266        711        141
+  toml-spanner         3.7         17         70         15
+  toml                35.8        171        459         79
+  toml_edit           48.7        232        650        127
+  toml-span           56.4        269        708        140
 ```
 
 This runtime benchmark is pretty simple and focuses just on the parsing step. In practice,
@@ -176,40 +179,28 @@ The following benchmarks have taken the exact data structures and deserializatio
 using toml and serde), and added support for `toml-spanner` and `toml-span` based parsing and
 deserialization. (I haven't added `toml-span` support for Cargo.toml due to its complexity.)
 
-![bench_deserialize](https://github.com/user-attachments/assets/529b84f2-71cf-4ad0-aaee-ccf57c4cecce)
+<!-- Bench HERE -->
 
-Crate Versions: `toml-spanner = 0.4.1`, `toml = 1.0.3+spec-1.1.0`, `toml-span = 0.7.0`
+Crate Versions: `toml-spanner = 1.0.1`, `toml = 1.0.7+spec-1.1.0`, `toml-span = 0.7.1`
 
 Commit `3ca292befbc3585084922c1592ea3d17e423f035` was used from `rust-lang/cargo` as reference.
 
 ```
                   time(μs)  cycles(K)   instr(K)  branch(K)
-zed/Cargo.lock
-  toml-spanner      1023.5       4879      16137       3517
-  toml              2975.4      14152      36063       7554
-  toml-span         5806.3      27182      74738      15478
-zed/Cargo.toml
-  toml-spanner        92.4        432       1411        286
-  toml               333.4       1567       3726        726
+zed/Cargo.lock (parse + deserialize)
+  toml-spanner      1023.5       4803      16135       3514
+  toml              2977.4      14248      37270       7296
+  toml-span         5643.2      26831      74584      15460
+zed/Cargo.toml (parse + deserialize)
+  toml-spanner        92.5        439       1405        283
+  toml               309.4       1475       3622        662
 ```
 
 ### Compile Time
 
-Extra `cargo build --release` time for binaries using the respective crates (lower is better):
+For a crate parsing a simiplifed cargo manifest using derive macro for each crate. With unrestricited paralism we get the following:
 
-![compile_bench](https://github.com/user-attachments/assets/e10c0ba6-694c-4de5-bfc1-b85ef9ad9613)
-
-```
-                 median(ms)    added(ms)
-null                    108
-toml-spanner            739         +631
-toml-span              1378        +1270
-toml                   3060        +2952
-toml+serde             5156        +5048
-```
-
-Check out `./benchmark` for more details, but numbers should simulate the additional
-time added users would experience during source based installs such as via `cargo install`.
+See [Compile Time Benchmarks](https://github.com/exrok/rust-serialization-build-time-benchmarks/blob/main/README.md) for more details.
 
 ## Divergence from `toml-span`
 
@@ -287,14 +278,10 @@ Note: See the `devsm.toml` file in the root for typical commands that are run du
 
 ### Acknowledgements
 
-toml-spanner started off as fork of toml-span and though it's been completely rewritten at this
-point, the original test suite and some of the API patterns remain.
+toml-spanner started off as fork of toml-span and though it's been pretty muchcompletely rewritten at this point, the original test suite and some of the API patterns remain.
 
-Both toml and toml-edit crates
-
-Unlike the original, `toml-spanner` aims to be a fully compliant TOML v1.1.0 parser, including
-full date-time support, with conformance verified by extensive fuzzing against the `toml` crate
-and passing the official TOML decoding test suite.
+Thanks to both the toml and toml-edit crates inspired the API as well as the error messages as
+well as serving targets to fuzz against.
 
 ### License
 

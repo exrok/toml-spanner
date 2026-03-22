@@ -189,11 +189,9 @@ mod ser;
 mod span;
 mod time;
 
-/// Zero-size sentinel indicating that a conversion step failed.
+/// Error sentinel indicating a failure.
 ///
-/// Error details are recorded in the shared [`Context`] rather than
-/// carried inside `Failed` itself, allowing multiple errors to accumulate
-/// during a single [`FromToml`] pass.
+/// Error details are recorded in the shared [`Context`].
 #[derive(Debug)]
 pub struct Failed;
 
@@ -230,27 +228,11 @@ pub mod impl_serde;
 
 /// Parses and deserializes a TOML document in one step.
 ///
-/// Allocates its own [`Arena`] and calls [`parse`] followed by
-/// [`Document::to`]. Because the arena is local, the resulting type `T`
-/// cannot borrow from the input.
-///
-/// For more control over lifetimes (borrowing `&'de str` fields directly
-/// from the input or reusing an arena across multiple parses), use the
-/// lower-level API instead:
-///
-/// ```
-/// let arena = toml_spanner::Arena::new();
-/// let mut doc = toml_spanner::parse("key = 'value'", &arena).unwrap();
-/// let config = doc.to::<std::collections::HashMap<String, String>>().unwrap();
-/// ```
-///
-/// [`Formatting::preserved_from`] requires a [`Document`] as a formatting
-/// template, but it does not have to be the same `Document` that produced
-/// the converted value.
+/// For borrowing or non-fatal errors, use [`parse`] and [`Document`] methods.
 ///
 /// # Errors
 ///
-/// Returns a [`FromTomlError`] containing all parse and conversion errors
+/// Returns a [`FromTomlError`] containing all parse or conversion errors
 /// encountered.
 #[cfg(feature = "from-toml")]
 pub fn from_str<T: for<'a> FromToml<'a>>(document: &str) -> Result<T, FromTomlError> {
@@ -264,7 +246,7 @@ pub fn from_str<T: for<'a> FromToml<'a>>(document: &str) -> Result<T, FromTomlEr
     doc.to()
 }
 
-/// Serializes a [`ToToml`] value into a TOML string with default formatting.
+/// Serializes a [`ToToml`] value into a TOML document string with default formatting.
 ///
 /// The value must serialize to a table at the top level. For format
 /// preservation or custom indentation, use [`Formatting`].
@@ -293,7 +275,7 @@ pub fn to_string(value: &dyn ToToml) -> Result<String, ToTomlError> {
 /// Controls how TOML output is formatted when serializing.
 ///
 /// [`Formatting::preserved_from`] preserves formatting from a previously
-/// parsed document. The default produces clean output with no source template.
+/// parsed document, use `Formatting::default()` for standard formatting.
 ///
 /// # Examples
 ///
