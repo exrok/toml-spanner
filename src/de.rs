@@ -109,7 +109,7 @@ fn compute_paths_walk<'de>(
                 i += 1;
             }
 
-            let mut idx = 0; // For some reason more efficent then iter() enumerate()
+            let mut idx = 0; // For some reason more efficient then iter() enumerate()
             for child in array {
                 path_stack[path_depth] = PathComponent::Index(idx);
                 compute_paths_walk(child, pending, path_stack, path_depth + 1);

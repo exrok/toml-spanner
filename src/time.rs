@@ -371,7 +371,7 @@ impl PartialEq for DateTime {
             offset: u32,
             nanos: i16,
         }
-        // Saftey: DateTime and Raw have identical layouts, so transmuting between them is safe.
+        // Safety: DateTime and Raw have identical layouts, so transmuting between them is safe.
         let rhs = unsafe { &*(self as *const _ as *const Raw) };
         let lhs = unsafe { &*(other as *const _ as *const Raw) };
         (rhs.header == lhs.header) & (rhs.offset == lhs.offset) & (rhs.nanos == lhs.nanos)

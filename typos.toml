@@ -1,7 +1,7 @@
 [files]
 extend-exclude = [
-    "benchmark/data/random.toml",
-    "benchmark/data/zed-lock.toml",
+    "crates/benchmark/data/random.toml",
+    "crates/benchmark/data/zed-lock.toml",
     "src/parser_tests.rs",
 ]
 ignore-vcs = true

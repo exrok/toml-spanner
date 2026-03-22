@@ -77,7 +77,7 @@ fn items_deep_eq(a: &Item<'_>, b: &Item<'_>) -> bool {
         (Value::String(sa), Value::String(sb)) => sa == sb,
         (Value::Integer(ia), Value::Integer(ib)) => ia == ib,
         (Value::Float(fa), Value::Float(fb)) => fa.to_bits() == fb.to_bits(),
-        (Value::Boolean(ba), Value::Boolean(bb)) => ba == bb,
+        (Value::Boolean(b_a), Value::Boolean(b_b)) => b_a == b_b,
         (Value::DateTime(da), Value::DateTime(db)) => da == db,
         (Value::Table(ta), Value::Table(tb)) => {
             if ta.len() != tb.len() {
@@ -180,7 +180,10 @@ pub fn run_cli(path: &str) {
         }
         Err(e) => {
             println!("── parse returned error (expected): {e} ──");
-            println!("parse_recoverable produced partial tree with {} error(s)", doc.errors().len());
+            println!(
+                "parse_recoverable produced partial tree with {} error(s)",
+                doc.errors().len()
+            );
             println!("── OK (invalid input) ──");
         }
     }
