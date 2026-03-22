@@ -33,6 +33,10 @@ fn error_display_all_variants() {
             "invalid escape value: `\\uDEAD`",
         ),
         (
+            Error::new(ErrorKind::InvalidEscapeValue(0x00D80000), span),
+            "invalid escape value: `\\uD80000`",
+        ),
+        (
             Error::new(ErrorKind::Unexpected('!'), span),
             "unexpected character found: `!`",
         ),

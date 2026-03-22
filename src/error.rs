@@ -821,7 +821,7 @@ fn push_toml_path(out: &mut String, path: &TomlPath<'_>) {
 
 fn push_unicode_escape(out: &mut String, n: u32) {
     s_push(out, "\\u");
-    let mut buf = [0u8; 4];
+    let mut buf = [0u8; 8];
     let digits = if n <= 0xFFFF { 4 } else { 6 };
     for i in (0..digits).rev() {
         let nibble = ((n >> (i * 4)) & 0xF) as u8;

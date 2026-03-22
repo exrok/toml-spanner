@@ -1,6 +1,6 @@
 use jsony::Jsony;
 use std::{collections::HashMap, io::Read};
-use toml_spanner::{Arena, Array, DateTime, Item, Key, Table, emit};
+use toml_spanner::{Arena, Array, DateTime, Formatting, Item, Key, Table};
 
 #[derive(Jsony)]
 #[jsony(untagged)]
@@ -89,7 +89,7 @@ fn main() {
         }
     };
     let arena = Arena::new();
-    let mut table = match toml {
+    let table = match toml {
         Toml::Object(map) => {
             let mut table = Table::new();
             for (key, value) in &map {
@@ -103,9 +103,7 @@ fn main() {
             std::process::exit(1);
         }
     };
-    let normalized = table.normalize();
-    let mut output = Vec::new();
-    emit(normalized, &mut output);
+    let output = Formatting::default().format_table_to_bytes(table, &arena);
     // SAFETY: emit produces valid UTF-8 TOML text
     let text = unsafe { String::from_utf8_unchecked(output) };
     print!("{text}");
