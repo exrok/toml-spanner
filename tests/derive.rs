@@ -3158,3 +3158,39 @@ fn deprecated_alias_with_rename_all_old_key() {
         k => panic!("expected Deprecated, got {k:?}"),
     }
 }
+
+#[derive(Toml, Debug, PartialEq)]
+#[toml(Toml)]
+struct WithTuples {
+    pair: (String, i64),
+    triple: (bool, i64, String),
+    single: (f64,),
+}
+
+#[test]
+fn derive_tuple_fields_roundtrip() {
+    let input = r#"
+pair = ["hello", 42]
+triple = [true, 7, "ok"]
+single = [3.14]
+"#;
+    let v: WithTuples = toml_spanner::from_str(input).unwrap();
+    assert_eq!(v.pair, ("hello".to_string(), 42));
+    assert_eq!(v.triple, (true, 7, "ok".to_string()));
+    assert_eq!(v.single.0, 3.14);
+
+    let toml_str = toml_spanner::to_string(&v).unwrap();
+    let roundtrip: WithTuples = toml_spanner::from_str(&toml_str).unwrap();
+    assert_eq!(v, roundtrip);
+}
+
+#[test]
+fn derive_tuple_wrong_length() {
+    let input = r#"
+pair = ["too", "many", "items"]
+triple = [true, 7, "ok"]
+single = [1.0]
+"#;
+    let result = toml_spanner::from_str::<WithTuples>(input);
+    assert!(result.is_err());
+}

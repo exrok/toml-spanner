@@ -1169,3 +1169,38 @@ bogus = 1
     }
     assert!(doc.ctx.errors[0].path().is_none());
 }
+
+#[test]
+fn deser_tuple_1() {
+    let arena = Arena::new();
+    let val: (i64,) = parse_val("v = [42]", &arena).unwrap();
+    assert_eq!(val, (42,));
+}
+
+#[test]
+fn deser_tuple_2() {
+    let arena = Arena::new();
+    let val: (String, i64) = parse_val(r#"v = ["hello", 7]"#, &arena).unwrap();
+    assert_eq!(val, ("hello".to_string(), 7));
+}
+
+#[test]
+fn deser_tuple_3() {
+    let arena = Arena::new();
+    let val: (bool, i64, String) = parse_val(r#"v = [true, 99, "ok"]"#, &arena).unwrap();
+    assert_eq!(val, (true, 99, "ok".to_string()));
+}
+
+#[test]
+fn deser_tuple_wrong_size() {
+    let arena = Arena::new();
+    let err = parse_val::<(i64, i64)>("v = [1, 2, 3]", &arena).unwrap_err();
+    let msg = format!("{err}");
+    assert!(msg.contains("expected 2"), "got: {msg}");
+}
+
+#[test]
+fn deser_tuple_wrong_type() {
+    let arena = Arena::new();
+    assert!(parse_val::<(i64,)>(r#"v = "not an array""#, &arena).is_err());
+}

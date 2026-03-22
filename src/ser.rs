@@ -101,6 +101,26 @@ impl<const N: usize, T: ToToml> ToToml for [T; N] {
     }
 }
 
+macro_rules! impl_to_toml_tuple {
+    ($len:expr, $($idx:tt => $T:ident),+) => {
+        impl<$($T: ToToml),+> ToToml for ($($T,)+) {
+            fn to_toml<'a>(&'a self, arena: &'a Arena) -> Result<Item<'a>, ToTomlError> {
+                let Some(mut array) = Array::try_with_capacity($len, arena) else {
+                    return length_of_array_exceeded_maximum();
+                };
+                $(
+                    array.push(self.$idx.to_toml(arena)?, arena);
+                )+
+                Ok(array.into_item())
+            }
+        }
+    };
+}
+
+impl_to_toml_tuple!(1, 0 => A);
+impl_to_toml_tuple!(2, 0 => A, 1 => B);
+impl_to_toml_tuple!(3, 0 => A, 1 => B, 2 => C);
+
 impl<T: ToToml> ToToml for Option<T> {
     fn to_optional_toml<'a>(&'a self, arena: &'a Arena) -> Result<Option<Item<'a>>, ToTomlError> {
         match self {

@@ -837,6 +837,38 @@ impl<'de, T: FromToml<'de>, const N: usize> FromToml<'de> for [T; N] {
     }
 }
 
+macro_rules! impl_from_toml_tuple {
+    ($len:expr, $($idx:tt => $T:ident, $var:ident),+) => {
+        impl<'de, $($T: FromToml<'de>),+> FromToml<'de> for ($($T,)+) {
+            fn from_toml(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
+                let arr = value.expect_array(ctx)?;
+                if arr.len() != $len {
+                    return Err(ctx.push_error(Error::custom(
+                        format!("Expect Array Size: found {} but expected {}", arr.len(), $len),
+                        value.span_unchecked(),
+                    )));
+                }
+                let slice = arr.as_slice();
+                let mut had_error = false;
+                $(
+                    let $var = match $T::from_toml(ctx, &slice[$idx]) {
+                        Ok(v) => Some(v),
+                        Err(_) => { had_error = true; None }
+                    };
+                )+
+                if had_error {
+                    return Err(Failed);
+                }
+                Ok(($($var.unwrap(),)+))
+            }
+        }
+    };
+}
+
+impl_from_toml_tuple!(1, 0 => A, a);
+impl_from_toml_tuple!(2, 0 => A, a, 1 => B, b);
+impl_from_toml_tuple!(3, 0 => A, a, 1 => B, b, 2 => C, c);
+
 impl<'de> FromToml<'de> for String {
     fn from_toml(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
         match value.as_str() {
