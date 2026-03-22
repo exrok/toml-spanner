@@ -507,7 +507,7 @@ impl<'ctx, 't, 'de> TableHelper<'ctx, 't, 'de> {
         for (i, (key, item)) in self.table.entries().iter().enumerate() {
             if !self.used.get(i) {
                 self.ctx.errors.push(Error {
-                    kind: ErrorInner::Static(ErrorKind::UnexpectedKey),
+                    kind: ErrorInner::Static(ErrorKind::UnexpectedKey { tag: 0 }),
                     span: key.span,
                     path: MaybeTomlPath::uncomputed(item),
                 });
@@ -656,10 +656,10 @@ impl<'de> Context<'de> {
 
     /// Records an unexpected-key error with TOML path information.
     #[cold]
-    pub fn error_unexpected_key(&mut self, item: &Item<'de>, key_span: Span) -> Failed {
+    pub fn error_unexpected_key(&mut self, tag: u32, item: &Item<'de>, key_span: Span) -> Failed {
         let path = MaybeTomlPath::uncomputed(item);
         self.errors.push(Error::new_with_path(
-            ErrorKind::UnexpectedKey,
+            ErrorKind::UnexpectedKey { tag },
             key_span,
             path,
         ));

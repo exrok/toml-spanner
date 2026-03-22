@@ -237,7 +237,7 @@ fn table_helper_workflows() {
     }
     assert!(matches!(
         doc.ctx.errors[0].kind(),
-        crate::ErrorKind::UnexpectedKey
+        crate::ErrorKind::UnexpectedKey { .. }
     ));
 
     // required() returns MissingField error for nonexistent key
@@ -520,7 +520,7 @@ x = 1
     }
     assert!(matches!(
         doc.ctx.errors[0].kind(),
-        crate::ErrorKind::UnexpectedKey
+        crate::ErrorKind::UnexpectedKey { .. }
     ));
 
     // Works with indexed tables (7+ entries)
@@ -628,7 +628,7 @@ fn required_entry_and_optional_entry() {
     }
     assert!(matches!(
         doc.ctx.errors[0].kind(),
-        crate::ErrorKind::UnexpectedKey
+        crate::ErrorKind::UnexpectedKey { .. }
     ));
 
     // Works with indexed tables (7+ entries)
@@ -1126,7 +1126,7 @@ unknown_field = true
     };
     assert!(result.is_err());
     assert_eq!(doc.ctx.errors.len(), 1);
-    assert!(matches!(doc.ctx.errors[0].kind(), ErrorKind::UnexpectedKey));
+    assert!(matches!(doc.ctx.errors[0].kind(), ErrorKind::UnexpectedKey { .. }));
     assert!(doc.ctx.errors[0].path().is_some());
     assert_eq!(
         format!("{}", doc.ctx.errors[0]),

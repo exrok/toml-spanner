@@ -2802,27 +2802,31 @@ fn other_external_unknown_string() {
 }
 
 #[test]
-fn unknown_fields_ignored_by_default() {
+fn ignore_unknown_fields_struct() {
+    #[derive(Toml, Debug, PartialEq)]
+    #[toml(FromToml, ignore_unknown_fields)]
+    struct Simple {
+        name: String,
+    }
+    let arena = Arena::new();
+    let mut doc = toml_spanner::parse("name = \"hi\"\nextra = 42", &arena).unwrap();
+    let result = doc.to::<Simple>();
+    assert!(result.is_ok());
+    assert_eq!(result.unwrap().name, "hi");
+    assert!(doc.errors().is_empty(), "should have no errors");
+}
+
+#[test]
+fn warn_unknown_fields_by_default() {
     #[derive(Toml, Debug, PartialEq)]
     #[toml(FromToml)]
     struct Simple {
         name: String,
     }
-    let v: Simple = toml_spanner::from_str("name = \"hi\"\nextra = 42").unwrap();
-    assert_eq!(v.name, "hi");
-}
-
-#[test]
-fn deny_unknown_fields_struct() {
-    #[derive(Toml, Debug, PartialEq)]
-    #[toml(FromToml, deny_unknown_fields)]
-    struct Strict {
-        name: String,
-    }
     let arena = Arena::new();
     let mut doc = toml_spanner::parse("name = \"hi\"\nextra = 42", &arena).unwrap();
     let (ctx, table) = doc.split();
-    let result = Strict::from_toml(ctx, table.as_item());
+    let result = Simple::from_toml(ctx, table.as_item());
     assert!(
         result.is_ok(),
         "struct should still be constructed: {:?}",
@@ -2836,16 +2840,16 @@ fn deny_unknown_fields_struct() {
 }
 
 #[test]
-fn deny_unknown_fields_multiple_errors() {
+fn warn_unknown_fields_multiple_errors() {
     #[derive(Toml, Debug, PartialEq)]
-    #[toml(FromToml, deny_unknown_fields)]
-    struct Strict {
+    #[toml(FromToml)]
+    struct Simple {
         name: String,
     }
     let arena = Arena::new();
     let mut doc = toml_spanner::parse("name = \"hi\"\na = 1\nb = 2", &arena).unwrap();
     let (ctx, table) = doc.split();
-    let result = Strict::from_toml(ctx, table.as_item());
+    let result = Simple::from_toml(ctx, table.as_item());
     assert!(
         result.is_ok(),
         "struct should still be constructed: {:?}",
@@ -2853,6 +2857,24 @@ fn deny_unknown_fields_multiple_errors() {
     );
     let errors = doc.errors();
     assert_eq!(errors.len(), 2, "should have two errors, got: {:?}", errors);
+}
+
+#[test]
+fn deny_unknown_fields_struct() {
+    #[derive(Toml, Debug, PartialEq)]
+    #[toml(FromToml, deny_unknown_fields)]
+    struct Strict {
+        name: String,
+    }
+    let arena = Arena::new();
+    let mut doc = toml_spanner::parse("name = \"hi\"\nextra = 42", &arena).unwrap();
+    let (ctx, table) = doc.split();
+    let result = Strict::from_toml(ctx, table.as_item());
+    assert!(result.is_err(), "should fail with deny_unknown_fields");
+    assert!(
+        !doc.errors().is_empty(),
+        "should have errors for unknown field"
+    );
 }
 
 #[test]
@@ -2880,8 +2902,7 @@ fn deny_unknown_fields_internal_tag_unit() {
     let mut doc = toml_spanner::parse("type = \"Stop\"\nextra = true", &arena).unwrap();
     let (ctx, table) = doc.split();
     let result = Action::from_toml(ctx, table.as_item());
-    assert!(result.is_ok(), "should still construct: {:?}", result);
-    assert_eq!(result.unwrap(), Action::Stop);
+    assert!(result.is_err(), "should fail with deny_unknown_fields");
     assert!(
         !doc.errors().is_empty(),
         "should have error for unknown field"
@@ -2900,8 +2921,7 @@ fn deny_unknown_fields_internal_tag_struct() {
     let mut doc = toml_spanner::parse("type = \"Go\"\nspeed = 5\nextra = true", &arena).unwrap();
     let (ctx, table) = doc.split();
     let result = Action::from_toml(ctx, table.as_item());
-    assert!(result.is_ok(), "should still construct: {:?}", result);
-    assert_eq!(result.unwrap(), Action::Go { speed: 5 });
+    assert!(result.is_err(), "should fail with deny_unknown_fields");
     assert!(
         !doc.errors().is_empty(),
         "should have error for unknown field"
@@ -2920,12 +2940,68 @@ fn deny_unknown_fields_adjacent_tag() {
     let mut doc = toml_spanner::parse("t = \"Ping\"\nextra = 1", &arena).unwrap();
     let (ctx, table) = doc.split();
     let result = Msg::from_toml(ctx, table.as_item());
-    assert!(result.is_ok(), "should still construct: {:?}", result);
-    assert_eq!(result.unwrap(), Msg::Ping);
+    assert!(result.is_err(), "should fail with deny_unknown_fields");
     assert!(
         !doc.errors().is_empty(),
         "should have error for unknown field"
     );
+}
+
+#[test]
+fn warn_unknown_fields_explicit() {
+    #[derive(Toml, Debug, PartialEq)]
+    #[toml(FromToml, warn_unknown_fields)]
+    struct Simple {
+        name: String,
+    }
+    let arena = Arena::new();
+    let mut doc = toml_spanner::parse("name = \"hi\"\nextra = 42", &arena).unwrap();
+    let (ctx, table) = doc.split();
+    let result = Simple::from_toml(ctx, table.as_item());
+    assert!(result.is_ok());
+    assert_eq!(result.unwrap().name, "hi");
+    assert!(!doc.errors().is_empty());
+}
+
+const UNKNOWN_FIELD_TAG: u32 = 99;
+
+#[test]
+fn warn_unknown_fields_with_tag() {
+    #[derive(Toml, Debug, PartialEq)]
+    #[toml(FromToml, warn_unknown_fields[UNKNOWN_FIELD_TAG])]
+    struct Simple {
+        name: String,
+    }
+    let arena = Arena::new();
+    let mut doc = toml_spanner::parse("name = \"hi\"\nextra = 42", &arena).unwrap();
+    let (ctx, table) = doc.split();
+    let result = Simple::from_toml(ctx, table.as_item());
+    assert!(result.is_ok());
+    assert_eq!(result.unwrap().name, "hi");
+    assert_eq!(doc.errors().len(), 1);
+    assert!(matches!(
+        doc.errors()[0].kind(),
+        toml_spanner::ErrorKind::UnexpectedKey { tag: 99 }
+    ));
+}
+
+#[test]
+fn deny_unknown_fields_with_tag() {
+    #[derive(Toml, Debug, PartialEq)]
+    #[toml(FromToml, deny_unknown_fields[UNKNOWN_FIELD_TAG])]
+    struct Strict {
+        name: String,
+    }
+    let arena = Arena::new();
+    let mut doc = toml_spanner::parse("name = \"hi\"\nextra = 42", &arena).unwrap();
+    let (ctx, table) = doc.split();
+    let result = Strict::from_toml(ctx, table.as_item());
+    assert!(result.is_err());
+    assert_eq!(doc.errors().len(), 1);
+    assert!(matches!(
+        doc.errors()[0].kind(),
+        toml_spanner::ErrorKind::UnexpectedKey { tag: 99 }
+    ));
 }
 
 // --- deprecated_alias tests ---

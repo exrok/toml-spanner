@@ -21,7 +21,9 @@ These are `toml` attributes that appear above a `struct` or `enum`.
 | Format                      | Supported Traits     | Description                                                                              |
 | --------------------------- | -------------------- | ---------------------------------------------------------------------------------------- |
 | `content = "..."`           | `FromToml`, `ToToml` | Field containing the data content of an adjacently tagged enum. Must be used with `tag`. |
-| `deny_unknown_fields`       | `FromToml`           | Rejects unrecognized keys during deserialization.                                        |
+| `deny_unknown_fields`       | `FromToml`           | Unknown keys cause an error and immediately return `Failed`.                             |
+| `ignore_unknown_fields`     | `FromToml`           | Unknown keys are silently ignored (no errors recorded).                                  |
+| `warn_unknown_fields`       | `FromToml`           | Unknown keys record errors but still construct the value (same as default).              |
 | `from = Type`               | `FromToml`           | Deserialize by deserializing `Type`, then converting via `From`.                         |
 | `rename_all = "..."`        | `FromToml`, `ToToml` | Renames variants and fields not explicitly renamed.                                      |
 | `rename_all_fields = "..."` | `FromToml`, `ToToml` | On enums, overrides `rename_all` for fields in struct variants.                          |
@@ -284,11 +286,36 @@ unaffected.
 Per-variant `#[toml(rename_all = "...")]` overrides both the container
 `rename_all` and `rename_all_fields` for that variant's fields.
 
-#### `#[toml(deny_unknown_fields)]`
+#### Unknown field policies
 
-Causes each unrecognized key to be recorded as an error in the deserialization
-`Context`. The error is non-fatal: parsing continues so that multiple problems
-can be reported at once. By default, unrecognized keys are silently ignored.
+By default, unrecognized keys are recorded as errors in the deserialization
+`Context` but do not cause `Failed` to be returned (warn behavior). This
+allows multiple problems to be reported at once while still constructing
+the value.
+
+`#[toml(warn_unknown_fields)]` explicitly selects the default warn behavior.
+This is useful when combined with an error tag (see below).
+
+`#[toml(deny_unknown_fields)]` makes unknown keys fatal: the first
+unrecognized key records an error and immediately returns `Failed`.
+
+`#[toml(ignore_unknown_fields)]` silently discards unknown keys without
+recording any errors.
+
+Both `warn_unknown_fields` and `deny_unknown_fields` support an optional
+error tag in brackets. The tag is stored in the `UnexpectedKey { tag }`
+error variant and can be used for programmatic filtering or attaching
+additional diagnostics.
+
+```ignore
+const MY_TAG: u32 = 42;
+
+#[derive(Toml)]
+#[toml(FromToml, warn_unknown_fields[MY_TAG])]
+struct Config {
+    name: String,
+}
+```
 
 #### `#[toml(from = Type)]` / `#[toml(try_from = Type)]`
 

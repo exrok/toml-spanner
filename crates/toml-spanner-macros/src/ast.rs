@@ -11,6 +11,25 @@ pub struct Generic<'a> {
     pub ident: &'a Ident,
     pub bounds: &'a [TokenTree],
 }
+pub enum UnknownFieldPolicy {
+    Warn { tag: Option<Vec<TokenTree>> },
+    Ignore,
+    Deny { tag: Option<Vec<TokenTree>> },
+}
+impl UnknownFieldPolicy {
+    pub fn is_default(&self) -> bool {
+        match self {
+            Self::Warn { tag: None } => true,
+            _ => false,
+        }
+    }
+    pub fn tag(&self) -> Option<&[TokenTree]> {
+        match self {
+            Self::Warn { tag } | Self::Deny { tag } => tag.as_deref(),
+            Self::Ignore => None,
+        }
+    }
+}
 pub enum DeriveTargetKind {
     TupleStruct,
     Struct,
@@ -137,7 +156,7 @@ pub struct DeriveTargetInner<'a> {
     pub untagged: bool,
     pub from_type: Option<Vec<TokenTree>>,
     pub try_from_type: Option<Vec<TokenTree>>,
-    pub deny_unknown_fields: bool,
+    pub unknown_fields: UnknownFieldPolicy,
 }
 impl<'a> DeriveTargetInner<'a> {
     pub fn has_lifetime(&self) -> bool {
@@ -265,6 +284,15 @@ fn kind_of_token(token: &TokenTree) -> &'static str {
 fn ident_eq(ident: &Ident, value: &str) -> bool {
     ident.to_string() == value
 }
+fn parse_unknown_fields_tag(value: &mut [TokenTree]) -> Option<Vec<TokenTree>> {
+    if let Some(TokenTree::Group(group)) = value.first() {
+        if group.delimiter() == Delimiter::Bracket {
+            let tokens: Vec<_> = group.stream().into_iter().collect();
+            return Some(tokens);
+        }
+    }
+    None
+}
 fn parse_container_attr(
     target: &mut DeriveTargetInner<'_>,
     attr: Ident,
@@ -352,10 +380,26 @@ fn parse_container_attr(
             value = &mut [];
         }
         "deny_unknown_fields" => {
-            if target.deny_unknown_fields {
-                Error::span_msg("Duplicate deny_unknown_fields attribute", attr.span())
+            if !target.unknown_fields.is_default() {
+                Error::span_msg("Duplicate unknown fields policy attribute", attr.span())
             }
-            target.deny_unknown_fields = true;
+            let tag = parse_unknown_fields_tag(value);
+            value = &mut [];
+            target.unknown_fields = UnknownFieldPolicy::Deny { tag };
+        }
+        "warn_unknown_fields" => {
+            if !target.unknown_fields.is_default() {
+                Error::span_msg("Duplicate unknown fields policy attribute", attr.span())
+            }
+            let tag = parse_unknown_fields_tag(value);
+            value = &mut [];
+            target.unknown_fields = UnknownFieldPolicy::Warn { tag };
+        }
+        "ignore_unknown_fields" => {
+            if !target.unknown_fields.is_default() {
+                Error::span_msg("Duplicate unknown fields policy attribute", attr.span())
+            }
+            target.unknown_fields = UnknownFieldPolicy::Ignore;
         }
         _ => Error::span_msg("Unknown attribute", attr.span()),
     }

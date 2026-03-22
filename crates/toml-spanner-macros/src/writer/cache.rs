@@ -1,6 +1,6 @@
 use proc_macro::{Punct, Spacing};
 pub static BLIT_SRC: &[u8] =
-b"\n\t?<\x05\x08\n\to\x05\x08\x01I\x01\r\n\t0\x05\x08Hq}\t\x06n\n\t-\x05\x08\x01\r|\t\x06\n\ta\x05\x08\x0c\x01\n\t\\\n\tK\n\tD\x05z\r\n\t/\x01\n\tiI\n\ti\r\n\t1\rHh\x05\x08\x06\x08g\rx\t\x06\x08\n\t\x12\n\t2\x01~s\n\t\x15\n\t+wy\n\t2\n\t;~nF\x03\n\t \x7f\x02\x03X\x02\x03X\n\t\x05\x01\x02ut\x00_\x04\x01\x80\x00!\x7f}\x00&\rt\x00`\r|rt\x00_\x04\x03}\x00%\r\x06\x03s\x04\x01wy\x04\x01\x80\rv\x04\x01~v\x03\n\tj}\rt\rd\r\x06nF}\x00G|\rt\x00`v\x04\x01\x80\n\t\x1e}\rF\x07\x02\x00\'\x7fZ}\x00U\x00,\x0f\x0b\x00A\x7f\x02\x03.\n\t:\x7f\x02\x06g\x00r~s\x00j\n\tb\n\tf\n\th\x00M\n\tE\n\t\rx\r\n\ti\n\t)\rp\n\ti\n\thr\x10\n\t(\rx\r\x06nz\n\t~Y\x03|\x00eY\x00k\x7f~O\x03\x05\x01\x01\n\tq}\r|\x07\x02{\n\t\\\n\t9\n\t\x14\n\t;\x07\x02u\n\t\\\n\t9\n\t\x16\n\t*\x04\x01{\ry\x04\x01y}\x00\"\n\t\x13\n\t\x1b]\r|\x00`\x7f\n\ta\n\tLv\x04\x01{v\x04\x01y}\x00[}\rd~V\x03|\x00\x1d\x07\x02uV}\x00\x1cugl\x00k\x7fS\rxl\x00j\x07\rx\rT\x00j\rl\x00k\x7f\rx\rT\x00k\x7fwuV\x03|\x006\x7f~l\x03|\x00e\x07\x02~Q\x03l\x00Q\x7f\x02Q\x00J\x7f\x04\x03=\rW\x03\x06Qu=\x00_\n\to\n\tq}\rW~|\x03W\x02~P\x03W\x00e~nm\tC\x05\x06>\x01\x03X\x02m\x03s\x02\x19\x02\x03mZumrt\x00_\x11\x03~v\x03t\x02~P\x03Y\x02\x07\x02~nm\tC\x05\x06>\x01\x03X\x02~nc\tC\x05\x06\x01\x01\x03X\x02c\x03s\x03cZ}\rc~|\x03c\x02~P\x03c\x00er5\x04\x03w{\x04\x01w{}\x00R\x00@~N\x03}\x00R\x00J\x7f\x02~P\x03|\x00e~N\x03}\x00R\x00J\x7f\x02~4\t\n\t\\\n\tK\n\tD\x05z\r\n\t/\x01\x03\x7f\x02u4~3\tH\x01\r\x06\x0c\x01\x18\x03\x02r3\x1a\n\t#8v\t\x7f\x03";
+b"\n\t?<\x05\x08\n\to\x05\x08\x01H\x01\r\n\t0\x05\x08Gq~\t\x06n\n\t-\x05\x08\x01\r|\t\x06\n\t_\x05\x08\x0c\x01\n\t\\\n\tJ\n\tD\x05y\r\n\t/\x01\n\tiH\n\ti\r\n\t1\rGh\x05\x08\x06\x08f\rw\t\x06\x08\n\t\x12\n\t2\x01}r\n\t\x15\n\t+xz\n\t2\n\t;}nF\x03\n\t \x7f\x02\x03X\x02\x03X\n\t\x05\x01\x02tv\x00d\x04\x01\x80\x00!\x7f~\x00&\rv\x00g\r|sv\x00d\x04\x03~\x00%\r\x06\x03r\x04\x01xz\x04\x01\x80\ru\x04\x01}u\x03\n\tj~\rv\rb\r\x06nF\n\t\x1e~\rF\x07\x02\x00\'\x7fZ~\x00U\x00,\x0f\x0b\x00A\x7f\x02\x03.\n\t:\x7f\x02\x06f\x00s}r\x00j\n\t`\n\te\n\th\x00L\n\tE\n\t\rw\r\n\ti\n\t)\rp\n\ti\n\ths\x11\n\t(\rw\r\x06ny\n\t}Y\x03|\x00cY\x00k\x7f}N\x03\x05\x01\x01\n\tq~\r|\x07\x02{\n\t\\\n\t9\n\t\x14\n\t;\x07\x02t\n\t\\\n\t9\n\t\x16\n\t*\x04\x01{\rz\x04\x01z~\x00\"\n\t\x13\n\t\x1b]\r|\x00g\x7f\n\t_\n\tKu\x04\x01\x80~\x00Q\r|\rv\x00gu\x04\x01{u\x04\x01z~\x00[~\rb}V\x03|\x00\x1d\x07\x02tV~\x00\x1ctfl\x00k\x7fS\rwl\x00j\x07\rw\rT\x00j\rl\x00k\x7f\rw\rT\x00k\x7fxtV\x03|\x006\x7f}l\x03|\x00c\x07\x02}P\x03l\x00P\x7f\x02P\x00I\x7f\x04\x03=\rW\x03\x06Pt=\x00d\n\to\n\tq~\rW}|\x03W\x02}O\x03W\x00c}nm\tC\x05\x06>\x01\x03X\x02m\x03r\x02\x19\x02\x03mZtm}u\x03v\x02sv\x00d\x10\x03}O\x03Y\x02\x07\x02}nm\tC\x05\x06>\x01\x03X\x02}na\tC\x05\x06\x01\x01\x03X\x02a\x03r\x03aZ~\ra}|\x03a\x02}O\x03a\x00cs5\x04\x03x{\x04\x01x{~\x00R\x00@}M\x03~\x00R\x00I\x7f\x02}O\x03|\x00c}M\x03~\x00R\x00I\x7f\x02}4\t\n\t\\\n\tJ\n\tD\x05y\r\n\t/\x01\x03\x7f\x02t4}3\tG\x01\r\x06\x0c\x01\x18\x03\x02s3\x1a\n\t#8u\t\x7f\x03";
 pub const IDENT_SIZE: usize = 109;
 pub static NAMES: [&str; 109] = [
     "Arena",
@@ -56,7 +56,6 @@ pub static NAMES: [&str; 109] = [
     "Result",
     "TableStyle",
     "__flatten_partial",
-    "error_unexpected_key",
     "fn",
     "for",
     "len",
@@ -67,6 +66,7 @@ pub static NAMES: [&str; 109] = [
     "__proxy",
     "__subtable",
     "entries",
+    "error_unexpected_key",
     "errors",
     "inner",
     "outer",
@@ -80,15 +80,15 @@ pub static NAMES: [&str; 109] = [
     "std",
     "__e",
     "as",
-    "name",
-    "span",
     "Item",
     "Key",
     "__content",
     "__value",
     "expect_table",
+    "name",
     "new",
     "self",
+    "span",
     "to_toml",
     "ToToml",
     "insert",
@@ -99,19 +99,19 @@ pub static NAMES: [&str; 109] = [
     "FromToml",
     "__val",
     "from_toml",
-    "if",
     "Some",
-    "__key",
+    "if",
     "match",
     "_",
-    "return",
+    "__key",
     "__arena",
-    "Err",
+    "return",
     "Self",
+    "Err",
     "Ok",
     "__item",
-    "__ctx",
     "let",
+    "__ctx",
 ];
 pub const PUNCT_SIZE: usize = 18;
 pub fn punct_cache_initial_state() -> [Punct; PUNCT_SIZE] {
@@ -132,7 +132,7 @@ pub fn punct_cache_initial_state() -> [Punct; PUNCT_SIZE] {
         Punct::new(',', Spacing::Alone),
         Punct::new('#', Spacing::Joint),
         Punct::new('|', Spacing::Joint),
-        Punct::new('!', Spacing::Alone),
         Punct::new('!', Spacing::Joint),
+        Punct::new('!', Spacing::Alone),
     ]
 }

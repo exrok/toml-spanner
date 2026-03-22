@@ -1,7 +1,7 @@
 use crate::ast::{
     self, DefaultKind, DeriveTargetInner, DeriveTargetKind, EnumKind, EnumVariant, Field,
-    FieldAttrs, Generic, GenericKind, ENUM_CONTAINS_STRUCT_VARIANT, ENUM_CONTAINS_TUPLE_VARIANT,
-    ENUM_CONTAINS_UNIT_VARIANT, FROM_TOML, TO_TOML,
+    FieldAttrs, Generic, GenericKind, UnknownFieldPolicy, ENUM_CONTAINS_STRUCT_VARIANT,
+    ENUM_CONTAINS_TUPLE_VARIANT, ENUM_CONTAINS_UNIT_VARIANT, FROM_TOML, TO_TOML,
 };
 use crate::case::RenameRule;
 use crate::util::MemoryPool;
@@ -413,14 +413,8 @@ fn emit_table_field_deser(
         emit_flatten_prefix(out, ctx, ff, FROM_TOML);
         splat!(out; ::insert( __ctx, __key, __value, &mut __flatten_partial););
         out.tt_group(Delimiter::Brace, wild_at);
-    } else if ctx.target.deny_unknown_fields {
-        splat!(out;
-            _ => {
-                __ctx.error_unexpected_key(__item, __key.span);
-            }
-        );
     } else {
-        splat!(out; _ => {});
+        emit_unknown_field_arm(out, ctx);
     }
     out.tt_group(Delimiter::Brace, arms_at);
     out.tt_group(Delimiter::Brace, for_body_at);
@@ -788,6 +782,40 @@ fn find_other_variant<'a>(variants: &'a [EnumVariant]) -> Option<&'a EnumVariant
     None
 }
 
+fn emit_unknown_field_arm(out: &mut RustWriter, ctx: &Ctx) {
+    match &ctx.target.unknown_fields {
+        UnknownFieldPolicy::Ignore => {
+            splat!(out; _ => {});
+        }
+        UnknownFieldPolicy::Warn { tag } => {
+            splat!(out;
+                _ => {
+                    __ctx.error_unexpected_key(
+                        [emit_tag_value(out, tag.as_deref())]
+                        , __item, __key.span);
+                }
+            );
+        }
+        UnknownFieldPolicy::Deny { tag } => {
+            splat!(out;
+                _ => {
+                    return Err(__ctx.error_unexpected_key(
+                        [emit_tag_value(out, tag.as_deref())]
+                        , __item, __key.span));
+                }
+            );
+        }
+    }
+}
+
+fn emit_tag_value(out: &mut RustWriter, tag: Option<&[TokenTree]>) {
+    if let Some(tag_tokens) = tag {
+        out.buf.extend_from_slice(tag_tokens);
+    } else {
+        out.buf.push(TokenTree::Literal(Literal::u32_suffixed(0)));
+    }
+}
+
 fn emit_wildcard_arm(out: &mut RustWriter, _ctx: &Ctx, other_variant: Option<&EnumVariant>, msg: &str) {
     if let Some(ov) = other_variant {
         splat!(out; _ => Ok(Self::[#: ov.name]),);
@@ -1133,14 +1161,28 @@ fn enum_from_toml_internal(
                 let arm_at = out.buf.len();
                 emit_for_table_header(out, "__table");
                 let check_at = out.buf.len();
-                if ctx.target.deny_unknown_fields {
-                    splat!(out;
-                        if __key.name != [@tag_lit.clone().into()] {
-                            __ctx.error_unexpected_key(__item, __key.span);
-                        }
-                    );
-                } else {
-                    splat!(out; let _ = __key;);
+                match &ctx.target.unknown_fields {
+                    UnknownFieldPolicy::Ignore => {
+                        splat!(out; let _ = __key;);
+                    }
+                    UnknownFieldPolicy::Warn { tag } => {
+                        splat!(out;
+                            if __key.name != [@tag_lit.clone().into()] {
+                                __ctx.error_unexpected_key(
+                                    [emit_tag_value(out, tag.as_deref())]
+                                    , __item, __key.span);
+                            }
+                        );
+                    }
+                    UnknownFieldPolicy::Deny { tag } => {
+                        splat!(out;
+                            if __key.name != [@tag_lit.clone().into()] {
+                                return Err(__ctx.error_unexpected_key(
+                                    [emit_tag_value(out, tag.as_deref())]
+                                    , __item, __key.span));
+                            }
+                        );
+                    }
                 }
                 out.tt_group(Delimiter::Brace, check_at);
                 splat!(out; Ok(Self::[#: variant.name]));
@@ -1199,15 +1241,7 @@ fn enum_from_toml_adjacent(
             __content = Some(__value);
         }
     );
-    if ctx.target.deny_unknown_fields {
-        splat!(out;
-            _ => {
-                __ctx.error_unexpected_key(__item, __key.span);
-            }
-        );
-    } else {
-        splat!(out; _ => {});
-    }
+    emit_unknown_field_arm(out, ctx);
     out.tt_group(Delimiter::Brace, extract_arms_at);
     out.tt_group(Delimiter::Brace, for_body_at);
 
@@ -1477,7 +1511,7 @@ pub fn inner_derive(stream: TokenStream) -> TokenStream {
         untagged: false,
         from_type: None,
         try_from_type: None,
-        deny_unknown_fields: false,
+        unknown_fields: UnknownFieldPolicy::Warn { tag: None },
     };
     let (kind, body) = ast::extract_derive_target(&mut target, &outer_tokens);
 

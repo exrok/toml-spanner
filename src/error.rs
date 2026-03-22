@@ -428,7 +428,11 @@ pub enum ErrorKind<'a> {
     /// An unexpected key was encountered.
     ///
     /// Used when converting a struct with a limited set of fields.
-    UnexpectedKey,
+    UnexpectedKey {
+        /// Developer provided association tag useful for programmatic filtering
+        /// or adding additional messages or notes to diagnostics. Defaults to 0.
+        tag: u32,
+    },
 
     /// Unquoted string was found when quoted one was expected.
     UnquotedString,
@@ -498,7 +502,7 @@ impl<'a> ErrorKind<'a> {
             ErrorKind::RedefineAsArray => "RedefineAsArray",
             ErrorKind::MultilineStringKey => "MultilineStringKey",
             ErrorKind::DottedKeyInvalidType { .. } => "DottedKeyInvalidType",
-            ErrorKind::UnexpectedKey => "UnexpectedKey",
+            ErrorKind::UnexpectedKey { .. } => "UnexpectedKey",
             ErrorKind::UnquotedString => "UnquotedString",
             ErrorKind::MissingField(_) => "MissingField",
             ErrorKind::DuplicateField(_) => "DuplicateField",
@@ -691,7 +695,7 @@ fn kind_message_inner(kind: ErrorKind<'_>, out: &mut String) {
         ErrorKind::DottedKeyInvalidType { .. } => {
             s_push(out, "dotted key attempted to extend non-table type");
         }
-        ErrorKind::UnexpectedKey => s_push(out, "unexpected key"),
+        ErrorKind::UnexpectedKey { .. } => s_push(out, "unexpected key"),
         ErrorKind::UnquotedString => {
             s_push(
                 out,
@@ -875,7 +879,7 @@ impl Error {
                     kind_message_inner(kind, out);
                 }
             }
-            ErrorKind::UnexpectedKey if path.is_none() => {
+            ErrorKind::UnexpectedKey { .. } if path.is_none() => {
                 if let Some(key_name) = source.get(span.range()) {
                     s_push(out, "unexpected key `");
                     s_push(out, key_name);
@@ -958,7 +962,7 @@ impl Error {
                 s_push_char(out, '`');
             }
             ErrorKind::UnquotedString => s_push(out, "string is not quoted"),
-            ErrorKind::UnexpectedKey => s_push(out, "unexpected key"),
+            ErrorKind::UnexpectedKey { .. } => s_push(out, "unexpected key"),
             ErrorKind::MissingField(_) => s_push(out, "table with missing field"),
             ErrorKind::DuplicateField(_) => s_push(out, "duplicate field"),
             ErrorKind::Deprecated { .. } => s_push(out, "deprecated field"),
