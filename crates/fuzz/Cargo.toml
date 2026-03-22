@@ -15,7 +15,7 @@ toml = { version = "1", features = ["preserve_order"] }
 
 
 [dependencies.toml-spanner]
-path = ".."
+path = "../.."
 
 [profile.release]
 lto = "thin"

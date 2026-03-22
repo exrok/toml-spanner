@@ -5,4 +5,4 @@ edition = "2024"
 
 [dependencies]
 jiff = "0.2.20"
-toml-spanner.path = "../"
+toml-spanner.path = "../.."

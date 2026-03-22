@@ -37,11 +37,11 @@ cmd = [
         "compile",
     ] },
 ]
-pwd = "./benchmark"
+pwd = "./crates/benchmark"
 profiles = ["runtime", "compile-time"]
 
 [action.build-macros]
-pwd = "./macro-preprocessor/"
+pwd = "./crates/macro-preprocessor/"
 cmd = [
     "cargo",
     "run",
@@ -49,12 +49,12 @@ cmd = [
     "../toml-spanner-macros",
 ]
 cache.key = [
-    { modified = "./macro-preprocessor/" },
-    { modified = "./toml-spanner-macros-source/" },
+    { modified = "./crates/macro-preprocessor/" },
+    { modified = "./crates/toml-spanner-macros-source/" },
 ]
 
 [action.macro-main]
-pwd = "./toml-spanner-macros-source"
+pwd = "./crates/toml-spanner-macros-source"
 cmd = ["cargo", "run"]
 
 
@@ -72,12 +72,12 @@ require = ["build-macros"]
 tag = ["fast"]
 
 [test.miri-stress-tests]
-pwd = "stress-tests"
+pwd = "crates/stress-tests"
 cmd = ["cargo", "+nightly", "miri", "run", "--", "3"]
 tag = ["slow", "miri"]
 
 [test.stress-tests]
-pwd = "stress-tests"
+pwd = "crates/stress-tests"
 cmd = ["cargo", "run", "--", "5000"]
 tag = ["fast"]
 
@@ -108,7 +108,7 @@ Validate toml-spanner against https://github.com/toml-lang/toml-test decoder and
 Requires `toml-test` to be installed, see REPO for installation procedure.
 """
 tag = ["fast"]
-pwd = "toml-test-harness"
+pwd = "crates/toml-test-harness"
 sh = '''
 DECODER=$(cargo --config "target.'cfg(unix)'.runner = 'echo'" run --bin decoder --release || exit 1)
 ENCODER=$(cargo --config "target.'cfg(unix)'.runner = 'echo'" run --bin encoder --release || exit 1)

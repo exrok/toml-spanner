@@ -8,4 +8,4 @@ opt-level = 3
 
 [dependencies]
 fastrand = "*"
-toml-spanner.path = ".."
+toml-spanner.path = "../.."
