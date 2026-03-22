@@ -143,9 +143,9 @@ Please consult the [API documentation](https://docs.rs/toml-spanner/latest/toml_
 Measured on AMD Ryzen 9 5950X, 64GB RAM, Linux 6.18, rustc 1.93.0.
 Relative parse time across real-world TOML files (lower is better):
 
-<!-- bench here -->
+![bench](https://github.com/user-attachments/assets/6a0d460d-a6e4-4b52-9849-03d65cac4998)
 
-Crate Versions: toml-spanner 1.0.0, toml 1.0.7+spec-1.1.0, toml_edit 0.25.5+spec-1.1.0, toml-span 0.7.1
+Crate versions: `toml-spanner 1.0.0`, `toml 1.0.7+spec-1.1.0`, `toml_edit 0.25.5+spec-1.1.0`, `toml-span 0.7.1`
 
 ```
                   time(μs)  cycles(K)   instr(K)  branch(K)
@@ -179,9 +179,10 @@ The following benchmarks have taken the exact data structures and deserializatio
 using toml and serde), and added support for `toml-spanner` and `toml-span` based parsing and
 deserialization. (I haven't added `toml-span` support for Cargo.toml due to its complexity.)
 
-<!-- Bench HERE -->
+![bench_cargo](https://github.com/user-attachments/assets/4d606902-05c1-4db5-ab08-0d06e8b4f00f)
 
-Crate Versions: `toml-spanner = 1.0.1`, `toml = 1.0.7+spec-1.1.0`, `toml-span = 0.7.1`
+
+Crate versions: `toml-spanner = 1.0.1`, `toml = 1.0.7+spec-1.1.0`, `toml-span = 0.7.1`
 
 Commit `3ca292befbc3585084922c1592ea3d17e423f035` was used from `rust-lang/cargo` as reference.
 
@@ -198,7 +199,9 @@ zed/Cargo.toml (parse + deserialize)
 
 ### Compile Time
 
-For a crate parsing a simiplifed cargo manifest using derive macro for each crate. With unrestricited paralism we get the following:
+For a crate serializing and deserialization a simiplifed cargo manifest using the derive macro respect each crate. With unrestricted parallelism we get the following:
+
+<img width="1971" height="725" alt="cargo-toml_aggregate" src="https://github.com/user-attachments/assets/d311f26d-0815-4758-9cee-de520390e329" />
 
 See [Compile Time Benchmarks](https://github.com/exrok/rust-serialization-build-time-benchmarks/blob/main/README.md) for more details.
 
@@ -231,14 +234,14 @@ and [codespan-reporting](https://crates.io/crates/codespan-reporting).
 
 Here are some parsing examples using the annotated-snippets feature:
 
-![unterminated string](error-examples/output/unterminated_string.svg)
+![unterminated string](https://raw.githubusercontent.com/exrok/toml-spanner/f04adac57a998c24361b1acaf39950c4287d4562/crates/error-examples/output/unterminated_string.svg)
 
-![duplicate key](error-examples/output/duplicate_key.svg)
+![duplicate key](https://raw.githubusercontent.com/exrok/toml-spanner/f04adac57a998c24361b1acaf39950c4287d4562/crates/error-examples/output/duplicate_key.svg)
 
 Here are some conversion errors, note how multiple errors are reported instead of
 bailing out after the first error.
 
-![deserialization errors](error-examples/output/deserialization_errors.svg)
+![deserialization errors](https://raw.githubusercontent.com/exrok/toml-spanner/f04adac57a998c24361b1acaf39950c4287d4562/crates/error-examples/output/deserialization_errors.svg)
 
 ### Trade-offs
 
