@@ -28,7 +28,7 @@ use StaticToken::Ident as StaticIdent;
 #[allow(unused)]
 use StaticToken::Punct as StaticPunct;
 
-fn option_inner_ty<'a>(ty: &'a [TokenTree]) -> &'a [TokenTree] {
+fn option_inner_ty(ty: &[TokenTree]) -> &[TokenTree] {
     if let [TokenTree::Ident(id), _open, inner @ .., TokenTree::Punct(close)] = ty {
         if id.to_string() == "Option" && close.as_char() == '>' {
             return inner;
@@ -1130,7 +1130,7 @@ fn enum_from_toml_internal(
                     variant.fields,
                     "__subtable",
                     Some(variant),
-                    &[tag_lit.clone()],
+                    std::slice::from_ref(tag_lit),
                 );
                 emit_ok_self_variant(out, variant);
                 out.tt_group(Delimiter::Brace, arm_at);

@@ -811,7 +811,7 @@ impl<'de> Item<'de> {
             // SAFETY: is_table() guarantees the active union field is `table`.
             // Item and Table have identical size, alignment, and repr(C) layout
             // (verified by const assertions on Table). Item has no Drop impl.
-            Some(unsafe { std::mem::transmute(self) })
+            Some(unsafe { std::mem::transmute::<Item<'de>, Table<'de>>(self) })
         } else {
             None
         }

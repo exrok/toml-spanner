@@ -18,7 +18,7 @@ enum StaticToken {
 use StaticToken::Ident as StaticIdent;
 #[allow(unused)]
 use StaticToken::Punct as StaticPunct;
-fn option_inner_ty<'a>(ty: &'a [TokenTree]) -> &'a [TokenTree] {
+fn option_inner_ty(ty: &[TokenTree]) -> &[TokenTree] {
     if let [TokenTree::Ident(id), _open, inner @ .., TokenTree::Punct(close)] = ty {
         if id.to_string() == "Option" && close.as_char() == '>' {
             return inner;
@@ -153,7 +153,7 @@ fn impl_from_toml(output: &mut RustWriter, ctx: &Ctx, inner: TokenStream) {
             fmt_generics(output, ctx.generics, DEF);
         };
         output.blit_punct(0);
-        output.buf.push(TokenTree::from(ctx.crate_path.clone()));
+        output.buf.push(ctx.crate_path.clone());
         output.blit(6, 5);
         output.push_ident(&ctx.lifetime);
         output.blit(11, 2);
@@ -171,7 +171,7 @@ fn impl_from_toml(output: &mut RustWriter, ctx: &Ctx, inner: TokenStream) {
             for ty in &target.generic_field_types {
                 output.buf.extend_from_slice(ty);
                 output.blit_punct(9);
-                output.buf.push(TokenTree::from(ctx.crate_path.clone()));
+                output.buf.push(ctx.crate_path.clone());
                 output.blit(6, 5);
                 output.push_ident(&ctx.lifetime);
                 output.blit(13, 2);
@@ -179,7 +179,7 @@ fn impl_from_toml(output: &mut RustWriter, ctx: &Ctx, inner: TokenStream) {
             for ty in &target.generic_flatten_field_types {
                 output.buf.extend_from_slice(ty);
                 output.blit_punct(9);
-                output.buf.push(TokenTree::from(ctx.crate_path.clone()));
+                output.buf.push(ctx.crate_path.clone());
                 output.blit(15, 5);
                 output.push_ident(&ctx.lifetime);
                 output.blit(13, 2);
@@ -192,18 +192,18 @@ fn impl_from_toml(output: &mut RustWriter, ctx: &Ctx, inner: TokenStream) {
             {
                 let at = output.buf.len();
                 output.blit(22, 4);
-                output.buf.push(TokenTree::from(ctx.crate_path.clone()));
+                output.buf.push(ctx.crate_path.clone());
                 output.blit(26, 5);
                 output.push_ident(&ctx.lifetime);
                 output.blit(31, 5);
-                output.buf.push(TokenTree::from(ctx.crate_path.clone()));
+                output.buf.push(ctx.crate_path.clone());
                 output.blit(36, 5);
                 output.push_ident(&ctx.lifetime);
                 output.blit(13, 2);
                 output.tt_group(Delimiter::Parenthesis, at);
             };
             output.blit(41, 14);
-            output.buf.push(TokenTree::from(ctx.crate_path.clone()));
+            output.buf.push(ctx.crate_path.clone());
             output.blit(55, 4);
             output
                 .buf
@@ -236,7 +236,7 @@ fn impl_to_toml(output: &mut RustWriter, ctx: &Ctx, inner: TokenStream) {
             fmt_generics(output, &target.generics, DEF);
             output.blit_punct(0);
         };
-        output.buf.push(TokenTree::from(ctx.crate_path.clone()));
+        output.buf.push(ctx.crate_path.clone());
         output.blit(59, 4);
         output.push_ident(&target.name);
         if any_generics {
@@ -252,13 +252,13 @@ fn impl_to_toml(output: &mut RustWriter, ctx: &Ctx, inner: TokenStream) {
             for ty in &target.generic_field_types {
                 output.buf.extend_from_slice(ty);
                 output.blit_punct(9);
-                output.buf.push(TokenTree::from(ctx.crate_path.clone()));
+                output.buf.push(ctx.crate_path.clone());
                 output.blit(63, 4);
             }
             for ty in &target.generic_flatten_field_types {
                 output.buf.extend_from_slice(ty);
                 output.blit_punct(9);
-                output.buf.push(TokenTree::from(ctx.crate_path.clone()));
+                output.buf.push(ctx.crate_path.clone());
                 output.blit(67, 4);
             }
             output.buf.extend_from_slice(&target.where_clauses);
@@ -274,16 +274,16 @@ fn impl_to_toml(output: &mut RustWriter, ctx: &Ctx, inner: TokenStream) {
                 output.buf.push(TokenTree::from(lf.clone()));
                 output.blit(77, 6);
                 output.buf.push(TokenTree::from(lf.clone()));
-                output.buf.push(TokenTree::from(ctx.crate_path.clone()));
+                output.buf.push(ctx.crate_path.clone());
                 output.blit(83, 3);
                 output.tt_group(Delimiter::Parenthesis, at);
             };
             output.blit(41, 12);
-            output.buf.push(TokenTree::from(ctx.crate_path.clone()));
+            output.buf.push(ctx.crate_path.clone());
             output.blit(36, 5);
             output.buf.push(TokenTree::from(lf.clone()));
             output.blit(13, 2);
-            output.buf.push(TokenTree::from(ctx.crate_path.clone()));
+            output.buf.push(ctx.crate_path.clone());
             output.blit(86, 4);
             output
                 .buf
@@ -303,7 +303,7 @@ fn emit_table_alloc(out: &mut RustWriter, ctx: &Ctx, var: &str, capacity: usize)
             out.tt_group(Delimiter::Parenthesis, at);
         };
         out.blit_punct(3);
-        out.buf.push(TokenTree::from(ctx.crate_path.clone()));
+        out.buf.push(ctx.crate_path.clone());
         out.blit(92, 6);
         {
             let at = out.buf.len();
@@ -318,7 +318,7 @@ fn emit_table_alloc(out: &mut RustWriter, ctx: &Ctx, var: &str, capacity: usize)
             out.blit(98, 2);
             {
                 let at = out.buf.len();
-                out.buf.push(TokenTree::from(ctx.crate_path.clone()));
+                out.buf.push(ctx.crate_path.clone());
                 out.blit(100, 6);
                 {
                     let at = out.buf.len();
@@ -713,7 +713,7 @@ fn emit_table_field_ser(
                 out.blit(220, 2);
                 {
                     let at = out.buf.len();
-                    out.buf.push(TokenTree::from(ctx.crate_path.clone()));
+                    out.buf.push(ctx.crate_path.clone());
                     out.blit(222, 6);
                     {
                         let at = out.buf.len();
@@ -735,7 +735,7 @@ fn emit_table_field_ser(
                         out.blit(231, 2);
                         {
                             let at = out.buf.len();
-                            out.buf.push(TokenTree::from(ctx.crate_path.clone()));
+                            out.buf.push(ctx.crate_path.clone());
                             out.blit(233, 5);
                             out.buf.push(TokenTree::from(style.clone()));
                             out.tt_group(Delimiter::Parenthesis, at);
@@ -760,7 +760,7 @@ fn emit_table_field_ser(
                     out.tt_group(Delimiter::Parenthesis, at);
                 };
                 out.blit_punct(3);
-                out.buf.push(TokenTree::from(ctx.crate_path.clone()));
+                out.buf.push(ctx.crate_path.clone());
                 out.blit(241, 6);
                 {
                     let at = out.buf.len();
@@ -778,7 +778,7 @@ fn emit_table_field_ser(
                     out.blit(220, 2);
                     {
                         let at = out.buf.len();
-                        out.buf.push(TokenTree::from(ctx.crate_path.clone()));
+                        out.buf.push(ctx.crate_path.clone());
                         out.blit(222, 6);
                         {
                             let at = out.buf.len();
@@ -790,7 +790,7 @@ fn emit_table_field_ser(
                             out.blit(231, 2);
                             {
                                 let at = out.buf.len();
-                                out.buf.push(TokenTree::from(ctx.crate_path.clone()));
+                                out.buf.push(ctx.crate_path.clone());
                                 out.blit(233, 5);
                                 out.buf.push(TokenTree::from(style.clone()));
                                 out.tt_group(Delimiter::Parenthesis, at);
@@ -809,7 +809,7 @@ fn emit_table_field_ser(
                 out.blit(220, 2);
                 {
                     let at = out.buf.len();
-                    out.buf.push(TokenTree::from(ctx.crate_path.clone()));
+                    out.buf.push(ctx.crate_path.clone());
                     out.blit(222, 6);
                     {
                         let at = out.buf.len();
@@ -817,7 +817,7 @@ fn emit_table_field_ser(
                         out.tt_group(Delimiter::Parenthesis, at);
                     };
                     out.blit_punct(13);
-                    out.buf.push(TokenTree::from(ctx.crate_path.clone()));
+                    out.buf.push(ctx.crate_path.clone());
                     out.blit(249, 6);
                     {
                         let at = out.buf.len();
@@ -833,7 +833,7 @@ fn emit_table_field_ser(
                         out.blit(231, 2);
                         {
                             let at = out.buf.len();
-                            out.buf.push(TokenTree::from(ctx.crate_path.clone()));
+                            out.buf.push(ctx.crate_path.clone());
                             out.blit(233, 5);
                             out.buf.push(TokenTree::from(style.clone()));
                             out.tt_group(Delimiter::Parenthesis, at);
@@ -1001,7 +1001,7 @@ fn emit_proxy_from_toml(output: &mut RustWriter, ctx: &Ctx) -> bool {
             output.blit(278, 4);
             output.buf.extend_from_slice(from_ty);
             output.blit_ident(77);
-            output.buf.push(TokenTree::from(ctx.crate_path.clone()));
+            output.buf.push(ctx.crate_path.clone());
             output.blit(6, 5);
             output.push_ident(&ctx.lifetime);
             output.blit(282, 5);
@@ -1031,7 +1031,7 @@ fn emit_proxy_from_toml(output: &mut RustWriter, ctx: &Ctx) -> bool {
             output.blit(278, 4);
             output.buf.extend_from_slice(try_from_ty);
             output.blit_ident(77);
-            output.buf.push(TokenTree::from(ctx.crate_path.clone()));
+            output.buf.push(ctx.crate_path.clone());
             output.blit(6, 5);
             output.push_ident(&ctx.lifetime);
             output.blit(282, 5);
@@ -1072,7 +1072,7 @@ fn emit_proxy_from_toml(output: &mut RustWriter, ctx: &Ctx) -> bool {
                     output.blit(328, 3);
                     {
                         let at = output.buf.len();
-                        output.buf.push(TokenTree::from(ctx.crate_path.clone()));
+                        output.buf.push(ctx.crate_path.clone());
                         output.blit(331, 6);
                         {
                             let at = output.buf.len();
@@ -1106,7 +1106,7 @@ fn handle_struct(output: &mut RustWriter, target: &DeriveTargetInner, fields: &[
                 output.blit_punct(5);
                 output.buf.extend_from_slice(single_field.ty);
                 output.blit_ident(77);
-                output.buf.push(TokenTree::from(ctx.crate_path.clone()));
+                output.buf.push(ctx.crate_path.clone());
                 output.blit(6, 5);
                 output.push_ident(&ctx.lifetime);
                 output.blit(282, 5);
@@ -1129,7 +1129,7 @@ fn handle_struct(output: &mut RustWriter, target: &DeriveTargetInner, fields: &[
             };
             let body = {
                 let len = output.buf.len();
-                output.buf.push(TokenTree::from(ctx.crate_path.clone()));
+                output.buf.push(ctx.crate_path.clone());
                 output.blit(249, 6);
                 {
                     let at = output.buf.len();
@@ -1161,7 +1161,7 @@ fn handle_tuple_struct(output: &mut RustWriter, target: &DeriveTargetInner, fiel
                         output.blit_punct(5);
                         output.buf.extend_from_slice(single_field.ty);
                         output.blit_ident(77);
-                        output.buf.push(TokenTree::from(ctx.crate_path.clone()));
+                        output.buf.push(ctx.crate_path.clone());
                         output.blit(6, 5);
                         output.push_ident(&ctx.lifetime);
                         output.blit(282, 5);
@@ -1188,7 +1188,7 @@ fn handle_tuple_struct(output: &mut RustWriter, target: &DeriveTargetInner, fiel
         if let [_single_field] = fields {
             let body = {
                 let len = output.buf.len();
-                output.buf.push(TokenTree::from(ctx.crate_path.clone()));
+                output.buf.push(ctx.crate_path.clone());
                 output.blit(249, 6);
                 {
                     let at = output.buf.len();
@@ -1240,7 +1240,7 @@ fn emit_tag_insert(
         out.blit(220, 2);
         {
             let at = out.buf.len();
-            out.buf.push(TokenTree::from(ctx.crate_path.clone()));
+            out.buf.push(ctx.crate_path.clone());
             out.blit(222, 6);
             {
                 let at = out.buf.len();
@@ -1248,7 +1248,7 @@ fn emit_tag_insert(
                 out.tt_group(Delimiter::Parenthesis, at);
             };
             out.blit_punct(13);
-            out.buf.push(TokenTree::from(ctx.crate_path.clone()));
+            out.buf.push(ctx.crate_path.clone());
             out.blit(343, 6);
             {
                 let at = out.buf.len();
@@ -1328,12 +1328,12 @@ fn emit_flatten_prefix(out: &mut RustWriter, ctx: &Ctx, field: &Field, direction
             out.blit_punct(5);
             out.buf.extend_from_slice(field.ty);
             out.blit_ident(77);
-            out.buf.push(TokenTree::from(ctx.crate_path.clone()));
+            out.buf.push(ctx.crate_path.clone());
             out.blit(15, 5);
             out.push_ident(&ctx.lifetime);
             out.blit(282, 2);
         } else {
-            out.buf.push(TokenTree::from(ctx.crate_path.clone()));
+            out.buf.push(ctx.crate_path.clone());
             out.blit(67, 3);
         }
     }
@@ -1354,7 +1354,7 @@ fn emit_from_toml_call(out: &mut RustWriter, ctx: &Ctx, field: &Field, ty: &[Tok
             out.blit_punct(5);
             out.buf.extend_from_slice(ty);
             out.blit_ident(77);
-            out.buf.push(TokenTree::from(ctx.crate_path.clone()));
+            out.buf.push(ctx.crate_path.clone());
             out.blit(6, 5);
             out.push_ident(&ctx.lifetime);
             out.blit(282, 5);
@@ -1455,7 +1455,7 @@ fn enum_to_toml_string(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVariant]
         out.blit_ident(104);
         {
             let at = out.buf.len();
-            out.buf.push(TokenTree::from(ctx.crate_path.clone()));
+            out.buf.push(ctx.crate_path.clone());
             out.blit(343, 6);
             {
                 let at = out.buf.len();
@@ -1525,7 +1525,7 @@ fn enum_to_toml(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVariant], mode:
                         out.blit(320, 3);
                         {
                             let at = out.buf.len();
-                            out.buf.push(TokenTree::from(ctx.crate_path.clone()));
+                            out.buf.push(ctx.crate_path.clone());
                             out.blit(343, 6);
                             {
                                 let at = out.buf.len();
@@ -1555,7 +1555,7 @@ fn enum_to_toml(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVariant], mode:
                             out.tt_group(Delimiter::Parenthesis, at);
                         };
                         out.blit(129, 2);
-                        out.buf.push(TokenTree::from(ctx.crate_path.clone()));
+                        out.buf.push(ctx.crate_path.clone());
                         out.blit(249, 6);
                         {
                             let at = out.buf.len();
@@ -1586,7 +1586,7 @@ fn enum_to_toml(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVariant], mode:
                             out.blit(385, 3);
                             {
                                 let at = out.buf.len();
-                                out.buf.push(TokenTree::from(ctx.crate_path.clone()));
+                                out.buf.push(ctx.crate_path.clone());
                                 out.blit(222, 6);
                                 {
                                     let at = out.buf.len();
@@ -1605,7 +1605,7 @@ fn enum_to_toml(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVariant], mode:
                                     out.tt_group(Delimiter::Parenthesis, at);
                                 };
                                 out.blit_punct(13);
-                                out.buf.push(TokenTree::from(ctx.crate_path.clone()));
+                                out.buf.push(ctx.crate_path.clone());
                                 out.blit(249, 6);
                                 {
                                     let at = out.buf.len();
@@ -1649,7 +1649,7 @@ fn enum_to_toml(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVariant], mode:
                             out.blit(392, 3);
                             {
                                 let at = out.buf.len();
-                                out.buf.push(TokenTree::from(ctx.crate_path.clone()));
+                                out.buf.push(ctx.crate_path.clone());
                                 out.blit(222, 6);
                                 {
                                     let at = out.buf.len();
@@ -1674,7 +1674,7 @@ fn enum_to_toml(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVariant], mode:
                             out.blit(392, 3);
                             {
                                 let at = out.buf.len();
-                                out.buf.push(TokenTree::from(ctx.crate_path.clone()));
+                                out.buf.push(ctx.crate_path.clone());
                                 out.blit(222, 6);
                                 {
                                     let at = out.buf.len();
@@ -1847,7 +1847,7 @@ fn enum_from_toml_external(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVari
                             out.push_ident(variant.name);
                             {
                                 let at = out.buf.len();
-                                out.buf.push(TokenTree::from(ctx.crate_path.clone()));
+                                out.buf.push(ctx.crate_path.clone());
                                 out.blit(447, 6);
                                 {
                                     let at = out.buf.len();
@@ -1946,7 +1946,7 @@ fn enum_from_toml_internal(
             out.blit(485, 3);
             {
                 let at = out.buf.len();
-                out.buf.push(TokenTree::from(ctx.crate_path.clone()));
+                out.buf.push(ctx.crate_path.clone());
                 out.blit(447, 6);
                 {
                     let at = out.buf.len();
@@ -2055,7 +2055,7 @@ fn enum_from_toml_internal(
                     variant.fields,
                     "__subtable",
                     Some(variant),
-                    &[tag_lit.clone()],
+                    std::slice::from_ref(tag_lit),
                 );
                 emit_ok_self_variant(out, variant);
                 out.tt_group(Delimiter::Brace, arm_at);
@@ -2084,7 +2084,7 @@ fn enum_from_toml_adjacent(
             out.tt_group(Delimiter::Parenthesis, at);
         };
         out.blit(512, 21);
-        out.buf.push(TokenTree::from(ctx.crate_path.clone()));
+        out.buf.push(ctx.crate_path.clone());
         out.blit(36, 5);
         out.push_ident(&ctx.lifetime);
         out.blit(533, 5);
@@ -2103,7 +2103,7 @@ fn enum_from_toml_adjacent(
             out.blit(485, 3);
             {
                 let at = out.buf.len();
-                out.buf.push(TokenTree::from(ctx.crate_path.clone()));
+                out.buf.push(ctx.crate_path.clone());
                 out.blit(447, 6);
                 {
                     let at = out.buf.len();
@@ -2255,7 +2255,7 @@ fn enum_from_toml_adjacent(
                                 out.push_ident(variant.name);
                                 {
                                     let at = out.buf.len();
-                                    out.buf.push(TokenTree::from(ctx.crate_path.clone()));
+                                    out.buf.push(ctx.crate_path.clone());
                                     out.blit(447, 6);
                                     {
                                         let at = out.buf.len();
@@ -2366,7 +2366,7 @@ fn enum_from_toml_untagged(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVari
                 let match_start = out.buf.len();
                 {
                     out.blit_ident(98);
-                    out.buf.push(TokenTree::from(ctx.crate_path.clone()));
+                    out.buf.push(ctx.crate_path.clone());
                     out.blit(447, 6);
                     {
                         let at = out.buf.len();
@@ -2485,7 +2485,7 @@ fn enum_from_toml_untagged(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVari
                         {
                             let at = out.buf.len();
                             out.blit(589, 25);
-                            out.buf.push(TokenTree::from(ctx.crate_path.clone()));
+                            out.buf.push(ctx.crate_path.clone());
                             out.blit(614, 5);
                             {
                                 let at = out.buf.len();
@@ -2550,11 +2550,11 @@ fn enum_from_toml_untagged(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVari
                     {
                         let at = out.buf.len();
                         out.blit(24, 2);
-                        out.buf.push(TokenTree::from(ctx.crate_path.clone()));
+                        out.buf.push(ctx.crate_path.clone());
                         out.blit(26, 5);
                         out.push_ident(&ctx.lifetime);
                         out.blit(627, 3);
-                        out.buf.push(TokenTree::from(ctx.crate_path.clone()));
+                        out.buf.push(ctx.crate_path.clone());
                         out.blit(36, 5);
                         out.push_ident(&ctx.lifetime);
                         out.blit_punct(0);
@@ -2731,24 +2731,24 @@ pub fn inner_derive(stream: TokenStream) -> TokenStream {
     }
     let ts = rust_writer.split_off_stream(0);
     {
-        let len = (&mut rust_writer).buf.len();
-        (&mut rust_writer).blit_punct(12);
+        let len = rust_writer.buf.len();
+        rust_writer.blit_punct(12);
         {
-            let at = (&mut rust_writer).buf.len();
-            (&mut rust_writer).blit_ident(5);
+            let at = rust_writer.buf.len();
+            rust_writer.blit_ident(5);
             {
-                let at = (&mut rust_writer).buf.len();
-                (&mut rust_writer).blit(637, 4);
-                (&mut rust_writer).tt_group(Delimiter::Parenthesis, at);
+                let at = rust_writer.buf.len();
+                rust_writer.blit(637, 4);
+                rust_writer.tt_group(Delimiter::Parenthesis, at);
             };
-            (&mut rust_writer).tt_group(Delimiter::Bracket, at);
+            rust_writer.tt_group(Delimiter::Bracket, at);
         };
-        (&mut rust_writer).blit(641, 5);
-        (&mut rust_writer)
+        rust_writer.blit(641, 5);
+        rust_writer
             .buf
             .push(TokenTree::Group(Group::new(Delimiter::Brace, ts)));
-        (&mut rust_writer).blit_punct(2);
-        (&mut rust_writer).split_off_stream(len)
+        rust_writer.blit_punct(2);
+        rust_writer.split_off_stream(len)
     }
 }
 pub fn derive(stream: TokenStream) -> TokenStream {

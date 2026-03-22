@@ -76,6 +76,7 @@ impl Indent {
 /// item has a valid span will be emitted verbatim from the original text,
 /// preserving formatting such as literal strings, hex/octal/binary
 /// integers, and underscored numbers.
+#[derive(Default)]
 pub(crate) struct EmitConfig<'a> {
     pub projected_source_text: &'a str,
     pub projected_source_items: &'a [&'a Item<'a>],
@@ -87,16 +88,6 @@ struct Emitter<'a, 'b> {
     src: &'a [u8],
     src_items: &'a [&'a Item<'a>],
     indent: Indent,
-}
-
-impl Default for EmitConfig<'_> {
-    fn default() -> Self {
-        Self {
-            projected_source_text: "",
-            projected_source_items: &[],
-            indent: Indent::default(),
-        }
-    }
 }
 
 fn trim_trailing_newline(buf: &mut Vec<u8>) {

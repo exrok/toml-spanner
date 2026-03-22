@@ -148,7 +148,7 @@ fn reproject_table<'de>(
             // Unmatched Entry
             all_matched = false;
             dst_key.span = Span::default();
-            clear_stale_item(&mut dst_item);
+            clear_stale_item(dst_item);
 
             if !ignore_style {
                 match dst_item.value_mut() {
@@ -169,7 +169,7 @@ fn reproject_table<'de>(
         };
         dst_key.span = src_key.span;
 
-        let item_full = reproject_item(index, &src_item, dst_item, items, span_identity);
+        let item_full = reproject_item(index, src_item, dst_item, items, span_identity);
         if !item_full {
             all_matched = false;
         }

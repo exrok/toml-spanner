@@ -312,21 +312,11 @@ pub fn to_string(value: &dyn ToToml) -> Result<String, ToTomlError> {
 /// assert!(output.contains("key = \"updated\""));
 /// ```
 #[cfg(feature = "to-toml")]
+#[derive(Default)]
 pub struct Formatting<'a> {
     formatting_from: Option<&'a Document<'a>>,
     indent: Indent,
     span_projection_identity: bool,
-}
-
-#[cfg(feature = "to-toml")]
-impl Default for Formatting<'_> {
-    fn default() -> Self {
-        Self {
-            formatting_from: None,
-            indent: Indent::default(),
-            span_projection_identity: false,
-        }
-    }
 }
 
 #[cfg(feature = "to-toml")]

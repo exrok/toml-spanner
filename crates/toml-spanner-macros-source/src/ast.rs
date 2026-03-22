@@ -268,7 +268,7 @@ macro_rules! expect_next {
             Some(TokenTree::$ident(t)) => t,
             Some(tt) => Error::span_msg_ctx(
                 concat!("Expected a ", stringify!($ident), "but found a "),
-                &kind_of_token(&tt),
+                &kind_of_token(tt),
                 tt.span(),
             ),
             None => Error::msg("Unexpected EOF"),
@@ -327,7 +327,7 @@ fn parse_container_attr(
                 throw!("Expected a literal" @ attr.span())
             };
             value = rest;
-            target.rename_all = RenameRule::from_literal(&rename);
+            target.rename_all = RenameRule::from_literal(rename);
         }
         "tag" => {
             if target.tag.is_some() {
@@ -357,7 +357,7 @@ fn parse_container_attr(
                 throw!("Expected a literal" @ attr.span())
             };
             value = rest;
-            target.rename_all_fields = RenameRule::from_literal(&rename);
+            target.rename_all_fields = RenameRule::from_literal(rename);
         }
         "untagged" => {
             if target.untagged {
@@ -637,7 +637,7 @@ fn parse_single_field_attr(
                 span: ident.span(),
                 inner: FieldAttrInner::Rename(rename),
             });
-            0u64 * TRAIT_COUNT
+            0
         }
         "default" => {
             attrs.attrs.push(FieldAttr {
@@ -649,7 +649,7 @@ fn parse_single_field_attr(
                     DefaultKind::Custom(std::mem::take(value))
                 }),
             });
-            1u64 * TRAIT_COUNT
+            TRAIT_COUNT
         }
         "skip" => {
             if !value.is_empty() {
@@ -719,7 +719,7 @@ fn parse_single_field_attr(
             }
             trait_set &= FROM_TOML;
             // Same slot as default: mutually exclusive and prevents Option auto-detection
-            1u64 * TRAIT_COUNT
+            TRAIT_COUNT
         }
         "alias" => {
             let Some(TokenTree::Literal(alias)) = value.pop() else {
@@ -844,7 +844,7 @@ fn parse_field_attr<'a>(
     })
 }
 
-fn option_inner_ty_ast<'a>(ty: &'a [TokenTree]) -> &'a [TokenTree] {
+fn option_inner_ty_ast(ty: &[TokenTree]) -> &[TokenTree] {
     if let [TokenTree::Ident(id), _, inner @ .., TokenTree::Punct(close)] = ty {
         if id.to_string() == "Option" && close.as_char() == '>' {
             return inner;
@@ -1240,7 +1240,7 @@ pub fn parse_struct_fields<'a>(
         if let [TokenTree::Ident(ident), TokenTree::Punct(punct), ..] = &fields[i + 1..end] {
             if punct.as_char() == '<' && ident_eq(ident, "Option") {
                 let attr = ensure_attr(&mut next_attr, attr_buf);
-                let oo_mask_item = (FROM_TOML as u64) << (1u64 * TRAIT_COUNT);
+                let oo_mask_item = (FROM_TOML as u64) << (TRAIT_COUNT);
                 if attr.flags & oo_mask_item == 0 {
                     attr.flags |= OPTION_AUTO_DETECTED;
                     attr.attrs.push(FieldAttr {

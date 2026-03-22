@@ -30,13 +30,13 @@ impl<T> Drop for MemoryPool<T> {
     fn drop(&mut self) {
         let mut current_bucket = self.current_bucket;
         let mut current_size = self.current_size;
-        while current_bucket != std::ptr::null_mut() {
+        while !current_bucket.is_null() {
             unsafe {
                 let bucket = &mut *current_bucket;
-                std::ptr::drop_in_place(std::slice::from_raw_parts_mut(
+                std::ptr::drop_in_place(std::ptr::slice_from_raw_parts_mut(
                     &mut bucket.data as *mut _ as *mut T,
                     current_size,
-                ) as *mut [T]);
+                ));
                 let to_dealloc = current_bucket;
                 current_bucket = bucket.next;
                 current_size = FREAKY_BUCKET_SIZE;
@@ -51,7 +51,7 @@ pub struct Allocator<'a, T> {
 }
 impl<'a, T: Default> Allocator<'a, T> {
     pub fn alloc_default(&mut self) -> &'a mut T {
-        if self.inner.current_bucket == std::ptr::null_mut()
+        if self.inner.current_bucket.is_null()
             || self.inner.current_size >= FREAKY_BUCKET_SIZE
         {
             unsafe {
@@ -72,7 +72,7 @@ impl<'a, T: Default> Allocator<'a, T> {
             let tail = entries.add(self.inner.current_size);
             tail.write(<T as Default>::default());
             self.inner.current_size += 1;
-            return &mut *tail;
+            &mut *tail
         }
     }
 }

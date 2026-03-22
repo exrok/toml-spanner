@@ -37,6 +37,15 @@ exclude = [
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(fuzzing)'] }
 
+[lints.clippy]
+question_mark = "allow"
+collapsible_if = "allow"
+manual_range_contains = "allow"
+manual_find = "allow"
+needless_range_loop = "allow"
+explicit_counter_loop = "allow"
+manual_slice_size_calculation = "allow"
+
 [features]
 default = ["from-toml", "to-toml", "derive"]
 from-toml = []

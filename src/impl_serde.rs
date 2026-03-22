@@ -45,7 +45,7 @@ impl serde::Serialize for Item<'_> {
                 use serde::ser::SerializeMap;
                 let mut map = ser.serialize_map(Some(tab.len()))?;
                 for (k, v) in tab {
-                    map.serialize_entry(&*k.name, v)?;
+                    map.serialize_entry(k.name, v)?;
                 }
                 map.end()
             }
@@ -65,7 +65,7 @@ impl serde::Serialize for InnerTable<'_> {
         use serde::ser::SerializeMap;
         let mut map = ser.serialize_map(Some(self.len()))?;
         for (k, v) in self.entries() {
-            map.serialize_entry(&*k.name, v)?;
+            map.serialize_entry(k.name, v)?;
         }
         map.end()
     }

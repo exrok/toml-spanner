@@ -274,6 +274,11 @@ const REPLACEMENTS: &[(&str, &str)] = &[
     (" (&mut output).", " output."),
     ("((&mut out),", "(&mut out,"),
     (" (&mut out).", " out."),
+    (" (&mut rust_writer).", " rust_writer."),
+    (
+        "TokenTree::from(ctx.crate_path.clone())",
+        "ctx.crate_path.clone()",
+    ),
     (
         "::core::panicking::panic(\"not yet implemented\")",
         "todo!()",

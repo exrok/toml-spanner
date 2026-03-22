@@ -1,5 +1,9 @@
 #![allow(elided_lifetimes_in_paths)]
 #![allow(dead_code)]
+#![allow(clippy::manual_find)]
+#![allow(clippy::match_like_matches_macro)]
+#![allow(clippy::needless_borrow)]
+#![allow(clippy::unnecessary_operation)]
 mod ast;
 mod case;
 mod codegen;

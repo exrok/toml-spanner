@@ -85,8 +85,7 @@ fn parse_lit_str_raw(mut s: &str) -> String {
         assert_eq!(end, b'#');
     }
 
-    let content = s[pounds + 1..close].to_owned();
-    content
+    s[pounds + 1..close].to_owned()
 }
 
 #[allow(clippy::needless_continue)]
@@ -170,7 +169,7 @@ pub fn literal_inline(raw: String) -> InlineKind {
         }
         b'0'..=b'9' => {
             if raw.as_bytes().iter().all(|ch| ch.is_ascii_digit()) {
-                return InlineKind::Raw(raw.into());
+                return InlineKind::Raw(raw);
             }
             InlineKind::None
         }

@@ -1881,7 +1881,7 @@ impl<'de> Parser<'de> {
                     continue;
                 }
                 Some(_) => {
-                    if let Err(_) = self.process_key_value(&mut ctx) {
+                    if self.process_key_value(&mut ctx).is_err() {
                         if !self.try_recover() {
                             return Err(Failed);
                         }
@@ -2354,7 +2354,7 @@ fn indent_from_span(src: &[u8], pos: usize) -> Option<crate::emit::Indent> {
                     return Some(crate::emit::Indent::Spaces(if spaces > 8 {
                         8
                     } else {
-                        spaces as u8
+                        spaces
                     }));
                 }
                 return None;

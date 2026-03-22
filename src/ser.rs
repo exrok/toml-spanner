@@ -124,7 +124,7 @@ impl ToToml for String {
 
 impl<T: ToToml> ToToml for Box<T> {
     fn to_toml<'a>(&'a self, arena: &'a Arena) -> Result<Item<'a>, ToTomlError> {
-        <T as ToToml>::to_toml(&*self, arena)
+        <T as ToToml>::to_toml(self, arena)
     }
 }
 
@@ -205,7 +205,7 @@ impl ToToml for std::path::Path {
     fn to_toml<'a>(&'a self, _: &'a Arena) -> Result<Item<'a>, ToTomlError> {
         match self.to_str() {
             Some(s) => Ok(Item::string(s)),
-            None => return ToTomlError::msg("path contains invalid UTF-8 characters"),
+            None => ToTomlError::msg("path contains invalid UTF-8 characters"),
         }
     }
 }
