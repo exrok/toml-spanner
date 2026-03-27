@@ -1,4 +1,4 @@
-use toml_spanner::{Arena, Item, Table};
+use toml_spanner::{Arena, Formatting, Item, Table};
 
 #[derive(Clone, Debug)]
 enum Expected {
@@ -86,34 +86,6 @@ fn verify_item(actual: &Item<'_>, expected: &Expected, path: &str) {
     }
 }
 
-fn escape_basic(s: &str) -> String {
-    let mut out = String::new();
-    for ch in s.chars() {
-        match ch {
-            '"' => out.push_str("\\\""),
-            '\\' => out.push_str("\\\\"),
-            '\n' => out.push_str("\\n"),
-            '\t' => out.push_str("\\t"),
-            '\r' => out.push_str("\\r"),
-            '\u{08}' => out.push_str("\\b"),
-            '\u{0C}' => out.push_str("\\f"),
-            '\u{1B}' => out.push_str("\\e"),
-            c if c.is_control() => {
-                let n = c as u32;
-                if n <= 0xFF {
-                    write_fmt(&mut out, format_args!("\\x{n:02X}"));
-                } else if n <= 0xFFFF {
-                    write_fmt(&mut out, format_args!("\\u{n:04X}"));
-                } else {
-                    write_fmt(&mut out, format_args!("\\U{n:08X}"));
-                }
-            }
-            c => out.push(c),
-        }
-    }
-    out
-}
-
 fn write_fmt(s: &mut String, args: std::fmt::Arguments<'_>) {
     use std::fmt::Write;
     s.write_fmt(args).unwrap();
@@ -134,100 +106,230 @@ const KEY_BASES: &[&str] = &[
     "mode", "tag", "kind", "level", "scope", "fmt", "key", "addr",
 ];
 
-/// Generate a key with random style: bare, quoted, escaped, or unicode.
-/// The `idx` parameter guarantees uniqueness within a table scope (each idx
-/// produces a distinct base string regardless of the random style chosen).
-fn gen_key(rng: &mut fastrand::Rng, idx: usize) -> (String, String) {
+const UNICODE_CHARS: &[char] = &[
+    '\u{00E9}',
+    '\u{00FC}',
+    '\u{03B1}',
+    '\u{03B2}',
+    '\u{4E16}',
+    '\u{754C}',
+    '\u{1F642}',
+];
+
+fn key_base(idx: usize) -> String {
     let prefix = KEY_BASES[idx % KEY_BASES.len()];
-    let base = if idx < KEY_BASES.len() {
+    if idx < KEY_BASES.len() {
         prefix.to_string()
     } else {
         format!("{prefix}{}", idx / KEY_BASES.len())
-    };
-
-    match rng.u8(0..10) {
-        0 => {
-            // Bare key
-            (base.clone(), base)
-        }
-        1 => {
-            // Bare key with underscore
-            let k = format!("{base}_z");
-            (k.clone(), k)
-        }
-        2 => {
-            // Bare key with dash
-            let k = format!("{base}-q");
-            (k.clone(), k)
-        }
-        3 => {
-            // Quoted but bare-safe
-            (format!("\"{base}\""), base)
-        }
-        4 => {
-            // Quoted with \t
-            let k = format!("{base}\tx");
-            let t = format!("\"{base}\\tx\"");
-            (t, k)
-        }
-        5 => {
-            // Quoted with \n
-            let k = format!("{base}\nw");
-            let t = format!("\"{base}\\nw\"");
-            (t, k)
-        }
-        6 => {
-            // Quoted with \e
-            let k = format!("{base}\u{1B}e");
-            let t = format!("\"{base}\\ee\"");
-            (t, k)
-        }
-        7 => {
-            // Quoted with literal unicode
-            let chars = ['\u{00E9}', '\u{00FC}', '\u{03B1}', '\u{03B2}', '\u{4E16}'];
-            let ch = chars[rng.usize(0..chars.len())];
-            let k = format!("{base}{ch}");
-            (format!("\"{k}\""), k)
-        }
-        8 => {
-            // Quoted with \u escape
-            let pairs = [
-                ('\u{00E9}', "\\u00E9"),
-                ('\u{00FC}', "\\u00FC"),
-                ('\u{03B1}', "\\u03B1"),
-                ('\u{03B2}', "\\u03B2"),
-                ('\u{4E16}', "\\u4E16"),
-            ];
-            let (ch, esc) = pairs[rng.usize(0..pairs.len())];
-            let k = format!("{base}{ch}");
-            let t = format!("\"{base}{esc}\"");
-            (t, k)
-        }
-        _ => {
-            // Quoted with \x hex escape
-            let k = format!("{base}\u{07}b");
-            let t = format!("\"{base}\\x07b\"");
-            (t, k)
-        }
     }
 }
 
-/// Re-encode an existing key string into TOML representation.
-/// Keys with special characters are always quoted; bare-safe keys are
-/// randomly bare or quoted for variety.
-fn re_quote_key(rng: &mut fastrand::Rng, key_str: &str) -> String {
-    let needs_quotes = key_str
-        .chars()
-        .any(|c| !c.is_ascii_alphanumeric() && c != '-' && c != '_');
-    if needs_quotes || rng.u8(0..3) == 0 {
-        format!("\"{}\"", escape_basic(key_str))
+fn pick_unicode(rng: &mut fastrand::Rng) -> char {
+    UNICODE_CHARS[rng.usize(0..UNICODE_CHARS.len())]
+}
+
+fn is_bare_key(name: &str) -> bool {
+    !name.is_empty()
+        && name
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+}
+
+fn can_use_single_line_literal(s: &str) -> bool {
+    s.chars().all(|ch| match ch {
+        '\'' | '\n' | '\r' => false,
+        '\t' => true,
+        c if c.is_control() => false,
+        _ => true,
+    })
+}
+
+fn can_use_multiline_literal(s: &str) -> bool {
+    if !s.contains('\n') {
+        return false;
+    }
+
+    let mut consecutive_quotes = 0u8;
+    for ch in s.chars() {
+        match ch {
+            '\'' => {
+                consecutive_quotes += 1;
+                if consecutive_quotes == 3 {
+                    return false;
+                }
+            }
+            '\n' | '\t' => consecutive_quotes = 0,
+            '\r' => return false,
+            c if c.is_control() => return false,
+            _ => consecutive_quotes = 0,
+        }
+    }
+    true
+}
+
+fn push_codepoint_escape(rng: &mut fastrand::Rng, out: &mut String, value: u32) {
+    match rng.u8(0..3) {
+        0 if value <= 0xFF => write_fmt(out, format_args!("\\x{value:02X}")),
+        1 if value <= 0xFFFF => write_fmt(out, format_args!("\\u{value:04X}")),
+        _ => write_fmt(out, format_args!("\\U{value:08X}")),
+    }
+}
+
+fn push_basic_char(
+    rng: &mut fastrand::Rng,
+    out: &mut String,
+    ch: char,
+    allow_multiline_raw_newlines: bool,
+) {
+    match ch {
+        '"' => out.push_str("\\\""),
+        '\\' => out.push_str("\\\\"),
+        '\n' if allow_multiline_raw_newlines => out.push('\n'),
+        '\n' => out.push_str("\\n"),
+        '\t' => {
+            if rng.u8(0..4) == 0 {
+                out.push('\t');
+            } else {
+                out.push_str("\\t");
+            }
+        }
+        '\r' => out.push_str("\\r"),
+        '\u{08}' => {
+            if rng.u8(0..4) == 0 {
+                out.push_str("\\b");
+            } else {
+                push_codepoint_escape(rng, out, ch as u32);
+            }
+        }
+        '\u{0C}' => {
+            if rng.u8(0..4) == 0 {
+                out.push_str("\\f");
+            } else {
+                push_codepoint_escape(rng, out, ch as u32);
+            }
+        }
+        '\u{1B}' => {
+            if rng.u8(0..4) == 0 {
+                out.push_str("\\e");
+            } else {
+                push_codepoint_escape(rng, out, ch as u32);
+            }
+        }
+        c if c.is_control() => push_codepoint_escape(rng, out, c as u32),
+        c if !c.is_ascii() && rng.u8(0..4) == 0 => push_codepoint_escape(rng, out, c as u32),
+        c => out.push(c),
+    }
+}
+
+fn render_basic_single_line(rng: &mut fastrand::Rng, s: &str) -> String {
+    let mut out = String::from("\"");
+    for ch in s.chars() {
+        push_basic_char(rng, &mut out, ch, false);
+    }
+    out.push('"');
+    out
+}
+
+fn render_basic_multiline(rng: &mut fastrand::Rng, s: &str) -> String {
+    let mut out = String::from("\"\"\"");
+    for ch in s.chars() {
+        push_basic_char(rng, &mut out, ch, true);
+    }
+    out.push_str("\"\"\"");
+    out
+}
+
+fn render_literal_single_line(s: &str) -> String {
+    format!("'{s}'")
+}
+
+fn render_literal_multiline(s: &str) -> String {
+    format!("'''{s}'''")
+}
+
+fn render_key_expr(rng: &mut fastrand::Rng, key: &str) -> String {
+    if is_bare_key(key) && rng.u8(0..4) == 0 {
+        key.to_string()
+    } else if can_use_single_line_literal(key) && rng.bool() {
+        render_literal_single_line(key)
     } else {
-        key_str.to_string()
+        render_basic_single_line(rng, key)
+    }
+}
+
+fn render_string_expr(rng: &mut fastrand::Rng, s: &str) -> String {
+    if s.contains('\n') {
+        match rng.u8(0..5) {
+            0 if can_use_multiline_literal(s) => render_literal_multiline(s),
+            1 | 2 => render_basic_multiline(rng, s),
+            _ => render_basic_single_line(rng, s),
+        }
+    } else if can_use_single_line_literal(s) && rng.u8(0..3) == 0 {
+        render_literal_single_line(s)
+    } else {
+        render_basic_single_line(rng, s)
+    }
+}
+
+/// Generate a key with random source quoting and escape style.
+/// The `idx` parameter guarantees uniqueness within a table scope.
+fn gen_key(rng: &mut fastrand::Rng, idx: usize) -> (String, String) {
+    let base = key_base(idx);
+    let key = match rng.u8(0..16) {
+        0 => base,
+        1 => format!("{base}_z"),
+        2 => format!("{base}-q"),
+        3 => format!("{base} expr"),
+        4 => format!("{base}.dot"),
+        5 => format!("{base}:port"),
+        6 => format!("{base}/path"),
+        7 => format!("{base}#{idx}"),
+        8 => format!("{base}\"q"),
+        9 => format!("{base}'q"),
+        10 => format!("{base}\\q"),
+        11 => format!("{base}\tx"),
+        12 => format!("{base}\nw"),
+        13 => format!("{base}\u{1B}e"),
+        14 => format!("{base}{}", pick_unicode(rng)),
+        _ => format!("{base} {}", pick_unicode(rng)),
+    };
+    let encoded = render_key_expr(rng, &key);
+    (encoded, key)
+}
+
+/// Re-encode an existing key string into TOML representation.
+fn re_quote_key(rng: &mut fastrand::Rng, key_str: &str) -> String {
+    render_key_expr(rng, key_str)
+}
+
+fn gen_string_actual(rng: &mut fastrand::Rng) -> String {
+    let a = gen_simple_string(rng);
+    let b = gen_simple_string(rng);
+    match rng.u8(0..18) {
+        0 => a,
+        1 => format!("{a} {b}"),
+        2 => format!("{a}.{b}/{}", gen_simple_string(rng)),
+        3 => format!("{a}\"{b}\"\\{}", gen_simple_string(rng)),
+        4 => format!("{a}'{b}'"),
+        5 => format!("{a}\t{b}"),
+        6 => format!("{a}\n{b}"),
+        7 => format!("{a}\n{b}\n{}", gen_simple_string(rng)),
+        8 => format!("{a}{}{}", pick_unicode(rng), b),
+        9 => format!("{a}\n{}\\{}", gen_simple_string(rng), b),
+        10 => format!("{a}\n{}\"{}\"", gen_simple_string(rng), b),
+        11 => format!("{a}\u{1B}{b}"),
+        12 => format!("{a}\u{08}{b}"),
+        13 => format!("{a}\u{0C}{b}"),
+        14 => format!("{a}:{}#{}", b, gen_simple_string(rng)),
+        15 => String::new(),
+        16 => format!("{} {a} {}", pick_unicode(rng), pick_unicode(rng)),
+        _ => format!("{a}\n{b}'{}", gen_simple_string(rng)),
     }
 }
 
 fn gen_scalar(rng: &mut fastrand::Rng) -> (String, Expected) {
-    match rng.u8(0..10) {
+    match rng.u8(0..12) {
         0 => {
             let v = rng.i64(i64::MIN / 2..=i64::MAX / 2);
             (v.to_string(), Expected::Integer(v))
@@ -240,64 +342,9 @@ fn gen_scalar(rng: &mut fastrand::Rng) -> (String, Expected) {
             let v = rng.bool();
             (v.to_string(), Expected::Bool(v))
         }
-        3 => {
-            // Plain basic string
-            let s = gen_simple_string(rng);
-            (format!("\"{s}\""), Expected::Str(s))
-        }
-        4 => {
-            // Basic string with escape sequence
-            let base = gen_simple_string(rng);
-            let escapes = [
-                ("\\n", "\n"),
-                ("\\t", "\t"),
-                ("\\\\", "\\"),
-                ("\\\"", "\""),
-                ("\\b", "\u{08}"),
-                ("\\f", "\u{0C}"),
-                ("\\e", "\u{1B}"),
-                ("\\x07", "\u{07}"),
-            ];
-            let (esc_t, esc_s) = escapes[rng.usize(0..escapes.len())];
-            let val_str = format!("{base}{esc_s}");
-            let val_toml = format!("\"{}{esc_t}\"", escape_basic(&base));
-            (val_toml, Expected::Str(val_str))
-        }
-        5 => {
-            // Literal string
-            let s = gen_simple_string(rng);
-            (format!("'{s}'"), Expected::Str(s))
-        }
-        6 => {
-            // Multiline basic string
-            let s = gen_simple_string(rng);
-            (format!("\"\"\"\n{s}\"\"\""), Expected::Str(s))
-        }
-        7 => {
-            // Multiline literal string
-            let s = gen_simple_string(rng);
-            (format!("'''\n{s}'''"), Expected::Str(s))
-        }
-        8 => {
-            // String with literal unicode
-            let base = gen_simple_string(rng);
-            let chars = ['\u{00E9}', '\u{00FC}', '\u{03B1}', '\u{4E16}', '\u{754C}'];
-            let ch = chars[rng.usize(0..chars.len())];
-            let s = format!("{base}{ch}");
-            (format!("\"{s}\""), Expected::Str(s))
-        }
         _ => {
-            // String with \u unicode escape
-            let base = gen_simple_string(rng);
-            let pairs = [
-                ('\u{00E9}', "\\u00E9"),
-                ('\u{00FC}', "\\u00FC"),
-                ('\u{03B1}', "\\u03B1"),
-                ('\u{4E16}', "\\u4E16"),
-            ];
-            let (ch, esc) = pairs[rng.usize(0..pairs.len())];
-            let s = format!("{base}{ch}");
-            (format!("\"{base}{esc}\""), Expected::Str(s))
+            let s = gen_string_actual(rng);
+            (render_string_expr(rng, &s), Expected::Str(s))
         }
     }
 }
@@ -362,17 +409,67 @@ fn gen_inline_array_val(rng: &mut fastrand::Rng, depth: usize) -> (String, Expec
     )
 }
 
+fn append_quote_stress_cases(
+    rng: &mut fastrand::Rng,
+    toml: &mut String,
+    root_exp: &mut Vec<(String, Expected)>,
+    root_kidx: &mut usize,
+) {
+    // Literal key source that auto-emit will rewrite as a basic key, paired
+    // with a basic string that auto-emit prefers as a literal string.
+    let key1 = format!("{} expr", key_base(*root_kidx));
+    *root_kidx += 1;
+    let val1 = format!(
+        "{}\"{}\"\\{}",
+        gen_simple_string(rng),
+        gen_simple_string(rng),
+        gen_simple_string(rng),
+    );
+    write_fmt(
+        toml,
+        format_args!(
+            "{} = {}\n",
+            render_literal_single_line(&key1),
+            render_basic_single_line(rng, &val1),
+        ),
+    );
+    root_exp.push((key1, Expected::Str(val1)));
+
+    // Basic string source with embedded newlines, quotes, and backslashes that
+    // auto-emit will often normalize into a multiline literal at non-inline sites.
+    let key2 = format!("{}-ml", key_base(*root_kidx));
+    *root_kidx += 1;
+    let val2 = format!(
+        "{}\n{}\"{}\"\\{}",
+        gen_simple_string(rng),
+        gen_simple_string(rng),
+        gen_simple_string(rng),
+        gen_simple_string(rng),
+    );
+    let val2_toml = if rng.bool() {
+        render_basic_multiline(rng, &val2)
+    } else {
+        render_basic_single_line(rng, &val2)
+    };
+    write_fmt(
+        toml,
+        format_args!("{} = {val2_toml}\n", render_key_expr(rng, &key2)),
+    );
+    root_exp.push((key2, Expected::Str(val2)));
+}
+
 /// Generate a complete TOML document mixing root key-value pairs (scalars,
 /// dotted keys, inline tables, inline arrays), table header sections
 /// (simple and nested), array-of-tables (simple and nested with child
-/// subtables), and the super-table-afterwards pattern. All keys use the
-/// full variety of gen_key styles.
+/// subtables), and the super-table-afterwards pattern.
 fn gen_document(rng: &mut fastrand::Rng) -> (String, Vec<(String, Expected)>) {
     let mut toml = String::new();
     let mut root_exp: Vec<(String, Expected)> = Vec::new();
     let mut root_kidx = 0usize;
 
-    // Mix of plain scalars, dotted keys, inline tables, inline arrays
+    append_quote_stress_cases(rng, &mut toml, &mut root_exp, &mut root_kidx);
+
+    // Mix of plain scalars, dotted keys, inline tables, inline arrays.
     let n_root = rng.usize(2..=10);
     for _ in 0..n_root {
         let (key_toml, key_str) = gen_key(rng, root_kidx);
@@ -390,19 +487,16 @@ fn gen_document(rng: &mut fastrand::Rng) -> (String, Vec<(String, Expected)>) {
                 root_exp.push((key_str, Expected::Table(vec![(sub_str, val_exp)])));
             }
             2 => {
-                // Inline table
                 let (val_toml, val_exp) = gen_inline_table_val(rng, 2);
                 write_fmt(&mut toml, format_args!("{key_toml} = {val_toml}\n"));
                 root_exp.push((key_str, val_exp));
             }
             3 => {
-                // Inline array
                 let (val_toml, val_exp) = gen_inline_array_val(rng, 1);
                 write_fmt(&mut toml, format_args!("{key_toml} = {val_toml}\n"));
                 root_exp.push((key_str, val_exp));
             }
             _ => {
-                // Scalar
                 let (val_toml, val_exp) = gen_scalar(rng);
                 write_fmt(&mut toml, format_args!("{key_toml} = {val_toml}\n"));
                 root_exp.push((key_str, val_exp));
@@ -413,7 +507,6 @@ fn gen_document(rng: &mut fastrand::Rng) -> (String, Vec<(String, Expected)>) {
     let n_sections = rng.usize(0..=4);
     for _ in 0..n_sections {
         let depth = rng.usize(1..=3);
-        // First path segment is unique at root level
         let mut path_keys: Vec<(String, String)> = Vec::new();
         for d in 0..depth {
             if d == 0 {
@@ -430,7 +523,6 @@ fn gen_document(rng: &mut fastrand::Rng) -> (String, Vec<(String, Expected)>) {
         let mut inner_kidx = 0;
         gen_section_kvs(rng, &mut toml, &mut inner_exp, &mut inner_kidx);
 
-        // Build expected from leaf to root
         let mut current = Expected::Table(inner_exp);
         for d in (1..depth).rev() {
             current = Expected::Table(vec![(path_keys[d].1.clone(), current)]);
@@ -455,7 +547,6 @@ fn gen_document(rng: &mut fastrand::Rng) -> (String, Vec<(String, Expected)>) {
         let mut aot_entries = Vec::new();
 
         for _ in 0..n_entries {
-            // Re-quote each segment randomly for variety on each [[header]]
             let header: Vec<String> = path_keys
                 .iter()
                 .map(|(_, s)| re_quote_key(rng, s))
@@ -466,7 +557,6 @@ fn gen_document(rng: &mut fastrand::Rng) -> (String, Vec<(String, Expected)>) {
             let mut inner_kidx = 0;
             gen_section_kvs(rng, &mut toml, &mut inner_exp, &mut inner_kidx);
 
-            // Optionally add a child subtable via [path.child]
             if rng.u8(0..4) == 0 {
                 let (child_toml, child_str) = gen_key(rng, inner_kidx);
                 let mut child_header: Vec<String> = path_keys
@@ -484,7 +574,6 @@ fn gen_document(rng: &mut fastrand::Rng) -> (String, Vec<(String, Expected)>) {
             aot_entries.push(Expected::Table(inner_exp));
         }
 
-        // Build expected from leaf AOT upward
         let mut result = Expected::Array(aot_entries);
         for d in (1..depth).rev() {
             result = Expected::Table(vec![(path_keys[d].1.clone(), result)]);
@@ -492,10 +581,9 @@ fn gen_document(rng: &mut fastrand::Rng) -> (String, Vec<(String, Expected)>) {
         root_exp.push((path_keys[0].1.clone(), result));
     }
 
-    // [sec.sub1], [sec.sub2], ..., then [sec] adding direct keys
+    // [sec.sub1], [sec.sub2], ..., then [sec] adding direct keys.
     if rng.u8(0..3) == 0 {
         let (_, sec_str) = gen_key(rng, root_kidx);
-        root_kidx += 1;
         let mut sec_exp = Vec::new();
         let mut sec_kidx = 0;
 
@@ -505,7 +593,7 @@ fn gen_document(rng: &mut fastrand::Rng) -> (String, Vec<(String, Expected)>) {
             sec_kidx += 1;
             write_fmt(
                 &mut toml,
-                format_args!("[{}.{}]\n", re_quote_key(rng, &sec_str), sub_toml,),
+                format_args!("[{}.{}]\n", re_quote_key(rng, &sec_str), sub_toml),
             );
             let mut sub_exp = Vec::new();
             let mut sub_kidx = 0;
@@ -513,7 +601,6 @@ fn gen_document(rng: &mut fastrand::Rng) -> (String, Vec<(String, Expected)>) {
             sec_exp.push((sub_str, Expected::Table(sub_exp)));
         }
 
-        // Open [sec] and add direct keys
         write_fmt(
             &mut toml,
             format_args!("[{}]\n", re_quote_key(rng, &sec_str)),
@@ -522,7 +609,6 @@ fn gen_document(rng: &mut fastrand::Rng) -> (String, Vec<(String, Expected)>) {
         root_exp.push((sec_str, Expected::Table(sec_exp)));
     }
 
-    let _ = root_kidx;
     (toml, root_exp)
 }
 
@@ -566,61 +652,116 @@ fn gen_section_kvs(
     }
 }
 
+fn parse_checked<'a>(
+    seed: u64,
+    phase: &str,
+    input: &'a str,
+    arena: &'a Arena,
+) -> toml_spanner::Document<'a> {
+    toml_spanner::parse(input, arena).unwrap_or_else(|e| {
+        panic!(
+            "\n============= {phase} FAILED =============\n\
+             Seed:     {seed}\n\
+             Input ({} bytes):\n{input}\n\
+             Error: {e:?}\n\
+             ============================================",
+            input.len(),
+        );
+    })
+}
+
+fn verify_checked(
+    seed: u64,
+    phase: &str,
+    input: &str,
+    actual: &Table<'_>,
+    expected: &[(String, Expected)],
+) {
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        verify_table(actual, expected, "");
+    }));
+
+    if let Err(panic_info) = result {
+        let msg = if let Some(s) = panic_info.downcast_ref::<String>() {
+            s.clone()
+        } else if let Some(s) = panic_info.downcast_ref::<&str>() {
+            s.to_string()
+        } else {
+            "unknown panic".to_string()
+        };
+        panic!(
+            "\n============== {phase} MISMATCH =============\n\
+             Seed:     {seed}\n\
+             Input ({} bytes):\n{input}\n\
+             Error: {msg}\n\
+             ========================================",
+            input.len(),
+        );
+    }
+}
+
+fn emit_auto(seed: u64, phase: &str, source: &str, table: &Table<'_>) -> String {
+    let arena = Arena::new();
+    let output = Formatting::default().format_table_to_bytes(table.clone_in(&arena), &arena);
+    String::from_utf8(output).unwrap_or_else(|e| {
+        panic!(
+            "\n============= {phase} UTF-8 FAILED =============\n\
+             Seed:     {seed}\n\
+             Source ({} bytes):\n{source}\n\
+             Error: {e:?}\n\
+             ============================================",
+            source.len(),
+        );
+    })
+}
+
 fn main() {
     let total_iterations: u64 = std::env::args()
         .nth(1)
         .and_then(|s| s.parse().ok())
-        .unwrap_or(500_000);
+        .unwrap_or(50_000);
 
     let mut rng = fastrand::Rng::new();
-    let mut total_tests = 0u64;
+    let mut total_checks = 0u64;
 
     for seed in 0..total_iterations {
         rng.seed(seed);
         let (toml_text, expected) = gen_document(&mut rng);
 
-        let arena = Arena::new();
-        let doc = match toml_spanner::parse(&toml_text, &arena) {
-            Ok(r) => r,
-            Err(e) => {
-                panic!(
-                    "\n============= PARSE ERROR ===============\n\
-                     Seed:     {seed}\n\
-                     Input ({} bytes):\n{toml_text}\n\
-                     Error: {e:?}\n\
-                     ============================================",
-                    toml_text.len(),
-                );
-            }
-        };
+        let parse_arena = Arena::new();
+        let doc = parse_checked(seed, "PARSE ORIGINAL", &toml_text, &parse_arena);
+        verify_checked(seed, "VERIFY ORIGINAL", &toml_text, doc.table(), &expected);
 
-        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            verify_table(doc.table(), &expected, "");
-        }));
+        let emitted = emit_auto(seed, "AUTO EMIT", &toml_text, doc.table());
 
-        if let Err(panic_info) = result {
-            let msg = if let Some(s) = panic_info.downcast_ref::<String>() {
-                s.clone()
-            } else if let Some(s) = panic_info.downcast_ref::<&str>() {
-                s.to_string()
-            } else {
-                "unknown panic".to_string()
-            };
-            panic!(
-                "\n============== MISMATCH =============\n\
-                 Seed:     {seed}\n\
-                 Input ({} bytes):\n{toml_text}\n\
-                 Error: {msg}\n\
-                 ========================================",
-                toml_text.len(),
-            );
+        let reparsed_arena = Arena::new();
+        let reparsed = parse_checked(seed, "PARSE EMITTED", &emitted, &reparsed_arena);
+        verify_checked(
+            seed,
+            "VERIFY EMITTED",
+            &emitted,
+            reparsed.table(),
+            &expected,
+        );
+
+        let emitted_again = emit_auto(seed, "RE-EMIT EMITTED", &emitted, reparsed.table());
+        assert_eq!(
+            emitted_again,
+            emitted,
+            "\n============== EMIT NOT IDEMPOTENT =============\n\
+             Seed:     {seed}\n\
+             First emit ({} bytes):\n{emitted}\n\
+             Second emit ({} bytes):\n{emitted_again}\n\
+             ========================================",
+            emitted.len(),
+            emitted_again.len(),
+        );
+
+        if seed % 10_000 == 0 && seed > 0 {
+            eprintln!("Progress: {seed}/{total_iterations} seeds ({total_checks} checks)");
         }
 
-        total_tests += 1;
-
-        if seed % 50_000 == 0 && seed > 0 {
-            eprintln!("Progress: {seed}/{total_iterations} seeds ({total_tests} tests)");
-        }
+        total_checks += 3;
     }
-    eprintln!("All {total_iterations} seeds passed ({total_tests} tests).");
+    eprintln!("All {total_iterations} seeds passed ({total_checks} checks).");
 }
