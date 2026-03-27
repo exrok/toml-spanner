@@ -997,7 +997,7 @@ fn try_emit_array_partial(
         } else {
             out.extend_from_slice(indent);
             let depth = (indent.len() / emit.indent.width()) as u32;
-            format_value_at(elem, emit, out, depth);
+            format_value_at(elem, emit, out, depth, true);
             out.extend_from_slice(b",\n");
         }
     }
@@ -1078,7 +1078,7 @@ fn try_emit_inline_table_partial(
             let depth = (indent.len() / emit.indent.width()) as u32;
             write_inline_leaf_key(leaf, emit, out);
             out.extend_from_slice(b" = ");
-            format_value_at(val, emit, out, depth);
+            format_value_at(val, emit, out, depth, true);
             out.extend_from_slice(b",\n");
         }
     }
@@ -1123,10 +1123,16 @@ fn is_fully_projected(item: &Item<'_>, emit: &Emitter<'_, '_>) -> bool {
 }
 
 fn format_value(item: &Item<'_>, emit: &Emitter<'_, '_>, out: &mut Vec<u8>) {
-    format_value_at(item, emit, out, 0);
+    format_value_at(item, emit, out, 0, false);
 }
 
-fn format_value_at(item: &Item<'_>, emit: &Emitter<'_, '_>, out: &mut Vec<u8>, depth: u32) {
+fn format_value_at(
+    item: &Item<'_>,
+    emit: &Emitter<'_, '_>,
+    out: &mut Vec<u8>,
+    depth: u32,
+    inline: bool,
+) {
     match item.value() {
         Value::Array(arr) => {
             if let Some(src_item) = projected_source(item, emit) {
@@ -1177,14 +1183,14 @@ fn format_value_at(item: &Item<'_>, emit: &Emitter<'_, '_>, out: &mut Vec<u8>, d
                 out.extend_from_slice(text);
                 return;
             }
-            format_scalar(item, out);
+            format_scalar(item, inline, out);
         }
     }
 }
 
-fn format_scalar(item: &Item<'_>, out: &mut Vec<u8>) {
+fn format_scalar(item: &Item<'_>, inline: bool, out: &mut Vec<u8>) {
     match item.value() {
-        Value::String(s) => format_string(s, out),
+        Value::String(s) => format_string(s, inline, out),
         Value::Integer(i) => {
             let _ = write!(out, "{i}");
         }
@@ -1339,7 +1345,7 @@ fn format_inline_table(tab: &Table<'_>, emit: &Emitter<'_, '_>, out: &mut Vec<u8
                 first = false;
                 write_inline_leaf_key(leaf, emit, out);
                 out.extend_from_slice(b" = ");
-                format_value_at(leaf.item, emit, out, depth);
+                format_value_at(leaf.item, emit, out, depth, true);
             }
             out.extend_from_slice(b" }");
             return;
@@ -1366,7 +1372,7 @@ fn format_inline_table(tab: &Table<'_>, emit: &Emitter<'_, '_>, out: &mut Vec<u8
         first = false;
         emit_key(key.name, key.span, emit, out);
         out.extend_from_slice(b" = ");
-        format_value_at(val, emit, out, depth);
+        format_value_at(val, emit, out, depth, true);
     }
     out.extend_from_slice(b" }");
 }
@@ -1399,7 +1405,7 @@ fn format_inline_dotted_kv(
         out.push(b'.');
         emit_key(key.name, key.span, emit, out);
         out.extend_from_slice(b" = ");
-        format_value_at(val, emit, out, depth);
+        format_value_at(val, emit, out, depth, true);
     }
 }
 
@@ -1412,7 +1418,7 @@ fn format_expanded_array(arr: &Array<'_>, emit: &Emitter<'_, '_>, out: &mut Vec<
     let child = depth + 1;
     for elem in arr {
         emit.indent.write(out, child);
-        format_value_at(elem, emit, out, child);
+        format_value_at(elem, emit, out, child, false);
         out.extend_from_slice(b",\n");
     }
     emit.indent.write(out, depth);
@@ -1431,7 +1437,7 @@ fn format_array(arr: &Array<'_>, emit: &Emitter<'_, '_>, out: &mut Vec<u8>) {
             out.extend_from_slice(b", ");
         }
         first = false;
-        format_value(elem, emit, out);
+        format_value_at(elem, emit, out, 0, true);
     }
     out.push(b']');
 }
@@ -1440,7 +1446,11 @@ fn format_key(name: &str, out: &mut Vec<u8>) {
     if is_bare_key(name) {
         out.extend_from_slice(name.as_bytes());
     } else {
-        format_string(name, out);
+        if can_use_literal(name) {
+            format_literal_string(name, out);
+        } else {
+            format_basic_string(name, out);
+        }
     }
 }
 
@@ -1456,7 +1466,65 @@ fn is_bare_key(name: &str) -> bool {
     true
 }
 
-fn format_string(s: &str, out: &mut Vec<u8>) {
+fn format_string(s: &str, inline: bool, out: &mut Vec<u8>) {
+    if !inline && can_use_multiline_literal(s) {
+        format_multiline_literal_string(s, out);
+    } else if can_use_literal(s) {
+        format_literal_string(s, out);
+    } else {
+        format_basic_string(s, out);
+    }
+}
+
+fn can_use_multiline_literal(s: &str) -> bool {
+    let mut has_newline = false;
+    let mut consecutive_quotes = 0u8;
+    for &b in s.as_bytes() {
+        if b == b'\'' {
+            consecutive_quotes += 1;
+            if consecutive_quotes == 3 {
+                return false;
+            }
+        } else {
+            consecutive_quotes = 0;
+            match b {
+                b'\n' => has_newline = true,
+                b'\t' => {}
+                b'\r' => return false,
+                b if b < 0x20 || b == 0x7F => return false,
+                _ => {}
+            }
+        }
+    }
+    has_newline
+}
+
+fn can_use_literal(s: &str) -> bool {
+    let mut has_escapable = false;
+    for ch in s.chars() {
+        match ch {
+            '\'' => return false,
+            '"' | '\\' => has_escapable = true,
+            c if c < '\x20' || c == '\x7F' => return false,
+            _ => {}
+        }
+    }
+    has_escapable
+}
+
+fn format_multiline_literal_string(s: &str, out: &mut Vec<u8>) {
+    out.extend_from_slice(b"'''\n");
+    out.extend_from_slice(s.as_bytes());
+    out.extend_from_slice(b"'''");
+}
+
+fn format_literal_string(s: &str, out: &mut Vec<u8>) {
+    out.push(b'\'');
+    out.extend_from_slice(s.as_bytes());
+    out.push(b'\'');
+}
+
+fn format_basic_string(s: &str, out: &mut Vec<u8>) {
     out.push(b'"');
     for ch in s.chars() {
         match ch {

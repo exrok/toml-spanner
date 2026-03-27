@@ -572,19 +572,17 @@ fn normalize_reg_empty_aot_downgraded() {
 }
 
 #[test]
-fn emit_string_escape_sequences() {
-    // Exercises format_string escape paths: backslash, newline, tab, etc.
+fn emit_basic_string_escape_sequences() {
     let arena = Arena::new();
     let mut t = Table::default();
     t.insert_unique(
         Key::new("esc"),
-        Item::string("line1\nline2\ttab\\back\"quote"),
+        Item::string("tab\there\\back\"quote"),
         &arena,
     );
     t.insert_unique(Key::new("ctrl"), Item::string("\r\u{0008}\u{000C}"), &arena);
     t.insert_unique(Key::new("low"), Item::string("\x01\x1F"), &arena);
     let s = emit_normalized(&mut t);
-    assert!(s.contains(r#"\n"#), "newline escape: {s}");
     assert!(s.contains(r#"\t"#), "tab escape: {s}");
     assert!(s.contains(r#"\\"#), "backslash escape: {s}");
     assert!(s.contains(r#"\""#), "quote escape: {s}");
@@ -592,6 +590,161 @@ fn emit_string_escape_sequences() {
     assert!(s.contains(r#"\b"#), "backspace escape: {s}");
     assert!(s.contains(r#"\f"#), "formfeed escape: {s}");
     assert!(s.contains(r#"\u"#), "unicode escape: {s}");
+}
+
+#[test]
+fn emit_smart_string_selection() {
+    let arena = Arena::new();
+
+    // Multiline literal for strings with newlines
+    let mut t = Table::default();
+    t.insert_unique(
+        Key::new("multi"),
+        Item::string("line1\nline2\nline3"),
+        &arena,
+    );
+    t.insert_unique(
+        Key::new("trailing"),
+        Item::string("first\nsecond\n"),
+        &arena,
+    );
+    t.insert_unique(
+        Key::new("special"),
+        Item::string("has\\bs\nand\"q\nand\ttab"),
+        &arena,
+    );
+    let s = emit_normalized(&mut t);
+    assert_eq!(
+        s,
+        "\
+multi = '''\nline1\nline2\nline3'''\n\
+trailing = '''\nfirst\nsecond\n'''\n\
+special = '''\nhas\\bs\nand\"q\nand\ttab'''\n"
+    );
+
+    // Fallback to basic when multiline literal is not viable
+    let mut t = Table::default();
+    t.insert_unique(
+        Key::new("tq"),
+        Item::string("has\n'''triple\nquotes"),
+        &arena,
+    );
+    t.insert_unique(
+        Key::new("ctrl"),
+        Item::string("has\nnewline\x08and bs"),
+        &arena,
+    );
+    t.insert_unique(Key::new("cr"), Item::string("has\r\nnewline"), &arena);
+    let s = emit_normalized(&mut t);
+    assert_eq!(
+        s,
+        "\
+tq = \"has\\n'''triple\\nquotes\"\n\
+ctrl = \"has\\nnewline\\band bs\"\n\
+cr = \"has\\r\\nnewline\"\n"
+    );
+
+    // Literal string when only escapes would be " or \
+    let mut t = Table::default();
+    t.insert_unique(Key::new("q"), Item::string(r#"has "quotes""#), &arena);
+    t.insert_unique(Key::new("bs"), Item::string(r"path\to\file"), &arena);
+    t.insert_unique(Key::new("both"), Item::string(r#"a\"b"#), &arena);
+    let s = emit_normalized(&mut t);
+    assert_eq!(
+        s,
+        "\
+q = 'has \"quotes\"'\n\
+bs = 'path\\to\\file'\n\
+both = 'a\\\"b'\n"
+    );
+
+    // Stays basic: has single quote, no special chars, or control chars mixed in
+    let mut t = Table::default();
+    t.insert_unique(Key::new("sq"), Item::string(r#"it's "quoted""#), &arena);
+    t.insert_unique(Key::new("plain"), Item::string("plain text"), &arena);
+    t.insert_unique(Key::new("tab_bs"), Item::string("a\t\\b"), &arena);
+    let s = emit_normalized(&mut t);
+    assert_eq!(
+        s,
+        "\
+sq = \"it's \\\"quoted\\\"\"\n\
+plain = \"plain text\"\n\
+tab_bs = \"a\\t\\\\b\"\n"
+    );
+
+    // Literal keys
+    let mut t = Table::default();
+    t.insert_unique(
+        Key::new(r#"cfg(target_arch = "x86")"#),
+        Item::string("val"),
+        &arena,
+    );
+    let s = emit_normalized(&mut t);
+    assert_eq!(s, "'cfg(target_arch = \"x86\")' = \"val\"\n");
+}
+
+#[test]
+fn emit_smart_string_inline_context() {
+    let arena = Arena::new();
+
+    // Inline table: newlines stay as basic strings
+    let mut inner = Table::default();
+    inner.set_style(TableStyle::Inline);
+    inner.insert_unique(Key::new("v"), Item::string("line1\nline2"), &arena);
+    let mut t = Table::default();
+    t.insert_unique(Key::new("tbl"), inner.into_item(), &arena);
+    let s = emit_normalized(&mut t);
+    assert_eq!(s, "tbl = { v = \"line1\\nline2\" }\n");
+
+    // Inline array inside inline table: newlines stay basic
+    let mut arr = Array::default();
+    arr.push(Item::string("line1\nline2"), &arena);
+    let mut inner = Table::default();
+    inner.set_style(TableStyle::Inline);
+    inner.insert_unique(Key::new("arr"), arr.into_item(), &arena);
+    let mut t = Table::default();
+    t.insert_unique(Key::new("tbl"), inner.into_item(), &arena);
+    let s = emit_normalized(&mut t);
+    assert_eq!(s, "tbl = { arr = [\"line1\\nline2\"] }\n");
+
+    // Expanded array: multiline literal is used
+    let mut arr = Array::default();
+    arr.set_expanded();
+    arr.push(Item::string("line1\nline2"), &arena);
+    let mut t = Table::default();
+    t.insert_unique(Key::new("arr"), arr.into_item(), &arena);
+    let s = emit_normalized(&mut t);
+    assert_eq!(s, "arr = [\n    '''\nline1\nline2''',\n]\n");
+}
+
+#[test]
+fn emit_smart_string_roundtrip() {
+    let arena = Arena::new();
+
+    let cases: &[(&str, &str)] = &[
+        ("multi", "line1\nline2\nline3"),
+        ("literal", r#"has "quotes" and \backslash"#),
+        ("basic", "plain text"),
+    ];
+    for &(key, original) in cases {
+        let mut t = Table::default();
+        t.insert_unique(Key::new(key), Item::string(original), &arena);
+        let emitted = emit_normalized(&mut t);
+        let doc = parse(&emitted, &arena).unwrap();
+        assert_eq!(
+            doc[key].as_str(),
+            Some(original),
+            "roundtrip {key}: {emitted}"
+        );
+    }
+
+    // Literal key roundtrip
+    let key = r#"cfg(target_arch = "x86")"#;
+    let mut t = Table::default();
+    t.insert_unique(Key::new(key), Item::string("val"), &arena);
+    let emitted = emit_normalized(&mut t);
+    let doc = parse(&emitted, &arena).unwrap();
+    assert_eq!(doc[key].as_str(), Some("val"));
 }
 
 #[test]
