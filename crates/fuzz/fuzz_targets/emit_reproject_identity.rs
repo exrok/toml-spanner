@@ -49,8 +49,8 @@ fuzz_target!(|data: &[u8]| -> Corpus {
     clear_flags_table(&mut dest);
 
     // Reproject, normalize, and emit via Formatting API.
-    let buf = toml_spanner::Formatting::preserved_from(&src_root)
-        .format_table_to_bytes(dest, &arena);
+    let buf =
+        toml_spanner::Formatting::preserved_from(&src_root).format_table_to_bytes(dest, &arena);
 
     // Invariant 1: valid UTF-8.
     let output = std::str::from_utf8(&buf).expect("emit must produce valid UTF-8");
@@ -72,8 +72,8 @@ fuzz_target!(|data: &[u8]| -> Corpus {
     {
         let src2 = toml_spanner::parse(output, &arena).unwrap();
         let dest2 = toml_spanner::parse(output, &arena).unwrap().into_table();
-        let buf2 = toml_spanner::Formatting::preserved_from(&src2)
-            .format_table_to_bytes(dest2, &arena);
+        let buf2 =
+            toml_spanner::Formatting::preserved_from(&src2).format_table_to_bytes(dest2, &arena);
         assert!(
             buf == buf2,
             "emit is not idempotent!\ninput:\n{text}\nfirst:\n{output}\nsecond:\n{}",

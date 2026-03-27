@@ -193,7 +193,7 @@ pub mod flatten_any {
         // - finish() passes the shallow table to FromToml::from_toml(&Item),
         //   which only reads through shared references
         let shallow = unsafe { std::ptr::read(item) };
-        partial.table.insert(*key, shallow, ctx.arena);
+        partial.table.insert_unique(*key, shallow, ctx.arena);
         Ok(())
     }
 
@@ -218,7 +218,7 @@ pub mod flatten_any {
             return Err(ToTomlError::from("flatten_any: expected a table"));
         };
         for (key, val) in src {
-            table.insert(key, val, arena);
+            table.insert_unique(key, val, arena);
         }
         Ok(())
     }

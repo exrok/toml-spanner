@@ -64,7 +64,10 @@ enum FieldAttrInner {
     With(Vec<TokenTree>),
     Flatten,
     Alias(Literal),
-    DeprecatedAlias { tag: Option<Vec<TokenTree>>, alias: Literal },
+    DeprecatedAlias {
+        tag: Option<Vec<TokenTree>>,
+        alias: Literal,
+    },
     Style(Ident),
 }
 
@@ -778,7 +781,9 @@ fn parse_single_field_attr(
             let style_name = style_ident.to_string();
             match style_name.as_str() {
                 "Header" | "Inline" | "Dotted" | "Implicit" => (),
-                _ => throw!("Unknown style, expected Header, Inline, Dotted, or Implicit" @ style_ident.span()),
+                _ => {
+                    throw!("Unknown style, expected Header, Inline, Dotted, or Implicit" @ style_ident.span())
+                }
             }
             trait_set &= TO_TOML;
             attrs.attrs.push(FieldAttr {
@@ -889,9 +894,7 @@ fn parse_attrs(toks: TokenStream, func: &mut dyn FnMut(TraitSet, Ident, &mut Vec
                         ident = true_ident;
                         continue 'processing;
                     }
-                    TokenTree::Group(group)
-                        if group.delimiter() == Delimiter::Bracket =>
-                    {
+                    TokenTree::Group(group) if group.delimiter() == Delimiter::Bracket => {
                         buf.push(TokenTree::Group(group));
                         let Some(next) = toks.next() else { break };
                         let TokenTree::Punct(p) = next else {
@@ -965,19 +968,27 @@ fn option_inner_ty_ast(ty: &[TokenTree]) -> &[TokenTree] {
 }
 
 pub fn scan_fields<'a>(target: &mut DeriveTargetInner<'a>, fields: &mut Vec<Field<'a>>) {
-    let has_type_generics = target.generics.iter().any(|g| matches!(g.kind, GenericKind::Type));
+    let has_type_generics = target
+        .generics
+        .iter()
+        .any(|g| matches!(g.kind, GenericKind::Type));
     if !has_type_generics {
         return;
     }
 
     for field in fields {
         for tt in field.ty {
-            let TokenTree::Ident(ident) = tt else { continue; };
+            let TokenTree::Ident(ident) = tt else {
+                continue;
+            };
             let ident_str = ident.to_string();
-            let is_generic = target.generics.iter().any(|g| {
-                matches!(g.kind, GenericKind::Type) && g.ident.to_string() == ident_str
-            });
-            if !is_generic { continue; }
+            let is_generic = target
+                .generics
+                .iter()
+                .any(|g| matches!(g.kind, GenericKind::Type) && g.ident.to_string() == ident_str);
+            if !is_generic {
+                continue;
+            }
 
             field.flags |= Field::GENERIC;
             if field.flags & Field::WITH_FLATTEN != 0 {
@@ -1022,7 +1033,11 @@ pub fn parse_enum<'a>(
             EnumKind::Struct => {
                 target.enum_flags |= ENUM_CONTAINS_STRUCT_VARIANT;
                 let start = field_buf.len();
-                parse_struct_fields(field_buf, &tt_buf[variant.buf_start..variant.buf_end], attr_buf);
+                parse_struct_fields(
+                    field_buf,
+                    &tt_buf[variant.buf_start..variant.buf_end],
+                    attr_buf,
+                );
                 variant.buf_start = start;
                 variant.buf_end = field_buf.len();
             }

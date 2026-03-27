@@ -97,7 +97,8 @@ impl<'de> toml_spanner::FromToml<'de> for TomlOptLevel {
                 }
             }
             _ => {
-                Err(ctx.error_expected_but_found(&"an optimization level (integer or string)", item))
+                Err(ctx
+                    .error_expected_but_found(&"an optimization level (integer or string)", item))
             }
         }
     }
@@ -135,10 +136,9 @@ impl<'de> toml_spanner::FromToml<'de> for TomlDebugInfo {
                     ),
                 )),
             },
-            _ => {
-                Err(ctx
-                    .error_expected_but_found(&"a boolean, integer, or string for debug info", item))
-            }
+            _ => Err(
+                ctx.error_expected_but_found(&"a boolean, integer, or string for debug info", item)
+            ),
         }
     }
 }
@@ -309,8 +309,10 @@ impl<'de> toml_spanner::FromToml<'de> for InheritableVecStringOrBool {
                 let field = <TomlInheritedField as toml_spanner::FromToml>::from_toml(ctx, item)?;
                 Ok(InheritableField::Inherit(field))
             }
-            _ => Err(ctx
-                .error_expected_but_found(&"a boolean, array of strings, or workspace table", item)),
+            _ => Err(ctx.error_expected_but_found(
+                &"a boolean, array of strings, or workspace table",
+                item,
+            )),
         }
     }
 }

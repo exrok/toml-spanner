@@ -12,8 +12,7 @@ fuzz_target!(|data: &[u8]| -> Corpus {
     let arena = Arena::new();
     let root = fuzz::gen_tree::gen_root_table(&mut g, &arena);
 
-    let buf1 = toml_spanner::Formatting::default()
-        .format_table_to_bytes(root, &arena);
+    let buf1 = toml_spanner::Formatting::default().format_table_to_bytes(root, &arena);
     let emitted = std::str::from_utf8(&buf1).expect("emit must produce valid UTF-8");
 
     let arena2 = Arena::new();
@@ -22,8 +21,8 @@ fuzz_target!(|data: &[u8]| -> Corpus {
     });
 
     // Idempotency: re-emitting the parsed output must produce identical bytes.
-    let buf2 = toml_spanner::Formatting::default()
-        .format_table_to_bytes(root2.into_table(), &arena2);
+    let buf2 =
+        toml_spanner::Formatting::default().format_table_to_bytes(root2.into_table(), &arena2);
     assert!(
         buf1 == buf2,
         "emit is not idempotent!\nfirst emit:\n{emitted}\nsecond emit:\n{}",

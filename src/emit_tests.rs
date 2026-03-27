@@ -9,7 +9,7 @@ macro_rules! item {
     ($($kind:ident @)? { $( $key:ident: $p1:tt $(@ $p2:tt)? ),* $(,)? } in $arena: ident) => {{
         #[allow(unused_mut)]
         let mut t = Table::default();
-        $( t.insert(Key::new(stringify!($key)), item!($p1 $(@ $p2)? in $arena), &$arena); )*
+        $( t.insert_unique(Key::new(stringify!($key)), item!($p1 $(@ $p2)? in $arena), &$arena); )*
         $(t.set_style(TableStyle::$kind);)?
         t.into_item()
     }};
@@ -25,7 +25,7 @@ macro_rules! item {
 macro_rules! table {
     (in $arena:ident; $( $key:ident:  $p1:tt $(@ $p2:tt)?),+ $(,)? ) => {{
         let mut t = Table::default();
-        $( t.insert(Key::new(stringify!($key)), item!($p1 $(@ $p2)? in $arena), &$arena); )+
+        $( t.insert_unique(Key::new(stringify!($key)), item!($p1 $(@ $p2)? in $arena), &$arena); )+
         t
     }};
 }
@@ -576,13 +576,13 @@ fn emit_string_escape_sequences() {
     // Exercises format_string escape paths: backslash, newline, tab, etc.
     let arena = Arena::new();
     let mut t = Table::default();
-    t.insert(
+    t.insert_unique(
         Key::new("esc"),
         Item::string("line1\nline2\ttab\\back\"quote"),
         &arena,
     );
-    t.insert(Key::new("ctrl"), Item::string("\r\u{0008}\u{000C}"), &arena);
-    t.insert(Key::new("low"), Item::string("\x01\x1F"), &arena);
+    t.insert_unique(Key::new("ctrl"), Item::string("\r\u{0008}\u{000C}"), &arena);
+    t.insert_unique(Key::new("low"), Item::string("\x01\x1F"), &arena);
     let s = emit_normalized(&mut t);
     assert!(s.contains(r#"\n"#), "newline escape: {s}");
     assert!(s.contains(r#"\t"#), "tab escape: {s}");
@@ -599,10 +599,10 @@ fn emit_special_floats() {
     // Exercises format_float NaN and infinity paths
     let arena = Arena::new();
     let mut t = Table::default();
-    t.insert(Key::new("pos_nan"), Item::from(f64::NAN), &arena);
-    t.insert(Key::new("neg_nan"), Item::from(-f64::NAN), &arena);
-    t.insert(Key::new("pos_inf"), Item::from(f64::INFINITY), &arena);
-    t.insert(Key::new("neg_inf"), Item::from(f64::NEG_INFINITY), &arena);
+    t.insert_unique(Key::new("pos_nan"), Item::from(f64::NAN), &arena);
+    t.insert_unique(Key::new("neg_nan"), Item::from(-f64::NAN), &arena);
+    t.insert_unique(Key::new("pos_inf"), Item::from(f64::INFINITY), &arena);
+    t.insert_unique(Key::new("neg_inf"), Item::from(f64::NEG_INFINITY), &arena);
     let s = emit_normalized(&mut t);
     assert!(s.contains("nan"), "NaN: {s}");
     assert!(s.contains("inf"), "infinity: {s}");
@@ -618,13 +618,13 @@ fn emit_nested_inline_dotted() {
     inner.set_style(TableStyle::Dotted);
     let mut deep = Table::default();
     deep.set_style(TableStyle::Dotted);
-    deep.insert(Key::new("val"), Item::from(42i64), &arena);
-    inner.insert(Key::new("deep"), deep.into_item(), &arena);
-    inner.insert(Key::new("x"), Item::from(1i64), &arena);
-    t.insert(Key::new("outer"), inner.into_item(), &arena);
+    deep.insert_unique(Key::new("val"), Item::from(42i64), &arena);
+    inner.insert_unique(Key::new("deep"), deep.into_item(), &arena);
+    inner.insert_unique(Key::new("x"), Item::from(1i64), &arena);
+    t.insert_unique(Key::new("outer"), inner.into_item(), &arena);
     t.set_style(TableStyle::Inline);
     let mut root = Table::default();
-    root.insert(Key::new("t"), t.into_item(), &arena);
+    root.insert_unique(Key::new("t"), t.into_item(), &arena);
     let s = emit_normalized(&mut root);
     assert!(s.contains("42"), "deep value: {s}");
 }
@@ -701,9 +701,9 @@ fn auto_style_string_boundary() {
     let long = "a".repeat(31);
 
     let mut inner_short = Table::default();
-    inner_short.insert(Key::new("s"), Item::string(&short), &arena);
+    inner_short.insert_unique(Key::new("s"), Item::string(&short), &arena);
     let mut root_short = Table::default();
-    root_short.insert(Key::new("t"), inner_short.into_item(), &arena);
+    root_short.insert_unique(Key::new("t"), inner_short.into_item(), &arena);
     let s = emit_normalized(&mut root_short);
     assert!(
         s.contains("t = { "),
@@ -711,9 +711,9 @@ fn auto_style_string_boundary() {
     );
 
     let mut inner_long = Table::default();
-    inner_long.insert(Key::new("s"), Item::string(&long), &arena);
+    inner_long.insert_unique(Key::new("s"), Item::string(&long), &arena);
     let mut root_long = Table::default();
-    root_long.insert(Key::new("t"), inner_long.into_item(), &arena);
+    root_long.insert_unique(Key::new("t"), inner_long.into_item(), &arena);
     let s = emit_normalized(&mut root_long);
     assert!(
         s.contains("[t]"),
@@ -725,7 +725,7 @@ fn auto_style_string_boundary() {
 fn auto_style_string_with_control_chars() {
     let arena = Arena::new();
     let mut root = Table::default();
-    root.insert(Key::new("t"), item!({ s: "hi\nthere" } in arena), &arena);
+    root.insert_unique(Key::new("t"), item!({ s: "hi\nthere" } in arena), &arena);
     let s = emit_normalized(&mut root);
     assert!(
         s.contains("[t]"),
@@ -812,7 +812,7 @@ fn expanded_array_nested() {
     outer.push(Item::from("beta"), &arena);
 
     let mut root = Table::default();
-    root.insert(Key::new("values"), outer.into_item(), &arena);
+    root.insert_unique(Key::new("values"), outer.into_item(), &arena);
     let s = emit_normalized(&mut root);
     assert_eq!(
         s,
@@ -836,7 +836,7 @@ values = [
     outer2.push(Item::from("beta"), &arena);
 
     let mut root2 = Table::default();
-    root2.insert(Key::new("values"), outer2.into_item(), &arena);
+    root2.insert_unique(Key::new("values"), outer2.into_item(), &arena);
     let s2 = emit_normalized(&mut root2);
     assert_eq!(
         s2,
@@ -869,7 +869,7 @@ fn expanded_array_nested_small_inner_stays_inline() {
     outer.push(Item::from("y"), &arena);
 
     let mut root = Table::default();
-    root.insert(Key::new("arr"), outer.into_item(), &arena);
+    root.insert_unique(Key::new("arr"), outer.into_item(), &arena);
     let s = emit_normalized(&mut root);
     assert_eq!(
         s,
@@ -896,10 +896,10 @@ fn expanded_array_inside_inline_table_forced_inline() {
 
     let mut inner = Table::default();
     inner.set_style(TableStyle::Inline);
-    inner.insert(Key::new("nums"), arr.into_item(), &arena);
+    inner.insert_unique(Key::new("nums"), arr.into_item(), &arena);
 
     let mut root = Table::default();
-    root.insert(Key::new("t"), inner.into_item(), &arena);
+    root.insert_unique(Key::new("t"), inner.into_item(), &arena);
     let s = emit_normalized(&mut root);
     assert_eq!(s, "t = { nums = [1, 2, 3] }\n");
 }
@@ -914,7 +914,7 @@ fn expanded_explicit_set() {
     arr.set_expanded();
 
     let mut root = Table::default();
-    root.insert(Key::new("x"), arr.into_item(), &arena);
+    root.insert_unique(Key::new("x"), arr.into_item(), &arena);
     let s = emit_normalized(&mut root);
     assert_eq!(s, "x = [\n    1,\n    2,\n]\n");
 }
@@ -936,12 +936,12 @@ fn expanded_array_in_inline_table() {
 
     let mut condition = Table::default();
     condition.set_style(TableStyle::Dotted);
-    condition.insert(Key::new("profile"), Item::from("sim"), &arena);
+    condition.insert_unique(Key::new("profile"), Item::from("sim"), &arena);
 
     let mut obj = Table::default();
     obj.set_style(TableStyle::Inline);
-    obj.insert(Key::new("if"), condition.into_item(), &arena);
-    obj.insert(Key::new("then"), then_arr.into_item(), &arena);
+    obj.insert_unique(Key::new("if"), condition.into_item(), &arena);
+    obj.insert_unique(Key::new("then"), then_arr.into_item(), &arena);
 
     let mut cmd = Array::default();
     cmd.push(Item::from("cargo"), &arena);
@@ -949,14 +949,14 @@ fn expanded_array_in_inline_table() {
     cmd.push(obj.into_item(), &arena);
 
     let mut backend = Table::default();
-    backend.insert(Key::new("pwd"), Item::from("backend/webserver"), &arena);
-    backend.insert(Key::new("cmd"), cmd.into_item(), &arena);
+    backend.insert_unique(Key::new("pwd"), Item::from("backend/webserver"), &arena);
+    backend.insert_unique(Key::new("cmd"), cmd.into_item(), &arena);
 
     let mut service = Table::default();
-    service.insert(Key::new("backend"), backend.into_item(), &arena);
+    service.insert_unique(Key::new("backend"), backend.into_item(), &arena);
 
     let mut root = Table::default();
-    root.insert(Key::new("service"), service.into_item(), &arena);
+    root.insert_unique(Key::new("service"), service.into_item(), &arena);
 
     let s = emit_normalized(&mut root);
     assert_eq!(
@@ -1007,7 +1007,7 @@ fn expanded_array_indent_spaces_2() {
     arr.set_style(ArrayStyle::Inline);
     arr.set_expanded();
     let mut root = Table::default();
-    root.insert(Key::new("values"), arr.into_item(), &arena);
+    root.insert_unique(Key::new("values"), arr.into_item(), &arena);
     let s = emit_with_indent(&mut root, Indent::Spaces(2));
     assert_eq!(
         s,
@@ -1026,7 +1026,7 @@ fn expanded_array_indent_tab() {
     arr.set_style(ArrayStyle::Inline);
     arr.set_expanded();
     let mut root = Table::default();
-    root.insert(Key::new("values"), arr.into_item(), &arena);
+    root.insert_unique(Key::new("values"), arr.into_item(), &arena);
     let s = emit_with_indent(&mut root, Indent::Tab);
     assert_eq!(s, "values = [\n\t1,\n\t2,\n\t3,\n]\n");
 }
@@ -1049,7 +1049,7 @@ fn expanded_array_nested_indent_tab() {
     outer.push(Item::from("y"), &arena);
 
     let mut root = Table::default();
-    root.insert(Key::new("v"), outer.into_item(), &arena);
+    root.insert_unique(Key::new("v"), outer.into_item(), &arena);
     let s = emit_with_indent(&mut root, Indent::Tab);
     assert_eq!(
         s,
@@ -1084,7 +1084,7 @@ fn expanded_array_nested_indent_spaces_2() {
     outer.push(Item::from("y"), &arena);
 
     let mut root = Table::default();
-    root.insert(Key::new("v"), outer.into_item(), &arena);
+    root.insert_unique(Key::new("v"), outer.into_item(), &arena);
     let s = emit_with_indent(&mut root, Indent::Spaces(2));
     assert_eq!(
         s,

@@ -25,12 +25,7 @@ fuzz_target!(|data: &[u8]| -> Corpus {
         toml_spanner::parse(emitted, &arena2).expect("emitted output must parse as valid TOML");
 
     // Items must be semantically equal with matching flags.
-    assert_items_equal_with_flags(
-        doc.table().as_item(),
-        doc2.table().as_item(),
-        text,
-        emitted,
-    );
+    assert_items_equal_with_flags(doc.table().as_item(), doc2.table().as_item(), text, emitted);
 
     // Idempotency: emitting the re-parsed output must produce identical bytes.
     let buf2 = toml_spanner::Formatting::default()

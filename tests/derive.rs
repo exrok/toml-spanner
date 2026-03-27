@@ -1269,7 +1269,7 @@ mod flatten_key_helper {
         table: &mut Table<'a>,
     ) -> Result<(), ToTomlError> {
         for s in val {
-            table.insert(Key::new(arena.alloc_str(s)), Item::from(true), arena);
+            table.insert_unique(Key::new(arena.alloc_str(s)), Item::from(true), arena);
         }
         Ok(())
     }

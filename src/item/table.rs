@@ -47,7 +47,7 @@ impl<'de> InnerTable<'de> {
     }
 
     /// Inserts a key-value pair. Does **not** check for duplicates.
-    pub fn insert(
+    pub fn insert_unique(
         &mut self,
         key: Key<'de>,
         item: Item<'de>,
@@ -343,19 +343,28 @@ impl<'de> Iterator for IntoIter<'de> {
 
 impl ExactSizeIterator for IntoIter<'_> {}
 
-/// A TOML table with span information.
+/// A TOML table, a transient collection of key/value pairs inside an [`Item`].
 ///
-/// A `Table` is the top-level value returned by [`parse`](crate::parse) and is
-/// also the value inside any `[section]` or inline `{ ... }` table in TOML.
-/// It stores `(`[`Key`]`, `[`Item`]`)` pairs in insertion order.
+/// `Table` is an intermediate structure for converting between Rust types and
+/// TOML through [`FromToml`] and [`ToToml`]. It is the top level value
+/// returned by [`parse`](crate::parse) and the value inside any `[section]`
+/// or inline `{ ... }` table.
+///
+/// <div class="warning">
+///
+/// Entries are stored in insertion order, but the TOML specification defines
+/// table keys as unordered. Avoid relying on iteration order for semantic
+/// purposes.
+///
+/// </div>
 ///
 /// # Accessing values
 ///
-/// - **Index operators**: `table["key"]` returns a [`MaybeItem`] that never
-///   panics on missing keys, and supports chained indexing.
-/// - **`get` / `get_mut`**: return `Option<&Item>` / `Option<&mut Item>`.
+/// Use `table["key"]` for index access, which returns a [`MaybeItem`] that
+/// never panics on missing keys and supports chained indexing. Use
+/// [`get`](Self::get) or [`get_mut`](Self::get_mut) for `Option` based access.
 ///
-/// For type-safe extraction, use [`Item::table_helper`](crate::Item::table_helper)
+/// For structured extraction, use [`Item::table_helper`](crate::Item::table_helper)
 /// to create a [`TableHelper`](crate::de::TableHelper).
 ///
 /// # Lookup performance
@@ -374,15 +383,15 @@ impl ExactSizeIterator for IntoIter<'_> {}
 ///
 /// To build a table programmatically, create one with [`Table::new`] and
 /// insert entries with [`Table::insert`]. An [`Arena`](crate::Arena) is
-/// required because entries are arena-allocated.
+/// required because entries are arena allocated.
 ///
 /// # Iteration
 ///
 /// `Table` implements [`IntoIterator`] (both by reference and by value),
 /// yielding `(`[`Key`]`, `[`Item`]`)` pairs.
 ///
-/// Removal via [`remove_entry`](Self::remove_entry) uses swap-remove and may reorder
-/// remaining entries.
+/// [`FromToml`]: crate::FromToml
+/// [`ToToml`]: crate::ToToml
 #[repr(C)]
 pub struct Table<'de> {
     pub(crate) value: InnerTable<'de>,
@@ -445,11 +454,25 @@ impl std::fmt::Debug for Table<'_> {
 }
 
 impl<'de> Table<'de> {
-    /// Inserts a key-value pair. Does **not** check for duplicates.
+    /// Inserts a key-value pair, replacing any existing entry with the same key.
+    ///
+    /// Performs an O(n) linear scan for duplicates. Prefer [`Table::insert_unique`]
+    /// when the key is known to be absent.
     pub fn insert(&mut self, key: Key<'de>, value: Item<'de>, arena: &'de Arena) {
-        self.value.insert(key, value, arena);
+        if let Some(existing) = self.get_mut(&key.name) {
+            *existing = value;
+            return;
+        }
+        self.value.insert_unique(key, value, arena);
     }
 
+    /// Inserts a key-value pair without checking for duplicates.
+    ///
+    /// Inserting a duplicate key is sound but the behavior is unspecified. It may
+    /// panic, produce invalid TOML on emit, or cause deserialization errors.
+    pub fn insert_unique(&mut self, key: Key<'de>, value: Item<'de>, arena: &'de Arena) {
+        self.value.insert_unique(key, value, arena);
+    }
     /// Returns the number of entries.
     #[inline]
     pub fn len(&self) -> usize {

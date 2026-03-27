@@ -355,9 +355,11 @@ fn emit_table_field_deser(
         field.attr.for_each_alias(FROM_TOML, &mut |alias| {
             splat!(out; | [@alias.clone().into()]);
         });
-        field.attr.for_each_deprecated_alias(FROM_TOML, &mut |_, alias| {
-            splat!(out; | [@alias.clone().into()]);
-        });
+        field
+            .attr
+            .for_each_deprecated_alias(FROM_TOML, &mut |_, alias| {
+                splat!(out; | [@alias.clone().into()]);
+            });
         splat!(out; =>);
         let arm_body_at = out.buf.len();
 
@@ -371,28 +373,34 @@ fn emit_table_field_deser(
 
         if has_deprecated_aliases {
             let name_for_new = name_lit.clone();
-            field.attr.for_each_deprecated_alias(FROM_TOML, &mut |tag, alias| {
-                splat!(out;
-                    if __key . name == [@alias.clone().into()] {
-                        __ctx . report_deprecated_field(
-                            [if let Some(tag_tokens) = tag {
-                                out.buf.extend_from_slice(tag_tokens);
-                            } else {
-                                out.buf.push(TokenTree::Literal(Literal::u32_suffixed(0)));
-                            }]
-                            , & [@alias.clone().into()]
-                            , & [@name_for_new.clone().into()]
-                            , __key . span
-                            , __item
-                        );
-                    }
-                );
-            });
+            field
+                .attr
+                .for_each_deprecated_alias(FROM_TOML, &mut |tag, alias| {
+                    splat!(out;
+                        if __key . name == [@alias.clone().into()] {
+                            __ctx . report_deprecated_field(
+                                [if let Some(tag_tokens) = tag {
+                                    out.buf.extend_from_slice(tag_tokens);
+                                } else {
+                                    out.buf.push(TokenTree::Literal(Literal::u32_suffixed(0)));
+                                }]
+                                , & [@alias.clone().into()]
+                                , & [@name_for_new.clone().into()]
+                                , __key . span
+                                , __item
+                            );
+                        }
+                    );
+                });
         }
 
         // match from_toml_call { Ok(__val) => { field = Some(__val); } Err(...) }
         splat!(out; match);
-        let ty = if is_option { option_inner_ty(field.ty) } else { field.ty };
+        let ty = if is_option {
+            option_inner_ty(field.ty)
+        } else {
+            field.ty
+        };
         emit_from_toml_call(out, ctx, field, ty);
         let match_body_at = out.buf.len();
         splat!(out;
@@ -526,7 +534,7 @@ fn emit_table_field_ser(
             };
             let insert_start = out.buf.len();
             splat!(out;
-                [#table_id].insert(
+                [#table_id].insert_unique(
                     [#ctx.crate_path]::Key::new([@name_lit.into()]),
                     [~with]::to_toml([@TokenTree::Group(Group::new(Delimiter::None, val_expr))], __arena)?
                     [?(let Some(style) = style) .with_style_of_array_or_table([#ctx.crate_path]::TableStyle::[#style])],
@@ -543,7 +551,7 @@ fn emit_table_field_ser(
                 if let Some(__val) = [#ctx.crate_path]::ToToml::to_optional_toml(
                     [@TokenTree::Group(Group::new(Delimiter::None, field_ref.clone()))], __arena)?
                 {
-                    [#table_id].insert(
+                    [#table_id].insert_unique(
                         [#ctx.crate_path]::Key::new([@name_lit.into()]),
                         __val
                         [?(let Some(style) = style) .with_style_of_array_or_table([#ctx.crate_path]::TableStyle::[#style])],
@@ -553,7 +561,7 @@ fn emit_table_field_ser(
             );
         } else {
             splat!(out;
-                [#table_id].insert(
+                [#table_id].insert_unique(
                     [#ctx.crate_path]::Key::new([@name_lit.into()]),
                     [#ctx.crate_path]::ToToml::to_toml(
                         [@TokenTree::Group(Group::new(Delimiter::None, field_ref.clone()))], __arena)?
@@ -690,7 +698,7 @@ fn handle_struct(output: &mut RustWriter, target: &DeriveTargetInner, fields: &[
         }
     }
 
-    if target.to_toml  {
+    if target.to_toml {
         if target.transparent_impl {
             let [single_field] = fields else {
                 throw!("Struct must contain a single field to use transparent")
@@ -724,7 +732,7 @@ fn handle_tuple_struct(output: &mut RustWriter, target: &DeriveTargetInner, fiel
         }
     }
 
-    if target.to_toml  {
+    if target.to_toml {
         if let [_single_field] = fields {
             let body = token_stream! {output;
                 [#ctx.crate_path]::ToToml::to_toml(&self.[@TokenTree::Literal(Literal::usize_unsuffixed(0))], __arena)
@@ -765,7 +773,7 @@ fn emit_tag_insert(
 ) {
     let table_id = Ident::new(table_var, Span::mixed_site());
     splat!(out;
-        [#: &table_id].insert(
+        [#: &table_id].insert_unique(
             [#ctx.crate_path]::Key::new([@tag_lit.clone().into()]),
             [#ctx.crate_path]::Item::string([@name_lit.into()]),
             __arena,
@@ -816,7 +824,12 @@ fn emit_tag_value(out: &mut RustWriter, tag: Option<&[TokenTree]>) {
     }
 }
 
-fn emit_wildcard_arm(out: &mut RustWriter, _ctx: &Ctx, other_variant: Option<&EnumVariant>, msg: &str) {
+fn emit_wildcard_arm(
+    out: &mut RustWriter,
+    _ctx: &Ctx,
+    other_variant: Option<&EnumVariant>,
+    msg: &str,
+) {
     if let Some(ov) = other_variant {
         splat!(out; _ => Ok(Self::[#: ov.name]),);
     } else {
@@ -950,7 +963,7 @@ fn enum_to_toml(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVariant], mode:
                             [if let Some(tag) = tag_lit {
                                 emit_tag_insert(out, ctx, "table", tag, name_lit.clone());
                             }]
-                            table.insert(
+                            table.insert_unique(
                                 [#ctx.crate_path]::Key::new([match mode {
                                     TagMode::External => { out.buf.push(name_lit.into()); }
                                     TagMode::Adjacent(_, content) => { out.buf.push(TokenTree::Literal((*content).clone())); }
@@ -968,7 +981,11 @@ fn enum_to_toml(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVariant], mode:
                 let n = count_ser_fields(variant.fields);
                 let arm_body_start = out.buf.len();
 
-                let table_cap = n + if matches!(mode, TagMode::Internal(_)) { 1 } else { 0 };
+                let table_cap = n + if matches!(mode, TagMode::Internal(_)) {
+                    1
+                } else {
+                    0
+                };
                 emit_table_alloc(out, ctx, "table", table_cap);
                 if let TagMode::Internal(tag) = mode {
                     emit_tag_insert(out, ctx, "table", tag, name_lit.clone());
@@ -978,7 +995,7 @@ fn enum_to_toml(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVariant], mode:
                     TagMode::External => {
                         emit_table_alloc(out, ctx, "outer", 1);
                         splat!(out;
-                            outer.insert(
+                            outer.insert_unique(
                                 [#ctx.crate_path]::Key::new([@name_lit.into()]),
                                 table.into_item(), __arena,
                             );
@@ -989,7 +1006,7 @@ fn enum_to_toml(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVariant], mode:
                         emit_table_alloc(out, ctx, "outer", 2);
                         emit_tag_insert(out, ctx, "outer", tag, name_lit);
                         splat!(out;
-                            outer.insert(
+                            outer.insert_unique(
                                 [#ctx.crate_path]::Key::new([@TokenTree::Literal((*content).clone())]),
                                 table.into_item(), __arena,
                             );
@@ -1153,7 +1170,9 @@ fn enum_from_toml_internal(
     splat!(out; match __tag);
     let arms_at = out.buf.len();
     for variant in variants {
-        if variant.other { continue; }
+        if variant.other {
+            continue;
+        }
         let name_lit = variant_name_literal(ctx, variant);
         match variant.kind {
             EnumKind::None => {
@@ -1259,7 +1278,9 @@ fn enum_from_toml_adjacent(
     splat!(out; match __tag);
     let arms_at = out.buf.len();
     for variant in variants {
-        if variant.other { continue; }
+        if variant.other {
+            continue;
+        }
         let name_lit = variant_name_literal(ctx, variant);
         match variant.kind {
             EnumKind::None => {
@@ -1473,7 +1494,7 @@ fn handle_enum(output: &mut RustWriter, target: &DeriveTargetInner, variants: &[
         }
     }
 
-    if target.to_toml  {
+    if target.to_toml {
         if is_string_enum {
             enum_to_toml_string(output, &ctx, variants);
         } else {

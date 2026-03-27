@@ -1126,7 +1126,10 @@ unknown_field = true
     };
     assert!(result.is_err());
     assert_eq!(doc.ctx.errors.len(), 1);
-    assert!(matches!(doc.ctx.errors[0].kind(), ErrorKind::UnexpectedKey { .. }));
+    assert!(matches!(
+        doc.ctx.errors[0].kind(),
+        ErrorKind::UnexpectedKey { .. }
+    ));
     assert!(doc.ctx.errors[0].path().is_some());
     assert_eq!(
         format!("{}", doc.ctx.errors[0]),

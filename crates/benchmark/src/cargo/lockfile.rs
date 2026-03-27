@@ -66,7 +66,9 @@ impl TomlLockfilePatch {
 }
 
 /// Serialization of lockfiles dependencies
-#[derive(Serialize, Deserialize, Debug, PartialOrd, Ord, PartialEq, Eq, toml_spanner_macros::Toml)]
+#[derive(
+    Serialize, Deserialize, Debug, PartialOrd, Ord, PartialEq, Eq, toml_spanner_macros::Toml,
+)]
 pub struct TomlLockfileDependency {
     /// The name of the dependency.
     pub name: String,

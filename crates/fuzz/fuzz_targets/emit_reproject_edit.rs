@@ -68,8 +68,8 @@ fuzz_target!(|data: &[u8]| -> Corpus {
     {
         let src2 = toml_spanner::parse(output, &arena).unwrap();
         let dest2 = src2.table().clone_in(&arena);
-        let buf2 = toml_spanner::Formatting::preserved_from(&src2)
-            .format_table_to_bytes(dest2, &arena);
+        let buf2 =
+            toml_spanner::Formatting::preserved_from(&src2).format_table_to_bytes(dest2, &arena);
         assert!(
             buf == buf2,
             "emit is not idempotent!\n\

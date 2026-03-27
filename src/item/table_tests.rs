@@ -23,26 +23,26 @@ fn inner_insert_and_realloc() {
     assert_eq!(t.len(), 0);
 
     // First insert triggers initial allocation
-    t.insert(key("k0"), ival(0), &arena);
+    t.insert_unique(key("k0"), ival(0), &arena);
     assert_eq!(t.len(), 1);
     assert_eq!(t.get("k0").unwrap().as_i64(), Some(0));
 
     // Second insert fills initial capacity (2)
-    t.insert(key("k1"), ival(1), &arena);
+    t.insert_unique(key("k1"), ival(1), &arena);
     assert_eq!(t.len(), 2);
     assert_eq!(t.get("k0").unwrap().as_i64(), Some(0));
     assert_eq!(t.get("k1").unwrap().as_i64(), Some(1));
 
     // Third insert triggers realloc from 2 to 4
-    t.insert(key("k2"), ival(2), &arena);
+    t.insert_unique(key("k2"), ival(2), &arena);
     assert_eq!(t.len(), 3);
     assert_eq!(t.get("k0").unwrap().as_i64(), Some(0));
     assert_eq!(t.get("k1").unwrap().as_i64(), Some(1));
     assert_eq!(t.get("k2").unwrap().as_i64(), Some(2));
 
     // Fourth and fifth inserts trigger realloc from 4 to 8
-    t.insert(key("k3"), ival(3), &arena);
-    t.insert(key("k4"), ival(4), &arena);
+    t.insert_unique(key("k3"), ival(3), &arena);
+    t.insert_unique(key("k4"), ival(4), &arena);
     assert_eq!(t.len(), 5);
     assert!(!t.is_empty());
     for i in 0..5 {
@@ -55,8 +55,8 @@ fn inner_insert_and_realloc() {
 fn inner_get_and_mutate() {
     let arena = Arena::new();
     let mut t = InnerTable::new();
-    t.insert(key("a"), ival(10), &arena);
-    t.insert(key("b"), ival(20), &arena);
+    t.insert_unique(key("a"), ival(10), &arena);
+    t.insert_unique(key("b"), ival(20), &arena);
 
     // get: found and not-found
     assert_eq!(t.get("a").unwrap().as_i64(), Some(10));
@@ -89,22 +89,22 @@ fn inner_remove() {
 
     // Remove only element
     let mut t = InnerTable::new();
-    t.insert(key("a"), ival(1), &arena);
+    t.insert_unique(key("a"), ival(1), &arena);
     let (_, v) = t.remove_entry("a").unwrap();
     assert_eq!(v.as_i64(), Some(1));
     assert!(t.is_empty());
 
     // Remove not-found
     let mut t = InnerTable::new();
-    t.insert(key("a"), ival(1), &arena);
+    t.insert_unique(key("a"), ival(1), &arena);
     assert!(t.remove_entry("missing").is_none());
     assert_eq!(t.len(), 1);
 
     // Swap-remove behavior: removing first swaps last element into its slot
     let mut t = InnerTable::new();
-    t.insert(key("a"), ival(1), &arena);
-    t.insert(key("b"), ival(2), &arena);
-    t.insert(key("c"), ival(3), &arena);
+    t.insert_unique(key("a"), ival(1), &arena);
+    t.insert_unique(key("b"), ival(2), &arena);
+    t.insert_unique(key("c"), ival(3), &arena);
     let (_, v) = t.remove_entry("a").unwrap();
     assert_eq!(v.as_i64(), Some(1));
     assert_eq!(t.len(), 2);
@@ -114,9 +114,9 @@ fn inner_remove() {
 
     // Swap-remove behavior: removing middle swaps last element into its slot
     let mut t = InnerTable::new();
-    t.insert(key("a"), ival(1), &arena);
-    t.insert(key("b"), ival(2), &arena);
-    t.insert(key("c"), ival(3), &arena);
+    t.insert_unique(key("a"), ival(1), &arena);
+    t.insert_unique(key("b"), ival(2), &arena);
+    t.insert_unique(key("c"), ival(3), &arena);
     let (_, v) = t.remove_entry("b").unwrap();
     assert_eq!(v.as_i64(), Some(2));
     assert_eq!(t.len(), 2);
@@ -126,16 +126,16 @@ fn inner_remove() {
 
     // Removing last element: no swap needed
     let mut t = InnerTable::new();
-    t.insert(key("a"), ival(1), &arena);
-    t.insert(key("b"), ival(2), &arena);
-    t.insert(key("c"), ival(3), &arena);
+    t.insert_unique(key("a"), ival(1), &arena);
+    t.insert_unique(key("b"), ival(2), &arena);
+    t.insert_unique(key("c"), ival(3), &arena);
     let (_, v) = t.remove_entry("c").unwrap();
     assert_eq!(v.as_i64(), Some(3));
     assert_eq!(t.len(), 2);
 
     // remove_entry returns both key and value
     let mut t = InnerTable::new();
-    t.insert(key("mykey"), ival(42), &arena);
+    t.insert_unique(key("mykey"), ival(42), &arena);
     let (k, v) = t.remove_entry("mykey").unwrap();
     assert_eq!(k.name, "mykey");
     assert_eq!(v.as_i64(), Some(42));
@@ -146,9 +146,9 @@ fn inner_remove() {
 fn inner_iterators() {
     let arena = Arena::new();
     let mut t = InnerTable::new();
-    t.insert(key("a"), ival(1), &arena);
-    t.insert(key("b"), ival(2), &arena);
-    t.insert(key("c"), ival(3), &arena);
+    t.insert_unique(key("a"), ival(1), &arena);
+    t.insert_unique(key("b"), ival(2), &arena);
+    t.insert_unique(key("c"), ival(3), &arena);
 
     // IntoIter: collect and verify
     let iter = IntoIter { table: t, index: 0 };
@@ -160,8 +160,8 @@ fn inner_iterators() {
 
     // IntoIter: size_hint updates after next()
     let mut t2 = InnerTable::new();
-    t2.insert(key("x"), ival(10), &arena);
-    t2.insert(key("y"), ival(20), &arena);
+    t2.insert_unique(key("x"), ival(10), &arena);
+    t2.insert_unique(key("y"), ival(20), &arena);
     let mut iter = IntoIter {
         table: t2,
         index: 0,
@@ -173,9 +173,9 @@ fn inner_iterators() {
 
 fn make_table<'a>(arena: &'a Arena) -> Table<'a> {
     let mut table = Table::new_spanned(Span::new(0, 100));
-    table.insert(key("a"), ival(1), arena);
-    table.insert(key("b"), ival(2), arena);
-    table.insert(key("c"), ival(3), arena);
+    table.insert_unique(key("a"), ival(1), arena);
+    table.insert_unique(key("b"), ival(2), arena);
+    table.insert_unique(key("c"), ival(3), arena);
     table
 }
 
@@ -274,7 +274,7 @@ fn default_and_debug() {
 
     // Table::Debug - public type
     let mut table = Table::new_spanned(Span::new(0, 10));
-    table.insert(key("y"), ival(99), &arena);
+    table.insert_unique(key("y"), ival(99), &arena);
     let debug = format!("{:?}", table);
     assert!(debug.contains("y") || debug.contains("99"));
 
@@ -305,9 +305,9 @@ fn index_operator() {
 
     // Nested table indexing
     let mut inner = InnerTable::new();
-    inner.insert(key("x"), ival(42), &arena);
+    inner.insert_unique(key("x"), ival(42), &arena);
     let mut outer = Table::new_spanned(Span::new(0, 50));
-    outer.insert(key("nested"), Item::table(inner, Span::new(0, 20)), &arena);
+    outer.insert_unique(key("nested"), Item::table(inner, Span::new(0, 20)), &arena);
     assert_eq!(outer["nested"]["x"].as_i64(), Some(42));
     assert!(outer["nested"]["y"].item().is_none());
 
@@ -320,8 +320,8 @@ fn index_operator() {
 fn as_item_and_into_item() {
     let arena = Arena::new();
     let mut table = Table::new_spanned(Span::new(0, 50));
-    table.insert(key("x"), ival(42), &arena);
-    table.insert(key("y"), ival(99), &arena);
+    table.insert_unique(key("x"), ival(42), &arena);
+    table.insert_unique(key("y"), ival(99), &arena);
 
     // as_item() returns a reference that preserves span and data
     let item_ref = table.as_item();
@@ -367,7 +367,7 @@ fn clone_in_preserves_kind() {
     let arena = Arena::new();
 
     let mut table = Table::new_spanned(Span::new(0, 10));
-    table.insert(key("k"), ival(1), &arena);
+    table.insert_unique(key("k"), ival(1), &arena);
 
     for kind in [
         TableStyle::Implicit,
@@ -386,10 +386,10 @@ fn clone_in_preserves_kind() {
 fn clone_in_nested_table() {
     let arena = Arena::new();
     let mut inner = InnerTable::new();
-    inner.insert(key("x"), ival(42), &arena);
+    inner.insert_unique(key("x"), ival(42), &arena);
     let mut outer = Table::new_spanned(Span::new(0, 50));
-    outer.insert(key("nested"), Item::table(inner, Span::new(0, 20)), &arena);
-    outer.insert(key("flat"), ival(7), &arena);
+    outer.insert_unique(key("nested"), Item::table(inner, Span::new(0, 20)), &arena);
+    outer.insert_unique(key("flat"), ival(7), &arena);
 
     let cloned = outer.clone_in(&arena);
     assert_eq!(cloned.len(), 2);

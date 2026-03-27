@@ -40,6 +40,19 @@ cmd = [
 pwd = "./crates/benchmark"
 profiles = ["runtime", "compile-time"]
 
+[action.fmt]
+sh = '''
+cargo fmt
+cargo fmt --manifest-path crates/third-party-integration-tests/Cargo.toml
+cargo fmt --manifest-path crates/fuzz/Cargo.toml
+cargo fmt --manifest-path crates/benchmark/Cargo.toml
+cargo fmt --manifest-path crates/error-examples/Cargo.toml
+cargo fmt --manifest-path crates/toml-test-harness/Cargo.toml
+cargo fmt --manifest-path crates/stress-tests/Cargo.toml
+cargo fmt --manifest-path crates/toml-spanner-macros-source/Cargo.toml
+cargo fmt --manifest-path crates/macro-preprocessor/Cargo.toml
+'''
+
 [action.build-macros]
 pwd = "./crates/macro-preprocessor/"
 cmd = [
@@ -86,6 +99,7 @@ info = "Requires `cargo-nextest` and miri."
 cmd = ["cargo", "+nightly", "miri", "nextest", "run"]
 tag = ["slow", "miri"]
 
+
 [test.miri-tests-32bit]
 cmd = [
     "cargo",
@@ -114,6 +128,50 @@ DECODER=$(cargo --config "target.'cfg(unix)'.runner = 'echo'" run --bin decoder 
 ENCODER=$(cargo --config "target.'cfg(unix)'.runner = 'echo'" run --bin encoder --release || exit 1)
 toml-test test -toml 1.1 "-decoder=$DECODER" "-encoder=$ENCODER"
 '''
+
+[test.check-workspace]
+cmd = ["cargo", "check", "--workspace", "--all-targets"]
+tag = ["fast"]
+
+[test.check-fuzz]
+pwd = "crates/fuzz"
+cmd = ["cargo", "check", "--all-targets"]
+tag = ["fast"]
+
+[test.check-benchmark]
+pwd = "crates/benchmark"
+cmd = ["cargo", "check", "--all-targets"]
+tag = ["fast"]
+
+[test.check-stress-tests]
+pwd = "crates/stress-tests"
+cmd = ["cargo", "check", "--all-targets"]
+tag = ["fast"]
+
+[test.check-toml-test-harness]
+pwd = "crates/toml-test-harness"
+cmd = ["cargo", "check", "--all-targets"]
+tag = ["fast"]
+
+[test.check-error-examples]
+pwd = "crates/error-examples"
+cmd = ["cargo", "check", "--all-targets"]
+tag = ["fast"]
+
+[test.check-third-party-integration-tests]
+pwd = "crates/third-party-integration-tests"
+cmd = ["cargo", "check", "--all-targets"]
+tag = ["fast"]
+
+[test.check-macro-preprocessor]
+pwd = "crates/macro-preprocessor"
+cmd = ["cargo", "check", "--all-targets"]
+tag = ["fast"]
+
+[test.check-macros-source]
+pwd = "crates/toml-spanner-macros-source"
+cmd = ["cargo", "check", "--all-targets"]
+tag = ["fast"]
 
 [test.typos]
 cmd = "typos"

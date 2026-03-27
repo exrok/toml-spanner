@@ -192,7 +192,7 @@ fuzz_target!(|data: &[u8]| -> Corpus {
             let mut dest_table = src_root.table().clone_in(&arena);
             let target = fuzz::exact::table_at_path_mut(&mut dest_table, table_path);
             let new_item = toml_spanner::Item::from(42i64);
-            target.insert(toml_spanner::Key::new(fresh_key), new_item, &arena);
+            target.insert_unique(toml_spanner::Key::new(fresh_key), new_item, &arena);
 
             // Keep a reference copy for semantic check.
             let dest_ref = dest_table.clone_in(&arena);

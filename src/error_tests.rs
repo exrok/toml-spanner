@@ -113,7 +113,10 @@ fn error_display_all_variants() {
             Error::new(ErrorKind::DottedKeyInvalidType { first: span }, span),
             "dotted key attempted to extend non-table type",
         ),
-        (Error::new(ErrorKind::UnexpectedKey { tag: 0 }, span), "unexpected key"),
+        (
+            Error::new(ErrorKind::UnexpectedKey { tag: 0 }, span),
+            "unexpected key",
+        ),
         (
             Error::new(ErrorKind::UnquotedString, span),
             "invalid TOML value, did you mean to use a quoted string?",

@@ -1056,8 +1056,7 @@ pub fn mutate_arrays(table: &mut toml_spanner::Table<'_>, g: &mut Gen<'_>) -> bo
                 }
             }
             3 => {
-                arr.as_mut_slice()
-                    .sort_by_key(|item| item.kind() as u8);
+                arr.as_mut_slice().sort_by_key(|item| item.kind() as u8);
                 applied = true;
             }
             _ => {

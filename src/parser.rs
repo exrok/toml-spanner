@@ -1547,7 +1547,7 @@ impl<'de> Parser<'de> {
             }
             self.index.insert(KeyRef::new(key.as_str(), table_id), len);
         }
-        &mut table.insert(key, item, self.arena).1
+        &mut table.insert_unique(key, item, self.arena).1
     }
 
     /// Handle the final segment of a standard table header `[a.b.c]`.
@@ -1681,7 +1681,7 @@ impl<'de> Parser<'de> {
                     return Err(self.set_duplicate_key_error(existing_key.span, key.span));
                 }
             }
-            table.insert(key, item, self.arena);
+            table.insert_unique(key, item, self.arena);
             return Ok(());
         }
         // SAFETY: len >= INDEXED_TABLE_THRESHOLD (>= 6), so the table is non-empty.
@@ -1705,7 +1705,7 @@ impl<'de> Parser<'de> {
             }
             std::collections::hash_map::Entry::Vacant(vacant_entry) => {
                 vacant_entry.insert(table.len());
-                table.insert(key, item, self.arena);
+                table.insert_unique(key, item, self.arena);
                 Ok(())
             }
         }

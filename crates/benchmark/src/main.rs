@@ -438,12 +438,7 @@ fn main_for_clone() {
     println!("\n=== clone_in vs parse ===");
     println!(
         "{:<20} {:>9} {:>9} {:>9} {:>9} {:>6}",
-        "",
-        "parse(μs)",
-        "cycles(K)",
-        "clone(μs)",
-        "cycles(K)",
-        "ratio",
+        "", "parse(μs)", "cycles(K)", "clone(μs)", "cycles(K)", "ratio",
     );
     for i in 0..parse_stats.len() {
         let (name, ref ps) = parse_stats[i];
@@ -616,7 +611,6 @@ fn main_for_profile() {
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let has = |flag: &str| args.iter().any(|a| a == flag);
-
 
     if has("profile") {
         main_for_profile();

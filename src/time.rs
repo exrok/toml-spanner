@@ -250,7 +250,7 @@ impl Time {
 ///
 /// fn to_jiff_date(item: &toml_spanner::Item<'_>) -> Result<jiff::civil::Date, TomlError> {
 ///     let Some(datetime) = item.as_datetime() else {
-///         return Err(item.expected("date"));
+///         return Err(item.expected(&"date"));
 ///     };
 ///
 ///     if datetime.time().is_some() {
@@ -265,7 +265,7 @@ impl Time {
 ///
 /// fn to_jiff_datetime(item: &toml_spanner::Item<'_>) -> Result<jiff::civil::DateTime, TomlError> {
 ///     let Some(datetime) = item.as_datetime() else {
-///         return Err(item.expected("civil datetime"));
+///         return Err(item.expected(&"civil datetime"));
 ///     };
 ///
 ///     if datetime.offset().is_some() {
@@ -283,7 +283,7 @@ impl Time {
 ///
 /// fn to_jiff_timestamp(item: &toml_spanner::Item<'_>) -> Result<jiff::Timestamp, TomlError> {
 ///     let Some(datetime) = item.as_datetime() else {
-///         return Err(item.expected("timestamp"));
+///         return Err(item.expected(&"timestamp"));
 ///     };
 ///     let civil = jiff::civil::DateTime::from_parts(
 ///         extract_date(datetime, item.span())?,
@@ -330,7 +330,7 @@ impl Time {
 ///         timestamp = 3291-12-01T00:45:00Z
 ///     "#;
 ///     let mut doc = toml_spanner::parse(toml_doc, &arena).unwrap();
-///     let config: TimeConfig = doc.deserialize().unwrap();
+///     let config: TimeConfig = doc.to().unwrap();
 ///     println!("{:#?}", config);
 /// }
 /// ```

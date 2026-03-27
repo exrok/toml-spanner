@@ -51,8 +51,7 @@ fn run_normalize(path: &str) {
     println!();
 
     // Emit.
-    let buf1 = toml_spanner::Formatting::default()
-        .format_table_to_bytes(root, &arena);
+    let buf1 = toml_spanner::Formatting::default().format_table_to_bytes(root, &arena);
     let emitted = String::from_utf8(buf1.clone()).expect("emit must produce valid UTF-8");
     println!("── emitted ({} bytes) ──\n{emitted:?}\n", emitted.len());
 
@@ -70,8 +69,8 @@ fn run_normalize(path: &str) {
     println!();
 
     // Idempotency.
-    let buf2 = toml_spanner::Formatting::default()
-        .format_table_to_bytes(root2.into_table(), &arena2);
+    let buf2 =
+        toml_spanner::Formatting::default().format_table_to_bytes(root2.into_table(), &arena2);
     if buf1 == buf2 {
         println!("── idempotency: OK ──");
     } else {
@@ -118,8 +117,8 @@ fn run_emit_roundtrip(path: &str) {
     println!();
 
     // Reproject, normalize, and emit via Formatting API.
-    let out_buf = toml_spanner::Formatting::preserved_from(&doc)
-        .format_table_to_bytes(dest, &arena);
+    let out_buf =
+        toml_spanner::Formatting::preserved_from(&doc).format_table_to_bytes(dest, &arena);
 
     let output = String::from_utf8_lossy(&out_buf);
     println!(
@@ -250,8 +249,8 @@ fn run_reproject_identity(path: &str) {
     let dest2 = toml_spanner::parse(&output, &arena_s2)
         .unwrap()
         .into_table();
-    let buf2 = toml_spanner::Formatting::preserved_from(&src2)
-        .format_table_to_bytes(dest2, &arena_s2);
+    let buf2 =
+        toml_spanner::Formatting::preserved_from(&src2).format_table_to_bytes(dest2, &arena_s2);
 
     if buf == buf2 {
         println!("── idempotency: OK ──");
@@ -441,8 +440,8 @@ fn run_reproject_edit(path: &str) {
     let dest2 = toml_spanner::parse(&output, &arena_s2)
         .unwrap()
         .into_table();
-    let buf2 = toml_spanner::Formatting::preserved_from(&src2)
-        .format_table_to_bytes(dest2, &arena_s2);
+    let buf2 =
+        toml_spanner::Formatting::preserved_from(&src2).format_table_to_bytes(dest2, &arena_s2);
 
     if buf == buf2 {
         println!("── idempotency: OK ──");
@@ -579,8 +578,8 @@ fn run_reproject_reorder(path: &str) {
     let dest2 = toml_spanner::parse(&output, &arena_s2)
         .unwrap()
         .into_table();
-    let buf2 = toml_spanner::Formatting::preserved_from(&src2)
-        .format_table_to_bytes(dest2, &arena_s2);
+    let buf2 =
+        toml_spanner::Formatting::preserved_from(&src2).format_table_to_bytes(dest2, &arena_s2);
 
     if buf == buf2 {
         println!("── idempotency: OK ──");
@@ -715,10 +714,7 @@ fn run_reproject_reorder_span_identity(path: &str) {
     }
     let text = buffer.clone();
 
-    println!(
-        "── source text ({} bytes) ──\n{text:?}\n",
-        text.len()
-    );
+    println!("── source text ({} bytes) ──\n{text:?}\n", text.len());
 
     let arena = toml_spanner::Arena::new();
     let doc = match toml_spanner::parse(&text, &arena) {
@@ -831,13 +827,7 @@ fn run_reproject_reorder_span_identity(path: &str) {
     }
     println!();
 
-    check_order_preserved(
-        &src_positions,
-        &out_positions,
-        &text,
-        &text,
-        &output,
-    );
+    check_order_preserved(&src_positions, &out_positions, &text, &text, &output);
     println!("── order_preserved: OK ──");
 }
 
@@ -1049,7 +1039,7 @@ fn run_reproject_exact(path: &str) {
             let mut dest_table = src_root.table().clone_in(&arena);
             let target = fuzz::exact::table_at_path_mut(&mut dest_table, table_path);
             let new_item = toml_spanner::Item::from(42i64);
-            target.insert(toml_spanner::Key::new(fresh_key), new_item, &arena);
+            target.insert_unique(toml_spanner::Key::new(fresh_key), new_item, &arena);
 
             let dest_ref = dest_table.clone_in(&arena);
             let buf = toml_spanner::Formatting::preserved_from(&src_root)
@@ -1083,8 +1073,7 @@ fn check_idempotency_verbose(output: &str, buf: &[u8], source_text: &str) {
     let arena = toml_spanner::Arena::new();
     let src2 = toml_spanner::parse(output, &arena).unwrap();
     let dest2 = src2.table().clone_in(&arena);
-    let buf2 = toml_spanner::Formatting::preserved_from(&src2)
-        .format_table_to_bytes(dest2, &arena);
+    let buf2 = toml_spanner::Formatting::preserved_from(&src2).format_table_to_bytes(dest2, &arena);
     if buf == buf2.as_slice() {
         println!("── idempotency: OK ──");
     } else {

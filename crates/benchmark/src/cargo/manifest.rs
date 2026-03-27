@@ -200,10 +200,7 @@ mod flatten_toml_table {
         partial.insert(key.name.to_owned(), item_to_toml_value(item));
         Ok(())
     }
-    pub fn finish(
-        _ctx: &mut Context<'_>,
-        partial: toml::Table,
-    ) -> Result<toml::Table, Failed> {
+    pub fn finish(_ctx: &mut Context<'_>, partial: toml::Table) -> Result<toml::Table, Failed> {
         Ok(partial)
     }
 }

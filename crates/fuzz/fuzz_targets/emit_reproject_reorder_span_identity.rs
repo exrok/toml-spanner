@@ -1,7 +1,7 @@
 #![no_main]
 
-use std::hash::{BuildHasher, Hasher};
 use libfuzzer_sys::{Corpus, fuzz_target};
+use std::hash::{BuildHasher, Hasher};
 
 // Fuzzes `Formatting::preserved_from(...).with_span_projection_identity()` with
 // direct table mutations on a parsed document.

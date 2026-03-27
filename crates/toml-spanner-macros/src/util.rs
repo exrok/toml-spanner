@@ -51,9 +51,7 @@ pub struct Allocator<'a, T> {
 }
 impl<'a, T: Default> Allocator<'a, T> {
     pub fn alloc_default(&mut self) -> &'a mut T {
-        if self.inner.current_bucket.is_null()
-            || self.inner.current_size >= FREAKY_BUCKET_SIZE
-        {
+        if self.inner.current_bucket.is_null() || self.inner.current_size >= FREAKY_BUCKET_SIZE {
             unsafe {
                 let ptr = std::alloc::alloc(Layout::new::<Bucket<T>>()) as *mut Bucket<T>;
                 if ptr.is_null() {

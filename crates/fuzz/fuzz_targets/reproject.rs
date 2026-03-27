@@ -1,7 +1,7 @@
 #![no_main]
 
 use libfuzzer_sys::{Corpus, fuzz_target};
-use toml_spanner::{ArrayStyle, Item, Table, TableStyle, Arena};
+use toml_spanner::{Arena, ArrayStyle, Item, Table, TableStyle};
 
 fuzz_target!(|data: &[u8]| -> Corpus {
     let Ok(text) = std::str::from_utf8(data) else {

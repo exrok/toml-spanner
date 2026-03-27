@@ -53,7 +53,7 @@ fn constructors() {
 
     // Table
     let mut tab = InnerTable::new();
-    tab.insert(
+    tab.insert_unique(
         Key {
             name: "k",
             span: sp(0, 1),
@@ -81,7 +81,7 @@ fn constructors() {
     assert!(!empty.has_keys());
 
     let mut tab = InnerTable::new();
-    tab.insert(
+    tab.insert_unique(
         Key {
             name: ("x"),
             span: sp(0, 1),
@@ -285,7 +285,7 @@ fn value_mut_all_types() {
     // Table
     let mut v = Item::table(InnerTable::new(), sp(0, 2));
     if let ValueMut::Table(t) = v.value_mut() {
-        t.insert(
+        t.insert_unique(
             Key {
                 name: ("x"),
                 span: sp(0, 1),
@@ -347,7 +347,7 @@ fn expect_helpers() {
 
     // expect_table success
     let mut tab = InnerTable::new();
-    tab.insert(
+    tab.insert_unique(
         Key {
             name: ("k"),
             span: sp(0, 1),
@@ -385,7 +385,7 @@ fn mut_accessors() {
     // as_table_mut on table
     let mut v = Item::table(InnerTable::new(), sp(0, 2));
     let t = v.as_table_mut().unwrap();
-    t.insert(
+    t.insert_unique(
         Key {
             name: ("k"),
             span: sp(0, 1),
@@ -510,7 +510,7 @@ fn item_index_operators() {
 
     // Index table Item by &str
     let mut tab = InnerTable::new();
-    tab.insert(
+    tab.insert_unique(
         Key {
             name: ("name"),
             span: sp(0, 4),
@@ -518,7 +518,7 @@ fn item_index_operators() {
         Item::string_spanned("alice", sp(5, 10)),
         &arena,
     );
-    tab.insert(
+    tab.insert_unique(
         Key {
             name: ("age"),
             span: sp(11, 14),
@@ -570,7 +570,7 @@ fn maybe_item_chained_and_none_propagation() {
     scores.push(Item::integer_spanned(200, sp(4, 7)), &arena);
 
     let mut user_tab = InnerTable::new();
-    user_tab.insert(
+    user_tab.insert_unique(
         Key {
             name: ("name"),
             span: sp(0, 4),
@@ -578,7 +578,7 @@ fn maybe_item_chained_and_none_propagation() {
         Item::string_spanned("alice", sp(5, 10)),
         &arena,
     );
-    user_tab.insert(
+    user_tab.insert_unique(
         Key {
             name: ("scores"),
             span: sp(11, 17),
@@ -591,7 +591,7 @@ fn maybe_item_chained_and_none_propagation() {
     users.push(Item::table(user_tab, sp(0, 25)), &arena);
 
     let mut root = InnerTable::new();
-    root.insert(
+    root.insert_unique(
         Key {
             name: ("users"),
             span: sp(0, 5),
@@ -745,9 +745,9 @@ fn clone_in_scalars() {
     assert_eq!(cloned.span_unchecked(), sp(0, 3));
 
     // Float
-    let orig = Item::float_spanned(3.14, sp(10, 14));
+    let orig = Item::float_spanned(3.15, sp(10, 14));
     let cloned = orig.clone_in(&arena);
-    assert_eq!(cloned.as_f64(), Some(3.14));
+    assert_eq!(cloned.as_f64(), Some(3.15));
     assert_eq!(cloned.span_unchecked(), sp(10, 14));
 
     // Boolean
@@ -792,7 +792,7 @@ fn clone_in_array() {
 fn clone_in_table() {
     let arena = Arena::new();
     let mut tab = InnerTable::new();
-    tab.insert(
+    tab.insert_unique(
         Key {
             name: "x",
             span: sp(0, 1),
@@ -800,7 +800,7 @@ fn clone_in_table() {
         Item::integer_spanned(10, sp(2, 4)),
         &arena,
     );
-    tab.insert(
+    tab.insert_unique(
         Key {
             name: "y",
             span: sp(5, 6),
@@ -825,7 +825,7 @@ fn clone_in_nested() {
 
     // Build { items: [{ name: "a", val: 1 }, { name: "b", val: 2 }] }
     let mut t1 = InnerTable::new();
-    t1.insert(
+    t1.insert_unique(
         Key {
             name: "name",
             span: sp(0, 4),
@@ -833,7 +833,7 @@ fn clone_in_nested() {
         Item::string_spanned("a", sp(5, 6)),
         &arena,
     );
-    t1.insert(
+    t1.insert_unique(
         Key {
             name: "val",
             span: sp(7, 10),
@@ -843,7 +843,7 @@ fn clone_in_nested() {
     );
 
     let mut t2 = InnerTable::new();
-    t2.insert(
+    t2.insert_unique(
         Key {
             name: "name",
             span: sp(13, 17),
@@ -851,7 +851,7 @@ fn clone_in_nested() {
         Item::string_spanned("b", sp(18, 19)),
         &arena,
     );
-    t2.insert(
+    t2.insert_unique(
         Key {
             name: "val",
             span: sp(20, 23),
@@ -865,7 +865,7 @@ fn clone_in_nested() {
     arr.push(Item::table(t2, sp(13, 25)), &arena);
 
     let mut root = InnerTable::new();
-    root.insert(
+    root.insert_unique(
         Key {
             name: "items",
             span: sp(0, 5),
