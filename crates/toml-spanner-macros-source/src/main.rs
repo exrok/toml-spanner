@@ -128,9 +128,9 @@ fn main() {
         codegen::derive(tokens!());
     }
     util::print_pretty(codegen::derive(tokens! {
-    #[derive(Toml)]
-    pub struct Example<P: Clone> {
-        pub path: Option<P>,
+    #[derive(Toml, Debug)]
+    struct SectionAliased {
+        section: AliasedField,
     }
             }));
 }

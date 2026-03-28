@@ -298,6 +298,7 @@ fn emit_table_field_deser(
     variant: Option<&EnumVariant>,
     skip_keys: &[Literal],
 ) {
+    let recoverable = ctx.target.recoverable;
     let mut flatten_field: Option<&Field> = None;
     for field in fields {
         if field.flags & Field::WITH_FLATTEN != 0 {
@@ -306,6 +307,10 @@ fn emit_table_field_deser(
             }
             flatten_field = Some(field);
         }
+    }
+
+    if recoverable {
+        splat!(out; let mut __failed = false;);
     }
 
     // Declare field variables
@@ -434,13 +439,15 @@ fn emit_table_field_deser(
             );
             splat!(out;
                 Ok(__val) => { [#: field.name] = Some(__val); [#: &span_ident] = __key.span; }
-                [?(is_required) Err(__e) => return Err(__e),]
+                [?(is_required && !recoverable) Err(__e) => return Err(__e),]
+                [?(is_required && recoverable) Err(_) => { __failed = true; },]
                 [?(!is_required) Err(_) => {},]
             );
         } else {
             splat!(out;
                 Ok(__val) => { [#: field.name] = Some(__val); }
-                [?(is_required) Err(__e) => return Err(__e),]
+                [?(is_required && !recoverable) Err(__e) => return Err(__e),]
+                [?(is_required && recoverable) Err(_) => { __failed = true; },]
                 [?(!is_required) Err(_) => {},]
             );
         }
@@ -462,6 +469,13 @@ fn emit_table_field_deser(
     }
     out.tt_group(Delimiter::Brace, arms_at);
     out.tt_group(Delimiter::Brace, for_body_at);
+
+    if recoverable {
+        splat!(out; if __failed);
+        let if_at = out.buf.len();
+        splat!(out; return Err([#ctx.crate_path]::Failed););
+        out.tt_group(Delimiter::Brace, if_at);
+    }
 
     // Finish flatten partial
     if let Some(ff) = flatten_field {
@@ -1570,6 +1584,7 @@ pub fn inner_derive(stream: TokenStream) -> TokenStream {
         from_type: None,
         try_from_type: None,
         unknown_fields: UnknownFieldPolicy::Warn { tag: None },
+        recoverable: false,
     };
     let (kind, body) = ast::extract_derive_target(&mut target, &outer_tokens);
 

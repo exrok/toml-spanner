@@ -3817,3 +3817,63 @@ fn duplicate_key_and_duplicate_field_consistent() {
         "paths differ: DuplicateKey={key_path:?}, DuplicateField={field_path:?}",
     );
 }
+
+// --- recoverable tests ---
+
+#[test]
+fn recoverable_collects_multiple_type_errors() {
+    #[derive(Toml, Debug)]
+    #[toml(FromToml, recoverable)]
+    struct Example {
+        a: bool,
+        b: bool,
+        c: bool,
+    }
+    let arena = Arena::new();
+    let mut doc = toml_spanner::parse("a = 3\nb = 3", &arena).unwrap();
+    let (ctx, table) = doc.split();
+    let result = Example::from_toml(ctx, table.as_item());
+    assert!(result.is_err());
+    let errors = doc.errors();
+    assert_eq!(errors.len(), 2, "expected 2 type errors, got: {errors:?}");
+}
+
+#[test]
+fn recoverable_succeeds_when_all_fields_valid() {
+    #[derive(Toml, Debug, PartialEq)]
+    #[toml(FromToml, recoverable)]
+    struct Example {
+        a: bool,
+        b: i64,
+    }
+    let v: Example = toml_spanner::from_str("a = true\nb = 5").unwrap();
+    assert_eq!(v.a, true);
+    assert_eq!(v.b, 5);
+}
+
+#[test]
+fn recoverable_optional_fields_still_work() {
+    #[derive(Toml, Debug, PartialEq)]
+    #[toml(FromToml, recoverable)]
+    struct Example {
+        a: bool,
+        b: Option<i64>,
+    }
+    let v: Example = toml_spanner::from_str("a = true").unwrap();
+    assert_eq!(v.a, true);
+    assert_eq!(v.b, None);
+}
+
+#[test]
+fn recoverable_default_fields_still_work() {
+    #[derive(Toml, Debug, PartialEq)]
+    #[toml(FromToml, recoverable)]
+    struct Example {
+        a: bool,
+        #[toml(default)]
+        b: bool,
+    }
+    let v: Example = toml_spanner::from_str("a = true").unwrap();
+    assert_eq!(v.a, true);
+    assert_eq!(v.b, false);
+}

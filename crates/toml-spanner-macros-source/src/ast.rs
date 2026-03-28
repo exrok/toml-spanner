@@ -174,6 +174,7 @@ pub struct DeriveTargetInner<'a> {
     pub from_type: Option<Vec<TokenTree>>,
     pub try_from_type: Option<Vec<TokenTree>>,
     pub unknown_fields: UnknownFieldPolicy,
+    pub recoverable: bool,
 }
 
 impl<'a> DeriveTargetInner<'a> {
@@ -468,6 +469,12 @@ fn parse_container_attr(
                 throw!("Duplicate unknown fields policy attribute" @ attr.span())
             }
             target.unknown_fields = UnknownFieldPolicy::Ignore;
+        }
+        "recoverable" => {
+            if target.recoverable {
+                throw!("Duplicate recoverable attribute" @ attr.span())
+            }
+            target.recoverable = true;
         }
         _ => throw!("Unknown attribute" @ attr.span()),
     }

@@ -1,3 +1,4 @@
+
 use crate::{case::RenameRule, util::Allocator, Error};
 use proc_macro::{Delimiter, Ident, Literal, Span, TokenStream, TokenTree};
 pub enum GenericKind {
@@ -156,6 +157,7 @@ pub struct DeriveTargetInner<'a> {
     pub from_type: Option<Vec<TokenTree>>,
     pub try_from_type: Option<Vec<TokenTree>>,
     pub unknown_fields: UnknownFieldPolicy,
+    pub recoverable: bool,
 }
 impl<'a> DeriveTargetInner<'a> {
     pub fn has_lifetime(&self) -> bool {
@@ -399,6 +401,12 @@ fn parse_container_attr(
                 Error::span_msg("Duplicate unknown fields policy attribute", attr.span())
             }
             target.unknown_fields = UnknownFieldPolicy::Ignore;
+        }
+        "recoverable" => {
+            if target.recoverable {
+                Error::span_msg("Duplicate recoverable attribute", attr.span())
+            }
+            target.recoverable = true;
         }
         _ => Error::span_msg("Unknown attribute", attr.span()),
     }
