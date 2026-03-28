@@ -83,7 +83,7 @@ fn tables_match(spanner: &toml_spanner::Table<'_>, toml_val: &toml::Table) -> bo
 fn values_match(spanner: &toml_spanner::Item<'_>, toml_val: &toml::Value) -> bool {
     match (spanner.value(), toml_val) {
         (Value::String(s), toml::Value::String(t)) => s == t,
-        (Value::Integer(a), toml::Value::Integer(b)) => a == b,
+        (Value::Integer(a), toml::Value::Integer(b)) => a.as_i128() == *b as i128,
         (Value::Float(a), toml::Value::Float(b)) => (a.is_nan() && b.is_nan()) || a == b,
         (Value::Boolean(a), toml::Value::Boolean(b)) => a == b,
         (Value::Array(sa), toml::Value::Array(ta)) => {

@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::net::IpAddr;
 use toml_spanner::{Arena, Formatting, FromToml};
 use toml_spanner_macros::Toml;
@@ -1258,6 +1258,7 @@ mod flatten_key_helper {
 
     pub fn finish<'de>(
         _ctx: &mut Context<'de>,
+        _parent: &Table<'de>,
         partial: Vec<String>,
     ) -> Result<Vec<String>, Failed> {
         Ok(partial)
@@ -3193,4 +3194,584 @@ single = [1.0]
 "#;
     let result = toml_spanner::from_str::<WithTuples>(input);
     assert!(result.is_err());
+}
+
+fn assert_errors_equivalent(
+    flat_errs: &[toml_spanner::Error],
+    nested_errs: &[toml_spanner::Error],
+    label: &str,
+) {
+    assert_eq!(
+        flat_errs.len(),
+        nested_errs.len(),
+        "{label}: error count mismatch\n  flat:    {flat_errs:?}\n  nested:  {nested_errs:?}"
+    );
+    for (i, (f, n)) in flat_errs.iter().zip(nested_errs.iter()).enumerate() {
+        assert_eq!(
+            f.span(),
+            n.span(),
+            "{label}[{i}]: span mismatch\n  flat:   {f:?}\n  nested: {n:?}"
+        );
+        assert_eq!(
+            f.path().map(|p| p.to_string()),
+            n.path().map(|p| p.to_string()),
+            "{label}[{i}]: path mismatch\n  flat:   {f:?}\n  nested: {n:?}"
+        );
+        assert_eq!(
+            f.kind().kind_name(),
+            n.kind().kind_name(),
+            "{label}[{i}]: kind mismatch\n  flat:   {f:?}\n  nested: {n:?}"
+        );
+    }
+}
+
+#[derive(Toml, Debug, PartialEq)]
+#[toml(FromToml)]
+struct FaErrFlat1 {
+    name: String,
+    x: i64,
+    y: i64,
+}
+
+#[derive(Toml, Debug, PartialEq)]
+#[toml(FromToml)]
+struct FaErrNested1 {
+    name: String,
+    #[toml(flatten, with = flatten_any)]
+    point: FaPoint,
+}
+
+#[test]
+fn flatten_any_error_equivalence_l1() {
+    let valid = "name = \"ok\"\nx = 1\ny = 2";
+    let flat: FaErrFlat1 = toml_spanner::from_str(valid).unwrap();
+    let nested: FaErrNested1 = toml_spanner::from_str(valid).unwrap();
+    assert_eq!(flat.name, nested.name);
+    assert_eq!(flat.x, nested.point.x);
+    assert_eq!(flat.y, nested.point.y);
+
+    for (label, input) in [
+        ("type_mismatch", "name = \"ok\"\nx = \"not_an_int\"\ny = 2"),
+        ("second_field", "name = \"ok\"\nx = 1\ny = \"nope\""),
+        ("missing_field", "name = \"ok\"\nx = 1"),
+        ("both_wrong", "name = \"ok\"\nx = true\ny = \"nope\""),
+    ] {
+        let a1 = Arena::new();
+        let mut d1 = toml_spanner::parse(input, &a1).unwrap();
+        let a2 = Arena::new();
+        let mut d2 = toml_spanner::parse(input, &a2).unwrap();
+        assert_errors_equivalent(
+            &d1.to::<FaErrFlat1>().unwrap_err().errors,
+            &d2.to::<FaErrNested1>().unwrap_err().errors,
+            label,
+        );
+    }
+}
+
+#[derive(Toml, Debug, PartialEq)]
+#[toml(FromToml)]
+struct FaErrFlat2 {
+    top: String,
+    mid: String,
+    a: i64,
+    b: i64,
+}
+
+#[derive(Toml, Debug, PartialEq)]
+#[toml(FromToml)]
+struct FaErrInner2 {
+    a: i64,
+    b: i64,
+}
+
+#[derive(Toml, Debug, PartialEq)]
+#[toml(FromToml)]
+struct FaErrMiddle2 {
+    mid: String,
+    #[toml(flatten, with = flatten_any)]
+    inner: FaErrInner2,
+}
+
+#[derive(Toml, Debug, PartialEq)]
+#[toml(FromToml)]
+struct FaErrNested2 {
+    top: String,
+    #[toml(flatten, with = flatten_any)]
+    middle: FaErrMiddle2,
+}
+
+#[test]
+fn flatten_any_error_equivalence_l2() {
+    let valid = "top = \"ok\"\nmid = \"ok\"\na = 1\nb = 2";
+    let flat: FaErrFlat2 = toml_spanner::from_str(valid).unwrap();
+    let nested: FaErrNested2 = toml_spanner::from_str(valid).unwrap();
+    assert_eq!(flat.top, nested.top);
+    assert_eq!(flat.mid, nested.middle.mid);
+    assert_eq!(flat.a, nested.middle.inner.a);
+    assert_eq!(flat.b, nested.middle.inner.b);
+
+    for (label, input) in [
+        (
+            "type_mismatch",
+            "top = \"ok\"\nmid = \"ok\"\na = \"wrong\"\nb = 2",
+        ),
+        (
+            "inner_field",
+            "top = \"ok\"\nmid = \"ok\"\na = 1\nb = \"wrong\"",
+        ),
+        ("missing_inner", "top = \"ok\"\nmid = \"ok\"\na = 1"),
+        ("missing_mid", "top = \"ok\"\na = 1\nb = 2"),
+        ("mid_wrong_type", "top = \"ok\"\nmid = 999\na = 1\nb = 2"),
+    ] {
+        let a1 = Arena::new();
+        let mut d1 = toml_spanner::parse(input, &a1).unwrap();
+        let a2 = Arena::new();
+        let mut d2 = toml_spanner::parse(input, &a2).unwrap();
+        assert_errors_equivalent(
+            &d1.to::<FaErrFlat2>().unwrap_err().errors,
+            &d2.to::<FaErrNested2>().unwrap_err().errors,
+            label,
+        );
+    }
+}
+
+#[derive(Toml, Debug, PartialEq)]
+#[toml(FromToml)]
+struct FaErrFlat3 {
+    id: i64,
+    label: String,
+    flag: bool,
+    val: i64,
+}
+
+#[derive(Toml, Debug, PartialEq)]
+#[toml(FromToml)]
+struct FaErrDeep3 {
+    val: i64,
+}
+
+#[derive(Toml, Debug, PartialEq)]
+#[toml(FromToml)]
+struct FaErrMid3 {
+    flag: bool,
+    #[toml(flatten, with = flatten_any)]
+    deep: FaErrDeep3,
+}
+
+#[derive(Toml, Debug, PartialEq)]
+#[toml(FromToml)]
+struct FaErrWrap3 {
+    label: String,
+    #[toml(flatten, with = flatten_any)]
+    mid: FaErrMid3,
+}
+
+#[derive(Toml, Debug, PartialEq)]
+#[toml(FromToml)]
+struct FaErrNested3 {
+    id: i64,
+    #[toml(flatten, with = flatten_any)]
+    wrap: FaErrWrap3,
+}
+
+#[test]
+fn flatten_any_error_equivalence_l3() {
+    let valid = "id = 1\nlabel = \"ok\"\nflag = true\nval = 42";
+    let flat: FaErrFlat3 = toml_spanner::from_str(valid).unwrap();
+    let nested: FaErrNested3 = toml_spanner::from_str(valid).unwrap();
+    assert_eq!(flat.id, nested.id);
+    assert_eq!(flat.label, nested.wrap.label);
+    assert_eq!(flat.flag, nested.wrap.mid.flag);
+    assert_eq!(flat.val, nested.wrap.mid.deep.val);
+
+    for (label, input) in [
+        (
+            "deepest",
+            "id = 1\nlabel = \"ok\"\nflag = true\nval = \"oops\"",
+        ),
+        (
+            "mid",
+            "id = 1\nlabel = \"ok\"\nflag = \"not_bool\"\nval = 42",
+        ),
+        ("outer", "id = 1\nlabel = 42\nflag = true\nval = 10"),
+        ("missing_deepest", "id = 1\nlabel = \"ok\"\nflag = true"),
+        ("missing_all", "id = 1"),
+    ] {
+        let a1 = Arena::new();
+        let mut d1 = toml_spanner::parse(input, &a1).unwrap();
+        let a2 = Arena::new();
+        let mut d2 = toml_spanner::parse(input, &a2).unwrap();
+        assert_errors_equivalent(
+            &d1.to::<FaErrFlat3>().unwrap_err().errors,
+            &d2.to::<FaErrNested3>().unwrap_err().errors,
+            label,
+        );
+    }
+}
+
+#[derive(Toml, Debug, PartialEq)]
+#[toml(FromToml)]
+struct FaSubPort {
+    port: u16,
+}
+
+#[derive(Toml, Debug, PartialEq)]
+#[toml(FromToml)]
+struct FaSubFlat {
+    name: String,
+    host: String,
+    server: FaSubPort,
+}
+
+#[derive(Toml, Debug, PartialEq)]
+#[toml(FromToml)]
+struct FaSubInner {
+    host: String,
+    server: FaSubPort,
+}
+
+#[derive(Toml, Debug, PartialEq)]
+#[toml(FromToml)]
+struct FaSubNested {
+    name: String,
+    #[toml(flatten, with = flatten_any)]
+    cfg: FaSubInner,
+}
+
+#[test]
+fn flatten_any_error_equivalence_subtable() {
+    let valid = "name = \"app\"\nhost = \"localhost\"\n[server]\nport = 80";
+    let flat: FaSubFlat = toml_spanner::from_str(valid).unwrap();
+    let nested: FaSubNested = toml_spanner::from_str(valid).unwrap();
+    assert_eq!(flat.name, nested.name);
+    assert_eq!(flat.host, nested.cfg.host);
+    assert_eq!(flat.server, nested.cfg.server);
+
+    for (label, input) in [
+        (
+            "type_mismatch",
+            "name = \"app\"\nhost = \"localhost\"\n[server]\nport = \"bad\"",
+        ),
+        (
+            "missing_field",
+            "name = \"app\"\nhost = \"localhost\"\n[server]",
+        ),
+    ] {
+        let a1 = Arena::new();
+        let mut d1 = toml_spanner::parse(input, &a1).unwrap();
+        let a2 = Arena::new();
+        let mut d2 = toml_spanner::parse(input, &a2).unwrap();
+        assert_errors_equivalent(
+            &d1.to::<FaSubFlat>().unwrap_err().errors,
+            &d2.to::<FaSubNested>().unwrap_err().errors,
+            label,
+        );
+    }
+}
+
+#[derive(Toml, Debug, PartialEq)]
+#[toml(FromToml)]
+struct FaBigFlat {
+    name: String,
+    f1: i64,
+    f2: i64,
+    f3: i64,
+    f4: i64,
+    f5: i64,
+    f6: i64,
+    f7: i64,
+    f8: i64,
+}
+
+#[derive(Toml, Debug, PartialEq)]
+#[toml(FromToml)]
+struct FaBigInnerErr {
+    f1: i64,
+    f2: i64,
+    f3: i64,
+    f4: i64,
+    f5: i64,
+    f6: i64,
+    f7: i64,
+    f8: i64,
+}
+
+#[derive(Toml, Debug, PartialEq)]
+#[toml(FromToml)]
+struct FaBigNested {
+    name: String,
+    #[toml(flatten, with = flatten_any)]
+    big: FaBigInnerErr,
+}
+
+#[test]
+fn flatten_any_error_equivalence_big_table() {
+    let valid = "name = \"big\"\nf1 = 1\nf2 = 2\nf3 = 3\nf4 = 4\nf5 = 5\nf6 = 6\nf7 = 7\nf8 = 8";
+    let flat: FaBigFlat = toml_spanner::from_str(valid).unwrap();
+    let nested: FaBigNested = toml_spanner::from_str(valid).unwrap();
+    assert_eq!(flat.name, nested.name);
+    assert_eq!(
+        [
+            flat.f1, flat.f2, flat.f3, flat.f4, flat.f5, flat.f6, flat.f7, flat.f8
+        ],
+        [
+            nested.big.f1,
+            nested.big.f2,
+            nested.big.f3,
+            nested.big.f4,
+            nested.big.f5,
+            nested.big.f6,
+            nested.big.f7,
+            nested.big.f8
+        ],
+    );
+
+    for (label, input) in [
+        (
+            "first",
+            "name = \"big\"\nf1 = true\nf2 = 2\nf3 = 3\nf4 = 4\nf5 = 5\nf6 = 6\nf7 = 7\nf8 = 8",
+        ),
+        (
+            "middle",
+            "name = \"big\"\nf1 = 1\nf2 = 2\nf3 = 3\nf4 = \"wrong\"\nf5 = 5\nf6 = 6\nf7 = 7\nf8 = 8",
+        ),
+        (
+            "last",
+            "name = \"big\"\nf1 = 1\nf2 = 2\nf3 = 3\nf4 = 4\nf5 = 5\nf6 = 6\nf7 = 7\nf8 = \"nope\"",
+        ),
+    ] {
+        let a1 = Arena::new();
+        let mut d1 = toml_spanner::parse(input, &a1).unwrap();
+        let a2 = Arena::new();
+        let mut d2 = toml_spanner::parse(input, &a2).unwrap();
+        assert_errors_equivalent(
+            &d1.to::<FaBigFlat>().unwrap_err().errors,
+            &d2.to::<FaBigNested>().unwrap_err().errors,
+            label,
+        );
+    }
+}
+
+#[derive(Toml, Debug, PartialEq)]
+#[toml(FromToml)]
+struct FaDefaultFlat {
+    name: String,
+    #[toml(default)]
+    x: i64,
+    #[toml(default)]
+    y: i64,
+}
+
+#[derive(Toml, Debug, PartialEq)]
+#[toml(FromToml)]
+struct FaDefaultInnerErr {
+    #[toml(default)]
+    x: i64,
+    #[toml(default)]
+    y: i64,
+}
+
+#[derive(Toml, Debug, PartialEq)]
+#[toml(FromToml)]
+struct FaDefaultNested {
+    name: String,
+    #[toml(flatten, with = flatten_any)]
+    coords: FaDefaultInnerErr,
+}
+
+#[derive(Toml, Debug, PartialEq)]
+#[toml(FromToml)]
+struct FaDeepDefaultFlat {
+    name: String,
+    #[toml(default)]
+    flag: bool,
+    #[toml(default)]
+    val: i64,
+}
+
+#[derive(Toml, Debug, PartialEq)]
+#[toml(FromToml)]
+struct FaDeepDefaultInner {
+    #[toml(default)]
+    val: i64,
+}
+
+#[derive(Toml, Debug, PartialEq)]
+#[toml(FromToml)]
+struct FaDeepDefaultMid {
+    #[toml(default)]
+    flag: bool,
+    #[toml(flatten, with = flatten_any)]
+    deep: FaDeepDefaultInner,
+}
+
+#[derive(Toml, Debug, PartialEq)]
+#[toml(FromToml)]
+struct FaDeepDefaultNested {
+    name: String,
+    #[toml(flatten, with = flatten_any)]
+    mid: FaDeepDefaultMid,
+}
+
+#[test]
+fn flatten_any_error_equivalence_multiple_errors() {
+    let valid = "name = \"ok\"\nx = 1\ny = 2";
+    let flat: FaDefaultFlat = toml_spanner::from_str(valid).unwrap();
+    let nested: FaDefaultNested = toml_spanner::from_str(valid).unwrap();
+    assert_eq!(flat.name, nested.name);
+    assert_eq!(flat.x, nested.coords.x);
+    assert_eq!(flat.y, nested.coords.y);
+
+    for (label, input) in [
+        ("both_wrong", "name = \"ok\"\nx = \"bad\"\ny = true"),
+        ("one_wrong", "name = \"ok\"\nx = 1\ny = true"),
+    ] {
+        let a1 = Arena::new();
+        let mut d1 = toml_spanner::parse(input, &a1).unwrap();
+        let a2 = Arena::new();
+        let mut d2 = toml_spanner::parse(input, &a2).unwrap();
+        assert_errors_equivalent(
+            &d1.to::<FaDefaultFlat>().unwrap_err().errors,
+            &d2.to::<FaDefaultNested>().unwrap_err().errors,
+            label,
+        );
+    }
+
+    let valid2 = "name = \"ok\"\nflag = true\nval = 5";
+    let flat2: FaDeepDefaultFlat = toml_spanner::from_str(valid2).unwrap();
+    let nested2: FaDeepDefaultNested = toml_spanner::from_str(valid2).unwrap();
+    assert_eq!(flat2.name, nested2.name);
+    assert_eq!(flat2.flag, nested2.mid.flag);
+    assert_eq!(flat2.val, nested2.mid.deep.val);
+
+    for (label, input) in [
+        (
+            "across_levels",
+            "name = \"ok\"\nflag = \"not_bool\"\nval = \"not_int\"",
+        ),
+        (
+            "inner_only",
+            "name = \"ok\"\nflag = true\nval = \"not_int\"",
+        ),
+    ] {
+        let a1 = Arena::new();
+        let mut d1 = toml_spanner::parse(input, &a1).unwrap();
+        let a2 = Arena::new();
+        let mut d2 = toml_spanner::parse(input, &a2).unwrap();
+        assert_errors_equivalent(
+            &d1.to::<FaDeepDefaultFlat>().unwrap_err().errors,
+            &d2.to::<FaDeepDefaultNested>().unwrap_err().errors,
+            label,
+        );
+    }
+}
+
+#[derive(Toml, Debug, PartialEq)]
+#[toml(FromToml)]
+struct FaMixedFlat {
+    #[toml(default)]
+    top: i64,
+    a: i64,
+}
+
+#[derive(Toml, Debug, PartialEq)]
+#[toml(FromToml)]
+struct FaMixedInnerErr {
+    a: i64,
+}
+
+#[derive(Toml, Debug, PartialEq)]
+#[toml(FromToml)]
+struct FaMixedNested {
+    #[toml(default)]
+    top: i64,
+    #[toml(flatten, with = flatten_any)]
+    inner: FaMixedInnerErr,
+}
+
+#[test]
+fn flatten_any_error_equivalence_mixed() {
+    let valid = "top = 10\na = 20";
+    let flat: FaMixedFlat = toml_spanner::from_str(valid).unwrap();
+    let nested: FaMixedNested = toml_spanner::from_str(valid).unwrap();
+    assert_eq!(flat.top, nested.top);
+    assert_eq!(flat.a, nested.inner.a);
+
+    for (label, input) in [
+        ("both_sites", "top = \"wrong\"\na = \"also_wrong\""),
+        ("inner_only", "top = 1\na = \"wrong\""),
+    ] {
+        let a1 = Arena::new();
+        let mut d1 = toml_spanner::parse(input, &a1).unwrap();
+        let a2 = Arena::new();
+        let mut d2 = toml_spanner::parse(input, &a2).unwrap();
+        assert_errors_equivalent(
+            &d1.to::<FaMixedFlat>().unwrap_err().errors,
+            &d2.to::<FaMixedNested>().unwrap_err().errors,
+            label,
+        );
+    }
+}
+
+#[derive(Toml, Debug, PartialEq)]
+#[toml(FromToml)]
+struct FaScaleInner {
+    c: i64,
+    #[toml(flatten, with = flatten_any)]
+    rest: HashMap<String, i64>,
+}
+
+#[derive(Toml, Debug, PartialEq)]
+#[toml(FromToml)]
+struct FaScaleRoot {
+    a: i64,
+    #[toml(flatten, with = flatten_any)]
+    inner: FaScaleInner,
+}
+
+#[test]
+#[cfg_attr(miri, ignore)]
+fn flatten_any_error_patching_large_scale() {
+    const N: usize = 100_000;
+
+    let mut valid = String::from("a = 1\nc = 2\n");
+    for i in 0..4 {
+        use std::fmt::Write;
+        write!(valid, "k{i} = {i}\n").unwrap();
+    }
+    let v: FaScaleRoot = toml_spanner::from_str(&valid).unwrap();
+    assert_eq!(v.a, 1);
+    assert_eq!(v.inner.c, 2);
+    assert_eq!(v.inner.rest.len(), 4);
+    assert_eq!(v.inner.rest["k0"], 0);
+    assert_eq!(v.inner.rest["k3"], 3);
+
+    let mut input = String::with_capacity(N * 20);
+    input.push_str("a = 1\nc = 2\n");
+    for i in 0..N {
+        use std::fmt::Write;
+        write!(input, "k{i} = \"wrong\"\n").unwrap();
+    }
+
+    let arena = Arena::new();
+    let mut doc = toml_spanner::parse(&input, &arena).unwrap();
+    let err = doc.to::<FaScaleRoot>().unwrap_err();
+    assert_eq!(
+        err.errors.len(),
+        N,
+        "expected {N} errors, got {}",
+        err.errors.len()
+    );
+
+    for error in &err.errors {
+        let path = error
+            .path()
+            .expect("every error should have a resolved path");
+        let path_str = path.to_string();
+        assert!(path_str.starts_with("k"), "unexpected path: {path_str}");
+        assert!(
+            !error.span().is_empty(),
+            "error for {path_str} should have a non-empty span",
+        );
+    }
 }

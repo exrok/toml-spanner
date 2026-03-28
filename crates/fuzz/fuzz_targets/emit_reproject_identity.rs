@@ -118,7 +118,7 @@ fn items_eq(a: &Item<'_>, b: &Item<'_>, path: &mut Vec<String>, input: &str, emi
             p(),
         ),
         Value::Integer(i) => assert!(
-            b.as_i64() == Some(*i),
+            b.as_i128() == Some(i.as_i128()),
             "integer mismatch at {}\ninput:\n{input}\nemitted:\n{emitted}",
             p(),
         ),

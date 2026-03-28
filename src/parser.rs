@@ -913,7 +913,7 @@ impl<'de> Parser<'de> {
         span: Span,
         sign: u8,
     ) -> Result<Item<'de>, Failed> {
-        let mut acc: u64 = 0;
+        let mut acc: u128 = 0;
         let mut prev_underscore = false;
         let mut has_digit = false;
         let mut leading_zero = false;
@@ -947,7 +947,7 @@ impl<'de> Parser<'de> {
                 }
                 has_digit = true;
                 prev_underscore = false;
-                let digit = (b - b'0') as u64;
+                let digit = (b - b'0') as u128;
                 acc = match acc.checked_mul(10).and_then(|a| a.checked_add(digit)) {
                     Some(v) => v,
                     None => break 'error "integer overflow",
@@ -965,18 +965,18 @@ impl<'de> Parser<'de> {
             }
 
             let max = if negative {
-                (i64::MAX as u64) + 1
+                (i128::MAX as u128) + 1
             } else {
-                i64::MAX as u64
+                i128::MAX as u128
             };
             if acc > max {
                 break 'error "integer overflow";
             }
 
             let val = if negative {
-                (acc as i64).wrapping_neg()
+                (acc as i128).wrapping_neg()
             } else {
-                acc as i64
+                acc as i128
             };
             return Ok(Item::integer_spanned(val, span));
         };
@@ -998,7 +998,7 @@ impl<'de> Parser<'de> {
             3 => "invalid digit for octal",
             _ => "invalid digit for binary",
         };
-        let mut acc: u64 = 0;
+        let mut acc: u128 = 0;
         let mut prev_underscore = false;
         let mut has_digit = false;
         let mut error_span = span;
@@ -1028,10 +1028,10 @@ impl<'de> Parser<'de> {
                 }
                 has_digit = true;
                 prev_underscore = false;
-                if acc >> (64 - shift) != 0 {
+                if acc >> (128 - shift) != 0 {
                     break 'error "integer overflow";
                 }
-                acc = (acc << shift) | digit as u64;
+                acc = (acc << shift) | digit as u128;
                 i += 1;
             }
 
@@ -1044,10 +1044,10 @@ impl<'de> Parser<'de> {
                 break 'error "underscores must be between two digits";
             }
 
-            if acc > i64::MAX as u64 {
+            if acc > i128::MAX as u128 {
                 break 'error "integer overflow";
             }
-            return Ok(Item::integer_spanned(acc as i64, span));
+            return Ok(Item::integer_spanned(acc as i128, span));
         };
         self.error_span = error_span;
         self.error_kind = Some(ErrorKind::InvalidInteger(reason));

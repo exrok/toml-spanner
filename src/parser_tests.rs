@@ -973,15 +973,23 @@ fn integer_overflow_errors() {
     let ctx = TestCtx::new();
 
     let error_cases = [
-        "a = 0xFFFFFFFFFFFFFFFF",
-        "a = 0o7777777777777777777777",
-        "a = 0b1111111111111111111111111111111111111111111111111111111111111111",
-        "a = 99999999999999999999",
+        "a = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF",
+        "a = 99999999999999999999999999999999999999999",
     ];
 
     for input in error_cases {
         let e = ctx.parse_err(input);
         assert!(is_number_error!(e.kind()), "input: {input}");
+    }
+
+    // Former i64 overflow values now fit in i128
+    let ok_cases = [
+        ("a = 0xFFFFFFFFFFFFFFFF", 0xFFFFFFFFFFFFFFFFi128),
+        ("a = 99999999999999999999", 99999999999999999999i128),
+    ];
+    for (input, expected) in ok_cases {
+        let v = ctx.parse_ok(input);
+        assert_eq!(v["a"].as_i128(), Some(expected), "input: {input}");
     }
 }
 
@@ -1395,13 +1403,20 @@ fn error_messages_and_spans() {
 fn integer_overflow_specific_paths() {
     let ctx = TestCtx::new();
 
-    // Decimal: i64::MAX + 1 overflows positive max
-    let e = ctx.parse_err("a = 9223372036854775808");
-    assert!(is_number_error!(e.kind()), "input: i64::MAX + 1");
+    // Decimal: i128::MAX + 1 overflows positive max
+    let e = ctx.parse_err("a = 170141183460469231731687303715884105728");
+    assert!(is_number_error!(e.kind()), "input: i128::MAX + 1");
 
-    // Decimal: negative overflow past i64::MIN
-    let e = ctx.parse_err("a = -9223372036854775809");
-    assert!(is_number_error!(e.kind()), "input: -(i64::MIN) - 1");
+    // Decimal: negative overflow past i128::MIN
+    let e = ctx.parse_err("a = -170141183460469231731687303715884105729");
+    assert!(is_number_error!(e.kind()), "input: -(i128::MIN) - 1");
+
+    // Former i64 overflow values now succeed
+    let v = ctx.parse_ok("a = 9223372036854775808");
+    assert_eq!(v["a"].as_i128(), Some(9223372036854775808i128));
+
+    let v = ctx.parse_ok("a = -9223372036854775809");
+    assert_eq!(v["a"].as_i128(), Some(-9223372036854775809i128));
 
     // Hex: invalid hex digit
     let hex_invalid = ["a = 0xGG", "a = 0xZZ"];
@@ -1410,21 +1425,24 @@ fn integer_overflow_specific_paths() {
         assert!(is_number_error!(e.kind()), "input: {input}");
     }
 
-    // Hex: overflow via acc >> 60 != 0 (17 hex digits)
-    let e = ctx.parse_err("a = 0xFFFFFFFFFFFFFFFFF");
-    assert!(is_number_error!(e.kind()), "input: 0x 17 F's");
+    // Hex: overflow via acc >> 124 != 0 (33 hex digits)
+    let e = ctx.parse_err("a = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF");
+    assert!(is_number_error!(e.kind()), "input: 0x 33 F's");
 
-    let e = ctx.parse_err("a = 0x10000000000000000");
-    assert!(is_number_error!(e.kind()), "input: 0x 2^64");
+    // Former i64 overflow hex values now succeed
+    let v = ctx.parse_ok("a = 0xFFFFFFFFFFFFFFFFF");
+    assert_eq!(v["a"].as_i128(), Some(0xFFFFFFFFFFFFFFFFFi128));
 
-    // Octal: acc > i64::MAX (2^63 in octal, passes per-digit check)
-    let e = ctx.parse_err("a = 0o1000000000000000000000");
-    assert!(is_number_error!(e.kind()), "input: 0o 2^63");
+    let v = ctx.parse_ok("a = 0x10000000000000000");
+    assert_eq!(v["a"].as_i128(), Some(0x10000000000000000i128));
 
-    // Binary: overflow via acc >> 63 != 0 (65 binary digits)
-    let e =
-        ctx.parse_err("a = 0b11111111111111111111111111111111111111111111111111111111111111111");
-    assert!(is_number_error!(e.kind()), "input: 0b 65 ones");
+    // Octal: overflow past i128::MAX
+    let e = ctx.parse_err("a = 0o4000000000000000000000000000000000000000000");
+    assert!(is_number_error!(e.kind()), "input: 0o > i128::MAX");
+
+    // Binary: overflow via acc >> 127 != 0 (129 binary digits)
+    let e = ctx.parse_err(&format!("a = 0b1{}", "1".repeat(128)));
+    assert!(is_number_error!(e.kind()), "input: 0b 129 ones");
 }
 
 #[test]
@@ -1709,25 +1727,34 @@ fn integer_base_max_boundary() {
     let v = ctx.parse_ok("a = 0x7FFFFFFFFFFFFFFF");
     assert_eq!(v["a"].as_i64(), Some(i64::MAX));
 
-    // Hex: i64::MAX + 1 should overflow
-    let e = ctx.parse_err("a = 0x8000000000000000");
-    assert!(is_number_error!(e.kind()), "hex i64::MAX+1");
+    // Hex: i64::MAX + 1 now parses as i128
+    let v = ctx.parse_ok("a = 0x8000000000000000");
+    assert_eq!(v["a"].as_i128(), Some(0x8000000000000000i128));
+    assert_eq!(v["a"].as_i64(), None);
+
+    // Hex: i128::MAX
+    let v = ctx.parse_ok("a = 0x7FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF");
+    assert_eq!(v["a"].as_i128(), Some(i128::MAX));
+
+    // Hex: i128::MAX + 1 should overflow
+    let e = ctx.parse_err("a = 0x80000000000000000000000000000000");
+    assert!(is_number_error!(e.kind()), "hex i128::MAX+1");
 
     // Octal: i64::MAX = 0o777777777777777777777
     let v = ctx.parse_ok("a = 0o777777777777777777777");
     assert_eq!(v["a"].as_i64(), Some(i64::MAX));
 
-    // Octal: i64::MAX + 1 should overflow
-    let e = ctx.parse_err("a = 0o1000000000000000000000");
-    assert!(is_number_error!(e.kind()), "octal i64::MAX+1");
+    // Octal: i64::MAX + 1 now parses as i128
+    let v = ctx.parse_ok("a = 0o1000000000000000000000");
+    assert_eq!(v["a"].as_i128(), Some(0o1000000000000000000000i128));
 
     // Binary: i64::MAX = 0b followed by 0 then 62 ones
     let v = ctx.parse_ok("a = 0b0111111111111111111111111111111111111111111111111111111111111111");
     assert_eq!(v["a"].as_i64(), Some(i64::MAX));
 
-    // Binary: i64::MAX + 1 should overflow
-    let e = ctx.parse_err("a = 0b1000000000000000000000000000000000000000000000000000000000000000");
-    assert!(is_number_error!(e.kind()), "binary i64::MAX+1");
+    // Binary: i64::MAX + 1 now parses as i128
+    let v = ctx.parse_ok("a = 0b1000000000000000000000000000000000000000000000000000000000000000");
+    assert_eq!(v["a"].as_i128(), Some(1i128 << 63));
 }
 
 #[test]

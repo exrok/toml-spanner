@@ -258,13 +258,22 @@ macro_rules! direct_upcast_integers {
     ($($tt:tt),*) => {
         $(impl ToToml for $tt {
             fn to_toml<'a>(&'a self, _: &'a Arena) -> Result<Item<'a>, ToTomlError> {
-                Ok(Item::from(*self as i64))
+                Ok(Item::from(*self as i128))
             }
         })*
     };
 }
 
-direct_upcast_integers!(u8, i8, i16, u16, i32, u32, i64);
+direct_upcast_integers!(u8, i8, i16, u16, i32, u32, i64, u64, i128);
+
+impl ToToml for u128 {
+    fn to_toml<'a>(&'a self, _: &'a Arena) -> Result<Item<'a>, ToTomlError> {
+        if *self > i128::MAX as u128 {
+            return ToTomlError::msg("u128 value exceeds i128::MAX");
+        }
+        Ok(Item::from(*self as i128))
+    }
+}
 
 /// Trait for types that can be converted into flattened TOML table entries.
 ///

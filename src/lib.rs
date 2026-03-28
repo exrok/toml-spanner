@@ -209,7 +209,7 @@ use emit::{reproject, reproject_with_span_identity};
 pub use error::{Error, ErrorKind, TomlPath};
 pub use item::array::Array;
 pub use item::table::Table;
-pub use item::{ArrayStyle, Item, Key, Kind, MaybeItem, TableStyle, Value, ValueMut};
+pub use item::{ArrayStyle, Integer, Item, Key, Kind, MaybeItem, TableStyle, Value, ValueMut};
 #[cfg(feature = "from-toml")]
 pub use parser::parse_recoverable;
 pub use parser::{Document, parse};

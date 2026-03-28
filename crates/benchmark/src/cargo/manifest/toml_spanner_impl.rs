@@ -9,7 +9,10 @@ use super::*;
 pub(crate) fn item_to_toml_value(item: &toml_spanner::Item<'_>) -> toml::Value {
     match item.value() {
         toml_spanner::Value::String(&s) => toml::Value::String(s.to_owned()),
-        toml_spanner::Value::Integer(&i) => toml::Value::Integer(i),
+        toml_spanner::Value::Integer(i) => toml::Value::Integer(
+            i.as_i64()
+                .expect("toml::Value only supports signed 64-bit integers"),
+        ),
         toml_spanner::Value::Float(&f) => toml::Value::Float(f),
         toml_spanner::Value::Boolean(&b) => toml::Value::Boolean(b),
         toml_spanner::Value::Array(arr) => {
@@ -82,7 +85,7 @@ impl<'de> toml_spanner::FromToml<'de> for StringOrVec {
 impl<'de> toml_spanner::FromToml<'de> for TomlOptLevel {
     fn from_toml(ctx: &mut Context<'de>, item: &toml_spanner::Item<'de>) -> Result<Self, Failed> {
         match item.value() {
-            toml_spanner::Value::Integer(&i) => Ok(TomlOptLevel(i.to_string())),
+            toml_spanner::Value::Integer(i) => Ok(TomlOptLevel(i.to_string())),
             toml_spanner::Value::String(&s) => {
                 if s == "s" || s == "z" {
                     Ok(TomlOptLevel(s.to_owned()))
@@ -112,7 +115,7 @@ impl<'de> toml_spanner::FromToml<'de> for TomlDebugInfo {
             } else {
                 TomlDebugInfo::None
             }),
-            toml_spanner::Value::Integer(&i) => match i {
+            toml_spanner::Value::Integer(i) => match i.as_i128() {
                 0 => Ok(TomlDebugInfo::None),
                 1 => Ok(TomlDebugInfo::Limited),
                 2 => Ok(TomlDebugInfo::Full),

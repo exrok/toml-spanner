@@ -200,10 +200,114 @@ pub enum ArrayStyle {
     Header,
 }
 
+#[repr(packed)]
+#[derive(Clone, Copy)]
+struct PackedI128 {
+    value: i128,
+}
+
+/// A TOML integer value.
+///
+/// This is a storage type that supports the full range of `i128`.
+/// Convert to a primitive with [`as_i128`](Self::as_i128),
+/// [`as_i64`](Self::as_i64), or [`as_u64`](Self::as_u64), perform
+/// your arithmetic there, then convert back with `From`.
+#[repr(align(8))]
+#[derive(Clone, Copy)]
+pub struct Integer {
+    value: PackedI128,
+}
+
+impl Integer {
+    /// Returns the value as an `i128`.
+    #[inline]
+    pub fn as_i128(&self) -> i128 {
+        let copy = *self;
+        copy.value.value
+    }
+
+    /// Returns the value as an `f64`, which may be lossy for large integers.
+    #[inline]
+    pub fn as_f64(&self) -> f64 {
+        let copy = *self;
+        copy.value.value as f64
+    }
+
+    /// Returns the value as an `i64`, or [`None`] if it does not fit.
+    #[inline]
+    pub fn as_i64(&self) -> Option<i64> {
+        i64::try_from(self.as_i128()).ok()
+    }
+
+    /// Returns the value as a `u64`, or [`None`] if it does not fit.
+    #[inline]
+    pub fn as_u64(&self) -> Option<u64> {
+        u64::try_from(self.as_i128()).ok()
+    }
+}
+
+impl From<i128> for Integer {
+    #[inline]
+    fn from(v: i128) -> Self {
+        Self {
+            value: PackedI128 { value: v },
+        }
+    }
+}
+
+impl From<i64> for Integer {
+    #[inline]
+    fn from(v: i64) -> Self {
+        Self::from(v as i128)
+    }
+}
+
+impl From<u64> for Integer {
+    #[inline]
+    fn from(v: u64) -> Self {
+        Self::from(v as i128)
+    }
+}
+
+impl From<i32> for Integer {
+    #[inline]
+    fn from(v: i32) -> Self {
+        Self::from(v as i128)
+    }
+}
+
+impl From<u32> for Integer {
+    #[inline]
+    fn from(v: u32) -> Self {
+        Self::from(v as i128)
+    }
+}
+
+impl PartialEq for Integer {
+    #[inline]
+    fn eq(&self, other: &Self) -> bool {
+        self.as_i128() == other.as_i128()
+    }
+}
+
+impl Eq for Integer {}
+
+impl fmt::Debug for Integer {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.as_i128().fmt(f)
+    }
+}
+
+impl fmt::Display for Integer {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.as_i128().fmt(f)
+    }
+}
+
 #[repr(C, align(8))]
 union Payload<'de> {
     string: &'de str,
-    integer: i64,
+    integer: Integer,
     float: f64,
     boolean: bool,
     array: ManuallyDrop<InternalArray<'de>>,
@@ -251,7 +355,29 @@ const _: () = assert!(std::mem::align_of::<Item<'_>>() == 8);
 
 impl<'de> From<i64> for Item<'de> {
     fn from(value: i64) -> Self {
-        Self::raw_hints(TAG_INTEGER, FLAG_NONE, Payload { integer: value })
+        Self::raw_hints(
+            TAG_INTEGER,
+            FLAG_NONE,
+            Payload {
+                integer: Integer::from(value),
+            },
+        )
+    }
+}
+impl<'de> From<i128> for Item<'de> {
+    fn from(value: i128) -> Self {
+        Self::raw_hints(
+            TAG_INTEGER,
+            FLAG_NONE,
+            Payload {
+                integer: Integer::from(value),
+            },
+        )
+    }
+}
+impl<'de> From<i32> for Item<'de> {
+    fn from(value: i32) -> Self {
+        Self::from(value as i64)
     }
 }
 impl<'de> From<&'de str> for Item<'de> {
@@ -313,13 +439,15 @@ impl<'de> Item<'de> {
     }
 
     #[inline]
-    pub(crate) fn integer_spanned(i: i64, span: Span) -> Self {
+    pub(crate) fn integer_spanned(i: i128, span: Span) -> Self {
         Self::raw(
             TAG_INTEGER,
             FLAG_NONE,
             span.start,
             span.end,
-            Payload { integer: i },
+            Payload {
+                integer: Integer::from(i),
+            },
         )
     }
 
@@ -620,7 +748,7 @@ impl<'de> Item<'de> {
 /// let arena = Arena::new();
 /// let table = toml_spanner::parse("n = 10", &arena).unwrap();
 /// match table["n"].item().unwrap().value() {
-///     Value::Integer(i) => assert_eq!(*i, 10),
+///     Value::Integer(i) => assert_eq!(i.as_i128(), 10),
 ///     _ => panic!("expected integer"),
 /// }
 /// ```
@@ -629,7 +757,7 @@ pub enum Value<'a, 'de> {
     /// A string value.
     String(&'a &'de str),
     /// An integer value.
-    Integer(&'a i64),
+    Integer(&'a Integer),
     /// A floating-point value.
     Float(&'a f64),
     /// A boolean value.
@@ -649,7 +777,7 @@ pub enum ValueMut<'a, 'de> {
     /// A string value.
     String(&'a mut &'de str),
     /// An integer value.
-    Integer(&'a mut i64),
+    Integer(&'a mut Integer),
     /// A floating-point value.
     Float(&'a mut f64),
     /// A boolean value.
@@ -725,12 +853,34 @@ impl<'de> Item<'de> {
         self
     }
 
-    /// Returns an `i64` if this is an integer value.
+    /// Returns an `i128` if this is an integer value.
+    #[inline]
+    pub fn as_i128(&self) -> Option<i128> {
+        if self.tag() == TAG_INTEGER {
+            // SAFETY: tag check guarantees the payload is an integer.
+            Some(unsafe { self.payload.integer.as_i128() })
+        } else {
+            None
+        }
+    }
+
+    /// Returns an `i64` if this is an integer value that fits in the `i64` range.
     #[inline]
     pub fn as_i64(&self) -> Option<i64> {
         if self.tag() == TAG_INTEGER {
             // SAFETY: tag check guarantees the payload is an integer.
-            Some(unsafe { self.payload.integer })
+            unsafe { self.payload.integer.as_i64() }
+        } else {
+            None
+        }
+    }
+
+    /// Returns a `u64` if this is an integer value that fits in the `u64` range.
+    #[inline]
+    pub fn as_u64(&self) -> Option<u64> {
+        if self.tag() == TAG_INTEGER {
+            // SAFETY: tag check guarantees the payload is an integer.
+            unsafe { self.payload.integer.as_u64() }
         } else {
             None
         }
@@ -744,7 +894,7 @@ impl<'de> Item<'de> {
     pub fn as_f64(&self) -> Option<f64> {
         match self.value() {
             Value::Float(f) => Some(*f),
-            Value::Integer(i) => Some(*i as f64),
+            Value::Integer(i) => Some(i.as_i128() as f64),
             _ => None,
         }
     }
@@ -1259,7 +1409,11 @@ pub struct MaybeItem<'de> {
 unsafe impl Sync for MaybeItem<'_> {}
 
 pub(crate) static NONE: MaybeItem<'static> = MaybeItem {
-    payload: Payload { integer: 0 },
+    payload: Payload {
+        integer: Integer {
+            value: PackedI128 { value: 0 },
+        },
+    },
     meta: ItemMetadata {
         start_and_tag: TAG_NONE,
         end_and_flag: FLAG_NONE,
@@ -1299,12 +1453,34 @@ impl<'de> MaybeItem<'de> {
         }
     }
 
-    /// Returns an `i64` if this is an integer value.
+    /// Returns an `i128` if this is an integer value.
+    #[inline]
+    pub fn as_i128(&self) -> Option<i128> {
+        if self.tag() == TAG_INTEGER {
+            // SAFETY: tag check guarantees the payload is an integer.
+            Some(unsafe { self.payload.integer.as_i128() })
+        } else {
+            None
+        }
+    }
+
+    /// Returns an `i64` if this is an integer value that fits in the `i64` range.
     #[inline]
     pub fn as_i64(&self) -> Option<i64> {
         if self.tag() == TAG_INTEGER {
             // SAFETY: tag check guarantees the payload is an integer.
-            Some(unsafe { self.payload.integer })
+            unsafe { self.payload.integer.as_i64() }
+        } else {
+            None
+        }
+    }
+
+    /// Returns a `u64` if this is an integer value that fits in the `u64` range.
+    #[inline]
+    pub fn as_u64(&self) -> Option<u64> {
+        if self.tag() == TAG_INTEGER {
+            // SAFETY: tag check guarantees the payload is an integer.
+            unsafe { self.payload.integer.as_u64() }
         } else {
             None
         }

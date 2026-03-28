@@ -12,7 +12,7 @@ fn key(name: &str) -> Key<'_> {
 }
 
 fn ival(i: i64) -> Item<'static> {
-    Item::integer_spanned(i, sp())
+    Item::integer_spanned(i as i128, sp())
 }
 
 #[test]
@@ -70,7 +70,7 @@ fn inner_get_and_mutate() {
     // get_mut: modify in place
     let v = t.get_mut("a").unwrap();
     if let crate::item::ValueMut::Integer(i) = v.value_mut() {
-        *i = 99;
+        *i = crate::Integer::from(99i64);
     }
     assert_eq!(t.get("a").unwrap().as_i64(), Some(99));
 
@@ -202,7 +202,7 @@ fn table_access_and_mutation() {
     // get_mut: modify in place
     let v = table.get_mut("a").unwrap();
     if let crate::item::ValueMut::Integer(i) = v.value_mut() {
-        *i = 99;
+        *i = crate::Integer::from(99i64);
     }
     assert_eq!(table["a"].as_i64(), Some(99));
     assert!(table.get_mut("missing").is_none());
@@ -226,7 +226,7 @@ fn table_iterators() {
     let mut table = make_table(&arena);
     for (_, v) in &mut table {
         if let crate::item::ValueMut::Integer(i) = v.value_mut() {
-            *i += 100;
+            *i = crate::Integer::from(i.as_i128() + 100);
         }
     }
     assert_eq!(table["a"].as_i64(), Some(101));
@@ -407,7 +407,7 @@ fn clone_in_independent_of_source() {
     // Mutate the original
     if let Some(v) = table.get_mut("a") {
         if let crate::item::ValueMut::Integer(i) = v.value_mut() {
-            *i = 999;
+            *i = crate::Integer::from(999i64);
         }
     }
     // Clone is unaffected

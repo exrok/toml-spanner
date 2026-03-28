@@ -15,7 +15,7 @@ pub struct BodyEntry<'de> {
 
 #[derive(Debug, Clone)]
 pub enum ScalarKind {
-    Integer(i64),
+    Integer(i128),
     Boolean(bool),
     NonEditable,
 }
@@ -116,7 +116,7 @@ pub fn collect_body_entries<'de>(
             }
             _ => {
                 let kind = match item.value() {
-                    Value::Integer(v) => ScalarKind::Integer(*v),
+                    Value::Integer(v) => ScalarKind::Integer(v.as_i128()),
                     Value::Boolean(v) => ScalarKind::Boolean(*v),
                     _ => ScalarKind::NonEditable,
                 };
@@ -169,7 +169,7 @@ pub fn remove_at_path(table: &mut Table<'_>, path: &[&str]) {
     remove_at_path(sub_table, &path[1..]);
 }
 
-pub fn format_canonical_integer(v: i64) -> Vec<u8> {
+pub fn format_canonical_integer(v: i128) -> Vec<u8> {
     let mut buf = Vec::new();
     let _ = write!(buf, "{v}");
     buf

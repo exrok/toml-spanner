@@ -429,9 +429,10 @@ fn emit_table_field_deser(
 
     // Finish flatten partial
     if let Some(ff) = flatten_field {
+        let table_id = Ident::new(table_ident, Span::mixed_site());
         splat!(out; let [#: ff.name] =);
         emit_flatten_prefix(out, ctx, ff, FROM_TOML);
-        splat!(out; ::finish( __ctx, __flatten_partial)?;);
+        splat!(out; ::finish( __ctx, [#table_id], __flatten_partial)?;);
     }
 
     // Unwrap required and default fields

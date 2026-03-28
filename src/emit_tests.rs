@@ -109,8 +109,8 @@ fn assert_items_equal_with_flags(
             "string mismatch at {path_str}\ninput:\n{input}\nemitted:\n{emitted}"
         ),
         Value::Integer(i) => assert_eq!(
-            b.as_i64(),
-            Some(*i),
+            b.as_i128(),
+            Some(i.as_i128()),
             "integer mismatch at {path_str}\ninput:\n{input}\nemitted:\n{emitted}"
         ),
         Value::Float(f) => {

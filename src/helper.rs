@@ -166,9 +166,78 @@ pub struct ShallowTable<'de, 'b> {
 /// [`FromFlattened`]: crate::FromFlattened
 /// [`ToFlattened`]: crate::ToFlattened
 pub mod flatten_any {
+    use foldhash::HashMapExt;
+
     #[cfg(feature = "to-toml")]
     use crate::{Arena, ToToml, ToTomlError};
-    use crate::{Context, Failed, FromToml, Item, Key, Table, helper::ShallowTable};
+    use crate::{
+        Context, Failed, FromToml, Item, Key, Table, error::MaybeTomlPath, helper::ShallowTable,
+        parser::KeyRef,
+    };
+
+    fn patch_errors<'de, 'b>(
+        ctx: &mut Context<'de>,
+        original: usize,
+        parent: &Table<'de>,
+        partial: &ShallowTable<'de, 'b>,
+    ) {
+        let entries = partial.table.entries();
+        let entry_size = std::mem::size_of::<(Key<'_>, Item<'_>)>();
+        let base = entries.as_ptr() as *const u8;
+        // SAFETY: entries is a valid slice; one-past-the-end is a valid pointer.
+        let end = unsafe { base.add(entries.len() * entry_size) };
+
+        // Note: We could make faster index, but we reuse this same index format
+        // to reduce code bloat, for this edge case.
+        // See: flatten_any_error_patching_large_scale in tests/derive.rs for example
+        // where this temporary index kicks in. (10s -> 0.03s)
+        let mut temporary_index: foldhash::HashMap<KeyRef<'de>, usize>;
+
+        let errors = &mut ctx.errors[original..];
+        // Only use index for tables created from parse.
+        // Note: this is only heuristic, but contrived situation underwhich where this
+        // would actually introduce a issue is insane.
+        let index = if parent.span().is_empty() {
+            if parent.len() > 8 && errors.len() > 2 {
+                temporary_index = foldhash::HashMap::with_capacity(parent.len());
+                // Safety: length is greater the 8, thus more then 0
+                let table_id = unsafe { parent.value.first_key_span_start_unchecked() };
+                let mut i = 0;
+                for (key, _) in parent.entries() {
+                    temporary_index.insert(KeyRef::new(key.name, table_id), i);
+                    i += 1;
+                }
+                Some(&temporary_index)
+            } else {
+                None
+            }
+        } else {
+            Some(&ctx.index)
+        };
+
+        for error in errors {
+            if !error.path.is_uncomputed() {
+                continue;
+            }
+            if std::ptr::addr_eq(error.path.uncomputed_ptr(), partial) {
+                error.path = MaybeTomlPath::uncomputed(parent.as_item());
+                error.span = parent.span();
+                continue;
+            }
+            let ptr = error.path.uncomputed_ptr() as *const u8;
+            if ptr < base || ptr >= end {
+                continue;
+            }
+            // SAFETY: ptr is within the entries allocation; byte_offset_from is valid.
+            let byte_offset = unsafe { ptr.byte_offset_from(base) } as usize;
+            let entry_index = byte_offset / entry_size;
+            if let Some((key, _)) = &entries.get(entry_index) {
+                if let Some((_, item)) = parent.value.get_entry_with_maybe_index(key.name, index) {
+                    error.path = MaybeTomlPath::uncomputed(item);
+                }
+            }
+        }
+    }
 
     /// Creates an empty accumulator for collecting flattened entries.
     pub fn init<'a, 'b>() -> ShallowTable<'a, 'b> {
@@ -200,9 +269,15 @@ pub mod flatten_any {
     /// Converts the accumulated entries into `T` via [`FromToml`].
     pub fn finish<'de, 'b, T: FromToml<'de>>(
         ctx: &mut Context<'de>,
+        parent: &Table<'de>,
         partial: ShallowTable<'de, 'b>,
     ) -> Result<T, Failed> {
-        T::from_toml(ctx, partial.table.as_item())
+        let original = ctx.errors.len();
+        let result = T::from_toml(ctx, partial.table.as_item());
+        if ctx.errors.len() > original {
+            patch_errors(ctx, original, parent, &partial);
+        }
+        result
     }
 
     /// Converts `value` into [`Item`] entries and inserts them

@@ -933,12 +933,12 @@ pub fn scan_fields<'a>(target: &mut DeriveTargetInner<'a>, fields: &mut Vec<Fiel
                 continue;
             };
             let ident_str = ident.to_string();
-            let is_generic = target.generics.iter().any(|g| {
-                (match g.kind {
-                    GenericKind::Type => true,
-                    _ => false,
-                }) && g.ident.to_string() == ident_str
-            });
+            let is_generic =
+                    target.generics.iter().any(|g|
+                             match g.kind {
+                                    GenericKind::Type => true,
+                                    _ => false,
+                                } && g.ident.to_string() == ident_str);
             if !is_generic {
                 continue;
             }

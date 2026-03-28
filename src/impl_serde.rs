@@ -30,7 +30,7 @@ impl serde::Serialize for Item<'_> {
     {
         match self.value() {
             Value::String(s) => ser.serialize_str(s),
-            Value::Integer(i) => ser.serialize_i64(*i),
+            Value::Integer(i) => ser.serialize_i128(i.as_i128()),
             Value::Float(f) => ser.serialize_f64(*f),
             Value::Boolean(b) => ser.serialize_bool(*b),
             Value::Array(arr) => {

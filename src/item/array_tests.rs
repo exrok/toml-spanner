@@ -7,7 +7,7 @@ fn sp() -> Span {
 }
 
 fn ival(i: i64) -> Item<'static> {
-    Item::integer_spanned(i, sp())
+    Item::integer_spanned(i as i128, sp())
 }
 
 #[test]
@@ -62,7 +62,7 @@ fn get_and_get_mut() {
     // get_mut: modify first element
     let v = a.get_mut(0).unwrap();
     if let crate::item::ValueMut::Integer(i) = v.value_mut() {
-        *i = 99;
+        *i = crate::Integer::from(99i64);
     }
     assert_eq!(a[0].as_i64(), Some(99));
     assert_eq!(a[1].as_i64(), Some(20));
@@ -79,7 +79,7 @@ fn get_and_get_mut() {
     // as_mut_slice: modify through slice
     let s = a.as_mut_slice();
     if let crate::item::ValueMut::Integer(i) = s[1].value_mut() {
-        *i = 200;
+        *i = crate::Integer::from(200i64);
     }
     assert_eq!(a[1].as_i64(), Some(200));
 }
@@ -99,7 +99,7 @@ fn pop_and_last_mut() {
     // last_mut: modify tail
     let last = a.last_mut().unwrap();
     if let crate::item::ValueMut::Integer(i) = last.value_mut() {
-        *i = 99;
+        *i = crate::Integer::from(99i64);
     }
     assert_eq!(a[2].as_i64(), Some(99));
 
@@ -127,7 +127,7 @@ fn iterators() {
 
     for v in &mut a {
         if let crate::item::ValueMut::Integer(i) = v.value_mut() {
-            *i += 10;
+            *i = crate::Integer::from(i.as_i128() + 10);
         }
     }
     assert_eq!(a[0].as_i64(), Some(11));
@@ -282,7 +282,7 @@ fn clone_in_independent_of_source() {
     // Mutate the original
     if let Some(v) = a.get_mut(0) {
         if let crate::item::ValueMut::Integer(i) = v.value_mut() {
-            *i = 999;
+            *i = crate::Integer::from(999i64);
         }
     }
     // Clone is unaffected

@@ -5,5 +5,5 @@ expression: error
 error[InvalidInteger]: invalid integer: integer overflow at `a`
   ┌─ integer_range_negative:1:5
   │
-1 │ a = -9223372036854775809
-  │     ^^^^^^^^^^^^^^^^^^^^ invalid integer: integer overflow
+1 │ a = -170141183460469231731687303715884105729
+  │     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ invalid integer: integer overflow

@@ -147,10 +147,16 @@ mod bad_table_names {
     invalid!(crlf_literal, "['\r\n']");
 }
 
-// Outside the positive range of an i64
-invalid!(integer_range_positive, "a = 9223372036854775808");
-// Outside negative range of an i64
-invalid!(integer_range_negative, "a = -9223372036854775809");
+// Outside the positive range of an i128
+invalid!(
+    integer_range_positive,
+    "a = 170141183460469231731687303715884105728"
+);
+// Outside negative range of an i128
+invalid!(
+    integer_range_negative,
+    "a = -170141183460469231731687303715884105729"
+);
 invalid!(bare_number, "4");
 
 valid!(inline_tables);

@@ -1064,7 +1064,7 @@ pub fn mutate_arrays(table: &mut toml_spanner::Table<'_>, g: &mut Gen<'_>) -> bo
                 let elem = &mut arr.as_mut_slice()[i];
                 if let Some(t) = elem.as_table_mut() {
                     for (_, val) in t.entries_mut() {
-                        if let Some(v) = val.as_i64() {
+                        if let Some(v) = val.as_i128() {
                             *val = toml_spanner::Item::from(v ^ 1);
                             applied = true;
                             break;
@@ -1075,7 +1075,7 @@ pub fn mutate_arrays(table: &mut toml_spanner::Table<'_>, g: &mut Gen<'_>) -> bo
                             break;
                         }
                     }
-                } else if let Some(v) = elem.as_i64() {
+                } else if let Some(v) = elem.as_i128() {
                     *elem = toml_spanner::Item::from(v ^ 1);
                     applied = true;
                 } else if let Some(v) = elem.as_bool() {

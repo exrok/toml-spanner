@@ -403,7 +403,7 @@ fn hash_item(item: &Item<'_>, h: &mut impl Hasher, build: &impl BuildHasher) {
         }
         Value::Integer(i) => {
             h.write_u8(1);
-            h.write_i64(*i);
+            h.write_i128(i.as_i128());
         }
         Value::Float(f) => {
             h.write_u8(2);

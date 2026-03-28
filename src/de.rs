@@ -411,16 +411,6 @@ impl<'ctx, 't, 'de> TableHelper<'ctx, 't, 'de> {
         Some(entry)
     }
 
-    // #[cold]
-    // fn report_missing_field(&mut self, name: &'static str) -> Failed {
-    //     self.ctx.errors.push(Error::new_with_path(
-    //         ErrorKind::MissingField(name),
-    //         self.table.span(),
-    //         TomlPath::uncomputed(self.table.as_item()),
-    //     ));
-    //     Failed
-    // }
-
     #[cold]
     fn report_missing_field(&mut self, name: &'static str) -> Failed {
         self.ctx.errors.push(Error::new_with_path(
@@ -725,8 +715,13 @@ pub trait FromFlattened<'de>: Sized {
         partial: &mut Self::Partial,
     ) -> Result<(), Failed>;
     /// Converts the accumulator into the final value after all entries
-    /// have been inserted.
-    fn finish(ctx: &mut Context<'de>, partial: Self::Partial) -> Result<Self, Failed>;
+    /// have been inserted. The `parent` parameter is the table that
+    /// contained the flattened entries.
+    fn finish(
+        ctx: &mut Context<'de>,
+        parent: &Table<'de>,
+        partial: Self::Partial,
+    ) -> Result<Self, Failed>;
 }
 
 /// Converts a TOML key into a map key, preserving span information.
@@ -762,7 +757,11 @@ where
         partial.insert(k, v);
         Ok(())
     }
-    fn finish(_ctx: &mut Context<'de>, partial: Self::Partial) -> Result<Self, Failed> {
+    fn finish(
+        _ctx: &mut Context<'de>,
+        _parent: &Table<'de>,
+        partial: Self::Partial,
+    ) -> Result<Self, Failed> {
         Ok(partial)
     }
 }
@@ -819,7 +818,11 @@ where
         partial.insert(k, v);
         Ok(())
     }
-    fn finish(_ctx: &mut Context<'de>, partial: Self::Partial) -> Result<Self, Failed> {
+    fn finish(
+        _ctx: &mut Context<'de>,
+        _parent: &Table<'de>,
+        partial: Self::Partial,
+    ) -> Result<Self, Failed> {
         Ok(partial)
     }
 }
@@ -947,11 +950,11 @@ impl<'de> FromToml<'de> for bool {
 fn deser_integer_ctx<'de>(
     ctx: &mut Context<'de>,
     value: &Item<'de>,
-    min: i64,
-    max: i64,
+    min: i128,
+    max: i128,
     name: &'static str,
-) -> Result<i64, Failed> {
-    match value.as_i64() {
+) -> Result<i128, Failed> {
+    match value.as_i128() {
         Some(i) if i >= min && i <= max => Ok(i),
         Some(_) => Err(ctx.error_out_of_range(name, value)),
         None => Err(ctx.error_expected_but_found(&"an integer", value)),
@@ -962,7 +965,7 @@ macro_rules! integer_new {
     ($($num:ty),+) => {$(
         impl<'de> FromToml<'de> for $num {
             fn from_toml(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
-                match deser_integer_ctx(ctx, value, <$num>::MIN as i64, <$num>::MAX as i64, stringify!($num)) {
+                match deser_integer_ctx(ctx, value, <$num>::MIN as i128, <$num>::MAX as i128, stringify!($num)) {
                     Ok(i) => Ok(i as $num),
                     Err(e) => Err(e),
                 }
@@ -975,14 +978,35 @@ integer_new!(i8, i16, i32, isize, u8, u16, u32);
 
 impl<'de> FromToml<'de> for i64 {
     fn from_toml(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
-        deser_integer_ctx(ctx, value, i64::MIN, i64::MAX, "i64")
+        match deser_integer_ctx(ctx, value, i64::MIN as i128, i64::MAX as i128, "i64") {
+            Ok(i) => Ok(i as i64),
+            Err(e) => Err(e),
+        }
     }
 }
 
 impl<'de> FromToml<'de> for u64 {
     fn from_toml(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
-        match deser_integer_ctx(ctx, value, 0, i64::MAX, "u64") {
+        match deser_integer_ctx(ctx, value, 0, u64::MAX as i128, "u64") {
             Ok(i) => Ok(i as u64),
+            Err(e) => Err(e),
+        }
+    }
+}
+
+impl<'de> FromToml<'de> for i128 {
+    fn from_toml(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
+        match deser_integer_ctx(ctx, value, i128::MIN, i128::MAX, "i128") {
+            Ok(i) => Ok(i),
+            Err(e) => Err(e),
+        }
+    }
+}
+
+impl<'de> FromToml<'de> for u128 {
+    fn from_toml(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
+        match deser_integer_ctx(ctx, value, 0, i128::MAX, "u128") {
+            Ok(i) => Ok(i as u128),
             Err(e) => Err(e),
         }
     }
@@ -990,12 +1014,7 @@ impl<'de> FromToml<'de> for u64 {
 
 impl<'de> FromToml<'de> for usize {
     fn from_toml(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
-        const MAX: i64 = if usize::BITS < 64 {
-            usize::MAX as i64
-        } else {
-            i64::MAX
-        };
-        match deser_integer_ctx(ctx, value, 0, MAX, "usize") {
+        match deser_integer_ctx(ctx, value, 0, usize::MAX as i128, "usize") {
             Ok(i) => Ok(i as usize),
             Err(e) => Err(e),
         }

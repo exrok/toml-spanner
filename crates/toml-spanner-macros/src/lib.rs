@@ -250,16 +250,21 @@ impl Error {
 ///     // FromFlattened equivalent
 ///     pub fn init() -> Partial { /* ... */ }
 ///     pub fn insert<'de>(
-///         ctx: &mut Context<'de>, key: &Key<'de>,
-///         item: &Item<'de>, partial: &mut Partial,
+///         ctx: &mut Context<'de>,
+///         key: &Key<'de>,
+///         item: &Item<'de>,
+///         partial: &mut Partial,
 ///     ) -> Result<(), Failed> { /* ... */ }
 ///     pub fn finish<'de>(
-///         ctx: &mut Context<'de>, partial: Partial,
+///         ctx: &mut Context<'de>,
+///         parent: &Table<'de>,
+///         partial: Partial,
 ///     ) -> Result<FieldType, Failed> { /* ... */ }
 ///
 ///     // ToFlattened equivalent
 ///     pub fn to_flattened<'a>(
-///         val: &'a FieldType, arena: &'a Arena,
+///         val: &'a FieldType,
+///         arena: &'a Arena,
 ///         table: &mut Table<'a>,
 ///     ) -> Result<(), ToTomlError> { /* ... */ }
 /// }

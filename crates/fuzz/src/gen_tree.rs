@@ -133,12 +133,12 @@ pub fn items_eq(a: &Item<'_>, b: &Item<'_>, path: &mut Vec<String>) -> Result<()
             }
         }
         Value::Integer(i) => {
-            if b.as_i64() != Some(*i) {
+            if b.as_i128() != Some(i.as_i128()) {
                 return Err(format!(
                     "integer mismatch at {}: {} vs {:?}",
                     p(),
                     i,
-                    b.as_i64()
+                    b.as_i128()
                 ));
             }
         }
@@ -228,7 +228,7 @@ pub fn print_item(item: &Item<'_>, indent: usize, prefix: &str) {
         toml_spanner::Kind::Integer => {
             println!(
                 "{pad}{prefix}Integer({flag}) = {}",
-                item.as_i64().unwrap_or(0)
+                item.as_i128().unwrap_or(0)
             );
         }
         toml_spanner::Kind::Float => {

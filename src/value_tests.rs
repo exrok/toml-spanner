@@ -21,11 +21,17 @@ fn constructors() {
     let v = Item::integer_spanned(42, sp(0, 2));
     assert_eq!(v.tag(), TAG_INTEGER);
     assert_eq!(v.as_i64(), Some(42));
+    assert_eq!(v.as_u64(), Some(42));
     assert_eq!(v.span_unchecked(), sp(0, 2));
     assert_eq!(*v.type_str(), "integer");
 
     let v = Item::integer_spanned(-9999, sp(0, 5));
     assert_eq!(v.as_i64(), Some(-9999));
+    assert_eq!(v.as_u64(), None);
+
+    let v = Item::integer_spanned(u64::MAX as i128, sp(0, 20));
+    assert_eq!(v.as_i64(), None);
+    assert_eq!(v.as_u64(), Some(u64::MAX));
 
     // Float
     let v = Item::float_spanned(3.15, sp(0, 4));
@@ -257,7 +263,7 @@ fn value_mut_all_types() {
     // Integer
     let mut v = Item::integer_spanned(10, sp(0, 2));
     if let ValueMut::Integer(i) = v.value_mut() {
-        *i = 99;
+        *i = Integer::from(99i64);
     }
     assert_eq!(v.as_i64(), Some(99));
 
@@ -631,6 +637,7 @@ fn maybe_item_chained_and_none_propagation() {
     let none = &item["missing"];
     assert!(none.as_str().is_none());
     assert!(none.as_i64().is_none());
+    assert!(none.as_u64().is_none());
     assert!(none.as_f64().is_none());
     assert!(none.as_bool().is_none());
     assert!(none.as_array().is_none());

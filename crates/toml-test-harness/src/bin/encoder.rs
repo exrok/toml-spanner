@@ -37,7 +37,7 @@ mod parsed_string {
 #[jsony(tag = "type", content = "value", rename_all = "kebab-case")]
 enum Scalar {
     String(String),
-    Integer(#[jsony(with = parsed_string)] i64),
+    Integer(#[jsony(with = parsed_string)] i128),
     Float(#[jsony(with = parsed_string)] f64),
     Bool(#[jsony(with = parsed_string)] bool),
     Datetime(#[jsony(with = parsed_string)] DateTime),

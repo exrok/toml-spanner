@@ -178,6 +178,7 @@ mod flatten_toml_value {
     }
     pub fn finish(
         _ctx: &mut Context<'_>,
+        _parent: &toml_spanner::Table<'_>,
         partial: BTreeMap<String, toml::Value>,
     ) -> Result<BTreeMap<String, toml::Value>, Failed> {
         Ok(partial)
@@ -200,7 +201,11 @@ mod flatten_toml_table {
         partial.insert(key.name.to_owned(), item_to_toml_value(item));
         Ok(())
     }
-    pub fn finish(_ctx: &mut Context<'_>, partial: toml::Table) -> Result<toml::Table, Failed> {
+    pub fn finish(
+        _ctx: &mut Context<'_>,
+        _parent: &toml_spanner::Table<'_>,
+        partial: toml::Table,
+    ) -> Result<toml::Table, Failed> {
         Ok(partial)
     }
 }
@@ -1914,7 +1919,10 @@ use toml_spanner::{Context, Failed};
 fn item_to_toml_value(item: &toml_spanner::Item<'_>) -> toml::Value {
     match item.value() {
         toml_spanner::Value::String(&s) => toml::Value::String(s.to_owned()),
-        toml_spanner::Value::Integer(&i) => toml::Value::Integer(i),
+        toml_spanner::Value::Integer(i) => toml::Value::Integer(
+            i.as_i64()
+                .expect("toml::Value only supports signed 64-bit integers"),
+        ),
         toml_spanner::Value::Float(&f) => toml::Value::Float(f),
         toml_spanner::Value::Boolean(&b) => toml::Value::Boolean(b),
         toml_spanner::Value::Array(arr) => {
