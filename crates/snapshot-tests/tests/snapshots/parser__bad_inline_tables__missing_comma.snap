@@ -1,0 +1,24 @@
+---
+source: crates/snapshot-tests/tests/parser.rs
+expression: combined
+---
+error[MissingInlineTableComma]: missing comma between fields, expected `,` in inline table at `a`
+  ┌─ missing_comma:1:10
+  │
+1 │ a = {b=1 c=2}
+  │          ^ expected `,`
+
+
+error: missing comma between fields, expected `,` in inline table at `a`
+ --> missing_comma:1:10
+  |
+1 | a = {b=1 c=2}
+  |          ^ expected `,`
+Error {
+    kind: "MissingInlineTableComma",
+    message: "missing comma between fields, expected `,` in inline table",
+    span: 9..10,
+    path: Some(
+        "a",
+    ),
+}

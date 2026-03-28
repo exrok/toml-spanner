@@ -1,9 +1,24 @@
 ---
-source: snapshot-tests/tests/parser.rs
-expression: error
+source: crates/snapshot-tests/tests/parser.rs
+expression: combined
 ---
 error[InvalidHexEscape]: invalid hex escape character in string: `"` at `foo`
   ┌─ hex2:1:10
   │
 1 │ foo = "\u"
   │          ^ invalid hex escape '"'
+
+
+error: invalid hex escape character in string: `"` at `foo`
+ --> hex2:1:10
+  |
+1 | foo = "\u"
+  |          ^ invalid hex escape '"'
+Error {
+    kind: "InvalidHexEscape",
+    message: "invalid hex escape character in string: `\"`",
+    span: 9..10,
+    path: Some(
+        "foo",
+    ),
+}

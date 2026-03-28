@@ -323,6 +323,18 @@ fn emit_table_field_deser(
         } else {
             splat!(out; let mut [#: field.name] = None::< [~field.ty] >;);
         }
+        if field.attr.has_aliases(FROM_TOML) {
+            let span_ident = Ident::new(
+                &{
+                    let mut s = field.name.to_string();
+                    s.push_str("_first_span");
+                    s
+                },
+                Span::mixed_site(),
+            );
+            let zero = TokenTree::Literal(Literal::u32_suffixed(0));
+            splat!(out; let mut [#: &span_ident] = toml_spanner::Span::new([@zero.clone()], [@zero]););
+        }
     }
 
     // Build for loop: for (__key, __value) in table { match __key.name { ... } }
@@ -364,9 +376,17 @@ fn emit_table_field_deser(
         let arm_body_at = out.buf.len();
 
         if has_aliases {
+            let span_ident = Ident::new(
+                &{
+                    let mut s = field.name.to_string();
+                    s.push_str("_first_span");
+                    s
+                },
+                Span::mixed_site(),
+            );
             splat!(out;
                 if [#: field.name].is_some() {
-                    return Err(__ctx.report_duplicate_field([@name_lit.clone().into()], __key.span, __item));
+                    return Err(__ctx.report_duplicate_field([@name_lit.clone().into()], __key.span, [#: &span_ident], __value));
                 }
             );
         }
@@ -387,7 +407,7 @@ fn emit_table_field_deser(
                                 , & [@alias.clone().into()]
                                 , & [@name_for_new.clone().into()]
                                 , __key . span
-                                , __item
+                                , __value
                             );
                         }
                     );
@@ -403,11 +423,27 @@ fn emit_table_field_deser(
         };
         emit_from_toml_call(out, ctx, field, ty);
         let match_body_at = out.buf.len();
-        splat!(out;
-            Ok(__val) => { [#: field.name] = Some(__val); }
-            [?(is_required) Err(__e) => return Err(__e),]
-            [?(!is_required) Err(_) => {},]
-        );
+        if has_aliases {
+            let span_ident = Ident::new(
+                &{
+                    let mut s = field.name.to_string();
+                    s.push_str("_first_span");
+                    s
+                },
+                Span::mixed_site(),
+            );
+            splat!(out;
+                Ok(__val) => { [#: field.name] = Some(__val); [#: &span_ident] = __key.span; }
+                [?(is_required) Err(__e) => return Err(__e),]
+                [?(!is_required) Err(_) => {},]
+            );
+        } else {
+            splat!(out;
+                Ok(__val) => { [#: field.name] = Some(__val); }
+                [?(is_required) Err(__e) => return Err(__e),]
+                [?(!is_required) Err(_) => {},]
+            );
+        }
         out.tt_group(Delimiter::Brace, match_body_at);
 
         out.tt_group(Delimiter::Brace, arm_body_at);
@@ -801,7 +837,7 @@ fn emit_unknown_field_arm(out: &mut RustWriter, ctx: &Ctx) {
                 _ => {
                     __ctx.error_unexpected_key(
                         [emit_tag_value(out, tag.as_deref())]
-                        , __item, __key.span);
+                        , __value, __key.span);
                 }
             );
         }
@@ -810,7 +846,7 @@ fn emit_unknown_field_arm(out: &mut RustWriter, ctx: &Ctx) {
                 _ => {
                     return Err(__ctx.error_unexpected_key(
                         [emit_tag_value(out, tag.as_deref())]
-                        , __item, __key.span));
+                        , __value, __key.span));
                 }
             );
         }
@@ -1190,7 +1226,7 @@ fn enum_from_toml_internal(
                             if __key.name != [@tag_lit.clone().into()] {
                                 __ctx.error_unexpected_key(
                                     [emit_tag_value(out, tag.as_deref())]
-                                    , __item, __key.span);
+                                    , __value, __key.span);
                             }
                         );
                     }
@@ -1199,7 +1235,7 @@ fn enum_from_toml_internal(
                             if __key.name != [@tag_lit.clone().into()] {
                                 return Err(__ctx.error_unexpected_key(
                                     [emit_tag_value(out, tag.as_deref())]
-                                    , __item, __key.span));
+                                    , __value, __key.span));
                             }
                         );
                     }

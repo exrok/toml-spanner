@@ -1,9 +1,22 @@
 ---
-source: snapshot-tests/tests/parser.rs
-expression: error
+source: crates/snapshot-tests/tests/parser.rs
+expression: combined
 ---
 error[Unexpected]: unexpected character found: `\r`
   ┌─ single:1:1
   │
 1 │ 
   │ ^ unexpected character '\r'
+
+
+error: unexpected character found: `\r`
+ --> single:1:1
+  |
+1 | ␍
+  | ^ unexpected character '\r'
+Error {
+    kind: "Unexpected",
+    message: "unexpected character found: `\\r`",
+    span: 0..1,
+    path: None,
+}

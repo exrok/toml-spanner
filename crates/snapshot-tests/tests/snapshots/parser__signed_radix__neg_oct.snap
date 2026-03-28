@@ -1,9 +1,24 @@
 ---
-source: snapshot-tests/tests/parser.rs
-expression: error
+source: crates/snapshot-tests/tests/parser.rs
+expression: combined
 ---
 error[InvalidInteger]: invalid integer: signs are not allowed on prefixed integers at `a`
   ┌─ neg_oct:1:5
   │
 1 │ a = -0o0
   │     ^^^^ invalid integer: signs are not allowed on prefixed integers
+
+
+error: invalid integer: signs are not allowed on prefixed integers at `a`
+ --> neg_oct:1:5
+  |
+1 | a = -0o0
+  |     ^^^^ invalid integer: signs are not allowed on prefixed integers
+Error {
+    kind: "InvalidInteger",
+    message: "invalid integer: signs are not allowed on prefixed integers",
+    span: 4..8,
+    path: Some(
+        "a",
+    ),
+}

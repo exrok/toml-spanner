@@ -1,9 +1,22 @@
 ---
-source: snapshot-tests/tests/parser.rs
-expression: error
+source: crates/snapshot-tests/tests/parser.rs
+expression: combined
 ---
-error[UnterminatedString]: invalid basic string, expected `"`
+error[UnterminatedString]: unterminated basic string, expected `"`
   ┌─ newline2:1:2
   │
 1 │ "
   │  ^ expected `"`
+
+
+error: unterminated basic string, expected `"`
+ --> newline2:1:2
+  |
+1 | "
+  |  ^ expected `"`
+Error {
+    kind: "UnterminatedString",
+    message: "unterminated basic string, expected `\"`",
+    span: 1..1,
+    path: None,
+}

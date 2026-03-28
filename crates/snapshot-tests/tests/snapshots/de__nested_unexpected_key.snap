@@ -1,9 +1,26 @@
 ---
-source: snapshot-tests/tests/de.rs
-expression: error
+source: crates/snapshot-tests/tests/de.rs
+expression: combined
 ---
 error[UnexpectedKey]: unexpected key at `component.servers[1].config.bogus`
    ┌─ nested_unexpected_key:11:1
    │
 11 │ bogus = true
    │ ^^^^^ unexpected key
+
+
+error: unexpected key at `component.servers[1].config.bogus`
+  --> nested_unexpected_key:11:1
+   |
+11 | bogus = true
+   | ^^^^^ unexpected key
+[
+    Error {
+        kind: "UnexpectedKey",
+        message: "unexpected key",
+        span: 166..171,
+        path: Some(
+            "component.servers[1].config.bogus",
+        ),
+    },
+]

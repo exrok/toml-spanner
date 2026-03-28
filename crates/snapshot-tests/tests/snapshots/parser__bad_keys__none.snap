@@ -1,9 +1,22 @@
 ---
-source: snapshot-tests/tests/parser.rs
-expression: error
+source: crates/snapshot-tests/tests/parser.rs
+expression: combined
 ---
 error[Wanted]: expected a table key, found an equals
   ┌─ none:1:1
   │
 1 │ =3
   │ ^ expected a table key
+
+
+error: expected a table key, found an equals
+ --> none:1:1
+  |
+1 | =3
+  | ^ expected a table key
+Error {
+    kind: "Wanted",
+    message: "expected a table key, found an equals",
+    span: 0..1,
+    path: None,
+}

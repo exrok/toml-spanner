@@ -1,7 +1,17 @@
 ---
-source: snapshot-tests/tests/de.rs
-expression: de
+source: crates/snapshot-tests/tests/de.rs
+expression: combined
 ---
+--- input ---
+flattened = [
+    "simple",
+    { crate = "single:0.2.0" },
+    { name = "split", version = ">=0.2" },
+    { name = "split2" },
+    { crate = "single2", reason = "additional data" },
+]
+
+--- output ---
 Flattened {
     flattened: [
         PackageSpecOrExtended {

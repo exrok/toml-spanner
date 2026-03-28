@@ -336,6 +336,37 @@ fn parse_errors() {
 }
 
 #[test]
+fn error_span_in_range() {
+    let ctx = TestCtx::new();
+
+    let cases = [
+        "a = 0.",
+        "a = 0.e",
+        "a = 0.E",
+        "a = 0.0E",
+        "a = 0.0e",
+        "a = 0.0e-",
+        "a = 0.0e+",
+        "a = ",
+        "key =",
+    ];
+
+    for input in cases {
+        let e = ctx.parse_err(input);
+        let span = e.span();
+        assert!(
+            (span.start as usize) <= input.len() && (span.end as usize) <= input.len(),
+            "span {span:?} out of range for {input:?} (len {})",
+            input.len()
+        );
+        assert!(
+            span.start <= span.end,
+            "inverted span {span:?} for {input:?}"
+        );
+    }
+}
+
+#[test]
 fn quoted_keys_and_spans() {
     let ctx = TestCtx::new();
 
@@ -449,7 +480,10 @@ fn recursion_depth_over_limit() {
     let e = ctx.parse_err(&input);
     assert!(matches!(
         e.kind(),
-        ErrorKind::OutOfRange("Max recursion depth exceeded")
+        ErrorKind::OutOfRange {
+            ty: &"Max recursion depth exceeded",
+            ..
+        }
     ));
 
     // Nested inline tables one past the limit
@@ -464,7 +498,10 @@ fn recursion_depth_over_limit() {
     let e = ctx.parse_err(&input);
     assert!(matches!(
         e.kind(),
-        ErrorKind::OutOfRange("Max recursion depth exceeded")
+        ErrorKind::OutOfRange {
+            ty: &"Max recursion depth exceeded",
+            ..
+        }
     ));
 
     // Mixed nesting one past the limit
@@ -479,7 +516,10 @@ fn recursion_depth_over_limit() {
     let e = ctx.parse_err(&input);
     assert!(matches!(
         e.kind(),
-        ErrorKind::OutOfRange("Max recursion depth exceeded")
+        ErrorKind::OutOfRange {
+            ty: &"Max recursion depth exceeded",
+            ..
+        }
     ));
 }
 
@@ -832,7 +872,7 @@ fn structural_errors() {
 
     // table then array of tables
     let e = ctx.parse_err("[a]\nb = 1\n[[a]]");
-    assert!(matches!(e.kind(), ErrorKind::RedefineAsArray));
+    assert!(matches!(e.kind(), ErrorKind::RedefineAsArray { .. }));
 
     // duplicate table header
     let e = ctx.parse_err("[a]\nb = 1\n[a]\nc = 2");
@@ -1998,57 +2038,23 @@ fn octal_digit_validation() {
 fn invalid_true_false_literals() {
     let ctx = TestCtx::new();
 
-    // 't' not followed by 'rue'
-    let e = ctx.parse_err("a = tru");
-    assert!(
-        matches!(
-            e.kind(),
-            ErrorKind::Wanted {
-                expected: &"the literal `true`",
-                ..
-            }
-        ),
-        "input: a = tru, got: {:?}",
-        e.kind()
-    );
-    let e = ctx.parse_err("a = toast");
-    assert!(
-        matches!(
-            e.kind(),
-            ErrorKind::Wanted {
-                expected: &"the literal `true`",
-                ..
-            }
-        ),
-        "input: a = toast, got: {:?}",
-        e.kind()
-    );
-
-    // 'f' not followed by 'alse'
-    let e = ctx.parse_err("a = fals");
-    assert!(
-        matches!(
-            e.kind(),
-            ErrorKind::Wanted {
-                expected: &"the literal `false`",
-                ..
-            }
-        ),
-        "input: a = fals, got: {:?}",
-        e.kind()
-    );
-    let e = ctx.parse_err("a = foobar");
-    assert!(
-        matches!(
-            e.kind(),
-            ErrorKind::Wanted {
-                expected: &"the literal `false`",
-                ..
-            }
-        ),
-        "input: a = foobar, got: {:?}",
-        e.kind()
-    );
+    for input in [
+        "a = tru",
+        "a = toast",
+        "a = true2",
+        "a = fals",
+        "a = foobar",
+        "a = false2",
+        "a = t2",
+        "a = f2",
+    ] {
+        let e = ctx.parse_err(input);
+        assert!(
+            matches!(e.kind(), ErrorKind::UnquotedString),
+            "input: {input}, got: {:?}",
+            e.kind()
+        );
+    }
 }
 
 #[test]

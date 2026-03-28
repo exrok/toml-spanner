@@ -1,9 +1,0 @@
----
-source: snapshot-tests/tests/annotate_snippets.rs
-expression: rendered
----
-error: invalid basic string, expected `"` at `foo`
- --> unterminated_string:1:9
-  |
-1 | foo = "\
-  |         ^ expected `"`

@@ -1,7 +1,11 @@
 ---
-source: snapshot-tests/tests/de.rs
-expression: de
+source: crates/snapshot-tests/tests/de.rs
+expression: combined
 ---
+--- input ---
+s = 'boop string'
+os = 20
+--- output ---
 Boop {
     s: "boop string",
     os: Some(

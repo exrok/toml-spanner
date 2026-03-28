@@ -1,9 +1,24 @@
 ---
-source: snapshot-tests/tests/parser.rs
-expression: error
+source: crates/snapshot-tests/tests/parser.rs
+expression: combined
 ---
 error[InvalidInteger]: invalid integer: contains non-digit character at `0`
   ┌─ basic3:1:4
   │
 1 │ 0=0r0=0r=falsefal=false
   │    ^ invalid integer: contains non-digit character
+
+
+error: invalid integer: contains non-digit character at `0`
+ --> basic3:1:4
+  |
+1 | 0=0r0=0r=falsefal=false
+  |    ^ invalid integer: contains non-digit character
+Error {
+    kind: "InvalidInteger",
+    message: "invalid integer: contains non-digit character",
+    span: 3..4,
+    path: Some(
+        "0",
+    ),
+}

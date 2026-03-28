@@ -581,10 +581,15 @@ impl<'de> Context<'de> {
 
     /// Records an out-of-range error for the type `name` and returns [`Failed`].
     #[cold]
-    pub fn error_out_of_range(&mut self, name: &'static str, found: &Item<'de>) -> Failed {
+    pub fn error_out_of_range(
+        &mut self,
+        ty: &'static &'static str,
+        range: &'static &'static str,
+        found: &Item<'de>,
+    ) -> Failed {
         let path = MaybeTomlPath::uncomputed(found);
         self.errors.push(Error::new_with_path(
-            ErrorKind::OutOfRange(name),
+            ErrorKind::OutOfRange { ty, range },
             found.span(),
             path,
         ));
@@ -615,10 +620,14 @@ impl<'de> Context<'de> {
         &mut self,
         name: &'static str,
         key_span: Span,
+        first_key_span: Span,
         item: &Item<'de>,
     ) -> Failed {
         self.push_error(Error::new_with_path(
-            ErrorKind::DuplicateField(name),
+            ErrorKind::DuplicateField {
+                field: name,
+                first: first_key_span,
+            },
             key_span,
             MaybeTomlPath::uncomputed(item),
         ))
@@ -833,7 +842,11 @@ impl<'de, T: FromToml<'de>, const N: usize> FromToml<'de> for [T; N] {
         match <Box<[T; N]>>::try_from(boxed_slice) {
             Ok(array) => Ok(*array),
             Err(res) => Err(ctx.push_error(Error::custom(
-                format!("Expect Array Size: found {} but expected {}", res.len(), N),
+                format!(
+                    "expected an array with a size of {}, found one with a size of {}",
+                    N,
+                    res.len()
+                ),
                 value.span_unchecked(),
             ))),
         }
@@ -847,7 +860,11 @@ macro_rules! impl_from_toml_tuple {
                 let arr = value.expect_array(ctx)?;
                 if arr.len() != $len {
                     return Err(ctx.push_error(Error::custom(
-                        format!("Expect Array Size: found {} but expected {}", arr.len(), $len),
+                        format!(
+                            "expected an array with a size of {}, found one with a size of {}",
+                            $len,
+                            arr.len()
+                        ),
                         value.span_unchecked(),
                     )));
                 }
@@ -952,20 +969,21 @@ fn deser_integer_ctx<'de>(
     value: &Item<'de>,
     min: i128,
     max: i128,
-    name: &'static str,
+    ty: &'static &'static str,
+    range: &'static &'static str,
 ) -> Result<i128, Failed> {
     match value.as_i128() {
         Some(i) if i >= min && i <= max => Ok(i),
-        Some(_) => Err(ctx.error_out_of_range(name, value)),
+        Some(_) => Err(ctx.error_out_of_range(ty, range, value)),
         None => Err(ctx.error_expected_but_found(&"an integer", value)),
     }
 }
 
 macro_rules! integer_new {
-    ($($num:ty),+) => {$(
+    ($($num:ty => $range:literal),+) => {$(
         impl<'de> FromToml<'de> for $num {
             fn from_toml(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
-                match deser_integer_ctx(ctx, value, <$num>::MIN as i128, <$num>::MAX as i128, stringify!($num)) {
+                match deser_integer_ctx(ctx, value, <$num>::MIN as i128, <$num>::MAX as i128, &stringify!($num), &$range) {
                     Ok(i) => Ok(i as $num),
                     Err(e) => Err(e),
                 }
@@ -974,11 +992,45 @@ macro_rules! integer_new {
     )+};
 }
 
-integer_new!(i8, i16, i32, isize, u8, u16, u32);
+integer_new!(
+    i8 => "-128..=127",
+    i16 => "-32768..=32767",
+    i32 => "-2147483648..=2147483647",
+    u8 => "0..=255",
+    u16 => "0..=65535",
+    u32 => "0..=4294967295"
+);
+
+impl<'de> FromToml<'de> for isize {
+    fn from_toml(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
+        #[cfg(target_pointer_width = "32")]
+        const RANGE: &str = "-2147483648..=2147483647";
+        #[cfg(target_pointer_width = "64")]
+        const RANGE: &str = "-9223372036854775808..=9223372036854775807";
+        match deser_integer_ctx(
+            ctx,
+            value,
+            isize::MIN as i128,
+            isize::MAX as i128,
+            &"isize",
+            &RANGE,
+        ) {
+            Ok(i) => Ok(i as isize),
+            Err(e) => Err(e),
+        }
+    }
+}
 
 impl<'de> FromToml<'de> for i64 {
     fn from_toml(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
-        match deser_integer_ctx(ctx, value, i64::MIN as i128, i64::MAX as i128, "i64") {
+        match deser_integer_ctx(
+            ctx,
+            value,
+            i64::MIN as i128,
+            i64::MAX as i128,
+            &"i64",
+            &"-9223372036854775808..=9223372036854775807",
+        ) {
             Ok(i) => Ok(i as i64),
             Err(e) => Err(e),
         }
@@ -987,7 +1039,14 @@ impl<'de> FromToml<'de> for i64 {
 
 impl<'de> FromToml<'de> for u64 {
     fn from_toml(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
-        match deser_integer_ctx(ctx, value, 0, u64::MAX as i128, "u64") {
+        match deser_integer_ctx(
+            ctx,
+            value,
+            0,
+            u64::MAX as i128,
+            &"u64",
+            &"0..=18446744073709551615",
+        ) {
             Ok(i) => Ok(i as u64),
             Err(e) => Err(e),
         }
@@ -996,7 +1055,14 @@ impl<'de> FromToml<'de> for u64 {
 
 impl<'de> FromToml<'de> for i128 {
     fn from_toml(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
-        match deser_integer_ctx(ctx, value, i128::MIN, i128::MAX, "i128") {
+        match deser_integer_ctx(
+            ctx,
+            value,
+            i128::MIN,
+            i128::MAX,
+            &"i128",
+            &"-170141183460469231731687303715884105728..=170141183460469231731687303715884105727",
+        ) {
             Ok(i) => Ok(i),
             Err(e) => Err(e),
         }
@@ -1005,7 +1071,14 @@ impl<'de> FromToml<'de> for i128 {
 
 impl<'de> FromToml<'de> for u128 {
     fn from_toml(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
-        match deser_integer_ctx(ctx, value, 0, i128::MAX, "u128") {
+        match deser_integer_ctx(
+            ctx,
+            value,
+            0,
+            i128::MAX,
+            &"u128",
+            &"0..=340282366920938463463374607431768211455",
+        ) {
             Ok(i) => Ok(i as u128),
             Err(e) => Err(e),
         }
@@ -1014,7 +1087,11 @@ impl<'de> FromToml<'de> for u128 {
 
 impl<'de> FromToml<'de> for usize {
     fn from_toml(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
-        match deser_integer_ctx(ctx, value, 0, usize::MAX as i128, "usize") {
+        #[cfg(target_pointer_width = "32")]
+        const RANGE: &str = "0..=4294967295";
+        #[cfg(target_pointer_width = "64")]
+        const RANGE: &str = "0..=18446744073709551615";
+        match deser_integer_ctx(ctx, value, 0, usize::MAX as i128, &"usize", &RANGE) {
             Ok(i) => Ok(i as usize),
             Err(e) => Err(e),
         }

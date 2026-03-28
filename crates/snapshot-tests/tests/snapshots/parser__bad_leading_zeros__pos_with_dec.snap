@@ -1,9 +1,24 @@
 ---
-source: snapshot-tests/tests/parser.rs
-expression: error
+source: crates/snapshot-tests/tests/parser.rs
+expression: combined
 ---
 error[InvalidFloat]: invalid float: leading zeros are not allowed at `a`
   ┌─ pos_with_dec:1:5
   │
 1 │ a = +00.0
   │     ^^^ invalid float: leading zeros are not allowed
+
+
+error: invalid float: leading zeros are not allowed at `a`
+ --> pos_with_dec:1:5
+  |
+1 | a = +00.0
+  |     ^^^ invalid float: leading zeros are not allowed
+Error {
+    kind: "InvalidFloat",
+    message: "invalid float: leading zeros are not allowed",
+    span: 4..7,
+    path: Some(
+        "a",
+    ),
+}

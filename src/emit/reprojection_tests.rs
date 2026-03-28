@@ -1572,7 +1572,7 @@ fn ignore_source_style_per_table() {
 fn to_toml(reference: &Document<'_>, mut table: Table<'_>) -> String {
     let scratch = Arena::new();
     let mut buf = Vec::new();
-    reproject(&reference, &mut table, &mut buf);
+    reproject(reference, &mut table, &mut buf);
     let emit_config = EmitConfig {
         projected_source_text: reference.ctx.source(),
         projected_source_items: &buf,

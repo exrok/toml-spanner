@@ -1,6 +1,6 @@
 ---
-source: snapshot-tests/tests/parser.rs
-expression: error
+source: crates/snapshot-tests/tests/parser.rs
+expression: combined
 ---
 error[Wanted]: expected an equals, found a newline at `key`
   ┌─ newline:1:4
@@ -9,3 +9,20 @@ error[Wanted]: expected an equals, found a newline at `key`
   │ ╭───^
 2 │ │ =3
   │ ╰^ expected an equals
+
+
+error: expected an equals, found a newline at `key`
+ --> newline:1:4
+  |
+1 |   key
+  |  ____^
+2 | | =3
+  | |_^ expected an equals
+Error {
+    kind: "Wanted",
+    message: "expected an equals, found a newline",
+    span: 3..4,
+    path: Some(
+        "key",
+    ),
+}

@@ -3775,3 +3775,45 @@ fn flatten_any_error_patching_large_scale() {
         );
     }
 }
+
+#[test]
+#[allow(unused)]
+fn duplicate_key_and_duplicate_field_consistent() {
+    #[derive(Toml, Debug)]
+    struct AliasedField {
+        #[toml(alias = "bb")]
+        aa: i64,
+    }
+
+    #[derive(Toml, Debug)]
+    struct SectionAliased {
+        section: AliasedField,
+    }
+    let arena = Arena::new();
+
+    // DuplicateKey: parser catches literal duplicate
+    let input_dup_key = "[section]\nbb = 1\nbb = 2";
+    let err_key = toml_spanner::parse(input_dup_key, &arena).unwrap_err();
+
+    // DuplicateField: deserializer catches alias collision
+    let input_dup_field = "[section]\naa = 1\nbb = 2";
+    let mut doc = toml_spanner::parse(input_dup_field, &arena).unwrap();
+    let err_field = doc.to::<SectionAliased>().unwrap_err();
+    assert_eq!(err_field.errors.len(), 1);
+    let err_field = &err_field.errors[0];
+
+    assert_eq!(
+        err_key.span(),
+        err_field.span(),
+        "spans differ: DuplicateKey={:?}, DuplicateField={:?}",
+        err_key.span(),
+        err_field.span(),
+    );
+
+    let key_path = err_key.path().map(|p| p.to_string());
+    let field_path = err_field.path().map(|p| p.to_string());
+    assert_eq!(
+        key_path, field_path,
+        "paths differ: DuplicateKey={key_path:?}, DuplicateField={field_path:?}",
+    );
+}

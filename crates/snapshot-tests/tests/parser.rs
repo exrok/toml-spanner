@@ -171,6 +171,15 @@ mod bad_inline_tables {
     invalid!(duplicate_key, "a = {a=1,a=1}");
     // Note: newlines inside inline tables are now valid in TOML 1.1.0
     invalid!(eof, "a = {");
+    invalid!(missing_comma, "a = {b=1 c=2}");
+    invalid!(unclosed, "a = {b=1");
+}
+
+mod bad_arrays {
+    use super::invalid;
+
+    invalid!(missing_comma, "a = [1 2]");
+    invalid!(unclosed, "a = [1, 2");
 }
 
 valid!(underscores);
@@ -195,6 +204,7 @@ mod bad_strings {
     invalid!(hex2, "foo = \"\\u\"");
     invalid!(unterminated, r#"foo = "\"#);
     invalid!(unterminated_literal, "foo = '");
+    invalid!(invalid_escape, "foo = \"\\z\"");
 }
 
 valid!(booleans);

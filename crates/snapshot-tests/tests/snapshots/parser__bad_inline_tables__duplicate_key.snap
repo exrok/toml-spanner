@@ -1,11 +1,28 @@
 ---
-source: snapshot-tests/tests/parser.rs
-expression: error
+source: crates/snapshot-tests/tests/parser.rs
+expression: combined
 ---
-error[DuplicateKey]: the key `a` is defined multiple times at `a`
+error[DuplicateKey]: the key `a` is defined multiple times in table at `a`
   ┌─ duplicate_key:1:10
   │
 1 │ a = {a=1,a=1}
   │      -   ^ duplicate key
   │      │    
   │      first key instance
+
+
+error: the key `a` is defined multiple times in table at `a`
+ --> duplicate_key:1:10
+  |
+1 | a = {a=1,a=1}
+  |      -   ^ duplicate key
+  |      |
+  |      first key instance
+Error {
+    kind: "DuplicateKey",
+    message: "duplicate key",
+    span: 9..10,
+    path: Some(
+        "a.a",
+    ),
+}

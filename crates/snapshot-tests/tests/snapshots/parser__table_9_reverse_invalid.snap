@@ -1,12 +1,30 @@
 ---
-source: snapshot-tests/tests/parser.rs
-expression: error
+source: crates/snapshot-tests/tests/parser.rs
+expression: combined
 ---
-error[DottedKeyInvalidType]: dotted key attempted to extend non-table type at `fruit.apple.taste`
+error[DuplicateKey]: the key `taste` is defined multiple times in table at `fruit.apple`
   ┌─ table_9_reverse_invalid:6:7
   │
 2 │ [fruit.apple.taste]  # INVALID
-  │              ----- non-table
+  │              ----- first key instance
   ·
 6 │ apple.taste.sweet = true
-  │       ^^^^^ attempted to extend table here
+  │       ^^^^^ duplicate key
+
+
+error: the key `taste` is defined multiple times in table at `fruit.apple`
+ --> table_9_reverse_invalid:6:7
+  |
+2 | [fruit.apple.taste]  # INVALID
+  |              ----- first key instance
+...
+6 | apple.taste.sweet = true
+  |       ^^^^^ duplicate key
+Error {
+    kind: "DuplicateKey",
+    message: "duplicate key",
+    span: 93..98,
+    path: Some(
+        "fruit.apple.taste",
+    ),
+}

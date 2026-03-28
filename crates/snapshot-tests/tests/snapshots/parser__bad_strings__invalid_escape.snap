@@ -1,0 +1,24 @@
+---
+source: crates/snapshot-tests/tests/parser.rs
+expression: combined
+---
+error[InvalidEscape]: invalid escape character in string: `z` at `foo`
+  ┌─ invalid_escape:1:9
+  │
+1 │ foo = "\z"
+  │         ^ invalid escape character 'z' in string
+
+
+error: invalid escape character in string: `z` at `foo`
+ --> invalid_escape:1:9
+  |
+1 | foo = "\z"
+  |         ^ invalid escape character 'z' in string
+Error {
+    kind: "InvalidEscape",
+    message: "invalid escape character in string: `z`",
+    span: 8..9,
+    path: Some(
+        "foo",
+    ),
+}

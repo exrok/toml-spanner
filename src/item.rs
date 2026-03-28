@@ -200,7 +200,7 @@ pub enum ArrayStyle {
     Header,
 }
 
-#[repr(packed)]
+#[repr(C, packed)]
 #[derive(Clone, Copy)]
 struct PackedI128 {
     value: i128,

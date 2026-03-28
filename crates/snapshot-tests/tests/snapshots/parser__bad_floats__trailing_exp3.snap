@@ -1,9 +1,24 @@
 ---
-source: snapshot-tests/tests/parser.rs
-expression: error
+source: crates/snapshot-tests/tests/parser.rs
+expression: combined
 ---
 error[InvalidFloat]: invalid float: exponent requires at least one digit at `a`
   ┌─ trailing_exp3:1:5
   │
 1 │ a = 0.0E
-  │     ^ invalid float: exponent requires at least one digit
+  │     ^^^^ invalid float: exponent requires at least one digit
+
+
+error: invalid float: exponent requires at least one digit at `a`
+ --> trailing_exp3:1:5
+  |
+1 | a = 0.0E
+  |     ^^^^ invalid float: exponent requires at least one digit
+Error {
+    kind: "InvalidFloat",
+    message: "invalid float: exponent requires at least one digit",
+    span: 4..8,
+    path: Some(
+        "a",
+    ),
+}

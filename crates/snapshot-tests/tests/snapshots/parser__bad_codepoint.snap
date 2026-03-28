@@ -1,9 +1,24 @@
 ---
-source: snapshot-tests/tests/parser.rs
-expression: error
+source: crates/snapshot-tests/tests/parser.rs
+expression: combined
 ---
-error[InvalidEscapeValue]: invalid escape value: `\uD800` at `foo`
-  ┌─ bad_codepoint:1:9
+error[InvalidEscapeValue]: invalid unicode escape value `\uD800` at `foo`
+  ┌─ bad_codepoint:1:8
   │
 1 │ foo = "\uD800"
-  │         ^^^^ invalid escape value
+  │        ^^^^^^ invalid unicode escape value
+
+
+error: invalid unicode escape value `\uD800` at `foo`
+ --> bad_codepoint:1:8
+  |
+1 | foo = "\uD800"
+  |        ^^^^^^ invalid unicode escape value
+Error {
+    kind: "InvalidEscapeValue",
+    message: "invalid unicode escape value `\\uD800`",
+    span: 7..13,
+    path: Some(
+        "foo",
+    ),
+}

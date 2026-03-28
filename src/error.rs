@@ -1,9 +1,5 @@
 #![allow(clippy::question_mark)]
 
-#[cfg(test)]
-#[path = "./error_tests.rs"]
-mod tests;
-
 use crate::{Item, Key, Span};
 use std::fmt::{self, Debug, Display};
 
@@ -52,7 +48,7 @@ impl<'a> std::ops::Deref for TomlPath<'a> {
 impl Debug for TomlPath<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut out = String::new();
-        push_toml_path(&mut out, self);
+        push_toml_path(&mut out, &self.0);
         Debug::fmt(&out, f)
     }
 }
@@ -60,7 +56,7 @@ impl Debug for TomlPath<'_> {
 impl Display for TomlPath<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut out = String::new();
-        push_toml_path(&mut out, self);
+        push_toml_path(&mut out, &self.0);
         f.write_str(&out)
     }
 }
@@ -389,7 +385,12 @@ pub enum ErrorKind<'a> {
 
     /// The number in the toml file cannot be losslessly converted to the specified
     /// number type
-    OutOfRange(&'static str),
+    OutOfRange {
+        /// The target type name (e.g. `"u8"`)
+        ty: &'static &'static str,
+        /// The accepted range as a display string (e.g. `"0..=255"`), or empty
+        range: &'static &'static str,
+    },
 
     /// Wanted one sort of token, but found another.
     Wanted {
@@ -414,7 +415,10 @@ pub enum ErrorKind<'a> {
     },
 
     /// A previously defined table was redefined as an array.
-    RedefineAsArray,
+    RedefineAsArray {
+        /// The span where the table was first defined
+        first: Span,
+    },
 
     /// Multiline strings are not allowed for key.
     MultilineStringKey,
@@ -441,7 +445,12 @@ pub enum ErrorKind<'a> {
     MissingField(&'static str),
 
     /// A field was set more than once (e.g. via primary key and alias)
-    DuplicateField(&'static str),
+    DuplicateField {
+        /// The canonical struct field name
+        field: &'static str,
+        /// The span where the key was first defined
+        first: Span,
+    },
 
     /// A field in the table is deprecated and the new key should be used instead
     Deprecated {
@@ -495,17 +504,17 @@ impl<'a> ErrorKind<'a> {
             ErrorKind::InvalidInteger(_) => "InvalidInteger",
             ErrorKind::InvalidFloat(_) => "InvalidFloat",
             ErrorKind::InvalidDateTime(_) => "InvalidDateTime",
-            ErrorKind::OutOfRange(_) => "OutOfRange",
+            ErrorKind::OutOfRange { .. } => "OutOfRange",
             ErrorKind::Wanted { .. } => "Wanted",
             ErrorKind::DuplicateTable { .. } => "DuplicateTable",
             ErrorKind::DuplicateKey { .. } => "DuplicateKey",
-            ErrorKind::RedefineAsArray => "RedefineAsArray",
+            ErrorKind::RedefineAsArray { .. } => "RedefineAsArray",
             ErrorKind::MultilineStringKey => "MultilineStringKey",
             ErrorKind::DottedKeyInvalidType { .. } => "DottedKeyInvalidType",
             ErrorKind::UnexpectedKey { .. } => "UnexpectedKey",
             ErrorKind::UnquotedString => "UnquotedString",
             ErrorKind::MissingField(_) => "MissingField",
-            ErrorKind::DuplicateField(_) => "DuplicateField",
+            ErrorKind::DuplicateField { .. } => "DuplicateField",
             ErrorKind::Deprecated { .. } => "Deprecated",
             ErrorKind::UnexpectedValue { .. } => "UnexpectedValue",
             ErrorKind::UnexpectedVariant { .. } => "UnexpectedVariant",
@@ -645,7 +654,7 @@ fn kind_message_inner(kind: ErrorKind<'_>, out: &mut String) {
             s_push_char(out, '`');
         }
         ErrorKind::InvalidEscapeValue(c) => {
-            s_push(out, "invalid escape value: `");
+            s_push(out, "invalid unicode escape value `");
             push_unicode_escape(out, c);
             s_push_char(out, '`');
         }
@@ -656,9 +665,9 @@ fn kind_message_inner(kind: ErrorKind<'_>, out: &mut String) {
         }
         ErrorKind::UnterminatedString(delim) => {
             if delim == '\'' {
-                s_push(out, "invalid literal string, expected `'`");
+                s_push(out, "unterminated literal string, expected `'`");
             } else {
-                s_push(out, "invalid basic string, expected `\"`");
+                s_push(out, "unterminated basic string, expected `\"`");
             }
         }
         ErrorKind::Wanted { expected, found } => {
@@ -681,14 +690,13 @@ fn kind_message_inner(kind: ErrorKind<'_>, out: &mut String) {
                 s_push(out, reason);
             }
         }
-        ErrorKind::OutOfRange(ty) => {
-            s_push(out, "out of range of '");
+        ErrorKind::OutOfRange { ty, .. } => {
+            s_push(out, "value out of range for ");
             s_push(out, ty);
-            s_push_char(out, '\'');
         }
         ErrorKind::DuplicateTable { .. } => s_push(out, "redefinition of table"),
         ErrorKind::DuplicateKey { .. } => s_push(out, "duplicate key"),
-        ErrorKind::RedefineAsArray => s_push(out, "table redefined as array"),
+        ErrorKind::RedefineAsArray { .. } => s_push(out, "table redefined as array"),
         ErrorKind::MultilineStringKey => {
             s_push(out, "multiline strings are not allowed for key");
         }
@@ -697,30 +705,27 @@ fn kind_message_inner(kind: ErrorKind<'_>, out: &mut String) {
         }
         ErrorKind::UnexpectedKey { .. } => s_push(out, "unexpected key"),
         ErrorKind::UnquotedString => {
-            s_push(
-                out,
-                "invalid TOML value, did you mean to use a quoted string?",
-            );
+            s_push(out, "string values must be quoted, expected string literal");
         }
         ErrorKind::MissingField(field) => {
-            s_push(out, "missing field '");
+            s_push(out, "missing required key '");
             s_push(out, field);
-            s_push(out, "' in table");
+            s_push_char(out, '\'');
         }
-        ErrorKind::DuplicateField(field) => {
-            s_push(out, "duplicate field '");
+        ErrorKind::DuplicateField { field, .. } => {
+            s_push(out, "duplicate key '");
             s_push(out, field);
             s_push_char(out, '\'');
         }
         ErrorKind::Deprecated { old, new, .. } => {
-            s_push(out, "field '");
+            s_push(out, "key '");
             s_push(out, old);
-            s_push(out, "' is deprecated, '");
+            s_push(out, "' is deprecated, use '");
             s_push(out, new);
-            s_push(out, "' has replaced it");
+            s_push(out, "' instead");
         }
         ErrorKind::UnexpectedValue { expected } => {
-            s_push(out, "expected '[");
+            s_push(out, "unexpected value, expected one of: ");
             let mut first = true;
             for val in expected {
                 if !first {
@@ -729,7 +734,6 @@ fn kind_message_inner(kind: ErrorKind<'_>, out: &mut String) {
                 first = false;
                 s_push(out, val);
             }
-            s_push(out, "]'");
         }
         ErrorKind::UnexpectedVariant { expected } => {
             s_push(out, "unknown variant, expected one of: ");
@@ -743,11 +747,14 @@ fn kind_message_inner(kind: ErrorKind<'_>, out: &mut String) {
             }
         }
         ErrorKind::MissingArrayComma => {
-            s_push(out, "missing comma between array elements, expected `,`");
+            s_push(out, "missing comma between elements, expected `,` in array");
         }
         ErrorKind::UnclosedArray => s_push(out, "unclosed array, expected `]`"),
         ErrorKind::MissingInlineTableComma => {
-            s_push(out, "missing comma in inline table, expected `,`");
+            s_push(
+                out,
+                "missing comma between fields, expected `,` in inline table",
+            );
         }
         ErrorKind::UnclosedInlineTable => s_push(out, "unclosed inline table, expected `}`"),
     }
@@ -757,9 +764,20 @@ impl Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(&kind_message(self.kind()))?;
         if let Some(path) = self.path() {
-            f.write_str(" at `")?;
-            Display::fmt(path, f)?;
-            f.write_str("`")?;
+            let components: &[PathComponent<'_>] = path;
+            let display = match self.kind() {
+                ErrorKind::DuplicateField { .. } | ErrorKind::Deprecated { .. } => {
+                    &components[..components.len().saturating_sub(1)]
+                }
+                _ => components,
+            };
+            if !display.is_empty() {
+                f.write_str(" at `")?;
+                let mut out = String::new();
+                push_toml_path(&mut out, display);
+                f.write_str(&out)?;
+                f.write_str("`")?;
+            }
         }
         Ok(())
     }
@@ -789,7 +807,7 @@ impl From<(ErrorKind<'static>, Span)> for Error {
     }
 }
 
-fn push_toml_path(out: &mut String, path: &TomlPath<'_>) {
+fn push_toml_path(out: &mut String, path: &[PathComponent<'_>]) {
     let mut first = true;
     for component in path.iter() {
         match component {
@@ -865,7 +883,7 @@ impl Error {
                 if let Some(name) = source.get(span.range()) {
                     s_push(out, "the key `");
                     s_push(out, name);
-                    s_push(out, "` is defined multiple times");
+                    s_push(out, "` is defined multiple times in table");
                 } else {
                     kind_message_inner(kind, out);
                 }
@@ -888,6 +906,23 @@ impl Error {
                     kind_message_inner(kind, out);
                 }
             }
+            ErrorKind::DuplicateField { field, .. } => {
+                if let Some(key_name) = source.get(span.range()) {
+                    if key_name == field {
+                        s_push(out, "key '");
+                        s_push(out, field);
+                        s_push(out, "' defined multiple times in same table");
+                    } else {
+                        s_push(out, "both '");
+                        s_push(out, key_name);
+                        s_push(out, "' and '");
+                        s_push(out, field);
+                        s_push(out, "' are defined but resolve to the same field");
+                    }
+                } else {
+                    kind_message_inner(kind, out);
+                }
+            }
             ErrorKind::UnexpectedVariant { .. } => {
                 if let Some(value) = source.get(span.range()) {
                     s_push(out, "unknown variant ");
@@ -906,9 +941,19 @@ impl Error {
         }
 
         if let Some(p) = path {
-            s_push(out, " at `");
-            push_toml_path(out, p);
-            s_push_char(out, '`');
+            let components: &[PathComponent<'_>] = p;
+            let display = match kind {
+                ErrorKind::DuplicateKey { .. }
+                | ErrorKind::DuplicateTable { .. }
+                | ErrorKind::DuplicateField { .. }
+                | ErrorKind::Deprecated { .. } => &components[..components.len().saturating_sub(1)],
+                _ => components,
+            };
+            if !display.is_empty() {
+                s_push(out, " at `");
+                push_toml_path(out, display);
+                s_push_char(out, '`');
+            }
         }
     }
 
@@ -942,7 +987,7 @@ impl Error {
                 push_escape(out, c);
                 s_push(out, "' in string");
             }
-            ErrorKind::InvalidEscapeValue(_) => s_push(out, "invalid escape value"),
+            ErrorKind::InvalidEscapeValue(_) => s_push(out, "invalid unicode escape value"),
             ErrorKind::InvalidInteger(_)
             | ErrorKind::InvalidFloat(_)
             | ErrorKind::InvalidDateTime(_) => kind_message_inner(kind, out),
@@ -963,9 +1008,13 @@ impl Error {
             }
             ErrorKind::UnquotedString => s_push(out, "string is not quoted"),
             ErrorKind::UnexpectedKey { .. } => s_push(out, "unexpected key"),
-            ErrorKind::MissingField(_) => s_push(out, "table with missing field"),
-            ErrorKind::DuplicateField(_) => s_push(out, "duplicate field"),
-            ErrorKind::Deprecated { .. } => s_push(out, "deprecated field"),
+            ErrorKind::MissingField(field) => {
+                s_push(out, "missing key '");
+                s_push(out, field);
+                s_push_char(out, '\'');
+            }
+            ErrorKind::DuplicateField { .. } => s_push(out, "duplicate key"),
+            ErrorKind::Deprecated { .. } => s_push(out, "deprecated key"),
             ErrorKind::UnexpectedValue { .. } => s_push(out, "unexpected value"),
             ErrorKind::UnexpectedVariant { expected } => {
                 s_push(out, "expected one of: ");
@@ -982,9 +1031,14 @@ impl Error {
             ErrorKind::UnclosedArray => s_push(out, "expected `]`"),
             ErrorKind::MissingInlineTableComma => s_push(out, "expected `,`"),
             ErrorKind::UnclosedInlineTable => s_push(out, "expected `}`"),
-            ErrorKind::OutOfRange(_)
-            | ErrorKind::UnexpectedEof
-            | ErrorKind::RedefineAsArray
+            ErrorKind::OutOfRange { range, .. } => {
+                if !range.is_empty() {
+                    s_push(out, "expected ");
+                    s_push(out, range);
+                }
+            }
+            ErrorKind::UnexpectedEof
+            | ErrorKind::RedefineAsArray { .. }
             | ErrorKind::FileTooLarge
             | ErrorKind::Custom(..) => {}
         }
@@ -999,6 +1053,8 @@ impl Error {
             ErrorKind::DuplicateKey { first } => (first, "first key instance"),
             ErrorKind::DuplicateTable { first, .. } => (first, "first table instance"),
             ErrorKind::DottedKeyInvalidType { first } => (first, "non-table"),
+            ErrorKind::RedefineAsArray { first } => (first, "first defined as table"),
+            ErrorKind::DuplicateField { first, .. } => (first, "first defined here"),
             _ => return None,
         };
         Some((first, String::from(text)))

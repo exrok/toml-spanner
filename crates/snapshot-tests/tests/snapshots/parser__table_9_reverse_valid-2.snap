@@ -1,6 +1,5 @@
 ---
-source: snapshot-tests/tests/parser.rs
-assertion_line: 53
+source: crates/snapshot-tests/tests/parser.rs
 expression: spans
 ---
 note[bool]: root_fruit_apple_texture_smooth

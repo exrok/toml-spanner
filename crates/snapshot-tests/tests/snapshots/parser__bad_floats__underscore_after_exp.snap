@@ -1,9 +1,24 @@
 ---
-source: snapshot-tests/tests/parser.rs
-expression: error
+source: crates/snapshot-tests/tests/parser.rs
+expression: combined
 ---
 error[InvalidFloat]: invalid float: underscores must be between two digits at `a`
   ┌─ underscore_after_exp:1:5
   │
 1 │ a = 73e_3
   │     ^^^^^ invalid float: underscores must be between two digits
+
+
+error: invalid float: underscores must be between two digits at `a`
+ --> underscore_after_exp:1:5
+  |
+1 | a = 73e_3
+  |     ^^^^^ invalid float: underscores must be between two digits
+Error {
+    kind: "InvalidFloat",
+    message: "invalid float: underscores must be between two digits",
+    span: 4..9,
+    path: Some(
+        "a",
+    ),
+}

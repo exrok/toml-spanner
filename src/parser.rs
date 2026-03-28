@@ -215,7 +215,9 @@ impl<'de> Parser<'de> {
 
     #[cold]
     fn set_error(&mut self, start: usize, end: Option<usize>, kind: ErrorKind<'static>) -> Failed {
-        self.error_span = Span::new(start as u32, end.unwrap_or(start + 1) as u32);
+        let len = self.bytes.len();
+        let start = start.min(len);
+        self.error_span = Span::new(start as u32, end.unwrap_or((start + 1).min(len)) as u32);
         self.error_kind = Some(kind);
         Failed
     }
@@ -804,8 +806,8 @@ impl<'de> Parser<'de> {
         match char::from_u32(val) {
             Some(ch) => Ok(ch),
             None => Err(self.set_error(
-                escape_start,
-                Some(escape_start + n),
+                escape_start - 1,
+                Some(self.cursor),
                 ErrorKind::InvalidEscapeValue(val),
             )),
         }
@@ -847,8 +849,8 @@ impl<'de> Parser<'de> {
                     }
                 }
                 _ => Err(self.set_error(
-                    at,
-                    Some(end as usize),
+                    start as usize,
+                    Some(at),
                     ErrorKind::InvalidFloat("nothing after decimal point"),
                 )),
             };
@@ -1094,15 +1096,15 @@ impl<'de> Parser<'de> {
             if !matches!(after.as_bytes().first(), Some(b'0'..=b'9')) {
                 return Err(self.set_error(
                     s_start,
-                    Some(s_end),
-                    ErrorKind::InvalidFloat("nothing after decimal point"),
+                    Some(self.cursor),
+                    ErrorKind::InvalidFloat("expected digit after decimal point"),
                 ));
             }
             scratch.push(b'.');
             if !scratch.push_strip_underscores(after.as_bytes()) {
                 return Err(self.set_error(
                     s_start,
-                    Some(s_end),
+                    Some(self.cursor),
                     ErrorKind::InvalidFloat("underscores must be between two digits"),
                 ));
             }
@@ -1120,7 +1122,7 @@ impl<'de> Parser<'de> {
                     if !scratch.push_strip_underscores(next.as_bytes()) {
                         return Err(self.set_error(
                             s_start,
-                            Some(s_end),
+                            Some(self.cursor),
                             ErrorKind::InvalidFloat("exponent requires at least one digit"),
                         ));
                     }
@@ -1128,7 +1130,7 @@ impl<'de> Parser<'de> {
                 _ => {
                     return Err(self.set_error(
                         s_start,
-                        Some(s_end),
+                        Some(self.cursor),
                         ErrorKind::InvalidFloat("exponent requires at least one digit"),
                     ));
                 }
@@ -1143,7 +1145,11 @@ impl<'de> Parser<'de> {
             Ok(n) => n,
             // std's float parse error is always just "invalid float literal"
             Err(_) => {
-                return Err(self.set_error(s_start, Some(s_end), ErrorKind::InvalidFloat("")));
+                return Err(self.set_error(
+                    s_start,
+                    Some(self.cursor),
+                    ErrorKind::InvalidFloat(""),
+                ));
             }
         };
         if n.is_finite() {
@@ -1151,7 +1157,7 @@ impl<'de> Parser<'de> {
         } else {
             Err(self.set_error(
                 s_start,
-                Some(s_end),
+                Some(self.cursor),
                 ErrorKind::InvalidFloat("float overflow"),
             ))
         }
@@ -1191,43 +1197,6 @@ impl<'de> Parser<'de> {
                 };
                 return Ok(Item::array(arr, Span::new(start, self.cursor as u32)));
             }
-            b't' => {
-                return if self.bytes[self.cursor..].starts_with(b"true") {
-                    self.cursor += 4;
-                    Ok(Item::boolean(
-                        true,
-                        Span::new(at as u32, self.cursor as u32),
-                    ))
-                } else {
-                    Err(self.set_error(
-                        at,
-                        Some(self.cursor),
-                        ErrorKind::Wanted {
-                            expected: &"the literal `true`",
-                            found: &"something else",
-                        },
-                    ))
-                };
-            }
-            b'f' => {
-                self.cursor += 1;
-                return if self.bytes[self.cursor..].starts_with(b"alse") {
-                    self.cursor += 4;
-                    Ok(Item::boolean(
-                        false,
-                        Span::new(at as u32, self.cursor as u32),
-                    ))
-                } else {
-                    Err(self.set_error(
-                        at,
-                        Some(self.cursor),
-                        ErrorKind::Wanted {
-                            expected: &"the literal `false`",
-                            found: &"something else",
-                        },
-                    ))
-                };
-            }
             b'-' => {
                 self.cursor += 1;
                 0
@@ -1263,6 +1232,9 @@ impl<'de> Parser<'de> {
                     Span::new(at as u32, end),
                 ));
             }
+            "true" | "false" if sign == 2 => {
+                return Ok(Item::boolean(key == "true", Span::new(at as u32, end)));
+            }
             _ => (),
         }
 
@@ -1292,7 +1264,10 @@ impl<'de> Parser<'de> {
             return Err(self.set_error(
                 self.cursor,
                 None,
-                ErrorKind::OutOfRange("Max recursion depth exceeded"),
+                ErrorKind::OutOfRange {
+                    ty: &"Max recursion depth exceeded",
+                    range: &"",
+                },
             ));
         }
         if let Err(e) = self.eat_inline_table_whitespace() {
@@ -1302,6 +1277,7 @@ impl<'de> Parser<'de> {
             return Ok(());
         }
         loop {
+            let saved_path_len = self.path_len;
             let mut table_ref: &mut crate::item::table::InnerTable<'de> = &mut *out;
             let mut key = match self.read_table_key() {
                 Ok(k) => k,
@@ -1310,6 +1286,7 @@ impl<'de> Parser<'de> {
             self.eat_whitespace();
             while self.eat_byte(b'.') {
                 self.eat_whitespace();
+                self.push_path(PathComponent::Key(key));
                 table_ref = match self.navigate_dotted_key(table_ref, key) {
                     Ok(t) => t,
                     Err(e) => return Err(e),
@@ -1329,6 +1306,8 @@ impl<'de> Parser<'de> {
             if let Err(e) = self.eat_inline_table_whitespace() {
                 return Err(e);
             }
+
+            self.push_path(PathComponent::Key(key));
             {
                 let val = match self.value(depth_remaining) {
                     Ok(v) => v,
@@ -1338,6 +1317,7 @@ impl<'de> Parser<'de> {
                     return Err(e);
                 }
             }
+            self.path_len = saved_path_len;
 
             if let Err(e) = self.eat_inline_table_whitespace() {
                 return Err(e);
@@ -1371,20 +1351,27 @@ impl<'de> Parser<'de> {
             return Err(self.set_error(
                 self.cursor,
                 None,
-                ErrorKind::OutOfRange("Max recursion depth exceeded"),
+                ErrorKind::OutOfRange {
+                    ty: &"Max recursion depth exceeded",
+                    range: &"",
+                },
             ));
         }
+        let saved_path_len = self.path_len;
         loop {
             if let Err(e) = self.eat_intermediate() {
                 return Err(e);
             }
             if self.eat_byte(b']') {
+                self.path_len = saved_path_len;
                 return Ok(());
             }
+            self.push_path(PathComponent::Index(out.len()));
             match self.value(depth_remaining) {
                 Ok(value) => out.push(value, self.arena),
                 Err(e) => return Err(e),
             };
+            self.path_len = saved_path_len;
             if let Err(e) = self.eat_intermediate() {
                 return Err(e);
             }
@@ -1446,9 +1433,8 @@ impl<'de> Parser<'de> {
     ) -> Result<&'t mut InnerTable<'de>, Failed> {
         if let Some(idx) = self.indexed_find(table, key.name) {
             let (existing_key, value) = &mut table.entries_mut()[idx];
-            let ok = value.is_table() && !value.is_frozen() && !value.has_header_bit();
 
-            if !ok {
+            if !value.is_table() {
                 return Err(self.set_error(
                     key.span.start as usize,
                     Some(key.span.end as usize),
@@ -1456,6 +1442,9 @@ impl<'de> Parser<'de> {
                         first: existing_key.span,
                     },
                 ));
+            }
+            if value.is_frozen() || value.has_header_bit() {
+                return Err(self.set_duplicate_key_error(existing_key.span, key.span));
             }
             // Promote IMPLICIT -> DOTTED: an implicit table created by a section
             // header intermediate (e.g. `b` in `[a.b.c]`) is now being touched
@@ -1642,7 +1631,9 @@ impl<'de> Parser<'de> {
                 Err(self.set_error(
                     header_start as usize,
                     Some(header_end as usize),
-                    ErrorKind::RedefineAsArray,
+                    ErrorKind::RedefineAsArray {
+                        first: first_key_span,
+                    },
                 ))
             } else {
                 Err(self.set_duplicate_key_error(first_key_span, key.span))

@@ -1,5 +1,5 @@
 ---
-source: snapshot-tests/tests/valid.rs
+source: crates/snapshot-tests/tests/valid.rs
 expression: spans
 ---
 note[integer]: root_ints_0
@@ -31,5 +31,3 @@ note[table]: root
   │
 1 │ ints = [1,2,3]
   │ ^^^^^^^^^^^^^^
-
-

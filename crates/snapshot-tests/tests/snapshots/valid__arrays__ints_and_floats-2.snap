@@ -1,5 +1,5 @@
 ---
-source: snapshot-tests/tests/valid.rs
+source: crates/snapshot-tests/tests/valid.rs
 expression: spans
 ---
 note[integer]: root_ints-and-floats_0
@@ -25,5 +25,3 @@ note[table]: root
   │
 1 │ ints-and-floats = [1, 1.1]
   │ ^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-

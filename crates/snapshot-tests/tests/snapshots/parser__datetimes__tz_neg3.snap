@@ -1,9 +1,24 @@
 ---
-source: snapshot-tests/tests/parser.rs
-expression: error
+source: crates/snapshot-tests/tests/parser.rs
+expression: combined
 ---
 error[Wanted]: expected newline, found an identifier at `tz`
   ┌─ tz_neg3:1:26
   │
 1 │ tz = 2016-09-09T09:09:09Z-2:00
   │                          ^^ expected newline
+
+
+error: expected newline, found an identifier at `tz`
+ --> tz_neg3:1:26
+  |
+1 | tz = 2016-09-09T09:09:09Z-2:00
+  |                          ^^ expected newline
+Error {
+    kind: "Wanted",
+    message: "expected newline, found an identifier",
+    span: 25..27,
+    path: Some(
+        "tz",
+    ),
+}

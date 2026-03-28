@@ -1,9 +1,24 @@
 ---
-source: snapshot-tests/tests/parser.rs
-expression: error
+source: crates/snapshot-tests/tests/parser.rs
+expression: combined
 ---
 error[Wanted]: expected an equals, found a character at `key`
   ┌─ pipe:1:4
   │
 1 │ key|=3
   │    ^ expected an equals
+
+
+error: expected an equals, found a character at `key`
+ --> pipe:1:4
+  |
+1 | key|=3
+  |    ^ expected an equals
+Error {
+    kind: "Wanted",
+    message: "expected an equals, found a character",
+    span: 3..4,
+    path: Some(
+        "key",
+    ),
+}

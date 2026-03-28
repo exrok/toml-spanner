@@ -1,0 +1,21 @@
+---
+source: crates/snapshot-tests/tests/de.rs
+expression: combined
+---
+error[Deprecated]: key 'old_name' is deprecated, use 'new_name' instead
+  ┌─ deprecated_alias:1:1
+  │
+1 │ old_name = 'val'
+  │ ^^^^^^^^ deprecated key
+
+
+[
+    Error {
+        kind: "Deprecated",
+        message: "key 'old_name' is deprecated, use 'new_name' instead",
+        span: 0..8,
+        path: Some(
+            "old_name",
+        ),
+    },
+]

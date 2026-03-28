@@ -1,9 +1,0 @@
----
-source: snapshot-tests/tests/annotate_snippets.rs
-expression: rendered
----
-error: unexpected eof encountered at `key`
- --> eof:1:6
-  |
-1 | key =
-  |      ^

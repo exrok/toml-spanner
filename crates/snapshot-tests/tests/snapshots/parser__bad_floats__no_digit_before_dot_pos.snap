@@ -1,9 +1,24 @@
 ---
-source: snapshot-tests/tests/parser.rs
-expression: error
+source: crates/snapshot-tests/tests/parser.rs
+expression: combined
 ---
 error[InvalidInteger]: invalid integer: expected digit after sign at `a`
   ┌─ no_digit_before_dot_pos:1:5
   │
 1 │ a = +.7
   │     ^ invalid integer: expected digit after sign
+
+
+error: invalid integer: expected digit after sign at `a`
+ --> no_digit_before_dot_pos:1:5
+  |
+1 | a = +.7
+  |     ^ invalid integer: expected digit after sign
+Error {
+    kind: "InvalidInteger",
+    message: "invalid integer: expected digit after sign",
+    span: 4..5,
+    path: Some(
+        "a",
+    ),
+}

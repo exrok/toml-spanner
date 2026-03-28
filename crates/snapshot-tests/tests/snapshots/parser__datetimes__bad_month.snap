@@ -1,9 +1,24 @@
 ---
-source: snapshot-tests/tests/parser.rs
-expression: error
+source: crates/snapshot-tests/tests/parser.rs
+expression: combined
 ---
 error[InvalidDateTime]: invalid datetime: month is out of range at `a`
   ┌─ bad_month:1:5
   │
 1 │ a = 2016-13-01
   │     ^^^^^^^^^^ invalid datetime: month is out of range
+
+
+error: invalid datetime: month is out of range at `a`
+ --> bad_month:1:5
+  |
+1 | a = 2016-13-01
+  |     ^^^^^^^^^^ invalid datetime: month is out of range
+Error {
+    kind: "InvalidDateTime",
+    message: "invalid datetime: month is out of range",
+    span: 4..14,
+    path: Some(
+        "a",
+    ),
+}

@@ -1,9 +1,24 @@
 ---
-source: snapshot-tests/tests/parser.rs
-expression: error
+source: crates/snapshot-tests/tests/parser.rs
+expression: combined
 ---
-error[UnquotedString]: invalid TOML value, did you mean to use a quoted string? at `foo`
+error[UnquotedString]: string values must be quoted, expected string literal at `foo`
   ┌─ double_leading:1:7
   │
 1 │ foo = __0
   │       ^^^ string is not quoted
+
+
+error: string values must be quoted, expected string literal at `foo`
+ --> double_leading:1:7
+  |
+1 | foo = __0
+  |       ^^^ string is not quoted
+Error {
+    kind: "UnquotedString",
+    message: "string values must be quoted, expected string literal",
+    span: 6..9,
+    path: Some(
+        "foo",
+    ),
+}

@@ -1,9 +1,24 @@
 ---
-source: snapshot-tests/tests/parser.rs
-expression: error
+source: crates/snapshot-tests/tests/parser.rs
+expression: combined
 ---
 error[InvalidDateTime]: invalid datetime: hour is out of range at `a`
   ┌─ bad_hour:1:5
   │
 1 │ a = 2016-09-09T25:00:00
   │     ^^^^^^^^^^^^^^^^^^^ invalid datetime: hour is out of range
+
+
+error: invalid datetime: hour is out of range at `a`
+ --> bad_hour:1:5
+  |
+1 | a = 2016-09-09T25:00:00
+  |     ^^^^^^^^^^^^^^^^^^^ invalid datetime: hour is out of range
+Error {
+    kind: "InvalidDateTime",
+    message: "invalid datetime: hour is out of range",
+    span: 4..23,
+    path: Some(
+        "a",
+    ),
+}

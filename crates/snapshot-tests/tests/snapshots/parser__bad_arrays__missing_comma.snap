@@ -1,0 +1,24 @@
+---
+source: crates/snapshot-tests/tests/parser.rs
+expression: combined
+---
+error[MissingArrayComma]: missing comma between elements, expected `,` in array at `a`
+  ┌─ missing_comma:1:8
+  │
+1 │ a = [1 2]
+  │        ^ expected `,`
+
+
+error: missing comma between elements, expected `,` in array at `a`
+ --> missing_comma:1:8
+  |
+1 | a = [1 2]
+  |        ^ expected `,`
+Error {
+    kind: "MissingArrayComma",
+    message: "missing comma between elements, expected `,` in array",
+    span: 7..8,
+    path: Some(
+        "a",
+    ),
+}

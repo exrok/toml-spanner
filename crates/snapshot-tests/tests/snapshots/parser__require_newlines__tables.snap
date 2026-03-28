@@ -1,9 +1,24 @@
 ---
-source: snapshot-tests/tests/parser.rs
-expression: error
+source: crates/snapshot-tests/tests/parser.rs
+expression: combined
 ---
 error[Wanted]: expected newline, found a left bracket at `0000l0[0].0`
   ┌─ tables:3:6
   │
 3 │ 0="0"[[0000l0]]
   │      ^ expected newline
+
+
+error: expected newline, found a left bracket at `0000l0[0].0`
+ --> tables:3:6
+  |
+3 | 0="0"[[0000l0]]
+  |      ^ expected newline
+Error {
+    kind: "Wanted",
+    message: "expected newline, found a left bracket",
+    span: 17..18,
+    path: Some(
+        "0000l0[0].0",
+    ),
+}

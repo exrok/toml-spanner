@@ -1,9 +1,24 @@
 ---
-source: snapshot-tests/tests/parser.rs
-expression: error
+source: crates/snapshot-tests/tests/parser.rs
+expression: combined
 ---
 error[Wanted]: expected a table key, found a comma at `a`
   ┌─ only_comma:1:6
   │
 1 │ a = {,}
   │      ^ expected a table key
+
+
+error: expected a table key, found a comma at `a`
+ --> only_comma:1:6
+  |
+1 | a = {,}
+  |      ^ expected a table key
+Error {
+    kind: "Wanted",
+    message: "expected a table key, found a comma",
+    span: 5..6,
+    path: Some(
+        "a",
+    ),
+}

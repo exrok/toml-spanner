@@ -1,8 +1,8 @@
 ---
-source: snapshot-tests/tests/parser.rs
-expression: error
+source: crates/snapshot-tests/tests/parser.rs
+expression: combined
 ---
-error[DuplicateTable]: redefinition of table `a` at `a`
+error[DuplicateTable]: redefinition of table `a`
   ┌─ table_then_inline:4:9
   │    
 2 │ ╭           [a]
@@ -11,3 +11,22 @@ error[DuplicateTable]: redefinition of table `a` at `a`
 4 │   ╭         [a]
 5 │   │         
   │   ╰^ duplicate table
+
+
+error: redefinition of table `a`
+ --> table_then_inline:4:9
+  |
+2 | /         [a]
+3 | |         b = {}
+  | |______________- first table instance
+4 | /         [a]
+5 | |         
+  | |_^ duplicate table
+Error {
+    kind: "DuplicateTable",
+    message: "redefinition of table",
+    span: 36..40,
+    path: Some(
+        "a",
+    ),
+}

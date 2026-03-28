@@ -1,5 +1,5 @@
 ---
-source: snapshot-tests/tests/valid.rs
+source: crates/snapshot-tests/tests/valid.rs
 expression: spans
 ---
 note[integer]: root_arrays-and-ints_0

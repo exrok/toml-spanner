@@ -1,9 +1,24 @@
 ---
-source: snapshot-tests/tests/parser.rs
-expression: error
+source: crates/snapshot-tests/tests/parser.rs
+expression: combined
 ---
 error[InvalidCharInString]: invalid character in string: `\r` at `a`
   ┌─ value_literal:1:6
   │
 1 │ a = ''
   │       invalid character '\r' in string
+
+
+error: invalid character in string: `\r` at `a`
+ --> value_literal:1:6
+  |
+1 | a = '␍'
+  |      ^ invalid character '\r' in string
+Error {
+    kind: "InvalidCharInString",
+    message: "invalid character in string: `\\r`",
+    span: 5..6,
+    path: Some(
+        "a",
+    ),
+}

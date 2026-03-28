@@ -1,6 +1,6 @@
 ---
-source: snapshot-tests/tests/parser.rs
-expression: error
+source: crates/snapshot-tests/tests/parser.rs
+expression: combined
 ---
 error[DottedKeyInvalidType]: dotted key attempted to extend non-table type at `a`
   ┌─ dotted:2:1
@@ -9,3 +9,20 @@ error[DottedKeyInvalidType]: dotted key attempted to extend non-table type at `a
   │ - non-table
 2 │ a.b = 2
   │ ^ attempted to extend table here
+
+
+error: dotted key attempted to extend non-table type at `a`
+ --> dotted:2:1
+  |
+1 | a = 1
+  | - non-table
+2 | a.b = 2
+  | ^ attempted to extend table here
+Error {
+    kind: "DottedKeyInvalidType",
+    message: "dotted key attempted to extend non-table type",
+    span: 6..7,
+    path: Some(
+        "a",
+    ),
+}

@@ -9,4 +9,4 @@ annotate-snippets = "0.12.13"
 codespan-reporting = "0.13"
 insta = { version = "1.34", features = ["json"] }
 pretty_assertions = "1.4"
-toml-spanner = { path = "../..", features = ["serde", "from-toml", "to-toml"] }
+toml-spanner = { path = "../..", features = ["serde", "from-toml", "to-toml", "derive"] }

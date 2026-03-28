@@ -1,5 +1,5 @@
 ---
-source: snapshot-tests/tests/parser.rs
+source: crates/snapshot-tests/tests/parser.rs
 expression: spans
 ---
 note[integer]: root_foo
@@ -13,5 +13,3 @@ note[table]: root
   │
 1 │ foo=42
   │ ^^^^^^
-
-

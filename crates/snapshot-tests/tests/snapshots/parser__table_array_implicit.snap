@@ -1,10 +1,32 @@
 ---
-source: snapshot-tests/tests/parser.rs
-expression: error
+source: crates/snapshot-tests/tests/parser.rs
+expression: combined
 ---
 error[RedefineAsArray]: table redefined as array at `albums`
   ┌─ table_array_implicit:5:1
   │  
+2 │   [[albums.songs]]
+  │     ------ first defined as table
+  ·  
 5 │ ╭ [[albums]]
 6 │ │ name = "Born in the USA"
   │ ╰^
+
+
+error: table redefined as array at `albums`
+ --> table_array_implicit:5:1
+  |
+2 |   [[albums.songs]]
+  |     ------ first defined as table
+...
+5 | / [[albums]]
+6 | | name = "Born in the USA"
+  | |_^
+Error {
+    kind: "RedefineAsArray",
+    message: "table redefined as array",
+    span: 39..50,
+    path: Some(
+        "albums",
+    ),
+}

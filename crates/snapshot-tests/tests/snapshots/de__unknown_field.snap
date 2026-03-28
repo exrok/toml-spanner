@@ -1,9 +1,26 @@
 ---
-source: snapshot-tests/tests/de.rs
-expression: error
+source: crates/snapshot-tests/tests/de.rs
+expression: combined
 ---
 error[UnexpectedKey]: unexpected key at `this-field-is-not-known`
   ┌─ unknown_field:2:1
   │
 2 │ this-field-is-not-known = 20
   │ ^^^^^^^^^^^^^^^^^^^^^^^ unexpected key
+
+
+error: unexpected key at `this-field-is-not-known`
+ --> unknown_field:2:1
+  |
+2 | this-field-is-not-known = 20
+  | ^^^^^^^^^^^^^^^^^^^^^^^ unexpected key
+[
+    Error {
+        kind: "UnexpectedKey",
+        message: "unexpected key",
+        span: 10..33,
+        path: Some(
+            "this-field-is-not-known",
+        ),
+    },
+]

@@ -87,16 +87,28 @@ fn deser_integers() {
 
     // Out-of-range errors
     let err = parse_val::<i8>("v = 200", &arena).unwrap_err();
-    assert!(matches!(err.kind(), crate::ErrorKind::OutOfRange("i8")));
+    assert!(matches!(
+        err.kind(),
+        crate::ErrorKind::OutOfRange { ty: &"i8", .. }
+    ));
 
     let err = parse_val::<u8>("v = 256", &arena).unwrap_err();
-    assert!(matches!(err.kind(), crate::ErrorKind::OutOfRange("u8")));
+    assert!(matches!(
+        err.kind(),
+        crate::ErrorKind::OutOfRange { ty: &"u8", .. }
+    ));
 
     let err = parse_val::<u64>("v = -1", &arena).unwrap_err();
-    assert!(matches!(err.kind(), crate::ErrorKind::OutOfRange("u64")));
+    assert!(matches!(
+        err.kind(),
+        crate::ErrorKind::OutOfRange { ty: &"u64", .. }
+    ));
 
     let err = parse_val::<usize>("v = -1", &arena).unwrap_err();
-    assert!(matches!(err.kind(), crate::ErrorKind::OutOfRange("usize")));
+    assert!(matches!(
+        err.kind(),
+        crate::ErrorKind::OutOfRange { ty: &"usize", .. }
+    ));
 
     // Wrong type
     let err = parse_val::<i32>(r#"v = "not an int""#, &arena).unwrap_err();
@@ -1199,7 +1211,7 @@ fn deser_tuple_wrong_size() {
     let arena = Arena::new();
     let err = parse_val::<(i64, i64)>("v = [1, 2, 3]", &arena).unwrap_err();
     let msg = format!("{err}");
-    assert!(msg.contains("expected 2"), "got: {msg}");
+    assert!(msg.contains("size of 2"), "got: {msg}");
 }
 
 #[test]

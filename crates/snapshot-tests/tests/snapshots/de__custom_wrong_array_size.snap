@@ -1,0 +1,24 @@
+---
+source: crates/snapshot-tests/tests/de.rs
+expression: combined
+---
+error[Custom]: expected an array with a size of 2, found one with a size of 3
+  ┌─ custom_wrong_array_size:1:9
+  │
+1 │ items = ['a', 'b', 'c']
+  │         ^^^^^^^^^^^^^^^
+
+
+error: expected an array with a size of 2, found one with a size of 3
+ --> custom_wrong_array_size:1:9
+  |
+1 | items = ['a', 'b', 'c']
+  |         ^^^^^^^^^^^^^^^
+[
+    Error {
+        kind: "Custom",
+        message: "expected an array with a size of 2, found one with a size of 3",
+        span: 8..23,
+        path: None,
+    },
+]

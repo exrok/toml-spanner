@@ -1,9 +1,26 @@
 ---
-source: snapshot-tests/tests/de.rs
-expression: error
+source: crates/snapshot-tests/tests/de.rs
+expression: combined
 ---
-error[OutOfRange]: out of range of 'u8' at `year`
+error[OutOfRange]: value out of range for u8 at `year`
   ┌─ custom_error:1:8
   │
 1 │ year = 40_000
-  │        ^^^^^^
+  │        ^^^^^^ expected 0..=255
+
+
+error: value out of range for u8 at `year`
+ --> custom_error:1:8
+  |
+1 | year = 40_000
+  |        ^^^^^^ expected 0..=255
+[
+    Error {
+        kind: "OutOfRange",
+        message: "value out of range for u8",
+        span: 7..13,
+        path: Some(
+            "year",
+        ),
+    },
+]

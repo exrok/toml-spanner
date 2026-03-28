@@ -1,6 +1,6 @@
 ---
-source: snapshot-tests/tests/parser.rs
-expression: error
+source: crates/snapshot-tests/tests/parser.rs
+expression: combined
 ---
 error[Unexpected]: unexpected character found: `\n` at `key`
   ┌─ newline_after_equal:1:5
@@ -9,3 +9,20 @@ error[Unexpected]: unexpected character found: `\n` at `key`
   │ ╭────^
 2 │ │ 3
   │ ╰^ unexpected character '\n'
+
+
+error: unexpected character found: `\n` at `key`
+ --> newline_after_equal:1:5
+  |
+1 |   key=
+  |  _____^
+2 | | 3
+  | |_^ unexpected character '\n'
+Error {
+    kind: "Unexpected",
+    message: "unexpected character found: `\\n`",
+    span: 4..5,
+    path: Some(
+        "key",
+    ),
+}

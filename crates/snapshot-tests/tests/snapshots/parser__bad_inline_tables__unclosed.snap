@@ -1,0 +1,24 @@
+---
+source: crates/snapshot-tests/tests/parser.rs
+expression: combined
+---
+error[UnclosedInlineTable]: unclosed inline table, expected `}` at `a`
+  ┌─ unclosed:1:9
+  │
+1 │ a = {b=1
+  │         ^ expected `}`
+
+
+error: unclosed inline table, expected `}` at `a`
+ --> unclosed:1:9
+  |
+1 | a = {b=1
+  |         ^ expected `}`
+Error {
+    kind: "UnclosedInlineTable",
+    message: "unclosed inline table, expected `}`",
+    span: 8..8,
+    path: Some(
+        "a",
+    ),
+}

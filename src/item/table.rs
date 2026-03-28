@@ -459,7 +459,7 @@ impl<'de> Table<'de> {
     /// Performs an O(n) linear scan for duplicates. Prefer [`Table::insert_unique`]
     /// when the key is known to be absent.
     pub fn insert(&mut self, key: Key<'de>, value: Item<'de>, arena: &'de Arena) {
-        if let Some(existing) = self.get_mut(&key.name) {
+        if let Some(existing) = self.get_mut(key.name) {
             *existing = value;
             return;
         }

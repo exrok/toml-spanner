@@ -1,9 +1,24 @@
 ---
-source: snapshot-tests/tests/parser.rs
-expression: error
+source: crates/snapshot-tests/tests/parser.rs
+expression: combined
 ---
 error[Wanted]: expected newline, found an identifier at `0`
   ┌─ arrays:2:6
   │
 2 │ 0=[0]00=[0,0,0]t=["0","0","0"]s=[1000-00-00T00:00:00Z,2000-00-00T00:00:00Z]
   │      ^^ expected newline
+
+
+error: expected newline, found an identifier at `0`
+ --> arrays:2:6
+  |
+2 | 0=[0]00=[0,0,0]t=["0","0","0"]s=[1000-00-00T00:00:00Z,2000-00-00T00:00:00Z]
+  |      ^^ expected newline
+Error {
+    kind: "Wanted",
+    message: "expected newline, found an identifier",
+    span: 6..8,
+    path: Some(
+        "0",
+    ),
+}

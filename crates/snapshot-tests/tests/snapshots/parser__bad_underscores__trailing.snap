@@ -1,9 +1,24 @@
 ---
-source: snapshot-tests/tests/parser.rs
-expression: error
+source: crates/snapshot-tests/tests/parser.rs
+expression: combined
 ---
 error[InvalidInteger]: invalid integer: underscores must be between two digits at `foo`
   ┌─ trailing:1:8
   │
 1 │ foo = 0_
   │        ^ invalid integer: underscores must be between two digits
+
+
+error: invalid integer: underscores must be between two digits at `foo`
+ --> trailing:1:8
+  |
+1 | foo = 0_
+  |        ^ invalid integer: underscores must be between two digits
+Error {
+    kind: "InvalidInteger",
+    message: "invalid integer: underscores must be between two digits",
+    span: 7..8,
+    path: Some(
+        "foo",
+    ),
+}

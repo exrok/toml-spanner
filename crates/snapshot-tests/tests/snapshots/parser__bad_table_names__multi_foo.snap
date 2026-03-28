@@ -1,9 +1,22 @@
 ---
-source: snapshot-tests/tests/parser.rs
-expression: error
+source: crates/snapshot-tests/tests/parser.rs
+expression: combined
 ---
 error[MultilineStringKey]: multiline strings are not allowed for key
   ┌─ multi_foo:1:2
   │
 1 │ ['''foo''']
   │  ^^^^^^^^^ multiline keys are not allowed
+
+
+error: multiline strings are not allowed for key
+ --> multi_foo:1:2
+  |
+1 | ['''foo''']
+  |  ^^^^^^^^^ multiline keys are not allowed
+Error {
+    kind: "MultilineStringKey",
+    message: "multiline strings are not allowed for key",
+    span: 1..10,
+    path: None,
+}

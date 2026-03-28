@@ -97,7 +97,8 @@ macro_rules! valid_de {
 
             match doc.to::<$kind>() {
                 Ok(de) => {
-                    insta::assert_debug_snapshot!(de);
+                    let combined = format!("--- input ---\n{toml_str}\n--- output ---\n{de:#?}");
+                    insta::assert_snapshot!(combined);
                 }
                 Err(e) => {
                     let file = $crate::File::new(stringify!($name), &toml_str);
@@ -119,7 +120,8 @@ macro_rules! valid_de {
 
             match doc.to::<$kind>() {
                 Ok(de) => {
-                    insta::assert_debug_snapshot!(de);
+                    let combined = format!("--- input ---\n{}\n--- output ---\n{de:#?}", $toml);
+                    insta::assert_snapshot!(combined);
                 }
                 Err(e) => {
                     let file = $crate::File::new(stringify!($name), $toml);
@@ -157,7 +159,12 @@ macro_rules! invalid_de {
                         .iter()
                         .map(|e| $crate::error_to_diagnostic(e, &toml_str, ()))
                         .collect();
-                    $crate::error_snapshot!($name, diags, &toml_str);
+                    let groups: Vec<_> = e
+                        .errors
+                        .iter()
+                        .map(|e| $crate::error_to_snippet(e, &toml_str, stringify!($name)))
+                        .collect();
+                    $crate::error_snapshot!($name, diags, &toml_str, debug: e.errors, snippets: groups);
                 }
             }
         }
@@ -178,9 +185,40 @@ macro_rules! invalid_de {
                         .iter()
                         .map(|e| $crate::error_to_diagnostic(e, $toml, ()))
                         .collect();
-                    $crate::error_snapshot!($name, diags, $toml);
+                    let groups: Vec<_> = e
+                        .errors
+                        .iter()
+                        .map(|e| $crate::error_to_snippet(e, $toml, stringify!($name)))
+                        .collect();
+                    $crate::error_snapshot!($name, diags, $toml, debug: e.errors, snippets: groups);
                 }
             }
+        }
+    };
+}
+
+/// Deserializes successfully but expects non-fatal errors (e.g. deprecated fields)
+#[macro_export]
+macro_rules! warnings_de {
+    ($name:ident, $kind:ty, $toml:literal) => {
+        #[test]
+        fn $name() {
+            let arena = toml_spanner::Arena::new();
+            let mut doc = toml_spanner::parse($toml, &arena).expect("failed to parse toml");
+
+            let (_val, e) = doc
+                .to_allowing_errors::<$kind>()
+                .expect("deserialization should succeed");
+            assert!(
+                !e.errors.is_empty(),
+                "expected non-fatal errors but got none"
+            );
+            let diags: Vec<_> = e
+                .errors
+                .iter()
+                .map(|e| $crate::error_to_diagnostic(e, $toml, ()))
+                .collect();
+            $crate::error_snapshot!($name, diags, $toml, debug: e.errors);
         }
     };
 }
@@ -206,14 +244,26 @@ pub fn emit_diags(
     String::from_utf8(output.into_inner()).unwrap()
 }
 
-/// Creates a codespan diagnostic for an error and asserts the emitted diagnostic
-/// matches a snapshot
+/// Asserts the emitted diagnostic matches a snapshot
 #[macro_export]
 macro_rules! error_snapshot {
     ($name:ident, $err:expr, $toml:expr) => {
         let file = $crate::File::new(stringify!($name), $toml);
         let error = $crate::emit_diags(&file, $err);
         insta::assert_snapshot!(error);
+    };
+    ($name:ident, $err:expr, $toml:expr, debug: $debug:expr) => {
+        let file = $crate::File::new(stringify!($name), $toml);
+        let diag = $crate::emit_diags(&file, $err);
+        let combined = format!("{diag}\n{:#?}", $debug);
+        insta::assert_snapshot!(combined);
+    };
+    ($name:ident, $err:expr, $toml:expr, debug: $debug:expr, snippets: $snippets:expr) => {
+        let file = $crate::File::new(stringify!($name), $toml);
+        let diag = $crate::emit_diags(&file, $err);
+        let snippet = $crate::render_snippets(&$snippets);
+        let combined = format!("{diag}\n{snippet}\n{:#?}", $debug);
+        insta::assert_snapshot!(combined);
     };
 }
 
@@ -281,10 +331,13 @@ macro_rules! invalid {
                     .expect(concat!("failed to load ", stringify!($name), ".toml"));
             let arena = toml_spanner::Arena::new();
             let error = toml_spanner::parse(&toml_str, &arena).unwrap_err();
+            let group = $crate::error_to_snippet(&error, &toml_str, stringify!($name));
             $crate::error_snapshot!(
                 $name,
                 Some($crate::error_to_diagnostic(&error, &toml_str, ())),
-                &toml_str
+                &toml_str,
+                debug: error,
+                snippets: [group]
             );
         }
     };
@@ -293,10 +346,13 @@ macro_rules! invalid {
         fn $name() {
             let arena = toml_spanner::Arena::new();
             let error = toml_spanner::parse($toml, &arena).unwrap_err();
+            let group = $crate::error_to_snippet(&error, $toml, stringify!($name));
             $crate::error_snapshot!(
                 $name,
                 Some($crate::error_to_diagnostic(&error, $toml, ())),
-                $toml
+                $toml,
+                debug: error,
+                snippets: [group]
             );
         }
     };
@@ -305,50 +361,4 @@ macro_rules! invalid {
 pub fn render_snippets(groups: &[annotate_snippets::Group<'_>]) -> String {
     let renderer = annotate_snippets::Renderer::plain();
     renderer.render(groups).to_string()
-}
-
-#[macro_export]
-macro_rules! snippet_error_snapshot {
-    ($name:ident, $groups:expr) => {
-        let rendered = $crate::render_snippets(&$groups);
-        insta::assert_snapshot!(rendered);
-    };
-}
-
-#[macro_export]
-macro_rules! invalid_snippet {
-    ($name:ident, $toml:expr) => {
-        #[test]
-        fn $name() {
-            let arena = toml_spanner::Arena::new();
-            let error = toml_spanner::parse($toml, &arena).unwrap_err();
-            let group = $crate::error_to_snippet(&error, $toml, stringify!($name));
-            $crate::snippet_error_snapshot!($name, [group]);
-        }
-    };
-}
-
-#[macro_export]
-macro_rules! invalid_de_snippet {
-    ($name:ident, $kind:ty, $toml:literal) => {
-        #[test]
-        fn $name() {
-            let arena = toml_spanner::Arena::new();
-            let mut doc = toml_spanner::parse($toml, &arena).expect("failed to parse toml");
-
-            match doc.to::<$kind>() {
-                Ok(de) => {
-                    panic!("expected errors but deserialized '{de:#?}' successfully");
-                }
-                Err(e) => {
-                    let groups: Vec<_> = e
-                        .errors
-                        .iter()
-                        .map(|e| $crate::error_to_snippet(e, $toml, stringify!($name)))
-                        .collect();
-                    $crate::snippet_error_snapshot!($name, groups);
-                }
-            }
-        }
-    };
 }

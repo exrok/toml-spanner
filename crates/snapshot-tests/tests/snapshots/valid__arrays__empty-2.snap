@@ -1,5 +1,5 @@
 ---
-source: snapshot-tests/tests/valid.rs
+source: crates/snapshot-tests/tests/valid.rs
 expression: spans
 ---
 note[array]: root_thevoid_0_0_0_0
@@ -37,5 +37,3 @@ note[table]: root
   │
 1 │ thevoid = [[[[[]]]]]
   │ ^^^^^^^^^^^^^^^^^^^^
-
-

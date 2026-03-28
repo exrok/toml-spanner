@@ -1,0 +1,30 @@
+---
+source: crates/snapshot-tests/tests/de.rs
+expression: combined
+---
+error[DuplicateField]: both 'server_name' and 'name' are defined but resolve to the same field
+  ┌─ duplicate_field_alias:2:1
+  │
+1 │ name = 'a'
+  │ ---- first defined here
+2 │ server_name = 'b'
+  │ ^^^^^^^^^^^ duplicate key
+
+
+error: both 'server_name' and 'name' are defined but resolve to the same field
+ --> duplicate_field_alias:2:1
+  |
+1 | name = 'a'
+  | ---- first defined here
+2 | server_name = 'b'
+  | ^^^^^^^^^^^ duplicate key
+[
+    Error {
+        kind: "DuplicateField",
+        message: "duplicate key 'name'",
+        span: 11..22,
+        path: Some(
+            "server_name",
+        ),
+    },
+]

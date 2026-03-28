@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 
-use snapshot_tests::{invalid_de, valid_de};
-use toml_spanner::{Context, Failed, FromToml, Spanned, TableHelper};
+use snapshot_tests::{invalid_de, valid_de, warnings_de};
+use toml_spanner::{Context, Failed, FromToml, Spanned, TableHelper, Toml};
 
 #[derive(Debug)]
 struct Boop {
@@ -277,3 +277,71 @@ host = 'beta'
 timeout = 60
 bogus = true"
 );
+
+// --- DuplicateField: alias collision ---
+
+#[derive(Toml, Debug)]
+struct WithAlias {
+    #[toml(alias = "server_name")]
+    name: String,
+}
+
+invalid_de!(
+    duplicate_field_alias,
+    WithAlias,
+    "name = 'a'\nserver_name = 'b'"
+);
+
+// --- Deprecated field ---
+
+#[derive(Toml, Debug)]
+struct WithDeprecated {
+    #[toml(deprecated_alias = "old_name")]
+    new_name: String,
+}
+
+warnings_de!(deprecated_alias, WithDeprecated, "old_name = 'val'");
+
+// --- UnexpectedVariant: string enum with unknown variant ---
+
+#[derive(Toml, Debug)]
+#[toml(FromToml)]
+enum Color {
+    Red,
+    Green,
+    Blue,
+}
+
+#[derive(Debug)]
+struct Palette {
+    color: Color,
+}
+
+impl<'de> FromToml<'de> for Palette {
+    fn from_toml(ctx: &mut Context<'de>, value: &toml_spanner::Item<'de>) -> Result<Self, Failed> {
+        let mut th = value.table_helper(ctx)?;
+        let color = th.required("color")?;
+        th.expect_empty()?;
+        Ok(Self { color })
+    }
+}
+
+invalid_de!(unexpected_variant, Palette, "color = 'Purple'");
+
+// --- Custom error: wrong array size ---
+
+#[derive(Debug)]
+struct Pair {
+    items: [String; 2],
+}
+
+impl<'de> FromToml<'de> for Pair {
+    fn from_toml(ctx: &mut Context<'de>, value: &toml_spanner::Item<'de>) -> Result<Self, Failed> {
+        let mut th = value.table_helper(ctx)?;
+        let items = th.required("items")?;
+        th.expect_empty()?;
+        Ok(Self { items })
+    }
+}
+
+invalid_de!(custom_wrong_array_size, Pair, "items = ['a', 'b', 'c']");

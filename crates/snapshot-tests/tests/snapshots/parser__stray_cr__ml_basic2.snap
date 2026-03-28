@@ -1,9 +1,22 @@
 ---
-source: snapshot-tests/tests/parser.rs
-expression: error
+source: crates/snapshot-tests/tests/parser.rs
+expression: combined
 ---
 error[InvalidCharInString]: invalid character in string: `\r`
   ┌─ ml_basic2:1:4
   │
 1 │ ''''''
   │     invalid character '\r' in string
+
+
+error: invalid character in string: `\r`
+ --> ml_basic2:1:4
+  |
+1 | '''␍'''
+  |    ^ invalid character '\r' in string
+Error {
+    kind: "InvalidCharInString",
+    message: "invalid character in string: `\\r`",
+    span: 3..4,
+    path: None,
+}

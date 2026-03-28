@@ -1,0 +1,26 @@
+---
+source: crates/snapshot-tests/tests/de.rs
+expression: combined
+---
+error[UnexpectedVariant]: unknown variant 'Purple' at `color`
+  ┌─ unexpected_variant:1:9
+  │
+1 │ color = 'Purple'
+  │         ^^^^^^^^ expected one of: Red, Green, Blue
+
+
+error: unknown variant 'Purple' at `color`
+ --> unexpected_variant:1:9
+  |
+1 | color = 'Purple'
+  |         ^^^^^^^^ expected one of: Red, Green, Blue
+[
+    Error {
+        kind: "UnexpectedVariant",
+        message: "unknown variant, expected one of: Red, Green, Blue",
+        span: 8..16,
+        path: Some(
+            "color",
+        ),
+    },
+]

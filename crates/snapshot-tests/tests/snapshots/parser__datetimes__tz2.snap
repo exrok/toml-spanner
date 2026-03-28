@@ -1,9 +1,24 @@
 ---
-source: snapshot-tests/tests/parser.rs
-expression: error
+source: crates/snapshot-tests/tests/parser.rs
+expression: combined
 ---
 error[InvalidDateTime]: invalid datetime: expected 2-digit offset hour at `tz`
   ┌─ tz2:1:6
   │
 1 │ tz = 2016-09-09T09:09:09+2:00
   │      ^^^^^^^^^^^^^^^^^^^^^^^^ invalid datetime: expected 2-digit offset hour
+
+
+error: invalid datetime: expected 2-digit offset hour at `tz`
+ --> tz2:1:6
+  |
+1 | tz = 2016-09-09T09:09:09+2:00
+  |      ^^^^^^^^^^^^^^^^^^^^^^^^ invalid datetime: expected 2-digit offset hour
+Error {
+    kind: "InvalidDateTime",
+    message: "invalid datetime: expected 2-digit offset hour",
+    span: 5..29,
+    path: Some(
+        "tz",
+    ),
+}

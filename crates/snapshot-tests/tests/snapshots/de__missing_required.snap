@@ -1,9 +1,24 @@
 ---
-source: snapshot-tests/tests/de.rs
-expression: error
+source: crates/snapshot-tests/tests/de.rs
+expression: combined
 ---
-error[MissingField]: missing field 's' in table
+error[MissingField]: missing required key 's'
   ┌─ missing_required:1:1
   │
 1 │ os = 20
-  │ ^^^^^^^ table with missing field
+  │ ^^^^^^^ missing key 's'
+
+
+error: missing required key 's'
+ --> missing_required:1:1
+  |
+1 | os = 20
+  | ^^^^^^^ missing key 's'
+[
+    Error {
+        kind: "MissingField",
+        message: "missing required key 's'",
+        span: 0..7,
+        path: None,
+    },
+]
