@@ -45,7 +45,7 @@ pub mod parse_string {
         T::Err: std::fmt::Display,
     {
         let Some(s) = item.as_str() else {
-            return Err(ctx.error_expected_but_found(&"a string", item));
+            return Err(ctx.report_expected_but_found(&"a string", item));
         };
         match s.parse::<T>() {
             Ok(val) => Ok(val),

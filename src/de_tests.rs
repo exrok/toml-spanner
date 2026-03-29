@@ -384,7 +384,7 @@ fn expect_custom_string_and_context_errors() {
         assert!(val_item.table_helper(helper.ctx).is_err());
     }
 
-    // Context::error_message_at and push_error
+    // Context::report_error_at and push_error
     let span = crate::Span::new(0, 5);
     let mut ctx = super::Context {
         arena: &arena,
@@ -392,7 +392,7 @@ fn expect_custom_string_and_context_errors() {
         errors: Vec::new(),
         source: "",
     };
-    let _ = ctx.error_message_at("something went wrong", span);
+    let _ = ctx.report_error_at("something went wrong", span);
     let _ = ctx.push_error(Error::new(crate::ErrorKind::InvalidInteger(""), span));
     assert_eq!(ctx.errors.len(), 2);
     assert!(matches!(ctx.errors[0].kind(), crate::ErrorKind::Custom(_)));

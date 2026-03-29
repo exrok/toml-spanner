@@ -59,7 +59,7 @@ impl<'de> FromToml<'de> for Package {
                 Ok(Self { name, version })
             }
         } else {
-            Err(ctx.error_expected_but_found(&"a string or table", value))
+            Err(ctx.report_expected_but_found(&"a string or table", value))
         }
     }
 }

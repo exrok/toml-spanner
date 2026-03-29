@@ -278,6 +278,13 @@ fn impl_to_toml(output: &mut RustWriter, ctx: &Ctx, inner: TokenStream) {
     };
 }
 
+fn emit_failed_return(out: &mut RustWriter, ctx: &Ctx) {
+    let at = out.buf.len();
+    splat!(out; return Err([#ctx.crate_path]::Failed););
+    out.tt_group(Delimiter::Brace, at);
+    splat!(out; ;);
+}
+
 fn emit_table_alloc(out: &mut RustWriter, ctx: &Ctx, var: &str, capacity: usize) {
     let var_id = Ident::new(var, Span::mixed_site());
     splat!(out;
@@ -483,9 +490,10 @@ fn emit_table_field_deser(
     // Finish flatten partial
     if let Some(ff) = flatten_field {
         let table_id = Ident::new(table_ident, Span::mixed_site());
-        splat!(out; let [#: ff.name] =);
+        splat!(out; let Ok([#: ff.name]) =);
         emit_flatten_prefix(out, ctx, ff, FROM_TOML);
-        splat!(out; ::finish( __ctx, [#table_id], __flatten_partial)?;);
+        splat!(out; ::finish( __ctx, [#table_id], __flatten_partial) else);
+        emit_failed_return(out, ctx);
     }
 
     if recoverable {
@@ -731,7 +739,8 @@ fn emit_ok_self_variant(out: &mut RustWriter, variant: &EnumVariant) {
 
 fn struct_from_toml(out: &mut RustWriter, ctx: &Ctx, fields: &[Field]) {
     let start = out.buf.len();
-    splat!(out; let __table = __item.expect_table(__ctx)?;);
+    splat!(out; let Ok(__table) = __item.expect_table(__ctx) else);
+    emit_failed_return(out, ctx);
     emit_table_field_deser(out, ctx, fields, "__table", None, &[]);
     splat!(out;
         Ok(Self {
@@ -755,9 +764,9 @@ fn emit_proxy_from_toml(output: &mut RustWriter, ctx: &Ctx) -> bool {
     if let Some(from_ty) = &ctx.target.from_type {
         let body = token_stream! {
             output;
-            let __proxy = < [~from_ty] as [#ctx.crate_path]::FromToml<#[#: &ctx.lifetime]> >::from_toml(
+            let Ok(__proxy) = < [~from_ty] as [#ctx.crate_path]::FromToml<#[#: &ctx.lifetime]> >::from_toml(
                 __ctx, __item
-            ) ?;
+            ) else [emit_failed_return(output, ctx)]
             Ok(::std::convert::From::from(__proxy))
         };
         impl_from_toml(output, &ctx, body);
@@ -765,14 +774,12 @@ fn emit_proxy_from_toml(output: &mut RustWriter, ctx: &Ctx) -> bool {
     } else if let Some(try_from_ty) = &ctx.target.try_from_type {
         let body = token_stream! {
             output;
-            let __proxy = < [~try_from_ty] as [#ctx.crate_path]::FromToml<#[#: &ctx.lifetime]> >::from_toml(
+            let Ok(__proxy) = < [~try_from_ty] as [#ctx.crate_path]::FromToml<#[#: &ctx.lifetime]> >::from_toml(
                 __ctx, __item
-            ) ?;
+            ) else [emit_failed_return(output, ctx)]
             match ::std::convert::TryFrom::try_from(__proxy) {
                 Ok(__val) => Ok(__val),
-                Err(__e) => Err(__ctx.push_error(
-                    [#ctx.crate_path]::Error::custom(__e, __item.span())
-                )),
+                Err(__e) => Err(__ctx.report_custom_error(__e, __item)),
             }
         };
         impl_from_toml(output, &ctx, body);
@@ -824,11 +831,10 @@ fn handle_tuple_struct(output: &mut RustWriter, target: &DeriveTargetInner, fiel
         if let [single_field] = fields {
             let body = token_stream! {
                 output;
-                Ok([#: &target.name](
-                    < [~single_field.ty] as [#ctx.crate_path]::FromToml<#[#: &ctx.lifetime]> >::from_toml(
-                        __ctx, __item
-                    ) ?
-                ))
+                let Ok(__val) = < [~single_field.ty] as [#ctx.crate_path]::FromToml<#[#: &ctx.lifetime]> >::from_toml(
+                    __ctx, __item
+                ) else [emit_failed_return(output, &ctx)]
+                Ok([#: &target.name](__val))
             };
             impl_from_toml(output, &ctx, body);
         } else {
@@ -902,7 +908,7 @@ fn emit_unknown_field_arm(out: &mut RustWriter, ctx: &Ctx) {
         UnknownFieldPolicy::Warn { tag } => {
             splat!(out;
                 _ => {
-                    __ctx.error_unexpected_key(
+                    __ctx.report_unexpected_key(
                         [emit_tag_value(out, tag.as_deref())]
                         , __value, __key.span);
                 }
@@ -911,7 +917,7 @@ fn emit_unknown_field_arm(out: &mut RustWriter, ctx: &Ctx) {
         UnknownFieldPolicy::Deny { tag } => {
             splat!(out;
                 _ => {
-                    return Err(__ctx.error_unexpected_key(
+                    return Err(__ctx.report_unexpected_key(
                         [emit_tag_value(out, tag.as_deref())]
                         , __value, __key.span));
                 }
@@ -938,7 +944,7 @@ fn emit_wildcard_arm(
         splat!(out; _ => Ok(Self::[#: ov.name]),);
     } else {
         splat!(out;
-            _ => Err(__ctx.error_expected_but_found(
+            _ => Err(__ctx.report_expected_but_found(
                 &[@TokenTree::Literal(Literal::string(msg))], __item)),
         );
     }
@@ -976,8 +982,9 @@ fn emit_from_toml_call(out: &mut RustWriter, ctx: &Ctx, field: &Field, ty: &[Tok
 fn enum_from_toml_string(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVariant]) {
     let start = out.buf.len();
     let other_variant = find_other_variant(variants);
+    splat!(out; let Ok(s) = __item.expect_string(__ctx) else);
+    emit_failed_return(out, ctx);
     splat!(out;
-        let s = __item.expect_string(__ctx)?;
         match s {
             [for variant in variants {
                 if variant.other { continue; }
@@ -997,7 +1004,7 @@ fn enum_from_toml_string(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVarian
                     TokenTree::Group(Group::new(Delimiter::Bracket, ts))
                 };
                 splat!(out;
-                    _ => Err(__ctx.error_unexpected_variant(
+                    _ => Err(__ctx.report_unexpected_variant(
                         &[@expected_array], __item)),
                 );
             }]
@@ -1161,13 +1168,12 @@ fn enum_from_toml_external(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVari
     }
 
     if has_complex {
-        splat!(out;
-            let table = __item.expect_table(__ctx)?;
-            let entries = table.entries();
-        );
+        splat!(out; let Ok(table) = __item.expect_table(__ctx) else);
+        emit_failed_return(out, ctx);
+        splat!(out; let entries = table.entries(););
         let err_body_start = out.buf.len();
         splat!(out;
-            return Err(__ctx.error_expected_but_found(
+            return Err(__ctx.report_expected_but_found(
                 &[@TokenTree::Literal(Literal::string("a table with exactly one key"))], __item));
         );
         let err_body = out.split_off_stream(err_body_start);
@@ -1194,19 +1200,19 @@ fn enum_from_toml_external(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVari
                     if variant.fields.len() != 1 {
                         throw!("Only single-field tuple variants are supported in external tagging")
                     }
-                    splat!(out;
-                        [@name_lit.into()] => Ok(Self::[#: variant.name](
-                            [#ctx.crate_path]::FromToml::from_toml(__ctx, value)?
-                        )),
-                    );
+                    splat!(out; [@name_lit.into()] =>);
+                    let arm_at = out.buf.len();
+                    splat!(out; let Ok(__val) = [#ctx.crate_path]::FromToml::from_toml(__ctx, value) else);
+                    emit_failed_return(out, ctx);
+                    splat!(out; Ok(Self::[#: variant.name](__val)));
+                    out.tt_group(Delimiter::Brace, arm_at);
                 }
                 EnumKind::Struct => {
                     splat!(out; [@name_lit.into()] =>);
                     let arm_at = out.buf.len();
-                    splat!(out;
-                        let __item = value;
-                        let __subtable = value.expect_table(__ctx)?;
-                    );
+                    splat!(out; let __item = value;);
+                    splat!(out; let Ok(__subtable) = value.expect_table(__ctx) else);
+                    emit_failed_return(out, ctx);
                     emit_table_field_deser(
                         out,
                         ctx,
@@ -1225,7 +1231,7 @@ fn enum_from_toml_external(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVari
         out.tt_group(Delimiter::Brace, arms_at);
     } else if !has_unit {
         splat!(out;
-            Err(__ctx.error_expected_but_found(
+            Err(__ctx.report_expected_but_found(
                 &[@TokenTree::Literal(Literal::string("a known variant"))], __item))
         );
     }
@@ -1246,7 +1252,8 @@ fn enum_from_toml_internal(
 
     let start = out.buf.len();
 
-    splat!(out; let __table = __item.expect_table(__ctx)?;);
+    splat!(out; let Ok(__table) = __item.expect_table(__ctx) else);
+    emit_failed_return(out, ctx);
 
     // First pass: find tag
     splat!(out; let mut __tag: Option<&str> = None;);
@@ -1254,7 +1261,9 @@ fn enum_from_toml_internal(
     let tag_body_at = out.buf.len();
     splat!(out;
         if __key.name == [@tag_lit.clone().into()] {
-            __tag = Some([#ctx.crate_path]::FromToml::from_toml(__ctx, __value)?);
+            let Ok(__t) = [#ctx.crate_path]::FromToml::from_toml(__ctx, __value) else
+            [emit_failed_return(out, ctx)]
+            __tag = Some(__t);
             break;
         }
     );
@@ -1291,7 +1300,7 @@ fn enum_from_toml_internal(
                     UnknownFieldPolicy::Warn { tag } => {
                         splat!(out;
                             if __key.name != [@tag_lit.clone().into()] {
-                                __ctx.error_unexpected_key(
+                                __ctx.report_unexpected_key(
                                     [emit_tag_value(out, tag.as_deref())]
                                     , __value, __key.span);
                             }
@@ -1300,7 +1309,7 @@ fn enum_from_toml_internal(
                     UnknownFieldPolicy::Deny { tag } => {
                         splat!(out;
                             if __key.name != [@tag_lit.clone().into()] {
-                                return Err(__ctx.error_unexpected_key(
+                                return Err(__ctx.report_unexpected_key(
                                     [emit_tag_value(out, tag.as_deref())]
                                     , __value, __key.span));
                             }
@@ -1345,8 +1354,9 @@ fn enum_from_toml_adjacent(
 ) {
     let start = out.buf.len();
 
+    splat!(out; let Ok(__table) = __item.expect_table(__ctx) else);
+    emit_failed_return(out, ctx);
     splat!(out;
-        let __table = __item.expect_table(__ctx)?;
         let mut __tag: Option<&str> = None;
         let mut __content: Option<& [#ctx.crate_path]::Item<#[#: &ctx.lifetime]> > = None;
     );
@@ -1358,7 +1368,9 @@ fn enum_from_toml_adjacent(
     let extract_arms_at = out.buf.len();
     splat!(out;
         [@tag_lit.clone().into()] => {
-            __tag = Some([#ctx.crate_path]::FromToml::from_toml(__ctx, __value)?);
+            let Ok(__t) = [#ctx.crate_path]::FromToml::from_toml(__ctx, __value) else
+            [emit_failed_return(out, ctx)]
+            __tag = Some(__t);
         }
         [@content_lit.clone().into()] => {
             __content = Some(__value);
@@ -1408,17 +1420,14 @@ fn enum_from_toml_adjacent(
                         if variant.fields.len() != 1 {
                             throw!("Only single-field tuple variants are supported")
                         }
-                        splat!(out;
-                            Ok(Self::[#: variant.name](
-                                [#ctx.crate_path]::FromToml::from_toml(__ctx, __content)?
-                            ))
-                        );
+                        splat!(out; let Ok(__val) = [#ctx.crate_path]::FromToml::from_toml(__ctx, __content) else);
+                        emit_failed_return(out, ctx);
+                        splat!(out; Ok(Self::[#: variant.name](__val)));
                     }
                     EnumKind::Struct => {
-                        splat!(out;
-                            let __item = __content;
-                            let __subtable = __content.expect_table(__ctx)?;
-                        );
+                        splat!(out; let __item = __content;);
+                        splat!(out; let Ok(__subtable) = __content.expect_table(__ctx) else);
+                        emit_failed_return(out, ctx);
                         emit_table_field_deser(
                             out,
                             ctx,
@@ -1465,7 +1474,7 @@ fn enum_from_toml_untagged(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVari
                             return Ok(Self::[#: variant.name]);
                         }
                     }
-                    [?(propagate) return Err(__ctx.error_expected_but_found(
+                    [?(propagate) return Err(__ctx.report_expected_but_found(
                         &[@TokenTree::Literal(Literal::string("a matching variant"))], __item));]
                 );
             }
@@ -1488,7 +1497,8 @@ fn enum_from_toml_untagged(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVari
             }
             EnumKind::Struct => {
                 let body_start = out.buf.len();
-                splat!(out; let __subtable = __item.expect_table(__ctx)?;);
+                splat!(out; let Ok(__subtable) = __item.expect_table(__ctx) else);
+                emit_failed_return(out, ctx);
                 emit_table_field_deser(out, ctx, variant.fields, "__subtable", Some(variant), &[]);
                 if propagate {
                     splat!(out;
@@ -1533,7 +1543,7 @@ fn enum_from_toml_untagged(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVari
 
     if !last_is_unhinted {
         splat!(out;
-            Err(__ctx.error_expected_but_found(
+            Err(__ctx.report_expected_but_found(
                 &[@TokenTree::Literal(Literal::string("a matching variant"))], __item))
         );
     }

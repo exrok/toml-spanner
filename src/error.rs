@@ -1,6 +1,8 @@
 #![allow(clippy::question_mark)]
 
-use crate::{Item, Key, Span};
+#[cfg(feature = "from-toml")]
+use crate::Item;
+use crate::{Key, Span};
 use std::fmt::{self, Debug, Display};
 
 #[derive(Clone, Copy)]
@@ -161,6 +163,7 @@ impl MaybeTomlPath {
             size: size as u32,
         }
     }
+    #[cfg(feature = "from-toml")]
     #[inline(always)]
     pub(crate) fn uncomputed(item_ptr: *const Item<'_>) -> Self {
         MaybeTomlPath {
@@ -174,10 +177,12 @@ impl MaybeTomlPath {
         }
     }
 
+    #[cfg(feature = "from-toml")]
     pub(crate) fn is_uncomputed(&self) -> bool {
         self.size == 0 && self.len != u32::MAX
     }
 
+    #[cfg(feature = "from-toml")]
     pub(crate) fn uncomputed_ptr(&self) -> *const () {
         self.ptr.as_ptr() as *const ()
     }
@@ -558,6 +563,7 @@ impl Error {
     }
 
     /// Creates an error with a static message at the given source span.
+    #[cfg(feature = "from-toml")]
     pub(crate) fn custom_static(message: &'static str, span: Span) -> Error {
         Error {
             kind: ErrorInner::Static(ErrorKind::Custom(message)),

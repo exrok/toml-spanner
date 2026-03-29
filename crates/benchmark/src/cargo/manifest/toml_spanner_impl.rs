@@ -77,7 +77,7 @@ impl<'de> toml_spanner::FromToml<'de> for StringOrVec {
                 let v: Vec<String> = toml_spanner::FromToml::from_toml(ctx, item)?;
                 Ok(StringOrVec(v))
             }
-            _ => Err(ctx.error_expected_but_found(&"a string or array of strings", item)),
+            _ => Err(ctx.report_expected_but_found(&"a string or array of strings", item)),
         }
     }
 }
@@ -101,7 +101,7 @@ impl<'de> toml_spanner::FromToml<'de> for TomlOptLevel {
             }
             _ => {
                 Err(ctx
-                    .error_expected_but_found(&"an optimization level (integer or string)", item))
+                    .report_expected_but_found(&"an optimization level (integer or string)", item))
             }
         }
     }
@@ -139,9 +139,8 @@ impl<'de> toml_spanner::FromToml<'de> for TomlDebugInfo {
                     ),
                 )),
             },
-            _ => Err(
-                ctx.error_expected_but_found(&"a boolean, integer, or string for debug info", item)
-            ),
+            _ => Err(ctx
+                .report_expected_but_found(&"a boolean, integer, or string for debug info", item)),
         }
     }
 }
@@ -168,7 +167,7 @@ impl<'de> toml_spanner::FromToml<'de> for TomlTrimPaths {
             }
             _ => {
                 Err(ctx
-                    .error_expected_but_found(&"a boolean, string, or array for trim-paths", item))
+                    .report_expected_but_found(&"a boolean, string, or array for trim-paths", item))
             }
         }
     }
@@ -185,7 +184,7 @@ impl<'de> toml_spanner::FromToml<'de> for InheritableLints {
                     Some(true) => workspace = true,
                     Some(false) => workspace = false,
                     None => {
-                        ctx.error_expected_but_found(&"a boolean for workspace", val);
+                        ctx.report_expected_but_found(&"a boolean for workspace", val);
                     }
                 }
             } else {
@@ -206,7 +205,7 @@ impl<'de> toml_spanner::FromToml<'de> for WorkspaceValue {
         match item.as_bool() {
             Some(true) => Ok(WorkspaceValue),
             Some(false) => Err(push_custom_error(ctx, item, "`workspace` cannot be false")),
-            None => Err(ctx.error_expected_but_found(&"a boolean", item)),
+            None => Err(ctx.report_expected_but_found(&"a boolean", item)),
         }
     }
 }
@@ -232,7 +231,7 @@ impl<'de> toml_spanner::FromToml<'de> for InheritableSemverVersion {
                 let field = <TomlInheritedField as toml_spanner::FromToml>::from_toml(ctx, item)?;
                 Ok(InheritableField::Inherit(field))
             }
-            _ => Err(ctx.error_expected_but_found(&"a version string or workspace table", item)),
+            _ => Err(ctx.report_expected_but_found(&"a version string or workspace table", item)),
         }
     }
 }
@@ -245,7 +244,7 @@ impl<'de> toml_spanner::FromToml<'de> for InheritableString {
                 let field = <TomlInheritedField as toml_spanner::FromToml>::from_toml(ctx, item)?;
                 Ok(InheritableField::Inherit(field))
             }
-            _ => Err(ctx.error_expected_but_found(&"a string or workspace table", item)),
+            _ => Err(ctx.report_expected_but_found(&"a string or workspace table", item)),
         }
     }
 }
@@ -261,7 +260,7 @@ impl<'de> toml_spanner::FromToml<'de> for InheritableRustVersion {
                 let field = <TomlInheritedField as toml_spanner::FromToml>::from_toml(ctx, item)?;
                 Ok(InheritableField::Inherit(field))
             }
-            _ => Err(ctx.error_expected_but_found(&"a version string or workspace table", item)),
+            _ => Err(ctx.report_expected_but_found(&"a version string or workspace table", item)),
         }
     }
 }
@@ -277,7 +276,9 @@ impl<'de> toml_spanner::FromToml<'de> for InheritableVecString {
                 let field = <TomlInheritedField as toml_spanner::FromToml>::from_toml(ctx, item)?;
                 Ok(InheritableField::Inherit(field))
             }
-            _ => Err(ctx.error_expected_but_found(&"an array of strings or workspace table", item)),
+            _ => {
+                Err(ctx.report_expected_but_found(&"an array of strings or workspace table", item))
+            }
         }
     }
 }
@@ -293,7 +294,7 @@ impl<'de> toml_spanner::FromToml<'de> for InheritableStringOrBool {
                 let field = <TomlInheritedField as toml_spanner::FromToml>::from_toml(ctx, item)?;
                 Ok(InheritableField::Inherit(field))
             }
-            _ => Err(ctx.error_expected_but_found(&"a string, bool, or workspace table", item)),
+            _ => Err(ctx.report_expected_but_found(&"a string, bool, or workspace table", item)),
         }
     }
 }
@@ -312,7 +313,7 @@ impl<'de> toml_spanner::FromToml<'de> for InheritableVecStringOrBool {
                 let field = <TomlInheritedField as toml_spanner::FromToml>::from_toml(ctx, item)?;
                 Ok(InheritableField::Inherit(field))
             }
-            _ => Err(ctx.error_expected_but_found(
+            _ => Err(ctx.report_expected_but_found(
                 &"a boolean, array of strings, or workspace table",
                 item,
             )),
@@ -358,7 +359,7 @@ impl<'de> toml_spanner::FromToml<'de> for TomlDependency {
                     <TomlDetailedDependency as toml_spanner::FromToml>::from_toml(ctx, item)?;
                 Ok(TomlDependency::Detailed(detailed))
             }
-            _ => Err(ctx.error_expected_but_found(&"a version string or dependency table", item)),
+            _ => Err(ctx.report_expected_but_found(&"a version string or dependency table", item)),
         }
     }
 }

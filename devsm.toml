@@ -79,6 +79,22 @@ tag = ["lint"]
 cmd = ["cargo", "insta", "test", "-p", "snapshot-tests"]
 tag = ["fast"]
 
+[test.clippy-features]
+sh = '''
+set -e
+try () {
+  cargo clippy "$@" -- "--deny=warnings" || (
+    echo Cargo Clippy Failed with: "$@"
+    exit 1
+  )
+}
+try --no-default-features || exit 1
+try --no-default-features --features to-toml || exit 1
+try --no-default-features --features from-toml || exit 1
+try --no-default-features --features serde || exit 1
+'''
+tag = ["fast"]
+
 [test.cargo-test]
 cmd = ["cargo", "test", "-q"]
 require = ["build-macros"]
