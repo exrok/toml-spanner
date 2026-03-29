@@ -231,14 +231,14 @@ and [codespan-reporting](https://crates.io/crates/codespan-reporting).
 
 Here are some parsing examples using the annotated-snippets feature:
 
-![unterminated string](https://raw.githubusercontent.com/exrok/toml-spanner/f04adac57a998c24361b1acaf39950c4287d4562/crates/error-examples/output/unterminated_string.svg)
+![unterminated string](https://raw.githubusercontent.com/exrok/toml-spanner/b6a16932cba2d566db0b45e0444d4816875e0a12/crates/error-examples/output/unterminated_string.svg)
 
-![duplicate key](https://raw.githubusercontent.com/exrok/toml-spanner/f04adac57a998c24361b1acaf39950c4287d4562/crates/error-examples/output/duplicate_key.svg)
+![duplicate key](https://raw.githubusercontent.com/exrok/toml-spanner/b6a16932cba2d566db0b45e0444d4816875e0a12/crates/error-examples/output/duplicate_key.svg)
 
 Here are some conversion errors, note how multiple errors are reported instead of
 bailing out after the first error.
 
-![deserialization errors](https://raw.githubusercontent.com/exrok/toml-spanner/f04adac57a998c24361b1acaf39950c4287d4562/crates/error-examples/output/deserialization_errors.svg)
+![deserialization errors](https://raw.githubusercontent.com/exrok/toml-spanner/b6a16932cba2d566db0b45e0444d4816875e0a12/crates/error-examples/output/deserialization_errors.svg)
 
 ### Trade-offs
 
