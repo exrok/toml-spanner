@@ -11,11 +11,13 @@ cargo-fuzz = true
 [dependencies]
 foldhash = "0.2.0"
 libfuzzer-sys = "0.4"
-toml = { version = "1", features = ["preserve_order"] }
+toml = { version = "1", features = ["preserve_order", "fast_hash"] }
+toml_parser = { version = "1", features = ["unsafe"] }
 
 
 [dependencies.toml-spanner]
 path = "../.."
+features = ["to-toml", "from-toml"]
 
 [profile.release]
 lto = "thin"

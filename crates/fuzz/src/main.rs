@@ -3,7 +3,7 @@ fn main() {
     if args.len() < 3 {
         eprintln!("usage: fuzz <target> <artifact_path>");
         eprintln!(
-            "targets: normalize, emit_roundtrip, emit_reproject_identity, emit_reproject_edit, emit_reproject_reorder, emit_reproject_reorder_span_identity, emit_reproject_exact, parse_recoverable"
+            "targets: normalize, emit_roundtrip, emit_reproject_identity, emit_reproject_edit, emit_reproject_reorder, emit_reproject_reorder_span_identity, emit_reproject_exact, parse_compare_toml, parse_recoverable"
         );
         std::process::exit(1);
     }
@@ -18,18 +18,17 @@ fn main() {
         "emit_reproject_reorder" => run_reproject_reorder(path),
         "emit_reproject_reorder_span_identity" => run_reproject_reorder_span_identity(path),
         "emit_reproject_exact" => run_reproject_exact(path),
+        "parse_compare_toml" => fuzz::parse_compare::run_cli(path),
         "parse_recoverable" => fuzz::recoverable::run_cli(path),
         _ => {
             eprintln!("unknown target: {target}");
             eprintln!(
-                "targets: normalize, emit_roundtrip, emit_reproject_identity, emit_reproject_edit, emit_reproject_reorder, emit_reproject_reorder_span_identity, emit_reproject_exact, parse_recoverable"
+                "targets: normalize, emit_roundtrip, emit_reproject_identity, emit_reproject_edit, emit_reproject_reorder, emit_reproject_reorder_span_identity, emit_reproject_exact, parse_compare_toml, parse_recoverable"
             );
             std::process::exit(1);
         }
     }
 }
-
-// ── normalize ──
 
 fn run_normalize(path: &str) {
     let data = std::fs::read(path).expect("failed to read artifact");

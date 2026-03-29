@@ -27,13 +27,8 @@ name = "toml-spanner"
 version = "1.0.0"
 dependencies = [
  "foldhash",
- "toml-spanner-macros",
  "zmij",
 ]
-
-[[package]]
-name = "toml-spanner-macros"
-version = "1.0.0"
 
 [[package]]
 name = "zmij"

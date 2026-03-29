@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [1.0.0] - 2026-03-22
+## [1.0.0] - 2026-03-29
 
 ### Added
 
@@ -47,12 +47,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Format preservation no longer conflates child and self order
 - Empty `0..0` spans treated uniformly as placeholders
 - Generic bounds forwarded correctly when the bound has a default
-
-## [0.4.1] - 2026-03-13
-
-### Fixed
-
-- Bitset allocation size for large tables
 
 ## [0.4.0] - 2026-02-21
 
@@ -131,8 +125,7 @@ Initial release of `toml-spanner`, forked from [`toml-span`](https://github.com/
 
 <!-- next-url -->
 
-[Unreleased]: https://github.com/exrok/toml-spanner/compare/0.5.0...HEAD
-[0.5.0]: https://github.com/exrok/toml-spanner/compare/0.4.0...0.5.0
+[Unreleased]: https://github.com/exrok/toml-spanner/compare/1.0.0...HEAD
 [0.4.0]: https://github.com/exrok/toml-spanner/compare/0.3.0...0.4.0
 [0.3.0]: https://github.com/exrok/toml-spanner/compare/0.2.0...0.3.0
 [0.2.0]: https://github.com/exrok/toml-spanner/compare/0.1.0...0.2.0

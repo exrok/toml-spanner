@@ -1,6 +1,7 @@
 pub mod exact;
 pub mod gen_toml;
 pub mod gen_tree;
+pub mod parse_compare;
 pub mod recoverable;
 
 pub struct Gen<'a> {

@@ -6,6 +6,7 @@ edition = "2024"
 [dependencies]
 jsony_bench = { git = "https://github.com/exrok/jsony" }
 toml-spanner.path = "../.."
+toml-spanner.features = ["to-toml", "from-toml", "derive"]
 oorandom = "11.1.5"
 toml = { version = "1", features = ["serde", "parse", "display", "fast_hash"] }
 toml_edit = "0.25"

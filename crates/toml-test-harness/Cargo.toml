@@ -6,4 +6,5 @@ edition = "2024"
 [dependencies]
 #jsony = { version = "0.1.8" }
 jsony.path = "/home/user/Projects/git/jsony/jsony"
-toml-spanner = { path = "../.." }
+toml-spanner.path = "../.."
+toml-spanner.features = ["to-toml", "from-toml"]

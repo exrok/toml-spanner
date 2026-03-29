@@ -52,6 +52,7 @@ dependencies = [
  "libfuzzer-sys",
  "toml",
  "toml-spanner",
+ "toml_parser",
 ]
 
 [[package]]
@@ -184,6 +185,7 @@ version = "1.0.3+spec-1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c7614eaf19ad818347db24addfa201729cf2a9b6fdfd9eb0ab870fcacc606c0c"
 dependencies = [
+ "foldhash",
  "indexmap",
  "serde_core",
  "serde_spanned",
@@ -198,13 +200,8 @@ name = "toml-spanner"
 version = "1.0.0"
 dependencies = [
  "foldhash",
- "toml-spanner-macros",
  "zmij",
 ]
-
-[[package]]
-name = "toml-spanner-macros"
-version = "1.0.0"
 
 [[package]]
 name = "toml_datetime"

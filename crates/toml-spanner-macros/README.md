@@ -17,7 +17,7 @@ toml-spanner = { version = "1", features = ["derive"] }
 
 You can also depend on `toml-spanner-macros` directly alongside `toml-spanner` as a compile time reduction technique, since it allows Cargo to begin compiling the macros in parallel with `toml-spanner` itself. That said, `toml-spanner-macros` is dependency free and compiles quickly, so in most non-trivial projects the difference is negligible and using the `derive` feature is equally fast.
 
-For documentation on the derive macro and its attributes, see the [toml-spanner docs](https://docs.rs/toml-spanner/latest/toml_spanner/).
+For documentation on the derive macro and its attributes, see the [toml-spanner docs](https://docs.rs/toml-spanner/latest/toml_spanner/derive.Toml.html).
 
 ## License
 

@@ -25,8 +25,7 @@ use std::ptr::NonNull;
 const MAX_RECURSION_DEPTH: i16 = 256;
 
 struct Ctx<'b, 'de> {
-    /// The current table context — a `Table` view into a table `Value`.
-    /// Gives direct mutable access to both the span fields and the `Table` payload.
+    /// The current table context.
     table: &'b mut Table<'de>,
     /// If this table is an entry in an array-of-tables, a disjoint borrow of
     /// the parent array Value'arena `end_and_flag` field so its span can be
@@ -122,7 +121,7 @@ struct Parser<'de> {
     cursor: usize,
     arena: &'de Arena,
 
-    // Error context -- populated just before returning Failed
+    // Error context, populated just before returning Failed
     error_span: Span,
     error_kind: Option<ErrorKind<'static>>,
 
