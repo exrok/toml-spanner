@@ -204,11 +204,9 @@ See [Compile Time Benchmarks](https://github.com/exrok/rust-serialization-build-
 
 ## Divergence from `toml-span`
 
-While `toml-spanner` started as a fork of `toml-span`, it has since undergone
-extensive changes:
+While `toml-spanner` started as a fork of `toml-span`, it's diverged a lot:
 
-- 10x faster than `toml-span`, and 5-8x faster than `toml` across
-  real-world workloads.
+- 7x faster than `toml-span`, and 2-3x faster than `toml` on end-2-end benchmarks.
 - Preserved index order: tables retain their insertion order by default,
   unlike `toml_span` and the default mode of `toml`.
 - Compact `Value` type (on 64bit platforms):
@@ -222,6 +220,10 @@ extensive changes:
 
   Note that the `toml` crate `Value` type doesn't contain any span information
   and that `toml-span` doesn't support table entry order preservation.
+
+- Full TOML v1.1.0 compliance including date-time support
+- Native derive macro
+- Format-preserving serialization
 
 ### Error Examples
 
