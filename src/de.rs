@@ -123,11 +123,11 @@ fn compute_paths_walk<'de>(
 /// Guides extraction from a [`Table`] by tracking which fields have been
 /// consumed.
 ///
-/// Create via [`Document::helper`](crate::Document::helper) for the root
+/// Create via [`Document::table_helper`](crate::Document::table_helper) for the root
 /// table, or [`Item::table_helper`] / [`TableHelper::new`] for nested
 /// tables. Extract fields with [`required`](Self::required) and
 /// [`optional`](Self::optional), then call
-/// [`expect_empty`](Self::expect_empty) to reject unknown keys.
+/// [`require_empty`](Self::require_empty) to reject unknown keys.
 ///
 /// Errors accumulate in the shared [`Context`] rather than failing on the
 /// first problem, so a single pass can report multiple issues.
@@ -149,7 +149,7 @@ fn compute_paths_walk<'de>(
 ///         let name = th.required("name")?;
 ///         let port = th.required("port")?;
 ///         let debug = th.optional("debug").unwrap_or(false);
-///         th.expect_empty()?;
+///         th.require_empty()?;
 ///         Ok(Config { name, port, debug })
 ///     }
 /// }
@@ -247,7 +247,7 @@ impl<'ctx, 't, 'de> TableHelper<'ctx, 't, 'de> {
     /// Creates a new helper for the given table.
     ///
     /// Prefer [`Item::table_helper`] inside [`FromToml`] implementations, or
-    /// [`Document::helper`](crate::Document::helper) for the root table.
+    /// [`Document::table_helper`](crate::Document::table_helper) for the root table.
     pub fn new(ctx: &'ctx mut Context<'de>, table: &'t Table<'de>) -> Self {
         let table_id = if table.len() > INDEXED_TABLE_THRESHOLD && table.meta.is_span_mode() {
             table.entries()[0].0.span.start as i32
@@ -267,7 +267,7 @@ impl<'ctx, 't, 'de> TableHelper<'ctx, 't, 'de> {
     ///
     /// Useful for peeking at a field before deciding how to convert it.
     /// The entry will still be flagged as unexpected by
-    /// [`expect_empty`](Self::expect_empty) unless later consumed by
+    /// [`require_empty`](Self::require_empty) unless later consumed by
     /// [`required`](Self::required) or [`optional`](Self::optional).
     pub fn get_entry(&self, key: &str) -> Option<&'t (Key<'de>, Item<'de>)> {
         if self.table_id < 0 {
@@ -315,7 +315,7 @@ impl<'ctx, 't, 'de> TableHelper<'ctx, 't, 'de> {
     /// Returns [`None`] if the key is missing (no error recorded) or if
     /// `func` returns an error (the error is pushed onto the [`Context`]).
     /// The field is marked as consumed so
-    /// [`expect_empty`](Self::expect_empty) will not flag it as unexpected.
+    /// [`require_empty`](Self::require_empty) will not flag it as unexpected.
     pub fn optional_mapped<T>(
         &mut self,
         name: &'static str,
@@ -423,7 +423,7 @@ impl<'ctx, 't, 'de> TableHelper<'ctx, 't, 'de> {
 
     /// Extracts and converts a required field via [`FromToml`].
     ///
-    /// The field is marked as consumed so [`expect_empty`](Self::expect_empty)
+    /// The field is marked as consumed so [`require_empty`](Self::require_empty)
     /// will not flag it as unexpected.
     ///
     /// # Errors
@@ -442,7 +442,7 @@ impl<'ctx, 't, 'de> TableHelper<'ctx, 't, 'de> {
     /// [`None`] if the key is missing or conversion fails (recording the
     /// error in the [`Context`]).
     ///
-    /// The field is marked as consumed so [`expect_empty`](Self::expect_empty)
+    /// The field is marked as consumed so [`require_empty`](Self::require_empty)
     /// will not flag it as unexpected.
     pub fn optional<T: FromToml<'de>>(&mut self, name: &str) -> Option<T> {
         let Some((_, val)) = self.optional_entry(name) else {
@@ -487,8 +487,9 @@ impl<'ctx, 't, 'de> TableHelper<'ctx, 't, 'de> {
     ///
     /// Returns [`Failed`] and pushes an [`ErrorKind::UnexpectedKey`](crate::ErrorKind::UnexpectedKey)
     /// error if unconsumed fields remain.
+    #[doc(alias = "expect_empty")]
     #[inline(never)]
-    pub fn expect_empty(self) -> Result<(), Failed> {
+    pub fn require_empty(self) -> Result<(), Failed> {
         if self.used_count as usize == self.table.len() {
             return Ok(());
         }
@@ -695,7 +696,7 @@ pub use crate::Failed;
 ///         let mut th = item.table_helper(ctx)?;
 ///         let x = th.required("x")?;
 ///         let y = th.required("y")?;
-///         th.expect_empty()?;
+///         th.require_empty()?;
 ///         Ok(Point { x, y })
 ///     }
 /// }
@@ -788,7 +789,7 @@ where
     H: Default + BuildHasher,
 {
     fn from_toml(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
-        let table = value.expect_table(ctx)?;
+        let table = value.require_table(ctx)?;
         let mut map = std::collections::HashMap::default();
         let mut had_error = false;
         for (key, item) in table {
@@ -863,7 +864,7 @@ macro_rules! impl_from_toml_tuple {
     ($len:expr, $($idx:tt => $T:ident, $var:ident),+) => {
         impl<'de, $($T: FromToml<'de>),+> FromToml<'de> for ($($T,)+) {
             fn from_toml(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
-                let arr = value.expect_array(ctx)?;
+                let arr = value.require_array(ctx)?;
                 if arr.len() != $len {
                     return Err(ctx.push_error(Error::custom(
                         format!(
@@ -1127,7 +1128,7 @@ where
     T: FromToml<'de>,
 {
     fn from_toml(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
-        let arr = value.expect_array(ctx)?;
+        let arr = value.require_array(ctx)?;
         let mut result = Vec::with_capacity(arr.len());
         let mut had_error = false;
         for item in arr {
@@ -1145,7 +1146,7 @@ where
     T: Ord + FromToml<'de>,
 {
     fn from_toml(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
-        let arr = value.expect_array(ctx)?;
+        let arr = value.require_array(ctx)?;
         let mut result = BTreeSet::new();
         let mut had_error = false;
         for item in arr {
@@ -1166,7 +1167,7 @@ where
     V: FromToml<'de>,
 {
     fn from_toml(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
-        let table = value.expect_table(ctx)?;
+        let table = value.require_table(ctx)?;
         let mut map = BTreeMap::new();
         let mut had_error = false;
         for (key, item) in table {
@@ -1191,10 +1192,11 @@ where
 impl<'de> Item<'de> {
     /// Returns a string, or records an error with a custom `expected` message.
     ///
-    /// Use instead of [`expect_string`](Self::expect_string) when the
+    /// Use instead of [`require_string`](Self::require_string) when the
     /// expected value is more specific than "a string", for example
     /// `"an IPv4 address"` or `"a hex color"`.
-    pub fn expect_custom_string(
+    #[doc(alias = "expect_custom_string")]
+    pub fn require_custom_string(
         &self,
         ctx: &mut Context<'de>,
         expected: &'static &'static str,
@@ -1205,7 +1207,8 @@ impl<'de> Item<'de> {
         }
     }
     /// Returns a string, or records an error if this is not a string.
-    pub fn expect_string(&self, ctx: &mut Context<'de>) -> Result<&'de str, Failed> {
+    #[doc(alias = "expect_string")]
+    pub fn require_string(&self, ctx: &mut Context<'de>) -> Result<&'de str, Failed> {
         match self.value() {
             item::Value::String(s) => Ok(*s),
             _ => Err(ctx.report_expected_but_found(&"a string", self)),
@@ -1213,7 +1216,8 @@ impl<'de> Item<'de> {
     }
 
     /// Returns an array reference, or records an error if this is not an array.
-    pub fn expect_array(&self, ctx: &mut Context<'de>) -> Result<&crate::Array<'de>, Failed> {
+    #[doc(alias = "expect_array")]
+    pub fn require_array(&self, ctx: &mut Context<'de>) -> Result<&crate::Array<'de>, Failed> {
         match self.as_array() {
             Some(arr) => Ok(arr),
             None => Err(ctx.report_expected_but_found(&"an array", self)),
@@ -1221,7 +1225,8 @@ impl<'de> Item<'de> {
     }
 
     /// Returns a table reference, or records an error if this is not a table.
-    pub fn expect_table(&self, ctx: &mut Context<'de>) -> Result<&crate::Table<'de>, Failed> {
+    #[doc(alias = "expect_table")]
+    pub fn require_table(&self, ctx: &mut Context<'de>) -> Result<&crate::Table<'de>, Failed> {
         match self.as_table() {
             Some(table) => Ok(table),
             None => Err(ctx.report_expected_but_found(&"a table", self)),

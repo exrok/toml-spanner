@@ -28,7 +28,7 @@ impl<'de> FromToml<'de> for Config {
             number: th.required("number")?,
             nested: th.optional("nested").unwrap_or_default(),
         };
-        th.expect_empty()?;
+        th.require_empty()?;
         Ok(config)
     }
 }

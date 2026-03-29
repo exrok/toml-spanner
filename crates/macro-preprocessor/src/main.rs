@@ -416,10 +416,6 @@ fn export_merged_blocks(files: &[&[u8]]) -> (Vec<u8>, Vec<Vec<u8>>) {
         outputs.push(output);
     }
     println!("Calls: {} -> {}", og_count, g_count);
-    // println!("{}", stmt_slice_buffer.len());
-    // println!("{}", stmt_slice_buffer.escape_ascii().to_string());
-    // println!("{}", stmt_slice_buffer.escape_ascii().to_string().len());
-    // println!("{}", [7, 8, 9, 10, 11, 12, 13].escape_ascii());
     let cache_template = stringify! {
         use proc_macro::{ Punct, Spacing };
         pub static BLIT_SRC: &[u8] = __PLACEHOLDER__;
@@ -590,7 +586,7 @@ fn try_match<'a, 'b>(
             }
         }
     }
-    todo!();
+    unreachable!("pattern must end with a literal token");
 }
 
 fn structural_replace(
@@ -799,21 +795,17 @@ fn main() {
     let data = data.replace("#[allow(non_exhaustive_omitted_patterns)]", "");
 
     let mut codegen_code: Option<Vec<u8>> = None;
-    let mut template_code: Option<Vec<u8>> = None;
     for (name, body) in modules(&data) {
         if name == "ast" {
             let code = base_transform(body.as_bytes());
             std::fs::write(final_crate_path.join("src/ast.rs"), pipe_rustfmt(&code)).unwrap();
         } else if name == "codegen" {
             codegen_code = Some(base_transform(body.as_bytes()));
-        } else if name == "template" {
-            template_code = Some(base_transform(body.as_bytes()));
         }
     }
     let codegen_code = codegen_code.expect("to find codegen module");
-    let template_code = template_code.expect("to find template module");
 
-    let (cache_file, processed) = export_merged_blocks(&[&codegen_code, &template_code]);
+    let (cache_file, processed) = export_merged_blocks(&[&codegen_code]);
     std::fs::write(
         final_crate_path.join("src/writer/cache.rs"),
         pipe_rustfmt(&cache_file),
@@ -822,11 +814,6 @@ fn main() {
     std::fs::write(
         final_crate_path.join("src/codegen.rs"),
         pipe_rustfmt(&processed[0]),
-    )
-    .unwrap();
-    std::fs::write(
-        final_crate_path.join("src/template.rs"),
-        pipe_rustfmt(&processed[1]),
     )
     .unwrap();
 

@@ -25,7 +25,7 @@ impl<'de> FromToml<'de> for Project {
             targets: th.required("targets")?,
             metadata: th.optional("metadata"),
         };
-        th.expect_empty()?;
+        th.require_empty()?;
         Ok(project)
     }
 }
@@ -45,7 +45,7 @@ impl<'de> FromToml<'de> for Settings {
             parallel: th.optional("parallel"),
             features: th.required("features")?,
         };
-        th.expect_empty()?;
+        th.require_empty()?;
         Ok(settings)
     }
 }
@@ -67,7 +67,7 @@ impl<'de> FromToml<'de> for Dependency {
             path: th.optional("path"),
             optional: th.required("optional")?,
         };
-        th.expect_empty()?;
+        th.require_empty()?;
         Ok(dep)
     }
 }
@@ -89,7 +89,7 @@ impl<'de> FromToml<'de> for Target {
             sources: th.required("sources")?,
             settings: th.optional("settings"),
         };
-        th.expect_empty()?;
+        th.require_empty()?;
         Ok(target)
     }
 }
@@ -109,7 +109,7 @@ impl<'de> FromToml<'de> for TargetSettings {
             debug: th.optional("debug"),
             extra_flags: th.required("extra_flags")?,
         };
-        th.expect_empty()?;
+        th.require_empty()?;
         Ok(settings)
     }
 }
@@ -131,7 +131,7 @@ impl<'de> FromToml<'de> for Metadata {
             repository: th.optional("repository"),
             keywords: th.required("keywords")?,
         };
-        th.expect_empty()?;
+        th.require_empty()?;
         Ok(metadata)
     }
 }

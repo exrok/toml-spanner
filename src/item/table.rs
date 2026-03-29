@@ -375,7 +375,7 @@ impl ExactSizeIterator for IntoIter<'_> {}
 ///
 /// For structured conversion of larger tables, use
 /// [`TableHelper`](crate::de::TableHelper) via
-/// [`Document::helper`](crate::Document::helper) or
+/// [`Document::table_helper`](crate::Document::table_helper) or
 /// [`Item::table_helper`](crate::Item::table_helper), which use the
 /// parser's hash index for O(1) lookups.
 ///
@@ -521,6 +521,12 @@ impl<'de> Table<'de> {
     #[inline]
     pub fn entries_mut(&mut self) -> &mut [TableEntry<'de>] {
         self.value.entries_mut()
+    }
+
+    /// Returns an iterator over all entries (key-value pairs).
+    #[inline]
+    pub fn iter(&self) -> std::slice::Iter<'_, TableEntry<'de>> {
+        self.entries().iter()
     }
 
     /// Converts this `Table` into an [`Item`] with the same span and payload.

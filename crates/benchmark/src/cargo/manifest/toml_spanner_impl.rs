@@ -49,7 +49,7 @@ macro_rules! impl_spanner_deserialize_str_newtype {
                 ctx: &mut Context<'de>,
                 item: &toml_spanner::Item<'de>,
             ) -> Result<Self, Failed> {
-                let s = item.expect_string(ctx)?;
+                let s = item.require_string(ctx)?;
                 $name::new(s.to_owned()).map_err(|err| push_custom_error(ctx, item, err))
             }
         }
@@ -64,7 +64,7 @@ impl_spanner_deserialize_str_newtype!(PathBaseName);
 
 impl<'de> toml_spanner::FromToml<'de> for ProfilePackageSpec {
     fn from_toml(ctx: &mut Context<'de>, item: &toml_spanner::Item<'de>) -> Result<Self, Failed> {
-        let s = item.expect_string(ctx)?;
+        let s = item.require_string(ctx)?;
         s.parse().map_err(|err| push_custom_error(ctx, item, err))
     }
 }
@@ -175,7 +175,7 @@ impl<'de> toml_spanner::FromToml<'de> for TomlTrimPaths {
 
 impl<'de> toml_spanner::FromToml<'de> for InheritableLints {
     fn from_toml(ctx: &mut Context<'de>, item: &toml_spanner::Item<'de>) -> Result<Self, Failed> {
-        let table = item.expect_table(ctx)?;
+        let table = item.require_table(ctx)?;
         let mut workspace = false;
         let mut lints = TomlLints::new();
         for (key, val) in table {

@@ -208,7 +208,7 @@ fn spanned_deserialize() {
     let input = "v = 42";
     let mut doc = crate::parser::parse(input, &arena).unwrap();
     let val: Spanned<i64> = {
-        let mut helper = doc.helper();
+        let mut helper = doc.table_helper();
         helper.required("v").unwrap()
     };
     assert_eq!(val.value, 42);

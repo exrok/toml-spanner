@@ -464,8 +464,8 @@ pub enum ErrorKind<'a> {
 
     /// A field in the table is deprecated and the new key should be used instead
     Deprecated {
-        /// Developer Provider association tag useful for programmatic filtering
-        /// or adding additional messages or notes to diagnoistics such as version
+        /// Developer provided association tag useful for programmatic filtering
+        /// or adding additional messages or notes to diagnostics such as version
         /// info. Defaults to 0.
         tag: u32,
         /// The deprecated key name

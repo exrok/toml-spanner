@@ -14,7 +14,7 @@ impl<'de> FromToml<'de> for Boop {
         let mut th = value.table_helper(ctx)?;
         let s = th.required("s")?;
         let os = th.optional("os");
-        th.expect_empty()?;
+        th.require_empty()?;
         Ok(Self { s, os })
     }
 }
@@ -154,7 +154,7 @@ impl<'de> FromToml<'de> for Reason {
     fn from_toml(ctx: &mut Context<'de>, value: &toml_spanner::Item<'de>) -> Result<Self, Failed> {
         let mut th = value.table_helper(ctx)?;
         let reason = th.required("reason")?;
-        th.expect_empty()?;
+        th.require_empty()?;
         Ok(Self { reason })
     }
 }
@@ -192,7 +192,7 @@ impl<'de> FromToml<'de> for Ohno {
             )));
         }
 
-        th.expect_empty()?;
+        th.require_empty()?;
         Ok(Self { year })
     }
 }
@@ -212,7 +212,7 @@ impl<'de> FromToml<'de> for ServerConfig {
     fn from_toml(ctx: &mut Context<'de>, value: &toml_spanner::Item<'de>) -> Result<Self, Failed> {
         let mut th = value.table_helper(ctx)?;
         let timeout = th.required("timeout")?;
-        th.expect_empty()?;
+        th.require_empty()?;
         Ok(Self { timeout })
     }
 }
@@ -228,7 +228,7 @@ impl<'de> FromToml<'de> for Server {
         let mut th = value.table_helper(ctx)?;
         let host = th.required("host")?;
         let config = th.required("config")?;
-        th.expect_empty()?;
+        th.require_empty()?;
         Ok(Self { host, config })
     }
 }
@@ -242,7 +242,7 @@ impl<'de> FromToml<'de> for Component {
     fn from_toml(ctx: &mut Context<'de>, value: &toml_spanner::Item<'de>) -> Result<Self, Failed> {
         let mut th = value.table_helper(ctx)?;
         let servers = th.required("servers")?;
-        th.expect_empty()?;
+        th.require_empty()?;
         Ok(Self { servers })
     }
 }
@@ -256,7 +256,7 @@ impl<'de> FromToml<'de> for Deployment {
     fn from_toml(ctx: &mut Context<'de>, value: &toml_spanner::Item<'de>) -> Result<Self, Failed> {
         let mut th = value.table_helper(ctx)?;
         let component = th.required("component")?;
-        th.expect_empty()?;
+        th.require_empty()?;
         Ok(Self { component })
     }
 }
@@ -321,7 +321,7 @@ impl<'de> FromToml<'de> for Palette {
     fn from_toml(ctx: &mut Context<'de>, value: &toml_spanner::Item<'de>) -> Result<Self, Failed> {
         let mut th = value.table_helper(ctx)?;
         let color = th.required("color")?;
-        th.expect_empty()?;
+        th.require_empty()?;
         Ok(Self { color })
     }
 }
@@ -339,7 +339,7 @@ impl<'de> FromToml<'de> for Pair {
     fn from_toml(ctx: &mut Context<'de>, value: &toml_spanner::Item<'de>) -> Result<Self, Failed> {
         let mut th = value.table_helper(ctx)?;
         let items = th.required("items")?;
-        th.expect_empty()?;
+        th.require_empty()?;
         Ok(Self { items })
     }
 }

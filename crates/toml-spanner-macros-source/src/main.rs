@@ -7,7 +7,6 @@ mod codegen;
 #[cfg(test)]
 mod derive_tests;
 mod lit;
-mod template;
 #[allow(unused)]
 mod util;
 mod writer;

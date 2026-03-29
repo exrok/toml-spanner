@@ -1197,7 +1197,7 @@ fn emit_struct_variant_to_arm(out: &mut RustWriter, variant: &EnumVariant, arm_b
             let at = out.buf.len();
             {
                 for field in variant.fields {
-                    out.blit_ident(18);
+                    out.blit_ident(17);
                     out.push_ident(field.name);
                     out.blit_punct(13);
                 }
@@ -1732,7 +1732,7 @@ fn emit_for_table_header(out: &mut RustWriter, table_var: &str) {
     };
     out.tt_group(Delimiter::Parenthesis, pat_at);
     {
-        out.blit_ident(12);
+        out.blit_ident(11);
         out.buf.push(TokenTree::from(table_id.clone()));
     };
 }

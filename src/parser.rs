@@ -2022,7 +2022,7 @@ impl<'de> Parser<'de> {
 /// accumulates errors.
 ///
 /// Access values via index operators (`doc["key"]`) which return
-/// [`MaybeItem`](crate::MaybeItem), or use [`helper`](Self::helper) and
+/// [`MaybeItem`](crate::MaybeItem), or use [`table_helper`](Self::table_helper) and
 /// [`to`](Self::to) for typed conversion.
 ///
 /// # Examples
@@ -2095,9 +2095,10 @@ impl<'de> Document<'de> {
     /// Typical entry point for typed extraction. Extract fields with
     /// [`TableHelper::required`](crate::TableHelper::required) and
     /// [`TableHelper::optional`](crate::TableHelper::optional), then call
-    /// [`TableHelper::expect_empty`](crate::TableHelper::expect_empty) to
+    /// [`TableHelper::require_empty`](crate::TableHelper::require_empty) to
     /// reject unknown keys.
-    pub fn helper<'ctx>(&'ctx mut self) -> TableHelper<'ctx, 'ctx, 'de> {
+    #[doc(alias = "helper")]
+    pub fn table_helper<'ctx>(&'ctx mut self) -> TableHelper<'ctx, 'ctx, 'de> {
         TableHelper::new(&mut self.ctx, &self.table)
     }
 
@@ -2105,6 +2106,8 @@ impl<'de> Document<'de> {
     ///
     /// # Errors
     /// Returns [`FromTomlError`](crate::FromTomlError) containing all accumulated errors.
+    #[doc(alias = "deserialize")]
+    #[doc(alias = "from_toml")]
     pub fn to<T: crate::FromToml<'de>>(&mut self) -> Result<T, crate::FromTomlError> {
         let result = T::from_toml(&mut self.ctx, self.table.as_item());
         crate::de::compute_paths(&self.table, &mut self.ctx.errors);

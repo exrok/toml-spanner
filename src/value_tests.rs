@@ -322,36 +322,36 @@ fn expect_helpers() {
         source: "",
     };
 
-    // expect_string success
+    // require_string success
     let v = Item::string_spanned("hello", sp(0, 5));
-    let s = v.expect_string(&mut ctx).unwrap();
+    let s = v.require_string(&mut ctx).unwrap();
     assert_eq!(s, "hello");
 
-    // expect_string wrong type records error
+    // require_string wrong type records error
     let v = Item::integer_spanned(42, sp(0, 2));
-    assert!(v.expect_string(&mut ctx).is_err());
+    assert!(v.require_string(&mut ctx).is_err());
     assert_eq!(ctx.errors.len(), 1);
     assert!(matches!(
         ctx.errors[0].kind(),
         crate::ErrorKind::Wanted { .. }
     ));
 
-    // expect_array success
+    // require_array success
     let mut arr = InternalArray::new();
     arr.push(Item::integer_spanned(1, sp(0, 1)), &arena);
     let v = Item::array(arr, sp(0, 5));
-    let a = v.expect_array(&mut ctx).unwrap();
+    let a = v.require_array(&mut ctx).unwrap();
     assert_eq!(a.len(), 1);
 
-    // expect_array type mismatch
+    // require_array type mismatch
     let v = Item::integer_spanned(42, sp(0, 2));
-    assert!(v.expect_array(&mut ctx).is_err());
+    assert!(v.require_array(&mut ctx).is_err());
     assert!(matches!(
         ctx.errors.last().unwrap().kind(),
         crate::ErrorKind::Wanted { .. }
     ));
 
-    // expect_table success
+    // require_table success
     let mut tab = InnerTable::new();
     tab.insert_unique(
         Key {
@@ -362,12 +362,12 @@ fn expect_helpers() {
         &arena,
     );
     let v = Item::table(tab, sp(0, 5));
-    let t = v.expect_table(&mut ctx).unwrap();
+    let t = v.require_table(&mut ctx).unwrap();
     assert_eq!(t.len(), 1);
 
-    // expect_table type mismatch
+    // require_table type mismatch
     let v = Item::integer_spanned(42, sp(0, 2));
-    assert!(v.expect_table(&mut ctx).is_err());
+    assert!(v.require_table(&mut ctx).is_err());
     assert!(matches!(
         ctx.errors.last().unwrap().kind(),
         crate::ErrorKind::Wanted { .. }

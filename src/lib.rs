@@ -21,7 +21,7 @@
 //! # let arena = toml_spanner::Arena::new();
 //! # let doc = toml_spanner::parse("item = 0", &arena).unwrap();
 //! let Some(item) = doc["item"].item() else {
-//!     panic!("Missing key `custom`");
+//!     panic!("Missing key `item`");
 //! };
 //! match item.value() {
 //!      Value::String(string) => {},
@@ -38,14 +38,14 @@
 //!
 //! ## Deserialization
 //!
-//! [`Document::helper()`] creates a [`TableHelper`] for type-safe field extraction
+//! [`Document::table_helper()`] creates a [`TableHelper`] for type-safe field extraction
 //! via [`FromToml`]. Errors accumulate in the [`Document`]'s context rather than
 //! failing on the first error.
 //!
 //! ```
 //! # let arena = toml_spanner::Arena::new();
 //! # let mut doc = toml_spanner::parse("name = 'hello'", &arena).unwrap();
-//! let mut helper = doc.helper();
+//! let mut helper = doc.table_helper();
 //! let name: Option<String> = helper.optional("name");
 //! ```
 //!
@@ -80,7 +80,7 @@
 //!         let name = th.required("name")?;
 //!         let value = th.required("value")?;
 //!         let color = th.optional("color");
-//!         th.expect_empty()?;
+//!         th.require_empty()?;
 //!         Ok(Things { name, value, color })
 //!     }
 //! }
@@ -107,11 +107,11 @@
 //! assert_eq!(doc["things"][1]["color"].as_str(), Some("green"));
 //!
 //! // Deserialize typed values out of the document table.
-//! let mut helper = doc.helper();
+//! let mut helper = doc.table_helper();
 //! let things: Vec<Things> = helper.required("things").ok().unwrap();
 //! let dev_mode: bool = helper.optional("dev-mode").unwrap_or(false);
 //! // Error if unconsumed fields remain.
-//! helper.expect_empty().ok();
+//! helper.require_empty().ok();
 //!
 //! assert_eq!(things.len(), 2);
 //! assert_eq!(things[0].name, "hammer");

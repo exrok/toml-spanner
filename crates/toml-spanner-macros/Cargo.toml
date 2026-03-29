@@ -5,7 +5,7 @@ edition = "2021"
 authors = ["Thomas Dagenais <exrok@i64.dev>"]
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/exrok/toml-spanner"
-description = "proc-macro crate for toml-spanner"
+description = "Derive macros for the toml-spanner TOML parser and serializer"
 rust-version = "1.84"
 
 [dependencies]

@@ -146,7 +146,7 @@ impl From<Span> for std::ops::Range<usize> {
 /// let arena = Arena::new();
 /// let mut doc = toml_spanner::parse("name = \"hello\"", &arena)?;
 /// let name: Spanned<String> = {
-///     let mut helper = doc.helper();
+///     let mut helper = doc.table_helper();
 ///     helper.required("name").ok().unwrap()
 /// };
 /// assert_eq!(name.value, "hello");

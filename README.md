@@ -61,7 +61,7 @@ The `Toml` derive macro generates `FromToml` and/or `ToToml` implementations.
 use toml_spanner::{Arena, Toml};
 
 #[derive(Debug, Toml)]
-#[toml(From, To)] // By default only `FromToml` is derived.
+#[toml(FromToml, ToToml)] // By default only `FromToml` is derived.
 struct Config {
     name: String,
     port: u16,
@@ -99,7 +99,7 @@ impl<'de> FromToml<'de> for Config {
             number: th.required("number")?,
             nested: th.optional("nested").unwrap_or_default(),
         };
-        th.expect_empty()?;
+        th.require_empty()?;
         Ok(config)
     }
 }
@@ -171,7 +171,7 @@ in runtime measured from the actual application when including both parsing and 
 
 ### Deserialization and Parsing
 
-Usually, you don't just parse TOML, `toml-spanner` derive macros for for full deserialization.
+Usually, you don't just parse TOML, `toml-spanner` derive macros for full deserialization.
 
 The following benchmarks have taken the exact data structures and deserialization code (originally
 using toml and serde), and added support for `toml-spanner` and `toml-span` based parsing and
@@ -179,7 +179,7 @@ deserialization. (I haven't added `toml-span` support for Cargo.toml due to its 
 
 ![bench_cargo](https://github.com/user-attachments/assets/4d606902-05c1-4db5-ab08-0d06e8b4f00f)
 
-Crate versions: `toml-spanner = 1.0.1`, `toml = 1.0.7+spec-1.1.0`, `toml-span = 0.7.1`
+Crate versions: `toml-spanner = 1.0.0`, `toml = 1.0.7+spec-1.1.0`, `toml-span = 0.7.1`
 
 Commit `3ca292befbc3585084922c1592ea3d17e423f035` was used from `rust-lang/cargo` as reference.
 
@@ -196,7 +196,7 @@ zed/Cargo.toml (parse + deserialize)
 
 ### Compile Time
 
-For a crate serializing and deserialization a simiplifed cargo manifest using the derive macro respect each crate. With unrestricted parallelism we get the following:
+For a crate serializing and deserializing a simplified cargo manifest using the derive macro for each crate. With unrestricted parallelism we get the following:
 
 <img width="1971" height="725" alt="cargo-toml_aggregate" src="https://github.com/user-attachments/assets/d311f26d-0815-4758-9cee-de520390e329" />
 
@@ -278,7 +278,7 @@ Note: See the `devsm.toml` file in the root for typical commands that are run du
 
 ### Acknowledgements
 
-toml-spanner started off as fork of toml-span and though it's been pretty muchcompletely rewritten at this point, the original test suite and some of the API patterns remain.
+toml-spanner started off as a fork of toml-span and though it's been pretty much completely rewritten at this point, the original test suite and some of the API patterns remain.
 
 Thanks to both the toml and toml-edit crates inspired the API as well as the error messages as
 well as serving targets to fuzz against.

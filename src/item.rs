@@ -596,7 +596,7 @@ impl std::fmt::Display for Kind {
 
 impl Kind {
     /// Returns the TOML type name as a lowercase string (e.g. `"string"`, `"table"`).
-    pub fn as_str(self) -> &'static str {
+    pub fn as_str(&self) -> &'static str {
         match self {
             Kind::String => "string",
             Kind::Integer => "integer",

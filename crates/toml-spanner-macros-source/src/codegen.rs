@@ -739,7 +739,7 @@ fn emit_ok_self_variant(out: &mut RustWriter, variant: &EnumVariant) {
 
 fn struct_from_toml(out: &mut RustWriter, ctx: &Ctx, fields: &[Field]) {
     let start = out.buf.len();
-    splat!(out; let Ok(__table) = __item.expect_table(__ctx) else);
+    splat!(out; let Ok(__table) = __item.require_table(__ctx) else);
     emit_failed_return(out, ctx);
     emit_table_field_deser(out, ctx, fields, "__table", None, &[]);
     splat!(out;
@@ -994,7 +994,7 @@ fn emit_from_toml_call(out: &mut RustWriter, ctx: &Ctx, field: &Field, ty: &[Tok
 fn enum_from_toml_string(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVariant]) {
     let start = out.buf.len();
     let other_variant = find_other_variant(variants);
-    splat!(out; let Ok(s) = __item.expect_string(__ctx) else);
+    splat!(out; let Ok(s) = __item.require_string(__ctx) else);
     emit_failed_return(out, ctx);
     splat!(out;
         match s {
@@ -1209,7 +1209,7 @@ fn enum_from_toml_external(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVari
     }
 
     if has_complex {
-        splat!(out; let Ok(table) = __item.expect_table(__ctx) else);
+        splat!(out; let Ok(table) = __item.require_table(__ctx) else);
         emit_failed_return(out, ctx);
         splat!(out; let entries = table.entries(););
         let err_body_start = out.buf.len();
@@ -1257,7 +1257,7 @@ fn enum_from_toml_external(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVari
                     splat!(out; [@name_lit.into()] =>);
                     let arm_at = out.buf.len();
                     splat!(out; let __item = value;);
-                    splat!(out; let Ok(__subtable) = value.expect_table(__ctx) else);
+                    splat!(out; let Ok(__subtable) = value.require_table(__ctx) else);
                     emit_failed_return(out, ctx);
                     emit_table_field_deser(
                         out,
@@ -1298,7 +1298,7 @@ fn enum_from_toml_internal(
 
     let start = out.buf.len();
 
-    splat!(out; let Ok(__table) = __item.expect_table(__ctx) else);
+    splat!(out; let Ok(__table) = __item.require_table(__ctx) else);
     emit_failed_return(out, ctx);
 
     // First pass: find tag
@@ -1400,7 +1400,7 @@ fn enum_from_toml_adjacent(
 ) {
     let start = out.buf.len();
 
-    splat!(out; let Ok(__table) = __item.expect_table(__ctx) else);
+    splat!(out; let Ok(__table) = __item.require_table(__ctx) else);
     emit_failed_return(out, ctx);
     splat!(out;
         let mut __tag: Option<&str> = None;
@@ -1477,7 +1477,7 @@ fn enum_from_toml_adjacent(
                     }
                     EnumKind::Struct => {
                         splat!(out; let __item = __content;);
-                        splat!(out; let Ok(__subtable) = __content.expect_table(__ctx) else);
+                        splat!(out; let Ok(__subtable) = __content.require_table(__ctx) else);
                         emit_failed_return(out, ctx);
                         emit_table_field_deser(
                             out,
@@ -1559,7 +1559,7 @@ fn enum_from_toml_untagged(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVari
             }
             EnumKind::Struct => {
                 let body_start = out.buf.len();
-                splat!(out; let Ok(__subtable) = __item.expect_table(__ctx) else);
+                splat!(out; let Ok(__subtable) = __item.require_table(__ctx) else);
                 emit_failed_return(out, ctx);
                 emit_table_field_deser(out, ctx, variant.fields, "__subtable", Some(variant), &[]);
                 if propagate {

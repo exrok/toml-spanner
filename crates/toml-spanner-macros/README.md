@@ -12,7 +12,7 @@ The easiest way to use this crate is by enabling the `derive` feature on `toml-s
 
 ```toml
 [dependencies]
-toml-spanner = { version = "0.4", features = ["derive"] }
+toml-spanner = { version = "1", features = ["derive"] }
 ```
 
 You can also depend on `toml-spanner-macros` directly alongside `toml-spanner` as a compile time reduction technique, since it allows Cargo to begin compiling the macros in parallel with `toml-spanner` itself. That said, `toml-spanner-macros` is dependency free and compiles quickly, so in most non-trivial projects the difference is negligible and using the `derive` feature is equally fast.

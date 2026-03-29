@@ -182,6 +182,8 @@ impl Error {
 ///
 /// | Alias | Traits Included | Description |
 /// |-------|-----------------|-------------|
+/// | `From` | `FromToml` | Shorthand for the deserialization trait |
+/// | `To` | `ToToml` | Shorthand for the serialization trait |
 /// | `Toml` | `FromToml`, `ToToml` | Both deserialization and serialization traits |
 ///
 /// For example, `#[toml(FromToml rename = "old", ToToml rename = "new")]` applies
