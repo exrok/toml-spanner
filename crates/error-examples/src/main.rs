@@ -11,7 +11,7 @@ fn error_to_snippet<'s>(
 ) -> annotate_snippets::Group<'s> {
     use annotate_snippets::{AnnotationKind, Level, Snippet};
 
-    let message = error.message(source);
+    let message = error.message_with_path(source);
 
     let mut snippet = Snippet::source(source).path(path).fold(true);
 

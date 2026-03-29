@@ -138,6 +138,7 @@ impl Error {
 /// | `content = "..."` | `FromToml`, `ToToml` | Field containing the data content of an adjacently tagged enum. Must be used with `tag`. |
 /// | `deny_unknown_fields` | `FromToml` | Unknown keys cause an error and immediately return `Failed`. |
 /// | `ignore_unknown_fields` | `FromToml` | Unknown keys are silently ignored (no errors recorded). |
+/// | `recoverable` | `FromToml` | Defers field failures to accumulate as many errors as possible. |
 /// | `warn_unknown_fields` | `FromToml` | Unknown keys record errors but still construct the value (same as default). |
 /// | `from = Type` | `FromToml` | Deserialize by deserializing `Type`, then converting via `From`. |
 /// | `rename_all = "..."` | `FromToml`, `ToToml` | Renames variants and fields not explicitly renamed. |
@@ -433,6 +434,25 @@ impl Error {
 ///     name: String,
 /// }
 /// ```
+///
+/// #### `recoverable`
+///
+/// By default, the first required field that fails deserialization immediately
+/// returns `Failed`. Adding `recoverable` continues through all remaining
+/// fields, reporting as many errors as possible including missing fields.
+///
+/// ```ignore
+/// #[derive(Toml)]
+/// #[toml(FromToml, recoverable)]
+/// struct ServerConfig {
+///     host: String,
+///     port: u16,
+///     debug: bool,
+/// }
+/// ```
+///
+/// Avoid using on structs that serve as variants of an `untagged` enum, as
+/// untagged deserialization relies on early failure to distinguish variants.
 ///
 /// #### `#[toml(from = Type)]` / `#[toml(try_from = Type)]`
 ///

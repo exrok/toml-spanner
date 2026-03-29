@@ -311,6 +311,7 @@ fn emit_table_field_deser(
 
     if recoverable {
         splat!(out; let mut __failed = false;);
+        splat!(out; let mut __seen : u64 = [@TokenTree::Literal(Literal::u64_suffixed(0))] ;);
     }
 
     // Declare field variables
@@ -354,6 +355,7 @@ fn emit_table_field_deser(
     }
 
     // Field arms
+    let mut required_idx: u32 = 0;
     for field in fields {
         if field.flags & (Field::WITH_FROM_TOML_SKIP | Field::WITH_FLATTEN) != 0 {
             continue;
@@ -379,6 +381,14 @@ fn emit_table_field_deser(
             });
         splat!(out; =>);
         let arm_body_at = out.buf.len();
+
+        if recoverable && is_required {
+            if required_idx < 64 {
+                let mask = TokenTree::Literal(Literal::u64_suffixed(1u64 << required_idx));
+                splat!(out; __seen [out.tt_punct_joint('|'); out.tt_punct_alone('=');] [@mask] ;);
+            }
+            required_idx += 1;
+        }
 
         if has_aliases {
             let span_ident = Ident::new(
@@ -470,19 +480,58 @@ fn emit_table_field_deser(
     out.tt_group(Delimiter::Brace, arms_at);
     out.tt_group(Delimiter::Brace, for_body_at);
 
-    if recoverable {
-        splat!(out; if __failed);
-        let if_at = out.buf.len();
-        splat!(out; return Err([#ctx.crate_path]::Failed););
-        out.tt_group(Delimiter::Brace, if_at);
-    }
-
     // Finish flatten partial
     if let Some(ff) = flatten_field {
         let table_id = Ident::new(table_ident, Span::mixed_site());
         splat!(out; let [#: ff.name] =);
         emit_flatten_prefix(out, ctx, ff, FROM_TOML);
         splat!(out; ::finish( __ctx, [#table_id], __flatten_partial)?;);
+    }
+
+    if recoverable {
+        required_idx = 0;
+        for field in fields {
+            if field.flags
+                & (Field::WITH_FROM_TOML_SKIP | Field::WITH_FLATTEN | Field::WITH_FROM_TOML_OPTION)
+                != 0
+            {
+                continue;
+            }
+            if field.flags & Field::WITH_FROM_TOML_DEFAULT != 0 {
+                continue;
+            }
+            let name_lit = field_name_lit(ctx, field, variant);
+            splat!(out; if [#: field.name] . is_none());
+            let outer_at = out.buf.len();
+            if required_idx < 64 {
+                let mask = TokenTree::Literal(Literal::u64_suffixed(1u64 << required_idx));
+                let zero = TokenTree::Literal(Literal::u64_suffixed(0));
+                splat!(out; if);
+                let paren_at = out.buf.len();
+                splat!(out; __seen & [@mask]);
+                out.tt_group(Delimiter::Parenthesis, paren_at);
+                splat!(out; == [@zero]);
+                let inner_at = out.buf.len();
+                splat!(out;
+                    __ctx . report_missing_field([@name_lit.into()], __item) ;
+                );
+                out.tt_group(Delimiter::Brace, inner_at);
+            } else {
+                splat!(out; if ! __failed);
+                let inner_at = out.buf.len();
+                splat!(out;
+                    __ctx . report_missing_field([@name_lit.into()], __item) ;
+                );
+                out.tt_group(Delimiter::Brace, inner_at);
+            }
+            splat!(out; __failed = true ;);
+            out.tt_group(Delimiter::Brace, outer_at);
+            required_idx += 1;
+        }
+        splat!(out; if __failed);
+        let if_at = out.buf.len();
+        splat!(out; return Err([#ctx.crate_path]::Failed););
+        out.tt_group(Delimiter::Brace, if_at);
     }
 
     // Unwrap required and default fields
@@ -496,6 +545,10 @@ fn emit_table_field_deser(
 
         if field.flags & Field::WITH_FROM_TOML_DEFAULT != 0 {
             emit_field_default(out, field, FROM_TOML, true);
+        } else if recoverable {
+            splat!(out;
+                let [#: field.name] = [#: field.name].unwrap();
+            );
         } else {
             let name_lit = field_name_lit(ctx, field, variant);
             splat!(out; let Some([#: field.name]) = [#: field.name].take() else);

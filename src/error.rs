@@ -275,7 +275,7 @@ unsafe impl Sync for MaybeTomlPath {}
 ///     }
 ///     Diagnostic::error()
 ///         .with_code(error.kind().kind_name())
-///         .with_message(error.message(source))
+///         .with_message(error.message_with_path(source))
 ///         .with_labels(labels)
 /// }
 /// ```
@@ -293,7 +293,7 @@ unsafe impl Sync for MaybeTomlPath {}
 ///     source: &'s str,
 ///     path: &'s str,
 /// ) -> Group<'s> {
-///     let message = error.message(source);
+///     let message = error.message_with_path(source);
 ///     let mut snippet = Snippet::source(source).path(path).fold(true);
 ///     if let Some((span, text)) = error.secondary_label() {
 ///         snippet = snippet.annotation(
@@ -864,13 +864,41 @@ fn push_unicode_escape(out: &mut String, n: u32) {
 }
 
 impl Error {
-    /// Returns the diagnostic message for this error.
+    /// Returns the diagnostic message for this error, without the TOML path.
     ///
     /// Some error kinds extract names from `source` for richer messages.
     pub fn message(&self, source: &str) -> String {
         let mut out = String::new();
         self.message_inner(source, &mut out);
         out
+    }
+
+    /// Returns the diagnostic message for this error, with the TOML path appended.
+    ///
+    /// Some error kinds extract names from `source` for richer messages.
+    pub fn message_with_path(&self, source: &str) -> String {
+        let mut out = String::new();
+        self.message_inner(source, &mut out);
+        self.append_path(&mut out);
+        out
+    }
+
+    fn append_path(&self, out: &mut String) {
+        if let Some(p) = self.path() {
+            let components: &[PathComponent<'_>] = p;
+            let display = match self.kind() {
+                ErrorKind::DuplicateKey { .. }
+                | ErrorKind::DuplicateTable { .. }
+                | ErrorKind::DuplicateField { .. }
+                | ErrorKind::Deprecated { .. } => &components[..components.len().saturating_sub(1)],
+                _ => components,
+            };
+            if !display.is_empty() {
+                s_push(out, " at `");
+                push_toml_path(out, display);
+                s_push_char(out, '`');
+            }
+        }
     }
 
     fn message_inner(&self, source: &str, out: &mut String) {
@@ -938,22 +966,6 @@ impl Error {
                 }
             }
             _ => kind_message_inner(kind, out),
-        }
-
-        if let Some(p) = path {
-            let components: &[PathComponent<'_>] = p;
-            let display = match kind {
-                ErrorKind::DuplicateKey { .. }
-                | ErrorKind::DuplicateTable { .. }
-                | ErrorKind::DuplicateField { .. }
-                | ErrorKind::Deprecated { .. } => &components[..components.len().saturating_sub(1)],
-                _ => components,
-            };
-            if !display.is_empty() {
-                s_push(out, " at `");
-                push_toml_path(out, display);
-                s_push_char(out, '`');
-            }
         }
     }
 

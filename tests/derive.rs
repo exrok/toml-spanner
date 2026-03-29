@@ -3835,7 +3835,11 @@ fn recoverable_collects_multiple_type_errors() {
     let result = Example::from_toml(ctx, table.as_item());
     assert!(result.is_err());
     let errors = doc.errors();
-    assert_eq!(errors.len(), 2, "expected 2 type errors, got: {errors:?}");
+    assert_eq!(
+        errors.len(),
+        3,
+        "expected 2 type errors + 1 missing field, got: {errors:?}"
+    );
 }
 
 #[test]
@@ -3876,4 +3880,185 @@ fn recoverable_default_fields_still_work() {
     let v: Example = toml_spanner::from_str("a = true").unwrap();
     assert_eq!(v.a, true);
     assert_eq!(v.b, false);
+}
+
+#[test]
+fn recoverable_external_enum() {
+    #[derive(Toml, Debug)]
+    #[toml(FromToml, recoverable)]
+    enum Ext {
+        Run { speed: bool, direction: bool },
+    }
+    let arena = Arena::new();
+    let mut doc = toml_spanner::parse("Run = { speed = 3, direction = 3 }", &arena).unwrap();
+    let (ctx, table) = doc.split();
+    let result = Ext::from_toml(ctx, table.as_item());
+    assert!(result.is_err());
+    let errors = doc.errors();
+    assert_eq!(errors.len(), 2, "expected 2 type errors, got: {errors:?}");
+}
+
+#[test]
+fn recoverable_external_enum_success() {
+    #[derive(Toml, Debug, PartialEq)]
+    #[toml(FromToml, recoverable)]
+    enum Ext {
+        Run { speed: bool, direction: bool },
+    }
+    let v: Ext = toml_spanner::from_str("Run = { speed = true, direction = false }").unwrap();
+    assert_eq!(
+        v,
+        Ext::Run {
+            speed: true,
+            direction: false
+        }
+    );
+}
+
+#[test]
+fn recoverable_internal_tag_enum() {
+    #[derive(Toml, Debug)]
+    #[toml(FromToml, recoverable, tag = "type")]
+    enum Action {
+        Run { speed: bool, direction: bool },
+        Stop,
+    }
+    let arena = Arena::new();
+    let mut doc = toml_spanner::parse("type = \"Run\"\nspeed = 3\ndirection = 3", &arena).unwrap();
+    let (ctx, table) = doc.split();
+    let result = Action::from_toml(ctx, table.as_item());
+    assert!(result.is_err());
+    let errors = doc.errors();
+    assert_eq!(errors.len(), 2, "expected 2 type errors, got: {errors:?}");
+}
+
+#[test]
+fn recoverable_internal_tag_enum_missing_field() {
+    #[derive(Toml, Debug)]
+    #[toml(FromToml, recoverable, tag = "type")]
+    enum Action {
+        Run { speed: bool, direction: bool },
+        Stop,
+    }
+    let arena = Arena::new();
+    let mut doc = toml_spanner::parse("type = \"Run\"\nspeed = 3", &arena).unwrap();
+    let (ctx, table) = doc.split();
+    let result = Action::from_toml(ctx, table.as_item());
+    assert!(result.is_err());
+    let errors = doc.errors();
+    assert_eq!(
+        errors.len(),
+        2,
+        "expected type error + missing field, got: {errors:?}"
+    );
+}
+
+#[test]
+fn recoverable_adjacent_tag_enum() {
+    #[derive(Toml, Debug)]
+    #[toml(FromToml, recoverable, tag = "t", content = "c")]
+    enum Msg {
+        Data { a: bool, b: bool },
+        Ping,
+    }
+    let arena = Arena::new();
+    let mut doc = toml_spanner::parse("t = \"Data\"\n[c]\na = 3\nb = 3", &arena).unwrap();
+    let (ctx, table) = doc.split();
+    let result = Msg::from_toml(ctx, table.as_item());
+    assert!(result.is_err());
+    let errors = doc.errors();
+    assert_eq!(errors.len(), 2, "expected 2 type errors, got: {errors:?}");
+}
+
+#[rustfmt::skip]
+#[allow(dead_code)]
+#[derive(Toml, Debug)]
+#[toml(FromToml, recoverable)]
+struct Big66 {
+    f00: bool, f01: bool, f02: bool, f03: bool, f04: bool,
+    f05: bool, f06: bool, f07: bool, f08: bool, f09: bool,
+    f10: bool, f11: bool, f12: bool, f13: bool, f14: bool,
+    f15: bool, f16: bool, f17: bool, f18: bool, f19: bool,
+    f20: bool, f21: bool, f22: bool, f23: bool, f24: bool,
+    f25: bool, f26: bool, f27: bool, f28: bool, f29: bool,
+    f30: bool, f31: bool, f32: bool, f33: bool, f34: bool,
+    f35: bool, f36: bool, f37: bool, f38: bool, f39: bool,
+    f40: bool, f41: bool, f42: bool, f43: bool, f44: bool,
+    f45: bool, f46: bool, f47: bool, f48: bool, f49: bool,
+    f50: bool, f51: bool, f52: bool, f53: bool, f54: bool,
+    f55: bool, f56: bool, f57: bool, f58: bool, f59: bool,
+    f60: bool, f61: bool, f62: bool, f63: bool, f64: bool,
+    f65: bool,
+}
+
+fn big66_toml(type_error_field: Option<&str>, missing_field: Option<&str>) -> String {
+    let mut toml = String::new();
+    for i in 0..66 {
+        let name = format!("f{i:02}");
+        if missing_field == Some(name.as_str()) {
+            continue;
+        }
+        if type_error_field == Some(name.as_str()) {
+            toml.push_str(&format!("{name} = 3\n"));
+        } else {
+            toml.push_str(&format!("{name} = true\n"));
+        }
+    }
+    toml
+}
+
+#[test]
+fn recoverable_66_fields_missing_beyond_64_with_prior_error() {
+    // f00 (idx 0): type error, tracked by bitset
+    // f64 (idx 64): missing, NOT tracked by bitset
+    // Because __failed is already true from f00, the f64 missing error is suppressed
+    let toml = big66_toml(Some("f00"), Some("f64"));
+    let arena = Arena::new();
+    let mut doc = toml_spanner::parse(&toml, &arena).unwrap();
+    let (ctx, table) = doc.split();
+    let result = Big66::from_toml(ctx, table.as_item());
+    assert!(result.is_err());
+    let errors = doc.errors();
+    assert_eq!(
+        errors.len(),
+        1,
+        "only f00 type error; f64 missing suppressed: {errors:?}"
+    );
+}
+
+#[test]
+fn recoverable_66_fields_missing_beyond_64_no_prior_error() {
+    // f64 (idx 64): missing, NOT tracked by bitset
+    // No prior errors, so the missing field IS reported
+    let toml = big66_toml(None, Some("f64"));
+    let arena = Arena::new();
+    let mut doc = toml_spanner::parse(&toml, &arena).unwrap();
+    let (ctx, table) = doc.split();
+    let result = Big66::from_toml(ctx, table.as_item());
+    assert!(result.is_err());
+    let errors = doc.errors();
+    assert_eq!(
+        errors.len(),
+        1,
+        "f64 missing should be reported: {errors:?}"
+    );
+}
+
+#[test]
+fn recoverable_66_fields_missing_within_64_with_prior_error() {
+    // f00 (idx 0): type error, tracked by bitset
+    // f01 (idx 1): missing, tracked by bitset
+    // Both errors reported because the bitset distinguishes missing from type-errored
+    let toml = big66_toml(Some("f00"), Some("f01"));
+    let arena = Arena::new();
+    let mut doc = toml_spanner::parse(&toml, &arena).unwrap();
+    let (ctx, table) = doc.split();
+    let result = Big66::from_toml(ctx, table.as_item());
+    assert!(result.is_err());
+    let errors = doc.errors();
+    assert_eq!(
+        errors.len(),
+        2,
+        "f00 type error + f01 missing both reported: {errors:?}"
+    );
 }
