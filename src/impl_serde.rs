@@ -1,5 +1,5 @@
 //! Serde serialization support for [`Spanned<T>`](crate::Spanned) and
-//! [`Item`](crate::Item).
+//! [`Item`].
 //!
 //! Enabled by the `serde` feature flag. This provides [`serde::Serialize`]
 //! implementations only — deserialization uses the [`FromToml`](crate::FromToml)

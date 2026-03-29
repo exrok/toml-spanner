@@ -96,7 +96,7 @@ try --no-default-features --features serde || exit 1
 tag = ["fast"]
 
 [test.cargo-test]
-cmd = ["cargo", "test", "-q"]
+cmd = ["cargo", "test", "-q", "--all-features"]
 require = ["build-macros"]
 tag = ["fast"]
 

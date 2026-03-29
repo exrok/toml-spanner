@@ -10,13 +10,13 @@ toml-spanner is a complete TOML library featuring:
 
 - High Performance: [See Benchmarks](#benchmarks)
 - Fast (Increment & Clean) Compilation: [See Compile Time Benchmarks](https://github.com/exrok/rust-serialization-build-time-benchmarks/blob/main/README.md)
-- Compact Span Preserving Tree: See Item on docs.rs
-- Derive macros: optional, powerful, zero-dependency <!-- TODO add docs.rs link -->
+- Compact Span Preserving Tree
+- Derive macros: optional, powerful, zero-dependency: [See Derive Documentation](https://docs.rs/toml-spanner/latest/toml_spanner/derive.Toml.html)
 - Format Preserving Serialization, even through mutation on your own data types.
 - Full TOML 1.1, including date-time support, passing 100% of official TOML test-suite
-- Tiny Binary Size <!-- TODO add link to benchmarks once I post them -->
+- Tiny Binary Size: [See Binary Size Benchmarks](https://github.com/exrok/rust-serialization-build-time-benchmarks/blob/main/report/BENCH-cargo-toml.md#binary-size)
 - Extensively tested with miri and fuzzing under memory sanitizers and debug assertions.
-- High quality error messages: [See Examples](#error-examples)
+- High quality error messages: [See Error Examples](#error-examples)
 
 ## Example
 
@@ -56,14 +56,12 @@ match doc["nested"].value() {
 ### Derive Macros
 
 The `Toml` derive macro generates `FromToml` and/or `ToToml` implementations.
-A bare `#[derive(Toml)]` generates `FromToml` only; add `#[toml(Toml)]` for
-both directions.
 
 ```rust
 use toml_spanner::{Arena, Toml};
 
 #[derive(Debug, Toml)]
-#[toml(Toml)]
+#[toml(From, To)] // By default only `FromToml` is derived.
 struct Config {
     name: String,
     port: u16,
@@ -76,14 +74,12 @@ let mut doc = toml_spanner::parse("name = 'app'\nport = 8080", &arena).unwrap();
 let config = doc.to::<Config>().unwrap();
 ```
 
-See the [`Toml` macro docs](https://docs.rs/toml-spanner/latest/toml_spanner/derive.Toml.html)
+See the [`Toml` derive docs](https://docs.rs/toml-spanner/latest/toml_spanner/derive.Toml.html)
 for the full set of attributes (`rename`, `default`, `flatten`, `skip`, tagged enums, etc.).
 
 ### Manual `FromToml`
 
-For cases where derive is not flexible enough, implement `FromToml` directly
-using `TableHelper` for type-safe field extraction. Errors are accumulated
-rather than failing on the first problem.
+Implement `FromToml` directly using `TableHelper` for type-safe field extraction.
 
 ```rust
 use toml_spanner::{Arena, Context, FromToml, Failed, Item};
@@ -111,11 +107,12 @@ impl<'de> FromToml<'de> for Config {
 let arena = Arena::new();
 let mut doc = toml_spanner::parse(TOML_DOCUMENT, &arena).unwrap();
 
-if let Ok(config) = doc.to::<Config>() {
-    println!("parsed: {config:?}");
-} else {
-    for error in doc.errors() {
-        println!("error: {error}");
+match doc.to::<Config>() {
+    Ok(config) => println!("parsed: {config:?}"),
+    Err(errors) => {
+        for error in &errors {
+            println!("error: {error}");
+        }
     }
 }
 ```
@@ -126,7 +123,7 @@ Any type implementing `ToToml` (including via derive) can be written to TOML
 with `to_string` or the `Formatting` builder for format-preserving output.
 
 ```rust
-// Quick one-liner
+// Use default formatting.
 let output = toml_spanner::to_string(&config).unwrap();
 
 // Preserve formatting from a parsed document
@@ -140,7 +137,7 @@ Please consult the [API documentation](https://docs.rs/toml-spanner/latest/toml_
 
 ## Benchmarks
 
-Measured on AMD Ryzen 9 5950X, 64GB RAM, Linux 6.18, rustc 1.93.0.
+Measured on AMD Ryzen 9 5950X, 64GB RAM, Linux 6.18, rustc 1.94.1.
 Relative parse time across real-world TOML files (lower is better):
 
 ![bench](https://github.com/user-attachments/assets/6a0d460d-a6e4-4b52-9849-03d65cac4998)
@@ -174,13 +171,13 @@ in runtime measured from the actual application when including both parsing and 
 
 ### Deserialization and Parsing
 
-Usually, you don't just parse TOML, `toml-spanner` provides helpers to make deserialization easier.
+Usually, you don't just parse TOML, `toml-spanner` derive macros for for full deserialization.
+
 The following benchmarks have taken the exact data structures and deserialization code (originally
 using toml and serde), and added support for `toml-spanner` and `toml-span` based parsing and
 deserialization. (I haven't added `toml-span` support for Cargo.toml due to its complexity.)
 
 ![bench_cargo](https://github.com/user-attachments/assets/4d606902-05c1-4db5-ab08-0d06e8b4f00f)
-
 
 Crate versions: `toml-spanner = 1.0.1`, `toml = 1.0.7+spec-1.1.0`, `toml-span = 0.7.1`
 
@@ -228,8 +225,8 @@ extensive changes:
 
 ### Error Examples
 
-Toml-spanner provides specific errors with spans pointing directly to the problem, multi-error accumulation,
-and integrations with [annotate-snippets](https://crates.io/crates/annotate-snippets)
+Toml-spanner provides specific errors with spans and paths pointing directly to the problem, multi-error accumulation,
+and methods for easy use with [annotate-snippets](https://crates.io/crates/annotate-snippets)
 and [codespan-reporting](https://crates.io/crates/codespan-reporting).
 
 Here are some parsing examples using the annotated-snippets feature:

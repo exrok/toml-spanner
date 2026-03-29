@@ -1,4 +1,4 @@
-#[cfg(test)]
+#[cfg(all(test, feature = "to-toml"))]
 #[path = "./de_tests.rs"]
 mod tests;
 
@@ -1295,5 +1295,21 @@ impl From<Error> for FromTomlError {
 impl From<Vec<Error>> for FromTomlError {
     fn from(errors: Vec<Error>) -> Self {
         Self { errors }
+    }
+}
+
+impl IntoIterator for FromTomlError {
+    type Item = Error;
+    type IntoIter = std::vec::IntoIter<Error>;
+    fn into_iter(self) -> Self::IntoIter {
+        self.errors.into_iter()
+    }
+}
+
+impl<'a> IntoIterator for &'a FromTomlError {
+    type Item = &'a Error;
+    type IntoIter = std::slice::Iter<'a, Error>;
+    fn into_iter(self) -> Self::IntoIter {
+        self.errors.iter()
     }
 }

@@ -28,7 +28,13 @@ fn error_to_snippet<'s>(
         });
     }
 
-    Level::ERROR.primary_title(message).element(snippet)
+    let level = match error.kind() {
+        toml_spanner::ErrorKind::UnexpectedKey { .. }
+        | toml_spanner::ErrorKind::Deprecated { .. } => Level::WARNING,
+        _ => Level::ERROR,
+    };
+
+    level.primary_title(message).element(snippet)
 }
 
 fn render(name: &str, groups: &[annotate_snippets::Group<'_>]) {
@@ -39,9 +45,11 @@ fn render(name: &str, groups: &[annotate_snippets::Group<'_>]) {
     anstream::println!("{ansi}");
 
     let mut svg = anstyle_svg::Term::new().render_svg(&ansi);
-    svg = svg.replace("#000000", "#111111");
-    svg = svg.replace("#5555FF", "#92B2CA");
-    svg = svg.replace("#FF5555", "#D77C79");
+    svg = svg.replace("#AAAAAA", "#bdbdbd");
+    svg = svg.replace("#000000", "#0D1117");
+    svg = svg.replace("#5555FF", "#85b4d7");
+    svg = svg.replace("#FF5555", "#e36b67");
+    svg = svg.replace("#AA5500", "#f5db7d");
     std::fs::create_dir_all("output").expect("failed to create output dir");
     std::fs::write(format!("output/{name}.svg"), svg).expect("failed to write svg");
 }
@@ -82,16 +90,13 @@ fn duplicate_key() {
         r#"[bindings.normal]
 "j" = "Down"
 "k" = "Up"
-"d t" = { Set = [{ Due = "Tomorrow" }], Set = [{ Due = "Today" }] }
+"t" = { Set = [{ Due = "Tomorrow" }], Set = [{ Due = "Today" }] }
 "d n" = { Set = [{ Due = "None" }] }
 "#,
     );
 }
 
 fn deserialization_errors() {
-    use std::net::IpAddr;
-    use toml_spanner::helper::parse_string;
-
     #[derive(Debug, Toml)]
     #[toml(FromToml, rename_all = "kebab-case")]
     enum Visibility {
@@ -101,7 +106,7 @@ fn deserialization_errors() {
     }
 
     #[derive(Debug, Toml)]
-    #[toml(FromToml, deny_unknown_fields)]
+    #[toml(FromToml, recoverable)]
     struct Service {
         port: Option<u16>,
         hidden: Option<Visibility>,
@@ -120,6 +125,7 @@ fn deserialization_errors() {
     }
 
     let source = r#"[service.backend]
+unknown = "key"
 port = "https"
 hidden = "collapsed"
 "#;

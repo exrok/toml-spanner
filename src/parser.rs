@@ -2104,13 +2104,8 @@ impl<'de> Document<'de> {
     /// Converts the root table into a typed value `T` via [`FromToml`](crate::FromToml).
     ///
     /// # Errors
-    ///
-    /// Returns [`FromTomlError`](crate::FromTomlError) containing all
-    /// accumulated errors.
-    pub fn to<T>(&mut self) -> Result<T, crate::de::FromTomlError>
-    where
-        T: crate::de::FromToml<'de>,
-    {
+    /// Returns [`FromTomlError`](crate::FromTomlError) containing all accumulated errors.
+    pub fn to<T: crate::FromToml<'de>>(&mut self) -> Result<T, crate::FromTomlError> {
         let result = T::from_toml(&mut self.ctx, self.table.as_item());
         crate::de::compute_paths(&self.table, &mut self.ctx.errors);
         match result {
@@ -2122,12 +2117,10 @@ impl<'de> Document<'de> {
     }
 
     /// Converts the root table into a typed value `T` via [`FromToml`](crate::FromToml).
-    /// Return non-fatal errors alongside.
+    /// returning non-fatal errors alongside.
     ///
     /// # Errors
-    ///
-    /// Returns [`FromTomlError`](crate::FromTomlError) containing all
-    /// accumulated errors.
+    /// Returns [`FromTomlError`](crate::FromTomlError) containing all accumulated errors.
     pub fn to_allowing_errors<T>(
         &mut self,
     ) -> Result<(T, crate::de::FromTomlError), crate::de::FromTomlError>

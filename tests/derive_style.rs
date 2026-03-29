@@ -1,3 +1,4 @@
+#![cfg(all(feature = "derive", feature = "to-toml"))]
 use toml_spanner_macros::Toml;
 
 #[derive(Toml, Debug, PartialEq)]

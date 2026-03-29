@@ -1,3 +1,4 @@
+#![cfg(all(feature = "derive", feature = "to-toml"))]
 use std::collections::{BTreeMap, HashMap};
 use std::net::IpAddr;
 use toml_spanner::{Arena, Formatting, FromToml};
@@ -108,6 +109,27 @@ fn derive_roundtrip() {
     };
     let toml_str = toml_spanner::to_string(&original).unwrap();
     let restored: RoundTrip = toml_spanner::from_str(&toml_str).unwrap();
+    assert_eq!(original, restored);
+}
+
+#[derive(Toml, Debug, PartialEq)]
+#[toml(From, To)]
+struct RoundTripShortAlias {
+    name: String,
+    value: i64,
+    #[toml(default)]
+    flag: bool,
+}
+
+#[test]
+fn derive_roundtrip_short_alias() {
+    let original = RoundTripShortAlias {
+        name: "test".to_string(),
+        value: 99,
+        flag: true,
+    };
+    let toml_str = toml_spanner::to_string(&original).unwrap();
+    let restored: RoundTripShortAlias = toml_spanner::from_str(&toml_str).unwrap();
     assert_eq!(original, restored);
 }
 

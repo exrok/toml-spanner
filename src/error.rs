@@ -24,6 +24,10 @@ pub enum PathComponent<'de> {
 /// # Examples
 ///
 /// ```
+/// # #[cfg(not(feature = "derive"))]
+/// # fn main() {}
+/// # #[cfg(feature = "derive")]
+/// # fn main() {
 /// # use toml_spanner::Arena;
 /// let arena = Arena::new();
 /// let mut doc = toml_spanner::parse("[server]\nport = 'oops'", &arena).unwrap();
@@ -36,6 +40,7 @@ pub enum PathComponent<'de> {
 /// let err = doc.to::<Config>().unwrap_err();
 /// let path = err.errors[0].path().unwrap();
 /// assert_eq!(path.to_string(), "server.port");
+/// # }
 /// ```
 #[repr(transparent)]
 pub struct TomlPath<'a>([PathComponent<'a>]);

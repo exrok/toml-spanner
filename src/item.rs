@@ -334,7 +334,7 @@ union Payload<'de> {
 ///
 /// For structured conversion of larger tables, use
 /// [`TableHelper`](crate::de::TableHelper) with the [`Context`](crate::de::Context)
-/// from [`parse`](crate::parse).
+/// from [`parse`](crate::parse), which internally uses an index for O(1) lookups.
 ///
 /// # Examples
 ///

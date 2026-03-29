@@ -1,5 +1,5 @@
-//! A high-performance TOML parser that preserves span information for
-//! values and keys.
+//! High-performance, fast compiling, TOML serialization and deserialization library for
+//! rust with full compliance with the TOML 1.1 spec.
 //!
 //! # Parsing and Traversal
 //!
@@ -46,7 +46,7 @@
 //! # let arena = toml_spanner::Arena::new();
 //! # let mut doc = toml_spanner::parse("name = 'hello'", &arena).unwrap();
 //! let mut helper = doc.helper();
-//! let name: String = helper.required("name").ok().unwrap();
+//! let name: Option<String> = helper.optional("name");
 //! ```
 //!
 //! [`Item::parse`] extracts values from string items via [`std::str::FromStr`].
@@ -126,7 +126,8 @@
 //! implementations. A bare `#[derive(Toml)]` generates [`FromToml`] only.
 //! Annotate with `#[toml(Toml)]` for both directions.
 //!
-//! ```
+#![cfg_attr(all(feature = "derive", feature = "to-toml"), doc = "```")]
+#![cfg_attr(not(all(feature = "derive", feature = "to-toml")), doc = "```ignore")]
 //! use toml_spanner::{Arena, Toml};
 //!
 //! #[derive(Debug, Toml)]
@@ -155,14 +156,15 @@
 //! Types implementing [`ToToml`] can be written back to TOML text with
 //! [`to_string`] or the [`Formatting`] builder for more control.
 //!
-//! ```
+#![cfg_attr(feature = "to-toml", doc = "```")]
+#![cfg_attr(not(feature = "to-toml"), doc = "```ignore")]
 //! use toml_spanner::{Arena, Formatting};
 //! use std::collections::BTreeMap;
 //!
 //! let mut map = BTreeMap::new();
 //! map.insert("key", "value");
 //!
-//! // Quick one-liner
+//! // Using default formatting.
 //! let output = toml_spanner::to_string(&map).unwrap();
 //!
 //! // Preserve formatting from a parsed document

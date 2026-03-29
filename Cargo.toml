@@ -48,7 +48,7 @@ explicit_counter_loop = "allow"
 manual_slice_size_calculation = "allow"
 
 [features]
-default = ["from-toml", "to-toml", "derive"]
+default = ["from-toml"]
 from-toml = []
 to-toml = ["from-toml", "dep:zmij"]
 derive = ["dep:toml-spanner-macros"]

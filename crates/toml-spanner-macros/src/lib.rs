@@ -122,10 +122,10 @@ impl Error {
 ///
 /// The traits to derive are specified via container attributes. The currently
 /// supported traits are:
-/// - `FromToml`
-/// - `ToToml`
+/// - [`FromToml`]
+/// - [`ToToml`]
 ///
-/// When `#[derive(Toml)]` is used with no trait attribute, it defaults to `FromToml`.
+/// When `#[derive(Toml)]` is used with no trait attribute, it defaults to [`FromToml`].
 ///
 /// The rest of the attributes are described in the following tables. Note that some
 /// attributes apply only to certain traits.
@@ -203,8 +203,8 @@ impl Error {
 ///
 /// | Trait | Function |
 /// |-------|----------|
-/// | `FromToml` | `fn from_toml<'de>(ctx: &mut Context<'de>, item: &Item<'de>) -> Result<T, Failed>` |
-/// | `ToToml` | `fn to_toml(value: &T, arena: &Arena) -> Result<Item, ToTomlError>` |
+/// | [`FromToml`] | `fn from_toml<'de>(ctx: &mut Context<'de>, item: &Item<'de>) -> Result<T, Failed>` |
+/// | [`ToToml`] | `fn to_toml(value: &T, arena: &Arena) -> Result<Item, ToTomlError>` |
 ///
 /// For `Option<T>` fields (auto-detected optional), the `with` module operates on
 /// the inner type `T`. If the field is annotated with `default` or `required`, the
@@ -242,7 +242,7 @@ impl Error {
 /// Note: The functions in the with module can be generic.
 ///
 /// When combined with `flatten`, the module instead provides functions matching
-/// the `FromFlattened`/`ToFlattened` trait method signatures:
+/// the [`FromFlattened`]/[`ToFlattened`] trait method signatures:
 ///
 /// ```ignore
 /// mod my_helper {
@@ -282,7 +282,7 @@ impl Error {
 /// The `Partial` type can be anything. It is inferred from the `init` return type.
 ///
 /// For the common case of flattening a type that already implements
-/// `FromToml`/`ToToml`, use the built-in `flatten_any` helper instead of writing a
+/// [`FromToml`]/[`ToToml`], use the built-in [`flatten_any`] helper instead of writing a
 /// custom module (see [Built-in Helpers](#built-in-helpers)).
 ///
 /// #### `#[toml(skip)]`
@@ -296,7 +296,7 @@ impl Error {
 /// #### `#[toml(flatten)]`
 ///
 /// Captures all unrecognized keys from the table into a map-like field. The field
-/// type must implement `FromFlattened` (for deserialization) and/or `ToFlattened`
+/// type must implement [`FromFlattened`] (for deserialization) and/or [`ToFlattened`]
 /// (for serialization). Built-in implementations exist for `BTreeMap<K, V>` and
 /// `HashMap<K, V>`.
 ///
@@ -313,8 +313,8 @@ impl Error {
 /// ```
 ///
 /// Combine `flatten` with `with = path` to use custom logic or to flatten types
-/// that implement `FromToml`/`ToToml` rather than the flatten traits. The built-in
-/// `toml_spanner::helper::flatten_any` module handles the common case.
+/// that implement [`FromToml`]/[`ToToml`] rather than the flatten traits. The built-in
+/// [`flatten_any`] module handles the common case.
 ///
 /// #### `#[toml(default [= ...])]`
 ///
@@ -407,7 +407,7 @@ impl Error {
 /// #### Unknown field policies
 ///
 /// By default, unrecognized keys are recorded as errors in the deserialization
-/// `Context` but do not cause `Failed` to be returned (warn behavior). This
+/// [`Context`] but do not cause [`Failed`] to be returned (warn behavior). This
 /// allows multiple problems to be reported at once while still constructing
 /// the value.
 ///
@@ -415,13 +415,13 @@ impl Error {
 /// This is useful when combined with an error tag (see below).
 ///
 /// `#[toml(deny_unknown_fields)]` makes unknown keys fatal: the first
-/// unrecognized key records an error and immediately returns `Failed`.
+/// unrecognized key records an error and immediately returns [`Failed`].
 ///
 /// `#[toml(ignore_unknown_fields)]` silently discards unknown keys without
 /// recording any errors.
 ///
 /// Both `warn_unknown_fields` and `deny_unknown_fields` support an optional
-/// error tag in brackets. The tag is stored in the `UnexpectedKey { tag }`
+/// error tag in brackets. The tag is stored in the [`UnexpectedKey { tag }`](https://docs.rs/toml-spanner/latest/toml_spanner/enum.ErrorKind.html#variant.UnexpectedKey)
 /// error variant and can be used for programmatic filtering or attaching
 /// additional diagnostics.
 ///
@@ -438,7 +438,7 @@ impl Error {
 /// #### `recoverable`
 ///
 /// By default, the first required field that fails deserialization immediately
-/// returns `Failed`. Adding `recoverable` continues through all remaining
+/// returns [`Failed`]. Adding `recoverable` continues through all remaining
 /// fields, reporting as many errors as possible including missing fields.
 ///
 /// ```ignore
@@ -621,8 +621,8 @@ impl Error {
 /// ##### Branch hints (`try_if`, `final_if`)
 ///
 /// For untagged enums, branch hints control which variants are attempted based on a
-/// predicate over the input item. The predicate receives a `Context` reference and
-/// an `Item` reference and returns `bool`.
+/// predicate over the input item. The predicate receives a [`Context`] reference and
+/// an [`Item`] reference and returns `bool`.
 ///
 /// **`try_if`**: If the predicate returns false, the variant is skipped. On true,
 /// deserialization is attempted and on failure the next variant is tried.
@@ -644,11 +644,11 @@ impl Error {
 ///
 /// ### Built-in Helpers
 ///
-/// The `toml_spanner::helper` module provides modules for use with the `with` field
+/// The [`toml_spanner::helper`] module provides modules for use with the `with` field
 /// attribute. These cover common patterns so you do not need to write custom
 /// conversion functions.
 ///
-/// #### `parse_string`
+/// #### [`parse_string`]
 ///
 /// Deserializes a TOML string into any type implementing `FromStr`.
 ///
@@ -661,7 +661,7 @@ impl Error {
 /// }
 /// ```
 ///
-/// #### `display`
+/// #### [`display`]
 ///
 /// Serializes any type implementing `Display` as a TOML string.
 ///
@@ -685,10 +685,10 @@ impl Error {
 /// }
 /// ```
 ///
-/// #### `flatten_any`
+/// #### [`flatten_any`]
 ///
-/// Flattens any type implementing `FromToml`/`ToToml` into a parent struct,
-/// without writing a manual `FromFlattened`/`ToFlattened` implementation.
+/// Flattens any type implementing [`FromToml`]/[`ToToml`] into a parent struct,
+/// without writing a manual [`FromFlattened`]/[`ToFlattened`] implementation.
 ///
 /// ```ignore
 /// #[derive(Toml)]
@@ -700,8 +700,8 @@ impl Error {
 /// }
 /// ```
 ///
-/// `flatten_any` works by collecting unrecognized key-value pairs into a temporary
-/// table and passing it through the regular `FromToml`/`ToToml` path.
+/// [`flatten_any`] works by collecting unrecognized key-value pairs into a temporary
+/// table and passing it through the regular [`FromToml`]/[`ToToml`] path.
 ///
 /// ## Why a single unified derive macro?
 ///
@@ -712,6 +712,17 @@ impl Error {
 /// 2. Needs to parse the input only once.
 /// 3. Allows traits to share code, as the macro knows the full set being implemented.
 ///
+/// [`FromToml`]: https://docs.rs/toml-spanner/latest/toml_spanner/trait.FromToml.html
+/// [`ToToml`]: https://docs.rs/toml-spanner/latest/toml_spanner/trait.ToToml.html
+/// [`FromFlattened`]: https://docs.rs/toml-spanner/latest/toml_spanner/trait.FromFlattened.html
+/// [`ToFlattened`]: https://docs.rs/toml-spanner/latest/toml_spanner/trait.ToFlattened.html
+/// [`Context`]: https://docs.rs/toml-spanner/latest/toml_spanner/struct.Context.html
+/// [`Item`]: https://docs.rs/toml-spanner/latest/toml_spanner/struct.Item.html
+/// [`Failed`]: https://docs.rs/toml-spanner/latest/toml_spanner/struct.Failed.html
+/// [`toml_spanner::helper`]: https://docs.rs/toml-spanner/latest/toml_spanner/helper/index.html
+/// [`flatten_any`]: https://docs.rs/toml-spanner/latest/toml_spanner/helper/flatten_any/index.html
+/// [`parse_string`]: https://docs.rs/toml-spanner/latest/toml_spanner/helper/parse_string/index.html
+/// [`display`]: https://docs.rs/toml-spanner/latest/toml_spanner/helper/display/index.html
 #[proc_macro_derive(Toml, attributes(toml))]
 pub fn derive_toml(input: TokenStream) -> TokenStream {
     codegen::derive(input)

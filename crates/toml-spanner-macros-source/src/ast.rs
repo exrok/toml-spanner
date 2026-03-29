@@ -372,10 +372,10 @@ fn parse_container_attr(
         "transparent" => {
             target.transparent_impl = true;
         }
-        "FromToml" => {
+        "From" | "FromToml" => {
             target.from_toml = true;
         }
-        "ToToml" => {
+        "To" | "ToToml" => {
             target.to_toml = true;
         }
         "Toml" => {
@@ -893,8 +893,8 @@ fn parse_attrs(toks: TokenStream, func: &mut dyn FnMut(TraitSet, Ident, &mut Vec
                     TokenTree::Ident(true_ident) => {
                         let text = ident.to_string();
                         match text.as_str() {
-                            "FromToml" => trait_set |= FROM_TOML,
-                            "ToToml" => trait_set |= TO_TOML,
+                            "From" | "FromToml" => trait_set |= FROM_TOML,
+                            "To" | "ToToml" => trait_set |= TO_TOML,
                             "Toml" => trait_set |= FROM_TOML | TO_TOML,
                             _ => throw!("Expected trait or alias" @ ident.span()),
                         }

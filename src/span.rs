@@ -272,6 +272,16 @@ where
     }
 }
 
+#[cfg(feature = "to-toml")]
+impl<T: crate::ser::ToToml> crate::ser::ToToml for Spanned<T> {
+    fn to_toml<'a>(
+        &'a self,
+        arena: &'a crate::Arena,
+    ) -> Result<crate::Item<'a>, crate::ser::ToTomlError> {
+        self.value.to_toml(arena)
+    }
+}
+
 #[cfg(feature = "from-toml")]
 impl<'de, T> crate::de::FromToml<'de> for Spanned<T>
 where
