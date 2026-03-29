@@ -3027,8 +3027,6 @@ fn deny_unknown_fields_with_tag() {
     ));
 }
 
-// --- deprecated_alias tests ---
-
 #[derive(Toml, Debug, PartialEq)]
 struct WithDeprecatedAlias {
     #[toml(deprecated_alias = "old_name")]
@@ -3840,11 +3838,10 @@ fn duplicate_key_and_duplicate_field_consistent() {
     );
 }
 
-// --- recoverable tests ---
-
 #[test]
 fn recoverable_collects_multiple_type_errors() {
     #[derive(Toml, Debug)]
+    #[allow(dead_code)]
     #[toml(FromToml, recoverable)]
     struct Example {
         a: bool,
@@ -3867,6 +3864,7 @@ fn recoverable_collects_multiple_type_errors() {
 #[test]
 fn recoverable_succeeds_when_all_fields_valid() {
     #[derive(Toml, Debug, PartialEq)]
+    #[allow(dead_code)]
     #[toml(FromToml, recoverable)]
     struct Example {
         a: bool,
@@ -3880,6 +3878,7 @@ fn recoverable_succeeds_when_all_fields_valid() {
 #[test]
 fn recoverable_optional_fields_still_work() {
     #[derive(Toml, Debug, PartialEq)]
+    #[allow(dead_code)]
     #[toml(FromToml, recoverable)]
     struct Example {
         a: bool,
@@ -3907,6 +3906,7 @@ fn recoverable_default_fields_still_work() {
 #[test]
 fn recoverable_external_enum() {
     #[derive(Toml, Debug)]
+    #[allow(dead_code)]
     #[toml(FromToml, recoverable)]
     enum Ext {
         Run { speed: bool, direction: bool },
@@ -3923,6 +3923,7 @@ fn recoverable_external_enum() {
 #[test]
 fn recoverable_external_enum_success() {
     #[derive(Toml, Debug, PartialEq)]
+    #[allow(dead_code)]
     #[toml(FromToml, recoverable)]
     enum Ext {
         Run { speed: bool, direction: bool },
@@ -3940,6 +3941,7 @@ fn recoverable_external_enum_success() {
 #[test]
 fn recoverable_internal_tag_enum() {
     #[derive(Toml, Debug)]
+    #[allow(dead_code)]
     #[toml(FromToml, recoverable, tag = "type")]
     enum Action {
         Run { speed: bool, direction: bool },
@@ -3957,6 +3959,7 @@ fn recoverable_internal_tag_enum() {
 #[test]
 fn recoverable_internal_tag_enum_missing_field() {
     #[derive(Toml, Debug)]
+    #[allow(dead_code)]
     #[toml(FromToml, recoverable, tag = "type")]
     enum Action {
         Run { speed: bool, direction: bool },

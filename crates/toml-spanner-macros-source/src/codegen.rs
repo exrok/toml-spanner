@@ -660,7 +660,7 @@ fn emit_table_field_ser(
             }
         } else if is_option {
             splat!(out;
-                if let Some(__val) = [#ctx.crate_path]::ToToml::to_optional_toml(
+                if let Some(__val) = < [~field.ty] as [#ctx.crate_path]::ToToml >::to_optional_toml(
                     [@TokenTree::Group(Group::new(Delimiter::None, field_ref.clone()))], __arena)?
                 {
                     [#table_id].insert_unique(
@@ -675,7 +675,7 @@ fn emit_table_field_ser(
             splat!(out;
                 [#table_id].insert_unique(
                     [#ctx.crate_path]::Key::new([@name_lit.into()]),
-                    [#ctx.crate_path]::ToToml::to_toml(
+                    < [~field.ty] as [#ctx.crate_path]::ToToml >::to_toml(
                         [@TokenTree::Group(Group::new(Delimiter::None, field_ref.clone()))], __arena)?
                     [?(let Some(style) = style) .with_style_of_array_or_table([#ctx.crate_path]::TableStyle::[#style])],
                     __arena,
@@ -814,8 +814,14 @@ fn handle_struct(output: &mut RustWriter, target: &DeriveTargetInner, fields: &[
             let [single_field] = fields else {
                 throw!("Struct must contain a single field to use transparent")
             };
-            let body = token_stream! {output;
-                [#ctx.crate_path]::ToToml::to_toml(&self.[#: single_field.name], __arena)
+            let body = if let Some(with) = single_field.with(TO_TOML) {
+                token_stream! {output;
+                    [~with]::to_toml(&self.[#: single_field.name], __arena)
+                }
+            } else {
+                token_stream! {output;
+                    < [~single_field.ty] as [#ctx.crate_path]::ToToml >::to_toml(&self.[#: single_field.name], __arena)
+                }
             };
             impl_to_toml(output, &ctx, body);
         } else {
@@ -843,9 +849,15 @@ fn handle_tuple_struct(output: &mut RustWriter, target: &DeriveTargetInner, fiel
     }
 
     if target.to_toml {
-        if let [_single_field] = fields {
-            let body = token_stream! {output;
-                [#ctx.crate_path]::ToToml::to_toml(&self.[@TokenTree::Literal(Literal::usize_unsuffixed(0))], __arena)
+        if let [single_field] = fields {
+            let body = if let Some(with) = single_field.with(TO_TOML) {
+                token_stream! {output;
+                    [~with]::to_toml(&self.[@TokenTree::Literal(Literal::usize_unsuffixed(0))], __arena)
+                }
+            } else {
+                token_stream! {output;
+                    < [~single_field.ty] as [#ctx.crate_path]::ToToml >::to_toml(&self.[@TokenTree::Literal(Literal::usize_unsuffixed(0))], __arena)
+                }
             };
             impl_to_toml(output, &ctx, body);
         } else {
@@ -1061,31 +1073,60 @@ fn enum_to_toml(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVariant], mode:
                 if variant.fields.len() != 1 {
                     throw!("Only single-field tuple variants are supported")
                 }
+                let field = &variant.fields[0];
                 if matches!(mode, TagMode::Untagged) {
-                    splat!(out;
-                        Self::[#: variant.name](inner) =>
-                            [#ctx.crate_path]::ToToml::to_toml(inner, __arena),
-                    );
+                    if let Some(with) = field.with(TO_TOML) {
+                        splat!(out;
+                            Self::[#: variant.name](inner) =>
+                                [~with]::to_toml(inner, __arena),
+                        );
+                    } else {
+                        splat!(out;
+                            Self::[#: variant.name](inner) =>
+                                < [~field.ty] as [#ctx.crate_path]::ToToml >::to_toml(inner, __arena),
+                        );
+                    }
                 } else {
                     let cap = if tag_lit.is_some() { 2 } else { 1 };
-                    splat!(out;
-                        Self::[#: variant.name](inner) => {
-                            [emit_table_alloc(out, ctx, "table", cap)]
-                            [if let Some(tag) = tag_lit {
-                                emit_tag_insert(out, ctx, "table", tag, name_lit.clone());
-                            }]
-                            table.insert_unique(
-                                [#ctx.crate_path]::Key::new([match mode {
-                                    TagMode::External => { out.buf.push(name_lit.into()); }
-                                    TagMode::Adjacent(_, content) => { out.buf.push(TokenTree::Literal((*content).clone())); }
-                                    _ => {}
-                                }]),
-                                [#ctx.crate_path]::ToToml::to_toml(inner, __arena)?,
-                                __arena,
-                            );
-                            Ok(table.into_item())
-                        }
-                    );
+                    if let Some(with) = field.with(TO_TOML) {
+                        splat!(out;
+                            Self::[#: variant.name](inner) => {
+                                [emit_table_alloc(out, ctx, "table", cap)]
+                                [if let Some(tag) = tag_lit {
+                                    emit_tag_insert(out, ctx, "table", tag, name_lit.clone());
+                                }]
+                                table.insert_unique(
+                                    [#ctx.crate_path]::Key::new([match mode {
+                                        TagMode::External => { out.buf.push(name_lit.into()); }
+                                        TagMode::Adjacent(_, content) => { out.buf.push(TokenTree::Literal((*content).clone())); }
+                                        _ => {}
+                                    }]),
+                                    [~with]::to_toml(inner, __arena)?,
+                                    __arena,
+                                );
+                                Ok(table.into_item())
+                            }
+                        );
+                    } else {
+                        splat!(out;
+                            Self::[#: variant.name](inner) => {
+                                [emit_table_alloc(out, ctx, "table", cap)]
+                                [if let Some(tag) = tag_lit {
+                                    emit_tag_insert(out, ctx, "table", tag, name_lit.clone());
+                                }]
+                                table.insert_unique(
+                                    [#ctx.crate_path]::Key::new([match mode {
+                                        TagMode::External => { out.buf.push(name_lit.into()); }
+                                        TagMode::Adjacent(_, content) => { out.buf.push(TokenTree::Literal((*content).clone())); }
+                                        _ => {}
+                                    }]),
+                                    < [~field.ty] as [#ctx.crate_path]::ToToml >::to_toml(inner, __arena)?,
+                                    __arena,
+                                );
+                                Ok(table.into_item())
+                            }
+                        );
+                    }
                 }
             }
             EnumKind::Struct => {
@@ -1200,9 +1241,14 @@ fn enum_from_toml_external(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVari
                     if variant.fields.len() != 1 {
                         throw!("Only single-field tuple variants are supported in external tagging")
                     }
+                    let field = &variant.fields[0];
                     splat!(out; [@name_lit.into()] =>);
                     let arm_at = out.buf.len();
-                    splat!(out; let Ok(__val) = [#ctx.crate_path]::FromToml::from_toml(__ctx, value) else);
+                    if let Some(with) = field.with(FROM_TOML) {
+                        splat!(out; let Ok(__val) = [~with]::from_toml(__ctx, value) else);
+                    } else {
+                        splat!(out; let Ok(__val) = < [~field.ty] as [#ctx.crate_path]::FromToml<#[#: &ctx.lifetime]> >::from_toml(__ctx, value) else);
+                    }
                     emit_failed_return(out, ctx);
                     splat!(out; Ok(Self::[#: variant.name](__val)));
                     out.tt_group(Delimiter::Brace, arm_at);
@@ -1261,7 +1307,7 @@ fn enum_from_toml_internal(
     let tag_body_at = out.buf.len();
     splat!(out;
         if __key.name == [@tag_lit.clone().into()] {
-            let Ok(__t) = [#ctx.crate_path]::FromToml::from_toml(__ctx, __value) else
+            let Ok(__t) = <&str as [#ctx.crate_path]::FromToml<#[#: &ctx.lifetime]> >::from_toml(__ctx, __value) else
             [emit_failed_return(out, ctx)]
             __tag = Some(__t);
             break;
@@ -1368,7 +1414,7 @@ fn enum_from_toml_adjacent(
     let extract_arms_at = out.buf.len();
     splat!(out;
         [@tag_lit.clone().into()] => {
-            let Ok(__t) = [#ctx.crate_path]::FromToml::from_toml(__ctx, __value) else
+            let Ok(__t) = <&str as [#ctx.crate_path]::FromToml<#[#: &ctx.lifetime]> >::from_toml(__ctx, __value) else
             [emit_failed_return(out, ctx)]
             __tag = Some(__t);
         }
@@ -1420,7 +1466,12 @@ fn enum_from_toml_adjacent(
                         if variant.fields.len() != 1 {
                             throw!("Only single-field tuple variants are supported")
                         }
-                        splat!(out; let Ok(__val) = [#ctx.crate_path]::FromToml::from_toml(__ctx, __content) else);
+                        let field = &variant.fields[0];
+                        if let Some(with) = field.with(FROM_TOML) {
+                            splat!(out; let Ok(__val) = [~with]::from_toml(__ctx, __content) else);
+                        } else {
+                            splat!(out; let Ok(__val) = < [~field.ty] as [#ctx.crate_path]::FromToml<#[#: &ctx.lifetime]> >::from_toml(__ctx, __content) else);
+                        }
                         emit_failed_return(out, ctx);
                         splat!(out; Ok(Self::[#: variant.name](__val)));
                     }
@@ -1482,14 +1533,25 @@ fn enum_from_toml_untagged(out: &mut RustWriter, ctx: &Ctx, variants: &[EnumVari
                 if variant.fields.len() != 1 {
                     throw!("Only single-field tuple variants are supported in untagged enums")
                 }
+                let field = &variant.fields[0];
                 let match_start = out.buf.len();
-                splat!(out;
-                    match [#ctx.crate_path]::FromToml::from_toml(__ctx, __item) {
-                        Ok(__val) => return Ok(Self::[#: variant.name](__val)),
-                        [?(propagate) Err(__e) => return Err(__e),]
-                        [?(!propagate) Err(_) => { __ctx.errors.truncate(__err_len); }]
-                    }
-                );
+                if let Some(with) = field.with(FROM_TOML) {
+                    splat!(out;
+                        match [~with]::from_toml(__ctx, __item) {
+                            Ok(__val) => return Ok(Self::[#: variant.name](__val)),
+                            [?(propagate) Err(__e) => return Err(__e),]
+                            [?(!propagate) Err(_) => { __ctx.errors.truncate(__err_len); }]
+                        }
+                    );
+                } else {
+                    splat!(out;
+                        match < [~field.ty] as [#ctx.crate_path]::FromToml<#[#: &ctx.lifetime]> >::from_toml(__ctx, __item) {
+                            Ok(__val) => return Ok(Self::[#: variant.name](__val)),
+                            [?(propagate) Err(__e) => return Err(__e),]
+                            [?(!propagate) Err(_) => { __ctx.errors.truncate(__err_len); }]
+                        }
+                    );
+                }
                 if !propagate {
                     let match_body = out.split_off_stream(match_start);
                     splat!(out; { let __err_len = __ctx.errors.len(); [@TokenTree::Group(Group::new(Delimiter::None, match_body))] });
