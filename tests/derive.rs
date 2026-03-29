@@ -3981,6 +3981,7 @@ fn recoverable_internal_tag_enum_missing_field() {
 #[test]
 fn recoverable_adjacent_tag_enum() {
     #[derive(Toml, Debug)]
+    #[allow(dead_code)]
     #[toml(FromToml, recoverable, tag = "t", content = "c")]
     enum Msg {
         Data { a: bool, b: bool },

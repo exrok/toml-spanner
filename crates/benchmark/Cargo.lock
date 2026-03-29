@@ -22,7 +22,7 @@ dependencies = [
  "toml",
  "toml-span",
  "toml-spanner",
- "toml-spanner-macros",
+ "toml-spanner-macros 1.0.0",
  "toml_edit",
  "toml_parser",
  "unicode-ident",
@@ -503,13 +503,19 @@ name = "toml-spanner"
 version = "1.0.0"
 dependencies = [
  "foldhash",
- "toml-spanner-macros",
+ "toml-spanner-macros 1.0.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "zmij",
 ]
 
 [[package]]
 name = "toml-spanner-macros"
 version = "1.0.0"
+
+[[package]]
+name = "toml-spanner-macros"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8e31f017b6327c4d14f8a90240489076bdb23ea7d1c514ed1a45f72739c717ec"
 
 [[package]]
 name = "toml_datetime"
