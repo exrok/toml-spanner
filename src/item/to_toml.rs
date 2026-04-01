@@ -19,6 +19,9 @@ pub(crate) const ARRAY_REORDERED_BIT: u32 = 1 << 27;
 /// an inline array should be emitted in multiline format with one element
 /// per line and trailing commas.
 pub(crate) const EXPANDED_BIT: u32 = 1 << 25;
+/// Bit 24 of `end_and_flag`: when set in format-hints mode, prevents this
+/// item from being reprojected during format-preserving emission.
+pub(crate) const IGNORE_SOURCE_FORMATTING_RECURSIVELY_BIT: u32 = 1 << 24;
 
 impl ItemMetadata {
     /// Returns the projected index (bits 3-31 of `start_and_tag`).
@@ -119,6 +122,19 @@ impl ItemMetadata {
     pub(crate) fn clear_expanded(&mut self) {
         self.end_and_flag &= !EXPANDED_BIT;
     }
+
+    /// Prevents this item from being reprojected during format-preserving emission.
+    #[inline]
+    pub(crate) fn set_ignore_source_formatting_recursively(&mut self) {
+        self.end_and_flag |= HINTS_BIT | IGNORE_SOURCE_FORMATTING_RECURSIVELY_BIT;
+    }
+
+    /// Returns `true` if this item should skip reprojection and use formatted output.
+    #[inline]
+    pub(crate) fn ignore_source_formatting_recursively(&self) -> bool {
+        self.end_and_flag & (HINTS_BIT | IGNORE_SOURCE_FORMATTING_RECURSIVELY_BIT)
+            == (HINTS_BIT | IGNORE_SOURCE_FORMATTING_RECURSIVELY_BIT)
+    }
 }
 
 impl<'de> Item<'de> {
@@ -140,6 +156,20 @@ impl<'de> Item<'de> {
     /// Returns whether this item was marked as a full match during reprojection.
     pub(crate) fn is_reprojected_full_match(&self) -> bool {
         self.meta.is_reprojected_full_match()
+    }
+
+    /// Prevents this item and its entire subtree from using source formatting
+    /// during format-preserving emission. The item will be emitted with clean
+    /// formatted output even when the rest of the document preserves source
+    /// formatting via reprojection.
+    pub fn set_ignore_source_formatting_recursively(&mut self) {
+        self.meta.set_ignore_source_formatting_recursively();
+    }
+
+    /// Returns `true` if this item will skip source formatting during emission.
+    #[must_use]
+    pub fn ignore_source_formatting_recursively(&self) -> bool {
+        self.meta.ignore_source_formatting_recursively()
     }
 
     /// Returns `true` if this item is emitted as a subsection rather than

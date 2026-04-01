@@ -2102,3 +2102,430 @@ value = 21
     let output = String::from_utf8(output).unwrap();
     assert_eq!(output, expected);
 }
+
+#[test]
+fn ignore_source_formatting_recursively_reformats_value() {
+    let src_text = "\
+# comment on a
+a = 0xFF
+# comment on b
+b = 0xAB
+# comment on c
+c = 0o77
+";
+    let arena = Arena::new();
+    let src_doc = parse(src_text, &arena).unwrap();
+    let mut dest = src_doc.table().clone_in(&arena);
+
+    dest.get_mut("b")
+        .unwrap()
+        .set_ignore_source_formatting_recursively();
+
+    let mut items = Vec::new();
+    reproject(&src_doc, &mut dest, &mut items);
+
+    let config = EmitConfig {
+        projected_source_text: src_text,
+        projected_source_items: &items,
+        ..EmitConfig::default()
+    };
+    let mut buf = Vec::new();
+    emit::emit_with_config(dest.normalize(), &config, &arena, &mut buf);
+    let output = String::from_utf8(buf).unwrap();
+
+    assert!(
+        output.contains("a = 0xFF"),
+        "unflagged 'a' should preserve source hex format: {output}"
+    );
+    assert!(
+        !output.contains("0xAB"),
+        "flagged 'b' should not preserve source hex format: {output}"
+    );
+    assert!(
+        output.contains("b = 171"),
+        "flagged 'b' should use decimal: {output}"
+    );
+    assert!(
+        output.contains("c = 0o77"),
+        "unflagged 'c' should preserve source octal format: {output}"
+    );
+    assert!(
+        output.contains("# comment on a"),
+        "interstitial comments are preserved by gap handling: {output}"
+    );
+}
+
+#[test]
+fn ignore_source_formatting_recursively_swap_drops_comments() {
+    let src_text = "\
+header = 0 #kept header
+a.path = \"/system\" # value is 0, so /system must be kept
+a.value = 0
+b.path = \"/system\" # this can be changed because value is 1
+b.value = 1
+footer = 0 #kept footer
+";
+    let arena = Arena::new();
+    let src_doc = parse(src_text, &arena).unwrap();
+    let mut dest = src_doc.table().clone_in(&arena);
+
+    let [_, (_, a), (_, b), _] = dest.entries_mut() else {
+        panic!("expected 4 root entries: header, a, b, footer");
+    };
+    std::mem::swap(a, b);
+    a.set_ignore_source_formatting_recursively();
+    b.set_ignore_source_formatting_recursively();
+
+    let mut items = Vec::new();
+    reproject(&src_doc, &mut dest, &mut items);
+
+    let config = EmitConfig {
+        projected_source_text: src_text,
+        projected_source_items: &items,
+        ..EmitConfig::default()
+    };
+    let mut buf = Vec::new();
+    emit::emit_with_config(dest.normalize(), &config, &arena, &mut buf);
+    let output = String::from_utf8(buf).unwrap();
+
+    assert!(
+        output.contains("#kept header"),
+        "unflagged header should keep its comment: {output}"
+    );
+    assert!(
+        output.contains("#kept footer"),
+        "unflagged footer should keep its comment: {output}"
+    );
+    assert!(
+        !output.contains("value is 0"),
+        "swapped 'a' should not carry source comment: {output}"
+    );
+    assert!(
+        !output.contains("this can be changed"),
+        "swapped 'b' should not carry source comment: {output}"
+    );
+}
+
+#[test]
+fn ignore_source_formatting_recursively_trailing_comment_dropped() {
+    let src_text = "\
+a = 0xFF # keep this trailing comment
+b = 0xAB # drop this trailing comment
+c = 0o77 # keep this too
+";
+    let arena = Arena::new();
+    let src_doc = parse(src_text, &arena).unwrap();
+    let mut dest = src_doc.table().clone_in(&arena);
+
+    dest.get_mut("b")
+        .unwrap()
+        .set_ignore_source_formatting_recursively();
+
+    let mut items = Vec::new();
+    reproject(&src_doc, &mut dest, &mut items);
+
+    let config = EmitConfig {
+        projected_source_text: src_text,
+        projected_source_items: &items,
+        ..EmitConfig::default()
+    };
+    let mut buf = Vec::new();
+    emit::emit_with_config(dest.normalize(), &config, &arena, &mut buf);
+    let output = String::from_utf8(buf).unwrap();
+
+
+    assert!(
+        output.contains("# keep this trailing comment"),
+        "unflagged 'a' should keep trailing comment: {output}"
+    );
+    assert!(
+        !output.contains("# drop this trailing comment"),
+        "flagged 'b' should lose trailing comment: {output}"
+    );
+    assert!(
+        output.contains("# keep this too"),
+        "unflagged 'c' should keep trailing comment: {output}"
+    );
+}
+
+#[test]
+fn ignore_source_formatting_recursively_preceding_comment_dropped() {
+    // The flag means "emit as if no source existed." Preceding comments
+    // should be dropped for flagged entries, regardless of entry type.
+    // This test asserts the intended behavior from docs/format-spec.md
+    // Rule 1.
+    let src_text = "\
+# comment before a
+a = 1
+# comment before b
+b = 2
+# comment before c
+c = 3
+";
+    let arena = Arena::new();
+    let src_doc = parse(src_text, &arena).unwrap();
+    let mut dest = src_doc.table().clone_in(&arena);
+
+    dest.get_mut("b")
+        .unwrap()
+        .set_ignore_source_formatting_recursively();
+
+    let mut items = Vec::new();
+    reproject(&src_doc, &mut dest, &mut items);
+
+    let config = EmitConfig {
+        projected_source_text: src_text,
+        projected_source_items: &items,
+        ..EmitConfig::default()
+    };
+    let mut buf = Vec::new();
+    emit::emit_with_config(dest.normalize(), &config, &arena, &mut buf);
+    let output = String::from_utf8(buf).unwrap();
+
+    assert!(
+        output.contains("# comment before a"),
+        "unflagged 'a' should keep preceding comment: {output}"
+    );
+    assert!(
+        !output.contains("# comment before b"),
+        "flagged 'b' should drop preceding comment: {output}"
+    );
+    assert!(
+        output.contains("# comment before c"),
+        "unflagged 'c' should keep preceding comment: {output}"
+    );
+}
+
+#[test]
+fn ignore_source_formatting_recursively_header_table() {
+    let src_text = "\
+# section comment
+[package]
+name = \"test\" # inline comment
+version = \"1.0\"
+";
+    let arena = Arena::new();
+    let src_doc = parse(src_text, &arena).unwrap();
+    let mut dest = src_doc.table().clone_in(&arena);
+
+    dest.get_mut("package")
+        .unwrap()
+        .set_ignore_source_formatting_recursively();
+
+    let mut items = Vec::new();
+    reproject(&src_doc, &mut dest, &mut items);
+
+    let config = EmitConfig {
+        projected_source_text: src_text,
+        projected_source_items: &items,
+        ..EmitConfig::default()
+    };
+    let mut buf = Vec::new();
+    emit::emit_with_config(dest.normalize(), &config, &arena, &mut buf);
+    let output = String::from_utf8(buf).unwrap();
+
+
+    // The [package] header line comes from projected_span which returns
+    // None for flagged items. Children key spans are cleared by
+    // clear_stale_spans. So the entire section is freshly formatted.
+    assert!(
+        !output.contains("# inline comment"),
+        "children of flagged header should lose inline comments: {output}"
+    );
+    assert!(
+        output.contains("[package]"),
+        "header should still be emitted (formatted): {output}"
+    );
+    assert!(
+        output.contains("name = \"test\""),
+        "children should still be emitted: {output}"
+    );
+}
+
+#[test]
+fn ignore_source_formatting_recursively_first_entry() {
+    let src_text = "\
+# file header comment
+a = 1
+b = 2
+";
+    let arena = Arena::new();
+    let src_doc = parse(src_text, &arena).unwrap();
+    let mut dest = src_doc.table().clone_in(&arena);
+
+    dest.get_mut("a")
+        .unwrap()
+        .set_ignore_source_formatting_recursively();
+
+    let mut items = Vec::new();
+    reproject(&src_doc, &mut dest, &mut items);
+
+    let config = EmitConfig {
+        projected_source_text: src_text,
+        projected_source_items: &items,
+        ..EmitConfig::default()
+    };
+    let mut buf = Vec::new();
+    emit::emit_with_config(dest.normalize(), &config, &arena, &mut buf);
+    let output = String::from_utf8(buf).unwrap();
+
+    // Flagged entry has no source position, so the gap from cursor=0
+    // to the entry is not emitted. The file header comment is dropped.
+    assert!(
+        !output.contains("# file header comment"),
+        "comment before flagged first entry should be dropped: {output}"
+    );
+    assert!(
+        output.contains("a = 1"),
+        "flagged 'a' should still emit: {output}"
+    );
+}
+
+#[test]
+fn ignore_source_formatting_recursively_adjacent_flagged() {
+    let src_text = "\
+x = 1
+# between a and b
+a = 0xFF # a trailing
+# between b and c
+b = 0xAB # b trailing
+c = 3
+";
+    let arena = Arena::new();
+    let src_doc = parse(src_text, &arena).unwrap();
+    let mut dest = src_doc.table().clone_in(&arena);
+
+    dest.get_mut("a")
+        .unwrap()
+        .set_ignore_source_formatting_recursively();
+    dest.get_mut("b")
+        .unwrap()
+        .set_ignore_source_formatting_recursively();
+
+    let mut items = Vec::new();
+    reproject(&src_doc, &mut dest, &mut items);
+
+    let config = EmitConfig {
+        projected_source_text: src_text,
+        projected_source_items: &items,
+        ..EmitConfig::default()
+    };
+    let mut buf = Vec::new();
+    emit::emit_with_config(dest.normalize(), &config, &arena, &mut buf);
+    let output = String::from_utf8(buf).unwrap();
+
+
+    assert!(
+        !output.contains("# a trailing"),
+        "flagged 'a' should lose trailing comment: {output}"
+    );
+    assert!(
+        !output.contains("# b trailing"),
+        "flagged 'b' should lose trailing comment: {output}"
+    );
+    // Flagged entries have no source position, so gap comments
+    // that fall between flagged entries are also dropped.
+    assert!(
+        !output.contains("# between a and b"),
+        "gap comment before flagged 'a' should be dropped: {output}"
+    );
+    assert!(
+        !output.contains("# between b and c"),
+        "gap comment before flagged 'b' should be dropped: {output}"
+    );
+}
+
+#[test]
+fn ignore_source_formatting_recursively_skips_projection() {
+    let src_text = "[package]\nname = \"test\"\nversion = \"1.0\"\n";
+    let arena = Arena::new();
+    let src_doc = parse(src_text, &arena).unwrap();
+
+    let mut pkg = Table::new();
+    pkg.set_style(TableStyle::Dotted);
+    pkg.insert_unique(Key::new("name"), Item::from("test"), &arena);
+    pkg.insert_unique(Key::new("version"), Item::from("1.0"), &arena);
+    let mut dest = Table::default();
+    let mut pkg_item = pkg.into_item();
+    pkg_item.set_ignore_source_formatting_recursively();
+    dest.insert_unique(Key::new("package"), pkg_item, &arena);
+
+    let mut items = Vec::new();
+    reproject(&src_doc, &mut dest, &mut items);
+
+    assert_eq!(
+        dest["package"].as_table().unwrap().style(),
+        TableStyle::Dotted,
+        "ignore_source_formatting_recursively should prevent style copy from source Header"
+    );
+
+    let result = emit_table(&mut dest);
+    assert!(
+        !result.contains("[package]"),
+        "output should not contain header section: {result}"
+    );
+    assert!(
+        result.contains("package.name"),
+        "output should use dotted keys: {result}"
+    );
+}
+
+#[test]
+fn ignore_source_formatting_recursively_hint_survives() {
+    let src_text = "a = 1\nb = 2\n";
+    let arena = Arena::new();
+    let src_doc = parse(src_text, &arena).unwrap();
+    let mut dest_doc = parse(src_text, &arena).unwrap();
+
+    dest_doc.table.entries_mut()[0]
+        .1
+        .set_ignore_source_formatting_recursively();
+    assert!(dest_doc.table.entries_mut()[0]
+        .1
+        .ignore_source_formatting_recursively());
+
+    let mut items = Vec::new();
+    reproject(&src_doc, &mut dest_doc.table, &mut items);
+
+    assert!(
+        dest_doc.table.entries_mut()[0]
+            .1
+            .ignore_source_formatting_recursively(),
+        "ignore_source_formatting_recursively hint was destroyed by reprojection"
+    );
+}
+
+#[test]
+fn ignore_source_formatting_recursively_selective() {
+    let src_text = "[a]\nx = 1\n\n[b]\ny = 2\n";
+    let arena = Arena::new();
+    let src_doc = parse(src_text, &arena).unwrap();
+
+    let mut sect_a = Table::new();
+    sect_a.set_style(TableStyle::Dotted);
+    sect_a.insert_unique(Key::new("x"), Item::from(1i64), &arena);
+    let mut item_a = sect_a.into_item();
+    item_a.set_ignore_source_formatting_recursively();
+
+    let mut sect_b = Table::new();
+    sect_b.set_style(TableStyle::Implicit);
+    sect_b.insert_unique(Key::new("y"), Item::from(2i64), &arena);
+
+    let mut dest = Table::default();
+    dest.insert_unique(Key::new("a"), item_a, &arena);
+    dest.insert_unique(Key::new("b"), sect_b.into_item(), &arena);
+
+    let mut items = Vec::new();
+    reproject(&src_doc, &mut dest, &mut items);
+
+    assert_eq!(
+        dest["a"].as_table().unwrap().style(),
+        TableStyle::Dotted,
+        "flagged 'a' should keep Dotted"
+    );
+    assert_eq!(
+        dest["b"].as_table().unwrap().style(),
+        TableStyle::Header,
+        "unflagged 'b' should get Header from source"
+    );
+}

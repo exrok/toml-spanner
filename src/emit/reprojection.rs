@@ -82,6 +82,11 @@ fn reproject_item<'de>(
     items: &mut Vec<&'de Item<'de>>,
     span_identity: bool,
 ) -> bool {
+    if dest.meta.ignore_source_formatting_recursively() {
+        clear_stale_item(dest);
+        return false;
+    }
+
     let mut container_match = false;
     let full_match = match (src.value(), dest.value_mut()) {
         (Value::String(a), ValueMut::String(b)) => *a == *b,
@@ -173,6 +178,10 @@ fn reproject_table<'de>(
         if !item_full {
             all_matched = false;
         }
+        if dst_item.meta.ignore_source_formatting_recursively() {
+            dst_key.span = Span::default();
+            continue;
+        }
         if ignore_style {
             continue;
         }
@@ -195,7 +204,9 @@ fn reproject_table<'de>(
             if !first_table_matched {
                 first_table_matched = true;
                 for (key, item) in &mut entries[..i] {
-                    if key.span.is_empty() {
+                    if key.span.is_empty()
+                        && !item.meta.ignore_source_formatting_recursively()
+                    {
                         if let Some(dt) = item.as_table_mut() {
                             dt.set_style(kind);
                         }
@@ -236,7 +247,9 @@ fn reproject_table<'de>(
             if !first_array_matched {
                 first_array_matched = true;
                 for (key, item) in &mut entries[..i] {
-                    if key.span.is_empty() {
+                    if key.span.is_empty()
+                        && !item.meta.ignore_source_formatting_recursively()
+                    {
                         if let Some(dt) = item.as_array_mut() {
                             if !dt.is_auto_style() {
                                 dt.set_style(kind);
