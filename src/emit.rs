@@ -133,15 +133,7 @@ pub(crate) fn emit_with_config(
 enum EmitOp<'a, 'b, 'de> {
     Body(&'a Key<'de>, &'a Item<'de>, Option<&'b Prefix<'b, 'de>>),
     Header(&'a Table<'de>, &'a Item<'de>, &'b Prefix<'b, 'de>),
-    AotElement(&'a Table<'de>, &'a Item<'de>, &'b Prefix<'b, 'de>),
-}
-
-fn is_reordered_aot(op: &EmitOp<'_, '_, '_>) -> bool {
-    if let EmitOp::AotElement(_, entry, _) = op {
-        entry.meta.array_reordered()
-    } else {
-        false
-    }
+    AotElement(&'a Table<'de>, &'a Item<'de>, &'b Prefix<'b, 'de>, bool),
 }
 
 fn segment_index(sort_pos: u32, index: usize, is_body: bool) -> u64 {
@@ -209,21 +201,32 @@ fn emit_segment_prefix(
     cursor: &mut usize,
 ) {
     let ss = seg.source_start;
-    let is_header = matches!(seg.op, EmitOp::Header(..) | EmitOp::AotElement(..));
 
     if ss != u32::MAX {
         let target = ss as usize;
         if target >= *cursor {
             let pre_len = out.len();
             emit_gap(emit, *cursor, target, out);
-            if out.len() == pre_len && is_header && !out.is_empty() && out.last() != Some(&b'\n') {
+            if out.len() == pre_len
+                && matches!(seg.op, EmitOp::Header(..) | EmitOp::AotElement(..))
+                && !out.is_empty()
+                && out.last() != Some(&b'\n')
+            {
                 out.push(b'\n');
             }
             *cursor = target;
-        } else if is_header && !is_reordered_aot(&seg.op) {
+        } else if matches!(seg.op, EmitOp::Header(..) | EmitOp::AotElement(..)) {
             out.push(b'\n');
         }
-    } else if is_header && !is_reordered_aot(&seg.op) {
+    } else if let EmitOp::AotElement(_, entry, _, blank_sep) = &seg.op {
+        if entry.meta.array_reordered() {
+            if *blank_sep && !out.is_empty() {
+                out.push(b'\n');
+            }
+        } else {
+            out.push(b'\n');
+        }
+    } else if matches!(seg.op, EmitOp::Header(..)) && !out.is_empty() {
         out.push(b'\n');
     }
 }
@@ -265,7 +268,7 @@ fn emit_ordered<'a, 'b, 'de: 'b>(
             EmitOp::Header(sub_table, item, node) => {
                 emit_header_body(sub_table, item, node, emit, out, cursor);
             }
-            EmitOp::AotElement(sub_table, arr_entry, node) => {
+            EmitOp::AotElement(sub_table, arr_entry, node, _) => {
                 let pre_cursor = *cursor;
                 emit_aot_element(sub_table, arr_entry, node, emit, out, cursor);
                 // Prevent cursor from going backwards when elements are
@@ -388,6 +391,7 @@ fn collect_segments<'a, 'b, 'de: 'b>(
             if !key.span.is_empty() {
                 *last_projected = key.span.start;
             }
+            let blank_sep = aot_has_blank_separators(arr, emit);
             let mut prev_aot_pos: u32 = 0;
             for arr_entry in arr {
                 let Some(sub_table) = arr_entry.as_table() else {
@@ -412,7 +416,7 @@ fn collect_segments<'a, 'b, 'de: 'b>(
                     sort_pos: sp,
                     source_start: elem_source_start,
                     is_body: false,
-                    op: EmitOp::AotElement(sub_table, arr_entry, node),
+                    op: EmitOp::AotElement(sub_table, arr_entry, node, blank_sep),
                 });
             }
             continue;
@@ -523,7 +527,9 @@ fn emit_projected_header_line(
     if include_comment_prefix {
         let (pstart, pend) = find_comment_prefix(emit.src, hdr_start);
         if pstart != pend {
-            out.extend_from_slice(&emit.src[pstart..pend]);
+            if let Some(comment_start) = first_comment_line(emit.src, pstart, pend) {
+                out.extend_from_slice(&emit.src[comment_start..pend]);
+            }
         }
     }
     let hdr_line_end = line_end_of(emit.src, hdr_start);
@@ -746,6 +752,38 @@ fn write_dotted_key(
     emit_key(key.name, key.span, emit, out);
 }
 
+fn aot_has_blank_separators(arr: &Array<'_>, emit: &Emitter<'_, '_>) -> bool {
+    for elem in arr {
+        if let Some(src_span) = projected_span(elem, emit) {
+            let hdr_start = src_span.start as usize;
+            if hdr_start < emit.src.len() && emit.src[hdr_start] == b'[' {
+                let (ps, pe) = find_comment_prefix(emit.src, hdr_start);
+                if ps != pe {
+                    return true;
+                }
+            }
+        }
+    }
+    false
+}
+
+fn first_comment_line(src: &[u8], start: usize, end: usize) -> Option<usize> {
+    let mut i = start;
+    while i < end {
+        let line_end = line_end_of(src, i).min(end);
+        for &b in &src[i..line_end] {
+            if b != b' ' && b != b'\t' {
+                if b == b'#' {
+                    return Some(i);
+                }
+                break;
+            }
+        }
+        i = line_end;
+    }
+    None
+}
+
 /// Returns the byte offset of the start of the line containing `pos`.
 fn line_start_of(src: &[u8], pos: usize) -> usize {
     let mut i = pos;
@@ -823,9 +861,9 @@ fn line_end_of(src: &[u8], pos: usize) -> usize {
 /// cursor-based gap emission spans over removed entries.
 fn emit_gap(emit: &Emitter<'_, '_>, start: usize, end: usize, out: &mut Vec<u8>) {
     let mut i = start;
+    let mut comment_buf_start = None;
     while i < end {
         let line_end = line_end_of(emit.src, i).min(end);
-        // Check the first non-whitespace byte on this line.
         let mut first_non_ws = None;
         for &b in &emit.src[i..line_end] {
             if b != b' ' && b != b'\t' {
@@ -834,14 +872,25 @@ fn emit_gap(emit: &Emitter<'_, '_>, start: usize, end: usize, out: &mut Vec<u8>)
             }
         }
         match first_non_ws {
-            // Comment line or blank line (only whitespace/newline) — emit it.
-            Some(b'#') | Some(b'\n') | Some(b'\r') | None => {
+            Some(b'#') => {
+                if comment_buf_start.is_none() {
+                    comment_buf_start = Some(i);
+                }
+            }
+            Some(b'\n') | Some(b'\r') | None => {
+                if let Some(buf_start) = comment_buf_start.take() {
+                    out.extend_from_slice(&emit.src[buf_start..i]);
+                }
                 out.extend_from_slice(&emit.src[i..line_end]);
             }
-            // Anything else is a TOML entry line — skip it.
-            _ => {}
+            _ => {
+                comment_buf_start = None;
+            }
         }
         i = line_end;
+    }
+    if let Some(buf_start) = comment_buf_start {
+        out.extend_from_slice(&emit.src[buf_start..end]);
     }
 }
 

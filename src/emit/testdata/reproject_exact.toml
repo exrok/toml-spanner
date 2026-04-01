@@ -420,7 +420,6 @@ a = 1
 c = 3
 b = 2
 #-- EXPECTED
-
 [[arr]]
 x = 10
 y = 20
@@ -514,3 +513,28 @@ b = 2
 
 # below
 
+#--- insert_and_reorder_aot
+#-- SOURCE
+[[a]]
+x = 1
+
+[[a]]
+x = 3
+#-- MODIFIED
+[[a]]
+x = 3
+
+[[a]]
+x = 2
+
+[[a]]
+x = 1
+#-- EXPECTED
+[[a]]
+x = 3
+
+[[a]]
+x = 2
+
+[[a]]
+x = 1

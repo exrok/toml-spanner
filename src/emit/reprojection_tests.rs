@@ -2015,3 +2015,90 @@ name = \"a\"
 ";
     assert_eq!(result, expected, "result: {result:?}");
 }
+
+#[test]
+fn span_identity_reordered_aot_keeps_file_prefix_once() {
+    let source = "\
+# file comment
+[[servers]]
+name = \"a\"
+
+[[servers]]
+name = \"b\"
+";
+
+    let swap = |table: &mut Table<'_>| {
+        let arr = table.get_mut("servers").unwrap().as_array_mut().unwrap();
+        arr.as_mut_slice().swap(0, 1);
+    };
+
+    let result = format_with_span_identity(source, swap);
+
+    let expected = "\
+[[servers]]
+name = \"b\"
+
+# file comment
+[[servers]]
+name = \"a\"
+";
+    assert_eq!(result, expected, "result: {result:?}");
+}
+
+#[test]
+fn comments_of_lost_table_should_be_discarded() {
+    let arena = Arena::new();
+    let input = "\
+[alpha]
+# Hostname to bind to
+host = \"localhost\" # default
+# Port number
+port = 8080
+";
+    let doc = crate::parse(input, &arena).unwrap();
+
+    let mut table = doc.table().clone_in(&arena);
+    // Since the key changed here, we expect non of the formatting to be preserved.
+    let (_, server) = table.remove_entry("alpha").unwrap();
+    table.insert(Key::new("beta"), server, &arena);
+
+    let expected = "\
+[beta]
+host = \"localhost\"
+port = 8080
+";
+    let output = crate::Formatting::preserved_from(&doc).format_table_to_bytes(table, &arena);
+    let output = String::from_utf8(output).unwrap();
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn comments_of_lost_table_should_be_discarded_with_post_tables() {
+    let arena = Arena::new();
+    let input = "\
+[alpha]
+# Hostname to bind to
+host = \"localhost\" # default
+# Port number
+port = 8080
+
+[canary]
+value = 21
+";
+    let doc = crate::parse(input, &arena).unwrap();
+
+    let mut table = doc.table().clone_in(&arena);
+    table.entries_mut()[0].0 = Key::new("beta");
+
+    let expected = "\
+[beta]
+host = \"localhost\"
+port = 8080
+
+[canary]
+value = 21
+";
+    let output = crate::Formatting::preserved_from(&doc).format_table_to_bytes(table, &arena);
+    let output = String::from_utf8(output).unwrap();
+    assert_eq!(output, expected);
+}
