@@ -204,9 +204,7 @@ fn reproject_table<'de>(
             if !first_table_matched {
                 first_table_matched = true;
                 for (key, item) in &mut entries[..i] {
-                    if key.span.is_empty()
-                        && !item.meta.ignore_source_formatting_recursively()
-                    {
+                    if key.span.is_empty() && !item.meta.ignore_source_formatting_recursively() {
                         if let Some(dt) = item.as_table_mut() {
                             dt.set_style(kind);
                         }
@@ -247,9 +245,7 @@ fn reproject_table<'de>(
             if !first_array_matched {
                 first_array_matched = true;
                 for (key, item) in &mut entries[..i] {
-                    if key.span.is_empty()
-                        && !item.meta.ignore_source_formatting_recursively()
-                    {
+                    if key.span.is_empty() && !item.meta.ignore_source_formatting_recursively() {
                         if let Some(dt) = item.as_array_mut() {
                             if !dt.is_auto_style() {
                                 dt.set_style(kind);

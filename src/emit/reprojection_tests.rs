@@ -2233,7 +2233,6 @@ c = 0o77 # keep this too
     emit::emit_with_config(dest.normalize(), &config, &arena, &mut buf);
     let output = String::from_utf8(buf).unwrap();
 
-
     assert!(
         output.contains("# keep this trailing comment"),
         "unflagged 'a' should keep trailing comment: {output}"
@@ -2324,7 +2323,6 @@ version = \"1.0\"
     emit::emit_with_config(dest.normalize(), &config, &arena, &mut buf);
     let output = String::from_utf8(buf).unwrap();
 
-
     // The [package] header line comes from projected_span which returns
     // None for flagged items. Children key spans are cleared by
     // clear_stale_spans. So the entire section is freshly formatted.
@@ -2414,7 +2412,6 @@ c = 3
     emit::emit_with_config(dest.normalize(), &config, &arena, &mut buf);
     let output = String::from_utf8(buf).unwrap();
 
-
     assert!(
         !output.contains("# a trailing"),
         "flagged 'a' should lose trailing comment: {output}"
@@ -2480,9 +2477,11 @@ fn ignore_source_formatting_recursively_hint_survives() {
     dest_doc.table.entries_mut()[0]
         .1
         .set_ignore_source_formatting_recursively();
-    assert!(dest_doc.table.entries_mut()[0]
-        .1
-        .ignore_source_formatting_recursively());
+    assert!(
+        dest_doc.table.entries_mut()[0]
+            .1
+            .ignore_source_formatting_recursively()
+    );
 
     let mut items = Vec::new();
     reproject(&src_doc, &mut dest_doc.table, &mut items);

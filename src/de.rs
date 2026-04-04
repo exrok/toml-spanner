@@ -675,16 +675,56 @@ impl<'de> Context<'de> {
 
 pub use crate::Failed;
 
-/// Trait for types that can be constructed from a TOML [`Item`].
+/// Converts a TOML [`Item`] into a Rust type.
 ///
-/// Implement this to enable extraction via [`TableHelper::required`] and
-/// [`TableHelper::optional`]. Built-in implementations cover primitive types,
-/// `String`, `Vec<T>`, `Box<T>`, `Option<T>`, and more.
+/// `#[derive(Toml)]` generates `FromToml` by default, or add
+/// `#[toml(FromToml)]` to be explicit (required when also deriving
+/// `ToToml`). See the [`Toml`](macro@crate::Toml) derive macro for the full
+/// set of attributes, enum representations, and field options.
 ///
 /// # Examples
 ///
+/// [`from_str`](crate::from_str) parses and deserializes when all fields
+/// are owned:
+///
+#[cfg_attr(feature = "derive", doc = "```")]
+#[cfg_attr(not(feature = "derive"), doc = "```ignore")]
+/// use toml_spanner::Toml;
+///
+/// #[derive(Toml)]
+/// struct Config {
+///     name: String,
+///     port: u16,
+/// }
+///
+/// let config: Config = toml_spanner::from_str("name = 'app'\nport = 8080").unwrap();
 /// ```
-/// use toml_spanner::{Item, Context, FromToml, Failed, TableHelper};
+///
+/// Parse into a [`Document`](crate::Document) when fields borrow from the
+/// input. The `'de` lifetime spans both the source text and the [`Arena`],
+/// so `&'de str` fields work even when the value contains escape sequences
+/// (the arena stores the decoded string).
+///
+#[cfg_attr(feature = "derive", doc = "```")]
+#[cfg_attr(not(feature = "derive"), doc = "```ignore")]
+/// use toml_spanner::{Arena, parse, Toml};
+///
+/// #[derive(Toml)]
+/// struct Package<'a> {
+///     name: &'a str,
+///     version: &'a str,
+/// }
+///
+/// let arena = Arena::new();
+/// let mut doc = parse("name = 'my-pkg'\nversion = '1.0'", &arena).unwrap();
+/// let pkg: Package<'_> = doc.to().unwrap();
+/// assert_eq!(pkg.name, "my-pkg");
+/// ```
+///
+/// Manual implementation with [`TableHelper`]:
+///
+/// ```
+/// use toml_spanner::{Item, Context, FromToml, Failed};
 ///
 /// struct Point {
 ///     x: f64,
@@ -701,6 +741,33 @@ pub use crate::Failed;
 ///     }
 /// }
 /// ```
+///
+/// [`require_empty`](TableHelper::require_empty) rejects unknown keys by
+/// returning [`Failed`]. The derive defaults to recording them as warnings
+/// instead, a distinction covered below.
+///
+/// # Error handling
+///
+/// [`Failed`] is a zero size sentinel, not an error type. All actual errors
+/// are recorded in the shared [`Context`], which collects every problem
+/// across the entire pass so they can be reported together. Use the
+/// `report_*` methods on [`Context`] (such as
+/// [`report_custom_error`](Context::report_custom_error)) to record an
+/// error and receive a [`Failed`] to return. Always push at least one error
+/// before returning `Err(Failed)`.
+///
+/// An implementation can also push errors while still returning `Ok`,
+/// recording problems without preventing construction. This is how the
+/// derive handles unknown keys by default (`warn_unknown_fields`).
+/// [`Document::to`](crate::Document::to) treats any recorded error as
+/// fatal, returning `Err` even when `from_toml` succeeded.
+/// [`Document::to_allowing_errors`](crate::Document::to_allowing_errors)
+/// returns both the value and the accumulated errors, letting the caller
+/// decide which are acceptable.
+///
+/// For untagged enums, the derive snapshots the error count before
+/// attempting each variant and truncates on failure, so only errors from
+/// the matching (or final) variant are reported.
 pub trait FromToml<'de>: Sized {
     /// Attempts to construct `Self` from a TOML [`Item`].
     fn from_toml(ctx: &mut Context<'de>, item: &Item<'de>) -> Result<Self, Failed>;

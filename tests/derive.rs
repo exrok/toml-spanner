@@ -3899,8 +3899,8 @@ fn recoverable_default_fields_still_work() {
         b: bool,
     }
     let v: Example = toml_spanner::from_str("a = true").unwrap();
-    assert_eq!(v.a, true);
-    assert_eq!(v.b, false);
+    assert!(v.a);
+    assert!(!v.b);
 }
 
 #[test]

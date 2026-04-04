@@ -28,29 +28,39 @@ fn required_to_optional<'a>(
     }
 }
 
-/// Trait for types that can be converted into a TOML [`Item`] tree.
+/// Converts a Rust type into a TOML [`Item`] tree.
 ///
-/// Implement either [`to_toml`](Self::to_toml) or
-/// [`to_optional_toml`](Self::to_optional_toml). Default implementations
-/// bridge between them. Built-in implementations cover primitive types,
-/// `String`, `Vec<T>`, `HashMap`, `BTreeMap`, `Option<T>`, and more.
+/// `#[derive(Toml)]` with `#[toml(ToToml)]` generates the implementation
+/// (the derive defaults to [`FromToml`](crate::FromToml) without it). See the
+/// [`Toml`](macro@crate::Toml) derive macro for the full set of attributes
+/// and field options like `skip_if` and `style`.
+///
+/// For manual implementations, implement [`to_toml`](Self::to_toml) for
+/// values that are always present, or
+/// [`to_optional_toml`](Self::to_optional_toml) for values that may be
+/// absent (returning `Ok(None)` to omit the field). Default implementations
+/// bridge between the two so only one needs to be provided.
+///
+/// The simplest entry point is [`to_string`](crate::to_string) for default
+/// formatting, or [`Formatting`](crate::Formatting) for format preservation
+/// and customizing formatting defaults.
 ///
 /// # Examples
 ///
 /// ```
-/// use toml_spanner::{Arena, Item, Key, Table, ToToml, ToTomlError};
+/// use toml_spanner::Toml;
 ///
-/// struct Color { r: u8, g: u8, b: u8 }
-///
-/// impl ToToml for Color {
-///     fn to_toml<'a>(&'a self, arena: &'a Arena) -> Result<Item<'a>, ToTomlError> {
-///         let mut table = Table::new();
-///         table.insert_unique(Key::new("r"), Item::from(self.r as i64), arena);
-///         table.insert_unique(Key::new("g"), Item::from(self.g as i64), arena);
-///         table.insert_unique(Key::new("b"), Item::from(self.b as i64), arena);
-///         Ok(table.into_item())
-///     }
+/// #[derive(Toml)]
+/// #[toml(ToToml)]
+/// struct Config {
+///     name: String,
+///     port: u16,
 /// }
+///
+/// let config = Config { name: "app".into(), port: 8080 };
+/// let output = toml_spanner::to_string(&config).unwrap();
+/// assert!(output.contains("name = \"app\""));
+/// assert!(output.contains("port = 8080"));
 /// ```
 pub trait ToToml {
     /// Produces a TOML [`Item`] representing this value.
