@@ -11,6 +11,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-04-04
+
+### Added
+
+- `ignore_source_formatting_recursively` option for emit, for opting out of format preservation for
+  a particular item.
+
+### Fixed
+
+- Improve spacing around array-of-tables elements in emit
+- Require span equality for format preservation when `span_projection_identity` enabled.
+
 ## [1.0.0] - 2026-03-29
 
 ### Added
@@ -125,7 +137,9 @@ Initial release of `toml-spanner`, forked from [`toml-span`](https://github.com/
 
 <!-- next-url -->
 
-[Unreleased]: https://github.com/exrok/toml-spanner/compare/1.0.0...HEAD
+[Unreleased]: https://github.com/exrok/toml-spanner/compare/1.0.1...HEAD
+[1.0.1]: https://github.com/exrok/toml-spanner/compare/1.0.0...1.0.1
+[1.0.0]: https://github.com/exrok/toml-spanner/compare/0.4.0...1.0.0
 [0.4.0]: https://github.com/exrok/toml-spanner/compare/0.3.0...0.4.0
 [0.3.0]: https://github.com/exrok/toml-spanner/compare/0.2.0...0.3.0
 [0.2.0]: https://github.com/exrok/toml-spanner/compare/0.1.0...0.2.0
