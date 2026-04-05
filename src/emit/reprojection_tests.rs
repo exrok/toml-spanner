@@ -2046,6 +2046,64 @@ name = \"a\"
 }
 
 #[test]
+fn span_identity_prevents_misattribution_on_key_level_swap() {
+    // Two keys carry items with identical content but distinct
+    // formatting. The user swaps the items between the keys. Because
+    // contents match, default content-based reprojection treats each
+    // pair as a full match at its original key position and projects
+    // each source line verbatim, silently attaching every trailing
+    // comment to an item that was moved elsewhere.
+    //
+    // With span identity enabled, each pair's src and dest spans
+    // differ (the item under `alpha` carries beta's span after the
+    // swap, and vice versa). The strict span check flags both as
+    // ignore_source_formatting_recursively, so the trailing comments
+    // are dropped instead of wrongly reattached.
+    let source = "\
+alpha = \"data\" # config for alpha
+beta = \"data\" # config for beta
+";
+
+    let swap_items = |table: &mut Table<'_>| {
+        let entries = table.entries_mut();
+        let (left, right) = entries.split_at_mut(1);
+        std::mem::swap(&mut left[0].1, &mut right[0].1);
+    };
+
+    let without = format_without_span_identity(source, swap_items);
+    assert!(
+        without.contains("# config for alpha"),
+        "default: alpha's comment stays at the alpha key even though the \
+         item under alpha came from beta: {without}"
+    );
+    assert!(
+        without.contains("# config for beta"),
+        "default: beta's comment stays at the beta key even though the \
+         item under beta came from alpha: {without}"
+    );
+
+    let with = format_with_span_identity(source, swap_items);
+    assert!(
+        !with.contains("# config for alpha"),
+        "span identity: refuses to attach alpha's comment to a foreign \
+         item: {with}"
+    );
+    assert!(
+        !with.contains("# config for beta"),
+        "span identity: refuses to attach beta's comment to a foreign \
+         item: {with}"
+    );
+    assert!(
+        with.contains("alpha = \"data\""),
+        "span identity: alpha value still emitted: {with}"
+    );
+    assert!(
+        with.contains("beta = \"data\""),
+        "span identity: beta value still emitted: {with}"
+    );
+}
+
+#[test]
 fn comments_of_lost_table_should_be_discarded() {
     let arena = Arena::new();
     let input = "\

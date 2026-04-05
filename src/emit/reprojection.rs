@@ -87,6 +87,12 @@ fn reproject_item<'de>(
         return false;
     }
 
+    if span_identity && src.span() != dest.span() {
+        dest.meta.set_ignore_source_formatting_recursively();
+        clear_stale_item(dest);
+        return false;
+    }
+
     let mut container_match = false;
     let full_match = match (src.value(), dest.value_mut()) {
         (Value::String(a), ValueMut::String(b)) => *a == *b,

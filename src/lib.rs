@@ -318,30 +318,6 @@ impl<'a> Formatting<'a> {
         }
     }
 
-    /// Enables span projection identity for array reprojection.
-    ///
-    /// By default, no assumptions are made about the spans of the format
-    /// target. With span projection identity enabled, spans of the target
-    /// are assumed to correspond to spans of the formatting reference.
-    /// This allows precise identity tracking of array elements through
-    /// reordering, removal, and deep mutation instead of the default
-    /// best-effort content-based matching.
-    ///
-    /// Intended for the lower-level [`Table`] mutation APIs where the
-    /// target was produced by parsing the same text as the formatting
-    /// reference. When round-tripping through [`FromToml`] and [`ToToml`],
-    /// spans are not preserved and this flag should not be used.
-    ///
-    /// Breaking the span correspondence assumption leads to unspecified
-    /// behavior, including panics or invalid TOML generation.
-    ///
-    /// [`FromToml`]: crate::FromToml
-    /// [`ToToml`]: crate::ToToml
-    pub fn with_span_projection_identity(mut self) -> Self {
-        self.span_projection_identity = true;
-        self
-    }
-
     /// Sets the indentation style for expanded inline arrays.
     /// Overrides auto-detection.
     pub fn with_indentation(mut self, indent: Indent) -> Self {
@@ -410,5 +386,68 @@ impl<'a> Formatting<'a> {
             );
         }
         buffer
+    }
+
+    /// Matches dest items to the formatting reference by span identity.
+    ///
+    /// By default, `Formatting` pairs dest items with reference items
+    /// by content equality. Content matching cannot distinguish items
+    /// carrying identical values, so mutations that swap, remove, or
+    /// reorder such items can silently reattach comments and numeric
+    /// formatting to the wrong items.
+    ///
+    /// With span identity enabled, each candidate pair's spans are
+    /// compared. When the spans match, the reference item's formatting
+    /// is projected onto the dest item. When they differ, the dest
+    /// item is treated as if
+    /// [`Item::set_ignore_source_formatting_recursively`] had been
+    /// called on it: its subtree is emitted from scratch rather than
+    /// pulling bytes from the reference text.
+    ///
+    /// Intended for the lower-level [`Table`] mutation APIs where the
+    /// dest tree was produced by cloning a parsed document. Not
+    /// suitable for round-trips through [`FromToml`] and [`ToToml`],
+    /// which do not preserve spans.
+    ///
+    /// The caller must ensure that every dest item carrying a
+    /// non-empty span points into the reference document. Items
+    /// replaced with fresh values, or otherwise stripped of their
+    /// original spans, are not projected even when their content
+    /// matches the reference.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use toml_spanner::{Arena, Formatting};
+    ///
+    /// let arena = Arena::new();
+    /// let source = "\
+    /// a = 1 # first
+    /// b = 1 # second
+    /// ";
+    /// let doc = toml_spanner::parse(source, &arena).unwrap();
+    ///
+    /// // Swap the two entries while keeping each item's original span.
+    /// let mut table = doc.table().clone_in(&arena);
+    /// let entries = table.entries_mut();
+    /// let (left, right) = entries.split_at_mut(1);
+    /// std::mem::swap(&mut left[0].1, &mut right[0].1);
+    ///
+    /// // Span identity catches the swap: content matching would leave
+    /// // each comment stuck to its original key, misattributing them.
+    /// let bytes = Formatting::preserved_from(&doc)
+    ///     .with_span_projection_identity()
+    ///     .format_table_to_bytes(table, &arena);
+    /// let output = String::from_utf8(bytes).unwrap();
+    /// assert!(!output.contains("# first"));
+    /// assert!(!output.contains("# second"));
+    /// ```
+    ///
+    /// [`Item::set_ignore_source_formatting_recursively`]: crate::Item::set_ignore_source_formatting_recursively
+    /// [`FromToml`]: crate::FromToml
+    /// [`ToToml`]: crate::ToToml
+    pub fn with_span_projection_identity(mut self) -> Self {
+        self.span_projection_identity = true;
+        self
     }
 }
