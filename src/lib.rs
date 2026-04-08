@@ -189,6 +189,7 @@ mod parser;
 #[cfg(feature = "to-toml")]
 mod ser;
 mod span;
+mod static_doc;
 mod time;
 
 /// Error sentinel indicating a failure.
@@ -220,6 +221,7 @@ pub use ser::ToTomlError;
 #[cfg(feature = "to-toml")]
 pub use ser::{ToFlattened, ToToml};
 pub use span::{Span, Spanned};
+pub use static_doc::{BorrowedValue, StaticDocument, StaticDocumentWith};
 pub use time::{Date, DateTime, Time, TimeOffset};
 
 #[cfg(feature = "derive")]
