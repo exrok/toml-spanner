@@ -185,6 +185,7 @@ mod error;
 #[cfg(feature = "from-toml")]
 pub mod helper;
 mod item;
+mod owned_item;
 mod parser;
 #[cfg(feature = "to-toml")]
 mod ser;
@@ -212,6 +213,7 @@ pub use error::{Error, ErrorKind, TomlPath};
 pub use item::array::Array;
 pub use item::table::Table;
 pub use item::{ArrayStyle, Integer, Item, Key, Kind, MaybeItem, TableStyle, Value, ValueMut};
+pub use owned_item::OwnedItem;
 #[cfg(feature = "from-toml")]
 pub use parser::parse_recoverable;
 pub use parser::{Document, parse};

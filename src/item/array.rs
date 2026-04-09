@@ -237,6 +237,32 @@ impl<'de> InternalArray<'de> {
             ptr: dst,
         }
     }
+
+    /// Deep-clones this array into `arena`, also copying all strings
+    /// so the result is independent of the original arena.
+    pub(crate) fn clone_in_deep<'new>(&self, arena: &'new Arena) -> InternalArray<'new> {
+        let len = self.len as usize;
+        if len == 0 {
+            return InternalArray::new();
+        }
+        let size = len * size_of::<Item<'new>>();
+        let dst: NonNull<Item<'new>> = arena.alloc(size).cast();
+        let src = self.ptr.as_ptr();
+        let dst_ptr = dst.as_ptr();
+
+        for i in 0..len {
+            // SAFETY: i < len, so src.add(i) is within initialized elements.
+            unsafe {
+                dst_ptr.add(i).write((*src.add(i)).deep_clone_in(arena));
+            }
+        }
+
+        InternalArray {
+            len: self.len,
+            cap: self.len,
+            ptr: dst,
+        }
+    }
 }
 
 impl std::fmt::Debug for InternalArray<'_> {
@@ -502,6 +528,15 @@ impl<'de> Array<'de> {
         };
         self.meta.set_flag(flag);
         self.meta.clear_auto_style();
+    }
+
+    /// Deep-clones this array into `arena`, also copying all strings
+    /// so the result is fully independent of the original arena.
+    pub fn clone_in_deep<'new>(&self, arena: &'new Arena) -> Array<'new> {
+        Array {
+            value: self.value.clone_in_deep(arena),
+            meta: self.meta,
+        }
     }
 
     /// Deep-clones this array into `arena`. Keys and strings are shared
