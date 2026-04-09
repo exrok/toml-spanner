@@ -4,6 +4,7 @@
 mod tests;
 
 pub(crate) mod array;
+pub(crate) mod owned;
 pub(crate) mod table;
 #[cfg(feature = "to-toml")]
 mod to_toml;
@@ -1102,10 +1103,10 @@ impl<'de> Item<'de> {
     /// # Safety
     ///
     /// `target` must have sufficient space as computed by
-    /// [`compute_size`](crate::owned_item).
+    /// [`compute_size`](crate::item::owned).
     pub(crate) unsafe fn emplace_in(
         &self,
-        target: &mut crate::owned_item::ItemCopyTarget,
+        target: &mut crate::item::owned::ItemCopyTarget,
     ) -> Item<'static> {
         match self.tag() {
             TAG_STRING => {
