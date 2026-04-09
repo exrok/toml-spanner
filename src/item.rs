@@ -4,6 +4,7 @@
 mod tests;
 
 pub(crate) mod array;
+pub(crate) mod owned;
 pub(crate) mod table;
 #[cfg(feature = "to-toml")]
 mod to_toml;
@@ -1059,12 +1060,12 @@ impl<'de> Item<'de> {
     pub fn has_key(&self, key: &str) -> bool {
         self.as_table().is_some_and(|t| t.contains_key(key))
     }
-
-    /// Deep-clones this item into `arena`.
+    /// Clones this item into `arena`, sharing existing strings.
     ///
-    /// Scalar values are copied directly. Tables and arrays are recursively
-    /// cloned with new arena-allocated storage. String keys and values
-    /// continue to reference their original memory.
+    /// Scalar values are copied directly. Tables and arrays are
+    /// recursively cloned with new arena-allocated storage. String
+    /// values and table key names continue to reference their original
+    /// memory, so the source arena (or input string) must remain alive.
     pub fn clone_in(&self, arena: &'de Arena) -> Item<'de> {
         if self.is_scalar() {
             // SAFETY: Scalar items have tags 0..=4 (STRING, INTEGER, FLOAT,
@@ -1093,6 +1094,58 @@ impl<'de> Item<'de> {
                     table: ManuallyDrop::new(cloned),
                 },
                 meta: self.meta,
+            }
+        }
+    }
+
+    /// Copies this item into `target`, returning a copy with `'static` lifetime.
+    ///
+    /// # Safety
+    ///
+    /// `target` must have sufficient space as computed by
+    /// [`compute_size`](crate::item::owned).
+    pub(crate) unsafe fn emplace_in(
+        &self,
+        target: &mut crate::item::owned::ItemCopyTarget,
+    ) -> Item<'static> {
+        match self.tag() {
+            TAG_STRING => {
+                // SAFETY: tag == TAG_STRING guarantees payload.string is active.
+                let s = unsafe { self.payload.string };
+                // SAFETY: Caller guarantees sufficient string space.
+                let new_s = unsafe { target.copy_str(s) };
+                Item {
+                    payload: Payload { string: new_s },
+                    meta: self.meta,
+                }
+            }
+            TAG_TABLE => {
+                // SAFETY: tag == TAG_TABLE guarantees payload.table is active.
+                // Caller guarantees sufficient space for recursive emplace.
+                let new_table = unsafe { self.payload.table.emplace_in(target) };
+                Item {
+                    payload: Payload {
+                        table: ManuallyDrop::new(new_table),
+                    },
+                    meta: self.meta,
+                }
+            }
+            TAG_ARRAY => {
+                // SAFETY: tag == TAG_ARRAY guarantees payload.array is active.
+                // Caller guarantees sufficient space for recursive emplace.
+                let new_array = unsafe { self.payload.array.emplace_in(target) };
+                Item {
+                    payload: Payload {
+                        array: ManuallyDrop::new(new_array),
+                    },
+                    meta: self.meta,
+                }
+            }
+            _ => {
+                // SAFETY: Non-string scalars (INTEGER, FLOAT, BOOLEAN, DATETIME)
+                // contain no borrowed data. Item<'de> and Item<'static> have
+                // identical layout. Item has no Drop impl.
+                unsafe { std::mem::transmute_copy(self) }
             }
         }
     }
@@ -1271,22 +1324,25 @@ pub(crate) fn equal_items(a: &Item<'_>, b: &Item<'_>, index: Option<&TableIndex<
             Kind::Table => {
                 let tab_a = a.as_table_unchecked();
                 let tab_b = b.as_table_unchecked();
-                if tab_a.len() != tab_b.len() {
-                    return false;
-                }
-                for (key, val_a) in tab_a {
-                    let Some((_, val_b)) = tab_b.value.get_entry_with_maybe_index(key.name, index)
-                    else {
-                        return false;
-                    };
-                    if !equal_items(val_a, val_b, index) {
-                        return false;
-                    }
-                }
-                true
+                equal_tables(tab_a, tab_b, index)
             }
         }
     }
+}
+
+pub(crate) fn equal_tables(a: &Table<'_>, b: &Table<'_>, index: Option<&TableIndex<'_>>) -> bool {
+    if a.len() != b.len() {
+        return false;
+    }
+    for (key, val_a) in a {
+        let Some((_, val_b)) = b.value.get_entry_with_maybe_index(key.name, index) else {
+            return false;
+        };
+        if !equal_items(val_a, val_b, index) {
+            return false;
+        }
+    }
+    true
 }
 
 impl<'de> PartialEq for Item<'de> {

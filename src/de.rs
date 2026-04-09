@@ -910,6 +910,53 @@ where
     }
 }
 
+impl<'de> FromFlattened<'de> for Table<'de> {
+    type Partial = Table<'de>;
+    fn init() -> Self::Partial {
+        Table::new()
+    }
+    fn insert(
+        ctx: &mut Context<'de>,
+        key: &Key<'de>,
+        item: &Item<'de>,
+        partial: &mut Self::Partial,
+    ) -> Result<(), Failed> {
+        partial.insert_unique(*key, item.clone_in(ctx.arena), ctx.arena);
+        Ok(())
+    }
+    fn finish(
+        _ctx: &mut Context<'de>,
+        parent: &Table<'de>,
+        mut partial: Self::Partial,
+    ) -> Result<Self, Failed> {
+        partial.meta = parent.meta;
+        Ok(partial)
+    }
+}
+
+impl<'de> FromFlattened<'de> for Item<'de> {
+    type Partial = Table<'de>;
+    fn init() -> Self::Partial {
+        Table::new()
+    }
+    fn insert(
+        ctx: &mut Context<'de>,
+        key: &Key<'de>,
+        item: &Item<'de>,
+        partial: &mut Self::Partial,
+    ) -> Result<(), Failed> {
+        <Table<'de> as FromFlattened<'de>>::insert(ctx, key, item, partial)
+    }
+    fn finish(
+        _ctx: &mut Context<'de>,
+        parent: &Table<'de>,
+        mut partial: Self::Partial,
+    ) -> Result<Self, Failed> {
+        partial.meta = parent.meta;
+        Ok(partial.into_item())
+    }
+}
+
 impl<'de, T: FromToml<'de>, const N: usize> FromToml<'de> for [T; N] {
     fn from_toml(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
         let boxed_slice = Box::<[T]>::from_toml(ctx, value)?;

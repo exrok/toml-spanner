@@ -122,3 +122,10 @@ path = "fuzz_targets/parse_recoverable.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "owned_table"
+path = "fuzz_targets/owned_table.rs"
+test = false
+doc = false
+bench = false

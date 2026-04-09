@@ -237,6 +237,38 @@ impl<'de> InternalArray<'de> {
             ptr: dst,
         }
     }
+
+    /// Copies this array into `target`, returning a copy with `'static` lifetime.
+    ///
+    /// # Safety
+    ///
+    /// `target` must have sufficient space as computed by
+    /// [`compute_size`](crate::item::owned).
+    pub(crate) unsafe fn emplace_in(
+        &self,
+        target: &mut crate::item::owned::ItemCopyTarget,
+    ) -> InternalArray<'static> {
+        let len = self.len as usize;
+        if len == 0 {
+            return InternalArray::new();
+        }
+        let byte_size = len * size_of::<Item<'static>>();
+        // SAFETY: Caller guarantees sufficient aligned space for len items.
+        let dst_ptr = unsafe { target.alloc_aligned(byte_size) }
+            .as_ptr()
+            .cast::<Item<'static>>();
+        for (i, item) in self.as_slice().iter().enumerate() {
+            let new_item = unsafe { item.emplace_in(target) };
+            // SAFETY: i < len, within the allocated region.
+            unsafe { dst_ptr.add(i).write(new_item) };
+        }
+        InternalArray {
+            len: self.len,
+            cap: self.len,
+            // SAFETY: dst_ptr is non-null (from alloc_aligned).
+            ptr: unsafe { NonNull::new_unchecked(dst_ptr) },
+        }
+    }
 }
 
 impl std::fmt::Debug for InternalArray<'_> {

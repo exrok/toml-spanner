@@ -302,6 +302,42 @@ impl<'de> InnerTable<'de> {
             ptr: dst,
         }
     }
+
+    /// Copies this table into `target`, returning a copy with `'static` lifetime.
+    ///
+    /// # Safety
+    ///
+    /// `target` must have sufficient space as computed by
+    /// [`compute_size`](crate::item::owned).
+    pub(crate) unsafe fn emplace_in(
+        &self,
+        target: &mut crate::item::owned::ItemCopyTarget,
+    ) -> InnerTable<'static> {
+        let len = self.len as usize;
+        if len == 0 {
+            return InnerTable::new();
+        }
+        let byte_size = len * size_of::<TableEntry<'static>>();
+        // SAFETY: Caller guarantees sufficient aligned space for len entries.
+        let dst_ptr = unsafe { target.alloc_aligned(byte_size) }
+            .as_ptr()
+            .cast::<TableEntry<'static>>();
+        for (i, (key, item)) in self.entries().iter().enumerate() {
+            let new_key = Key {
+                name: unsafe { target.copy_str(key.name) },
+                span: key.span,
+            };
+            let new_item = unsafe { item.emplace_in(target) };
+            // SAFETY: i < len, within the allocated region.
+            unsafe { dst_ptr.add(i).write((new_key, new_item)) };
+        }
+        InnerTable {
+            len: self.len,
+            cap: self.len,
+            // SAFETY: dst_ptr is non-null (from alloc_aligned).
+            ptr: unsafe { NonNull::new_unchecked(dst_ptr) },
+        }
+    }
 }
 
 impl std::fmt::Debug for InnerTable<'_> {
@@ -444,6 +480,12 @@ impl<'de> Table<'de> {
 impl<'de> Default for Table<'de> {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+impl PartialEq for Table<'_> {
+    fn eq(&self, other: &Self) -> bool {
+        super::equal_tables(self, other, None)
     }
 }
 
