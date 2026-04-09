@@ -186,7 +186,6 @@ mod error;
 pub mod helper;
 mod item;
 
-
 mod parser;
 #[cfg(feature = "to-toml")]
 mod ser;
@@ -212,9 +211,9 @@ use emit::{EmitConfig, emit_with_config};
 use emit::{reproject, reproject_with_span_identity};
 pub use error::{Error, ErrorKind, TomlPath};
 pub use item::array::Array;
+pub use item::owned::{OwnedItem, OwnedTable};
 pub use item::table::Table;
 pub use item::{ArrayStyle, Integer, Item, Key, Kind, MaybeItem, TableStyle, Value, ValueMut};
-pub use item::owned::{OwnedItem, OwnedTable};
 #[cfg(feature = "from-toml")]
 pub use parser::parse_recoverable;
 pub use parser::{Document, parse};

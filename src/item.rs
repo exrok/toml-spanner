@@ -1324,22 +1324,25 @@ pub(crate) fn equal_items(a: &Item<'_>, b: &Item<'_>, index: Option<&TableIndex<
             Kind::Table => {
                 let tab_a = a.as_table_unchecked();
                 let tab_b = b.as_table_unchecked();
-                if tab_a.len() != tab_b.len() {
-                    return false;
-                }
-                for (key, val_a) in tab_a {
-                    let Some((_, val_b)) = tab_b.value.get_entry_with_maybe_index(key.name, index)
-                    else {
-                        return false;
-                    };
-                    if !equal_items(val_a, val_b, index) {
-                        return false;
-                    }
-                }
-                true
+                equal_tables(tab_a, tab_b, index)
             }
         }
     }
+}
+
+pub(crate) fn equal_tables(a: &Table<'_>, b: &Table<'_>, index: Option<&TableIndex<'_>>) -> bool {
+    if a.len() != b.len() {
+        return false;
+    }
+    for (key, val_a) in a {
+        let Some((_, val_b)) = b.value.get_entry_with_maybe_index(key.name, index) else {
+            return false;
+        };
+        if !equal_items(val_a, val_b, index) {
+            return false;
+        }
+    }
+    true
 }
 
 impl<'de> PartialEq for Item<'de> {

@@ -483,6 +483,12 @@ impl<'de> Default for Table<'de> {
     }
 }
 
+impl PartialEq for Table<'_> {
+    fn eq(&self, other: &Self) -> bool {
+        super::equal_tables(self, other, None)
+    }
+}
+
 impl std::fmt::Debug for Table<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         self.value.fmt(f)
@@ -681,7 +687,6 @@ impl<'de> Table<'de> {
             meta: self.meta,
         }
     }
-
 }
 
 impl<'de> std::ops::Index<&str> for Table<'de> {

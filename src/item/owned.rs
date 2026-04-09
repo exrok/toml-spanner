@@ -31,9 +31,11 @@ impl ItemCopyTarget {
     /// `size` bytes must remain in the aligned region.
     pub(crate) unsafe fn alloc_aligned(&mut self, size: usize) -> NonNull<u8> {
         #[cfg(debug_assertions)]
-        // SAFETY: Pointer arithmetic for bounds check only.
+        // SAFETY: Both pointers are within (or one-past-the-end of) the
+        // same allocation, so offset_from is well-defined.
         unsafe {
-            assert!(self.aligned.add(size) <= self.aligned_end)
+            let remaining = self.aligned_end.offset_from(self.aligned) as usize;
+            assert!(size <= remaining);
         };
         let ptr = self.aligned;
         // SAFETY: Caller guarantees sufficient space in the aligned region.
@@ -56,9 +58,11 @@ impl ItemCopyTarget {
         }
         let len = s.len();
         #[cfg(debug_assertions)]
-        // SAFETY: Pointer arithmetic for bounds check only.
+        // SAFETY: Both pointers are within (or one-past-the-end of) the
+        // same allocation, so offset_from is well-defined.
         unsafe {
-            assert!(self.string.add(len) <= self.string_end)
+            let remaining = self.string_end.offset_from(self.string) as usize;
+            assert!(len <= remaining);
         };
         // SAFETY: Caller guarantees sufficient space. Source and destination
         // do not overlap (source is the parsed input or arena, destination is
@@ -110,10 +114,8 @@ fn compute_size(item: &Item<'_>, aligned: &mut usize, strings: &mut usize) {
 /// # Flattening
 ///
 /// [`FromFlattened`](crate::FromFlattened) is not provided because
-/// [`flatten_any`](crate::helper::flatten_any) is already optimal
-/// for this type. A direct implementation would still need to
-/// collect entries into a temporary table before deep-copying, which
-/// is exactly what `flatten_any` does.
+/// [`flatten_any`](crate::helper::flatten_any) is more performant
+/// than direct implementation could be, (due to current trait defintion).
 ///
 /// ```rust,ignore
 /// use toml_spanner::Toml;
@@ -229,7 +231,7 @@ impl Clone for OwnedTable {
 
 impl PartialEq for OwnedTable {
     fn eq(&self, other: &Self) -> bool {
-        self.inner == other.inner
+        self.table() == other.table()
     }
 }
 
@@ -261,8 +263,8 @@ impl From<&Table<'_>> for OwnedTable {
 /// the underlying [`Item`] through [`item()`](Self::item).
 ///
 /// [`FromFlattened`](crate::FromFlattened) is not provided because
-/// [`flatten_any`](crate::helper::flatten_any) is already optimal
-/// for this type. See [`OwnedTable`] for an example.
+/// [`flatten_any`](crate::helper::flatten_any) is more performant
+/// than direct implementation could be. See [`OwnedTable`] for an example.
 ///
 /// # Examples
 ///

@@ -194,6 +194,16 @@ fn assert_reproject_recovers(input: &str) {
 
     let src_doc = parse(input, &arena).unwrap();
 
+    // Deep-copy through OwnedTable and verify all values survive.
+    // Runs across every reproject_recovers test case, giving broad
+    // structural coverage of OwnedTable without dedicated tests.
+    let owned = crate::item::owned::OwnedTable::from(src_doc.table());
+    assert_eq!(
+        owned.as_item(),
+        src_doc.table().as_item(),
+        "OwnedTable roundtrip diverged from parsed source"
+    );
+
     let mut dest_doc = parse(input, &arena).unwrap();
     erase_kinds(&mut dest_doc.table);
 
@@ -1017,6 +1027,15 @@ fn assert_reproject_edit(src_text: &str, dest_text: &str) {
         panic!("dest failed to parse: {e:?}\ndest: {dest_text:?}");
     });
 
+    // OwnedTable roundtrip on the dest reference. Exercises deep-copy
+    // across the cross-document test inputs at no extra test cost.
+    let owned = crate::item::owned::OwnedTable::from(ref_root.table());
+    assert_eq!(
+        owned.as_item(),
+        ref_root.table().as_item(),
+        "OwnedTable roundtrip diverged from parsed dest"
+    );
+
     // Parse dest (working copy for reproject + normalize).
     let mut dest_doc = parse(dest_text, &arena).unwrap_or_else(|e| {
         panic!("dest failed to parse: {e:?}\ndest: {dest_text:?}");
@@ -1180,6 +1199,15 @@ fn run_edit_ordered(src_text: &str, dest_text: &str) {
     let ref_root = parse(dest_text, &arena).unwrap_or_else(|e| {
         panic!("dest failed to parse: {e:?}\ndest: {dest_text:?}");
     });
+
+    // OwnedTable roundtrip on the source document. Exercises deep-copy
+    // across all ordered-edit test inputs at no extra test cost.
+    let owned = crate::item::owned::OwnedTable::from(src_doc.table());
+    assert_eq!(
+        owned.as_item(),
+        src_doc.table().as_item(),
+        "OwnedTable roundtrip diverged from parsed source"
+    );
 
     // Parse dest (working copy for reproject + normalize).
     let mut dest_doc = parse(dest_text, &arena).unwrap_or_else(|e| {
