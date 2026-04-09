@@ -351,6 +351,32 @@ impl<K: ToToml, V: ToToml, H> ToFlattened for HashMap<K, V, H> {
     }
 }
 
+impl ToFlattened for Table<'_> {
+    fn to_flattened<'a>(
+        &'a self,
+        arena: &'a Arena,
+        table: &mut Table<'a>,
+    ) -> Result<(), ToTomlError> {
+        for (key, val) in self {
+            table.insert_unique(*key, val.clone_in(arena), arena);
+        }
+        Ok(())
+    }
+}
+
+impl ToFlattened for Item<'_> {
+    fn to_flattened<'a>(
+        &'a self,
+        arena: &'a Arena,
+        table: &mut Table<'a>,
+    ) -> Result<(), ToTomlError> {
+        let Some(src) = self.as_table() else {
+            return Err(ToTomlError::from("flatten: expected a table"));
+        };
+        src.to_flattened(arena, table)
+    }
+}
+
 impl<K: ToToml, V: ToToml> ToToml for BTreeMap<K, V> {
     fn to_toml<'a>(&'a self, arena: &'a Arena) -> Result<Item<'a>, ToTomlError> {
         let Some(mut table) = Table::try_with_capacity(self.len(), arena) else {

@@ -213,7 +213,7 @@ pub use error::{Error, ErrorKind, TomlPath};
 pub use item::array::Array;
 pub use item::table::Table;
 pub use item::{ArrayStyle, Integer, Item, Key, Kind, MaybeItem, TableStyle, Value, ValueMut};
-pub use owned_item::OwnedItem;
+pub use owned_item::{OwnedItem, OwnedTable};
 #[cfg(feature = "from-toml")]
 pub use parser::parse_recoverable;
 pub use parser::{Document, parse};

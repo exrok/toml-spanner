@@ -303,59 +303,12 @@ impl<'de> InnerTable<'de> {
         }
     }
 
-    /// Deep-clones this table into `arena`, also copying all strings
-    /// (key names and string values) so the result is independent of
-    /// the original arena.
-    pub(crate) fn clone_in_deep<'new>(&self, arena: &'new Arena) -> InnerTable<'new> {
-        let len = self.len as usize;
-        if len == 0 {
-            return InnerTable::new();
-        }
-        let size = len * size_of::<TableEntry<'new>>();
-        let dst: NonNull<TableEntry<'new>> = arena.alloc(size).cast();
-        let src = self.ptr.as_ptr();
-        let dst_ptr = dst.as_ptr();
-
-        for i in 0..len {
-            // SAFETY: i < len, so src.add(i) is within initialized entries.
-            unsafe {
-                let (key, item) = &*src.add(i);
-                let new_key = Key {
-                    name: arena.alloc_str(key.name),
-                    span: key.span,
-                };
-                dst_ptr.add(i).write((new_key, item.deep_clone_in(arena)));
-            }
-        }
-
-        InnerTable {
-            len: self.len,
-            cap: self.len,
-            ptr: dst,
-        }
-    }
-
-    /// Returns the total size needed to copy this table into an
-    /// [`OwnedItem`](crate::OwnedItem) allocation.
-    pub(crate) fn owned_size(&self) -> crate::owned_item::OwnedItemSize {
-        let len = self.len as usize;
-        let mut result = crate::owned_item::OwnedItemSize {
-            aligned: len * size_of::<TableEntry<'de>>(),
-            strings: 0,
-        };
-        for (key, item) in self.entries() {
-            result.strings += key.name.len();
-            result += item.owned_size();
-        }
-        result
-    }
-
     /// Copies this table into `target`, returning a copy with `'static` lifetime.
     ///
     /// # Safety
     ///
     /// `target` must have sufficient space as computed by
-    /// [`owned_size`](Self::owned_size).
+    /// [`compute_size`](crate::owned_item).
     pub(crate) unsafe fn emplace_in(
         &self,
         target: &mut crate::owned_item::ItemCopyTarget,
@@ -364,26 +317,25 @@ impl<'de> InnerTable<'de> {
         if len == 0 {
             return InnerTable::new();
         }
+        let byte_size = len * size_of::<TableEntry<'static>>();
         // SAFETY: Caller guarantees sufficient aligned space for len entries.
-        let dst: NonNull<TableEntry<'static>> =
-            unsafe { target.alloc_aligned::<TableEntry<'static>>(len) };
-        let dst_ptr = dst.as_ptr();
+        let dst_ptr = unsafe { target.alloc_aligned(byte_size) }
+            .as_ptr()
+            .cast::<TableEntry<'static>>();
         for (i, (key, item)) in self.entries().iter().enumerate() {
-            // SAFETY: Caller guarantees sufficient string and aligned space
-            // for all keys and recursive item data.
             let new_key = Key {
                 name: unsafe { target.copy_str(key.name) },
                 span: key.span,
             };
             let new_item = unsafe { item.emplace_in(target) };
-            // SAFETY: dst_ptr.add(i) is within the region just allocated
-            // (i < len).
+            // SAFETY: i < len, within the allocated region.
             unsafe { dst_ptr.add(i).write((new_key, new_item)) };
         }
         InnerTable {
             len: self.len,
             cap: self.len,
-            ptr: dst,
+            // SAFETY: dst_ptr is non-null (from alloc_aligned).
+            ptr: unsafe { NonNull::new_unchecked(dst_ptr) },
         }
     }
 }
@@ -730,15 +682,6 @@ impl<'de> Table<'de> {
         }
     }
 
-    /// Deep-clones this table into `arena`, also copying all strings
-    /// (key names and string values) so the result is fully independent
-    /// of the original arena.
-    pub fn clone_in_deep<'new>(&self, arena: &'new Arena) -> Table<'new> {
-        Table {
-            value: self.value.clone_in_deep(arena),
-            meta: self.meta,
-        }
-    }
 }
 
 impl<'de> std::ops::Index<&str> for Table<'de> {

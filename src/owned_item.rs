@@ -2,33 +2,13 @@
 #[path = "./owned_item_tests.rs"]
 mod tests;
 
-use crate::Item;
+use crate::item::{TAG_ARRAY, TAG_STRING, TAG_TABLE};
+use crate::{Item, Key, Kind, Table};
+use std::mem::size_of;
 use std::ptr::NonNull;
 
-/// Total size needed for an [`OwnedItem`] allocation, split into an
-/// 8-byte-aligned region (table entries, array elements) and a packed
-/// string region (key names, string values).
-pub(crate) struct OwnedItemSize {
-    pub(crate) aligned: usize,
-    pub(crate) strings: usize,
-}
-
-impl OwnedItemSize {
-    pub(crate) const ZERO: Self = Self {
-        aligned: 0,
-        strings: 0,
-    };
-}
-
-impl std::ops::AddAssign for OwnedItemSize {
-    fn add_assign(&mut self, rhs: Self) {
-        self.aligned += rhs.aligned;
-        self.strings += rhs.strings;
-    }
-}
-
-/// Write cursor into an [`OwnedItem`] allocation, used by `emplace_in`
-/// methods to copy item trees without an arena.
+/// Write cursor into an [`OwnedItem`] allocation, used by
+/// [`Item::emplace_in`] to copy item trees without an arena.
 ///
 /// The allocation is split into two contiguous regions:
 /// - **aligned** (front): table entries and array elements (8-byte aligned)
@@ -43,21 +23,19 @@ pub(crate) struct ItemCopyTarget {
 }
 
 impl ItemCopyTarget {
-    /// Bumps the aligned pointer forward by `count * size_of::<T>()` bytes,
-    /// returning a pointer to the start of the allocated region.
+    /// Bumps the aligned pointer forward by `size` bytes, returning
+    /// a pointer to the start of the allocated region.
     ///
     /// # Safety
     ///
-    /// `count * size_of::<T>()` bytes must remain in the aligned region.
-    #[inline]
-    pub(crate) unsafe fn alloc_aligned<T>(&mut self, count: usize) -> NonNull<T> {
-        let size = count * std::mem::size_of::<T>();
+    /// `size` bytes must remain in the aligned region.
+    pub(crate) unsafe fn alloc_aligned(&mut self, size: usize) -> NonNull<u8> {
         #[cfg(debug_assertions)]
         // SAFETY: Pointer arithmetic for bounds check only.
         unsafe {
             assert!(self.aligned.add(size) <= self.aligned_end)
         };
-        let ptr = self.aligned.cast::<T>();
+        let ptr = self.aligned;
         // SAFETY: Caller guarantees sufficient space in the aligned region.
         unsafe {
             self.aligned = self.aligned.add(size);
@@ -72,7 +50,6 @@ impl ItemCopyTarget {
     /// `s.len()` bytes must remain in the string region. The returned
     /// reference is `'static` only because OwnedItem manages the backing
     /// memory; the caller must not let it escape.
-    #[inline]
     pub(crate) unsafe fn copy_str(&mut self, s: &str) -> &'static str {
         if s.is_empty() {
             return "";
@@ -93,6 +70,55 @@ impl ItemCopyTarget {
             self.string = self.string.add(len);
             result
         }
+    }
+}
+
+/// Computes the total aligned and string bytes needed to deep-copy `item`.
+fn compute_size(item: &Item<'_>, aligned: &mut usize, strings: &mut usize) {
+    match item.tag() {
+        TAG_STRING => {
+            if let Some(s) = item.as_str() {
+                *strings += s.len();
+            }
+        }
+        TAG_TABLE => {
+            // SAFETY: tag == TAG_TABLE guarantees this is a table item.
+            let table = unsafe { item.as_table_unchecked() };
+            *aligned += table.len() * size_of::<(Key<'_>, Item<'_>)>();
+            for (key, child) in table {
+                *strings += key.name.len();
+                compute_size(child, aligned, strings);
+            }
+        }
+        TAG_ARRAY => {
+            // SAFETY: tag == TAG_ARRAY guarantees this is an array item.
+            let array = unsafe { item.as_array_unchecked() };
+            *aligned += array.len() * size_of::<Item<'_>>();
+            for child in array {
+                compute_size(child, aligned, strings);
+            }
+        }
+        _ => {}
+    }
+}
+
+pub struct OwnedTable {
+    inner: OwnedItem,
+}
+
+impl OwnedTable {
+    #[inline(always)]
+    pub fn table<'a>(&'a self) -> &'a Table<'a> {
+        // SAFETY: OwnedItem guarantees the item is valid for the lifetime of self.
+        unsafe { self.inner.item().as_table_unchecked() }
+    }
+}
+
+impl From<&Table<'_>> for OwnedTable {
+    fn from(value: &Table<'_>) -> Self {
+        let owned_item = OwnedItem::from(value.as_item());
+        debug_assert_eq!(owned_item.item().kind(), Kind::Table);
+        Self { inner: owned_item }
     }
 }
 
@@ -130,6 +156,18 @@ pub struct OwnedItem {
     capacity: usize,
 }
 
+impl std::fmt::Debug for OwnedItem {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.item.fmt(f)
+    }
+}
+
+impl Clone for OwnedItem {
+    fn clone(&self) -> Self {
+        OwnedItem::from(self.item())
+    }
+}
+
 impl Drop for OwnedItem {
     fn drop(&mut self) {
         if self.capacity > 0 {
@@ -154,8 +192,10 @@ impl<'a> From<&Item<'a>> for OwnedItem {
     /// backing storage is laid out in one contiguous buffer. The result
     /// is fully independent of the source arena.
     fn from(item: &Item<'a>) -> Self {
-        let size = item.owned_size();
-        let total = size.aligned + size.strings;
+        let mut aligned = 0usize;
+        let mut strings = 0usize;
+        compute_size(item, &mut aligned, &mut strings);
+        let total = aligned + strings;
 
         if total == 0 {
             // SAFETY: When total is 0 the item is either a non-string scalar
@@ -177,29 +217,26 @@ impl<'a> From<&Item<'a>> for OwnedItem {
             std::alloc::handle_alloc_error(layout);
         };
 
-        // SAFETY: base.add(size.aligned) and base.add(total) are within or
+        // SAFETY: base.add(aligned) and base.add(total) are within or
         // one-past-the-end of the allocation.
         let mut target = unsafe {
             ItemCopyTarget {
                 aligned: base.as_ptr(),
                 #[cfg(debug_assertions)]
-                aligned_end: base.as_ptr().add(size.aligned),
-                string: base.as_ptr().add(size.aligned),
+                aligned_end: base.as_ptr().add(aligned),
+                string: base.as_ptr().add(aligned),
                 #[cfg(debug_assertions)]
                 string_end: base.as_ptr().add(total),
             }
         };
 
-        // SAFETY: owned_size computed the exact space needed; emplace_in
+        // SAFETY: compute_size computed the exact space needed; emplace_in
         // consumes exactly that much from target.
         let new_item = unsafe { item.emplace_in(&mut target) };
 
         #[cfg(debug_assertions)]
         {
-            assert_eq!(
-                target.aligned as usize,
-                base.as_ptr() as usize + size.aligned
-            );
+            assert_eq!(target.aligned as usize, base.as_ptr() as usize + aligned);
             assert_eq!(target.string as usize, base.as_ptr() as usize + total);
         }
 
@@ -226,11 +263,9 @@ impl OwnedItem {
     /// The returned item borrows from `self` and provides the same
     /// accessor methods as any other [`Item`] (`as_str()`, `as_table()`,
     /// `value()`, etc.).
+    #[inline(always)]
     pub fn item<'a>(&'a self) -> &'a Item<'a> {
-        // SAFETY: Shortens `Item<'static>` to `Item<'a>`. Item is covariant
-        // in `'de`, so this is a subtyping cast the compiler cannot verify
-        // because `'static` is a fiction for the owned data.
-        unsafe { std::mem::transmute::<&Item<'static>, &Item<'a>>(&self.item) }
+        &self.item
     }
 }
 
@@ -245,5 +280,44 @@ impl<'a> crate::FromToml<'a> for OwnedItem {
 impl crate::ToToml for OwnedItem {
     fn to_toml<'a>(&'a self, arena: &'a crate::Arena) -> Result<Item<'a>, crate::ToTomlError> {
         Ok(self.item().clone_in(arena))
+    }
+}
+
+#[cfg(feature = "to-toml")]
+impl crate::ToFlattened for OwnedItem {
+    fn to_flattened<'a>(
+        &'a self,
+        arena: &'a crate::Arena,
+        table: &mut crate::Table<'a>,
+    ) -> Result<(), crate::ToTomlError> {
+        self.item().to_flattened(arena, table)
+    }
+}
+
+#[cfg(feature = "from-toml")]
+impl<'a> crate::FromToml<'a> for OwnedTable {
+    fn from_toml(ctx: &mut crate::Context<'a>, item: &Item<'a>) -> Result<Self, crate::Failed> {
+        let Ok(table) = item.require_table(ctx) else {
+            return Err(crate::Failed);
+        };
+        Ok(OwnedTable::from(table))
+    }
+}
+
+#[cfg(feature = "to-toml")]
+impl crate::ToToml for OwnedTable {
+    fn to_toml<'a>(&'a self, arena: &'a crate::Arena) -> Result<Item<'a>, crate::ToTomlError> {
+        Ok(self.table().as_item().clone_in(arena))
+    }
+}
+
+#[cfg(feature = "to-toml")]
+impl crate::ToFlattened for OwnedTable {
+    fn to_flattened<'a>(
+        &'a self,
+        arena: &'a crate::Arena,
+        table: &mut crate::Table<'a>,
+    ) -> Result<(), crate::ToTomlError> {
+        self.table().to_flattened(arena, table)
     }
 }

@@ -1059,69 +1059,12 @@ impl<'de> Item<'de> {
     pub fn has_key(&self, key: &str) -> bool {
         self.as_table().is_some_and(|t| t.contains_key(key))
     }
-    /// Clones this item into `arena`, copying all referenced strings.
-    ///
-    /// Unlike [`clone_in`](Self::clone_in), this also allocates fresh
-    /// copies of string values and table key names in `arena`. The
-    /// returned item is fully independent of whatever arena or input
-    /// the original was parsed from, which allows it to outlive the
-    /// source data.
-    ///
-    /// Use this when you need to transfer an item into a different
-    /// arena or when the original backing memory will be dropped.
-    /// Prefer [`clone_in`](Self::clone_in) when the source arena will
-    /// remain alive, as it avoids redundant string copies.
-    pub fn deep_clone_in<'new>(&self, arena: &'new Arena) -> Item<'new> {
-        match self.tag() {
-            TAG_STRING => {
-                // SAFETY: tag == TAG_STRING guarantees payload.string is active.
-                let s = unsafe { self.payload.string };
-                Item {
-                    payload: Payload {
-                        string: arena.alloc_str(s),
-                    },
-                    meta: self.meta,
-                }
-            }
-            TAG_ARRAY => {
-                // SAFETY: tag == TAG_ARRAY guarantees payload.array is active.
-                let cloned = unsafe { self.payload.array.clone_in_deep(arena) };
-                Item {
-                    payload: Payload {
-                        array: ManuallyDrop::new(cloned),
-                    },
-                    meta: self.meta,
-                }
-            }
-            TAG_TABLE => {
-                // SAFETY: tag == TAG_TABLE guarantees payload.table is active.
-                let cloned = unsafe { self.payload.table.clone_in_deep(arena) };
-                Item {
-                    payload: Payload {
-                        table: ManuallyDrop::new(cloned),
-                    },
-                    meta: self.meta,
-                }
-            }
-            _ => {
-                // SAFETY: Non-string scalars (INTEGER, FLOAT, BOOLEAN, DATETIME)
-                // contain no borrowed data from the arena. Item<'de> and
-                // Item<'new> have identical layout (same size, alignment, and
-                // field types for these tags). Item has no Drop impl.
-                unsafe { std::mem::transmute_copy(self) }
-            }
-        }
-    }
-
     /// Clones this item into `arena`, sharing existing strings.
     ///
     /// Scalar values are copied directly. Tables and arrays are
     /// recursively cloned with new arena-allocated storage. String
     /// values and table key names continue to reference their original
     /// memory, so the source arena (or input string) must remain alive.
-    ///
-    /// Use [`deep_clone_in`](Self::deep_clone_in) when the clone must
-    /// outlive the original backing memory.
     pub fn clone_in(&self, arena: &'de Arena) -> Item<'de> {
         if self.is_scalar() {
             // SAFETY: Scalar items have tags 0..=4 (STRING, INTEGER, FLOAT,
@@ -1154,36 +1097,12 @@ impl<'de> Item<'de> {
         }
     }
 
-    /// Returns the total size needed to deep-copy this item into an
-    /// [`OwnedItem`](crate::OwnedItem) allocation.
-    pub(crate) fn owned_size(&self) -> crate::owned_item::OwnedItemSize {
-        match self.tag() {
-            TAG_STRING => {
-                // SAFETY: tag == TAG_STRING guarantees payload.string is active.
-                let s = unsafe { self.payload.string };
-                crate::owned_item::OwnedItemSize {
-                    aligned: 0,
-                    strings: s.len(),
-                }
-            }
-            TAG_TABLE => {
-                // SAFETY: tag == TAG_TABLE guarantees payload.table is active.
-                unsafe { self.payload.table.owned_size() }
-            }
-            TAG_ARRAY => {
-                // SAFETY: tag == TAG_ARRAY guarantees payload.array is active.
-                unsafe { self.payload.array.owned_size() }
-            }
-            _ => crate::owned_item::OwnedItemSize::ZERO,
-        }
-    }
-
     /// Copies this item into `target`, returning a copy with `'static` lifetime.
     ///
     /// # Safety
     ///
     /// `target` must have sufficient space as computed by
-    /// [`owned_size`](Self::owned_size).
+    /// [`compute_size`](crate::owned_item).
     pub(crate) unsafe fn emplace_in(
         &self,
         target: &mut crate::owned_item::ItemCopyTarget,
