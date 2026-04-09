@@ -1,4 +1,5 @@
 use super::*;
+use crate::Arena;
 use crate::Span;
 use crate::item::array::InternalArray;
 use crate::item::table::InnerTable;

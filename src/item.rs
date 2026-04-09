@@ -1153,6 +1153,82 @@ impl<'de> Item<'de> {
             }
         }
     }
+
+    /// Returns the total size needed to deep-copy this item into an
+    /// [`OwnedItem`](crate::OwnedItem) allocation.
+    pub(crate) fn owned_size(&self) -> crate::owned_item::OwnedItemSize {
+        match self.tag() {
+            TAG_STRING => {
+                // SAFETY: tag == TAG_STRING guarantees payload.string is active.
+                let s = unsafe { self.payload.string };
+                crate::owned_item::OwnedItemSize {
+                    aligned: 0,
+                    strings: s.len(),
+                }
+            }
+            TAG_TABLE => {
+                // SAFETY: tag == TAG_TABLE guarantees payload.table is active.
+                unsafe { self.payload.table.owned_size() }
+            }
+            TAG_ARRAY => {
+                // SAFETY: tag == TAG_ARRAY guarantees payload.array is active.
+                unsafe { self.payload.array.owned_size() }
+            }
+            _ => crate::owned_item::OwnedItemSize::ZERO,
+        }
+    }
+
+    /// Copies this item into `target`, returning a copy with `'static` lifetime.
+    ///
+    /// # Safety
+    ///
+    /// `target` must have sufficient space as computed by
+    /// [`owned_size`](Self::owned_size).
+    pub(crate) unsafe fn emplace_in(
+        &self,
+        target: &mut crate::owned_item::ItemCopyTarget,
+    ) -> Item<'static> {
+        match self.tag() {
+            TAG_STRING => {
+                // SAFETY: tag == TAG_STRING guarantees payload.string is active.
+                let s = unsafe { self.payload.string };
+                // SAFETY: Caller guarantees sufficient string space.
+                let new_s = unsafe { target.copy_str(s) };
+                Item {
+                    payload: Payload { string: new_s },
+                    meta: self.meta,
+                }
+            }
+            TAG_TABLE => {
+                // SAFETY: tag == TAG_TABLE guarantees payload.table is active.
+                // Caller guarantees sufficient space for recursive emplace.
+                let new_table = unsafe { self.payload.table.emplace_in(target) };
+                Item {
+                    payload: Payload {
+                        table: ManuallyDrop::new(new_table),
+                    },
+                    meta: self.meta,
+                }
+            }
+            TAG_ARRAY => {
+                // SAFETY: tag == TAG_ARRAY guarantees payload.array is active.
+                // Caller guarantees sufficient space for recursive emplace.
+                let new_array = unsafe { self.payload.array.emplace_in(target) };
+                Item {
+                    payload: Payload {
+                        array: ManuallyDrop::new(new_array),
+                    },
+                    meta: self.meta,
+                }
+            }
+            _ => {
+                // SAFETY: Non-string scalars (INTEGER, FLOAT, BOOLEAN, DATETIME)
+                // contain no borrowed data. Item<'de> and Item<'static> have
+                // identical layout. Item has no Drop impl.
+                unsafe { std::mem::transmute_copy(self) }
+            }
+        }
+    }
 }
 
 impl<'de> Item<'de> {

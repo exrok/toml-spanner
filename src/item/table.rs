@@ -334,6 +334,58 @@ impl<'de> InnerTable<'de> {
             ptr: dst,
         }
     }
+
+    /// Returns the total size needed to copy this table into an
+    /// [`OwnedItem`](crate::OwnedItem) allocation.
+    pub(crate) fn owned_size(&self) -> crate::owned_item::OwnedItemSize {
+        let len = self.len as usize;
+        let mut result = crate::owned_item::OwnedItemSize {
+            aligned: len * size_of::<TableEntry<'de>>(),
+            strings: 0,
+        };
+        for (key, item) in self.entries() {
+            result.strings += key.name.len();
+            result += item.owned_size();
+        }
+        result
+    }
+
+    /// Copies this table into `target`, returning a copy with `'static` lifetime.
+    ///
+    /// # Safety
+    ///
+    /// `target` must have sufficient space as computed by
+    /// [`owned_size`](Self::owned_size).
+    pub(crate) unsafe fn emplace_in(
+        &self,
+        target: &mut crate::owned_item::ItemCopyTarget,
+    ) -> InnerTable<'static> {
+        let len = self.len as usize;
+        if len == 0 {
+            return InnerTable::new();
+        }
+        // SAFETY: Caller guarantees sufficient aligned space for len entries.
+        let dst: NonNull<TableEntry<'static>> =
+            unsafe { target.alloc_aligned::<TableEntry<'static>>(len) };
+        let dst_ptr = dst.as_ptr();
+        for (i, (key, item)) in self.entries().iter().enumerate() {
+            // SAFETY: Caller guarantees sufficient string and aligned space
+            // for all keys and recursive item data.
+            let new_key = Key {
+                name: unsafe { target.copy_str(key.name) },
+                span: key.span,
+            };
+            let new_item = unsafe { item.emplace_in(target) };
+            // SAFETY: dst_ptr.add(i) is within the region just allocated
+            // (i < len).
+            unsafe { dst_ptr.add(i).write((new_key, new_item)) };
+        }
+        InnerTable {
+            len: self.len,
+            cap: self.len,
+            ptr: dst,
+        }
+    }
 }
 
 impl std::fmt::Debug for InnerTable<'_> {

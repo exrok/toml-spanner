@@ -263,6 +263,52 @@ impl<'de> InternalArray<'de> {
             ptr: dst,
         }
     }
+
+    /// Returns the total size needed to copy this array into an
+    /// [`OwnedItem`](crate::OwnedItem) allocation.
+    pub(crate) fn owned_size(&self) -> crate::owned_item::OwnedItemSize {
+        let len = self.len as usize;
+        let mut result = crate::owned_item::OwnedItemSize {
+            aligned: len * size_of::<Item<'de>>(),
+            strings: 0,
+        };
+        for item in self.as_slice() {
+            result += item.owned_size();
+        }
+        result
+    }
+
+    /// Copies this array into `target`, returning a copy with `'static` lifetime.
+    ///
+    /// # Safety
+    ///
+    /// `target` must have sufficient space as computed by
+    /// [`owned_size`](Self::owned_size).
+    pub(crate) unsafe fn emplace_in(
+        &self,
+        target: &mut crate::owned_item::ItemCopyTarget,
+    ) -> InternalArray<'static> {
+        let len = self.len as usize;
+        if len == 0 {
+            return InternalArray::new();
+        }
+        // SAFETY: Caller guarantees sufficient aligned space for len items.
+        let dst: NonNull<Item<'static>> =
+            unsafe { target.alloc_aligned::<Item<'static>>(len) };
+        let dst_ptr = dst.as_ptr();
+        for (i, item) in self.as_slice().iter().enumerate() {
+            // SAFETY: Caller guarantees sufficient space for recursive emplace.
+            let new_item = unsafe { item.emplace_in(target) };
+            // SAFETY: dst_ptr.add(i) is within the region just allocated
+            // (i < len).
+            unsafe { dst_ptr.add(i).write(new_item) };
+        }
+        InternalArray {
+            len: self.len,
+            cap: self.len,
+            ptr: dst,
+        }
+    }
 }
 
 impl std::fmt::Debug for InternalArray<'_> {
