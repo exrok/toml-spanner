@@ -376,6 +376,21 @@ pub struct Array<'de> {
 const _: () = assert!(std::mem::size_of::<Array<'_>>() == std::mem::size_of::<Item<'_>>());
 const _: () = assert!(std::mem::align_of::<Array<'_>>() == std::mem::align_of::<Item<'_>>());
 
+// SAFETY: `Array` is layout-compatible with `Item` when the item's tag is
+// `TAG_ARRAY` (see `as_item`/`into_item`). Its `InternalArray` holds a
+// `NonNull` into arena memory plus a length/capacity pair, with no interior
+// mutability: `push`, `remove`, `pop`, and `as_mut_slice` all require
+// `&mut Array`, so shared readers cannot race with a writer. Element
+// `Item`s transitively satisfy the same `Send`/`Sync` invariants.
+unsafe impl Send for Array<'_> {}
+unsafe impl Sync for Array<'_> {}
+
+// SAFETY: `IntoIter` owns the `InternalArray` it drains. The same reasoning
+// as for `Array` applies: no interior mutability and the `NonNull` points
+// into arena storage that the iterator exclusively reads through `&mut self`.
+unsafe impl Send for IntoIter<'_> {}
+unsafe impl Sync for IntoIter<'_> {}
+
 impl<'de> Array<'de> {
     /// Creates an empty array in format-hints mode (no source span).
     ///

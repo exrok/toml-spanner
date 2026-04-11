@@ -284,6 +284,23 @@ pub struct OwnedItem {
     capacity: usize,
 }
 
+// SAFETY: `OwnedItem` exclusively owns the heap allocation referenced by
+// `ptr` (allocated in `From<&Item>` and freed in `Drop`). The embedded
+// `Item<'static>` has `NonNull`s into that same allocation. No other handle
+// to the allocation exists, and the crate never applies interior mutability
+// to an `OwnedItem` (`Clone` produces a fresh allocation, and there is no
+// method that mutates the buffer through `&self`). Transferring ownership
+// to another thread moves the allocation as one unit; sharing `&OwnedItem`
+// across threads is sound because every accessor returns borrowed data from
+// memory that is only ever read.
+unsafe impl Send for OwnedItem {}
+unsafe impl Sync for OwnedItem {}
+
+// SAFETY: `OwnedTable` is a thin wrapper around `OwnedItem` and inherits
+// the same ownership and immutability invariants.
+unsafe impl Send for OwnedTable {}
+unsafe impl Sync for OwnedTable {}
+
 impl std::fmt::Debug for OwnedItem {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         self.item.fmt(f)

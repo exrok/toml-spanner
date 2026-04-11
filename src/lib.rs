@@ -227,6 +227,32 @@ pub use time::{Date, DateTime, Time, TimeOffset};
 #[cfg(feature = "derive")]
 pub use toml_spanner_macros::Toml;
 
+#[cfg(test)]
+mod thread_safety_assertions {
+    use super::*;
+
+    fn assert_send<T: Send>() {}
+    fn assert_sync<T: Sync>() {}
+
+    const _: fn() = || {
+        assert_send::<Arena>();
+
+        assert_send::<Item<'static>>();
+        assert_sync::<Item<'static>>();
+        assert_send::<Table<'static>>();
+        assert_sync::<Table<'static>>();
+        assert_send::<Array<'static>>();
+        assert_sync::<Array<'static>>();
+        assert_send::<MaybeItem<'static>>();
+        assert_sync::<MaybeItem<'static>>();
+
+        assert_send::<OwnedItem>();
+        assert_sync::<OwnedItem>();
+        assert_send::<OwnedTable>();
+        assert_sync::<OwnedTable>();
+    };
+}
+
 #[cfg(feature = "serde")]
 pub mod impl_serde;
 

@@ -354,6 +354,25 @@ pub struct Item<'de> {
 const _: () = assert!(std::mem::size_of::<Item<'_>>() == 24);
 const _: () = assert!(std::mem::align_of::<Item<'_>>() == 8);
 
+// SAFETY: `Item` is an owned 24-byte value. Its payload union holds only
+// plain data (integers, floats, bools, `DateTime`) or arena-backed handles
+// (`&'de str`, `InnerTable`, `InternalArray`) whose backing memory is itself
+// arena-allocated. The crate never applies interior mutability to parsed
+// items: every mutation goes through `&mut Item`, `&mut Table`, or
+// `&mut Array`, so concurrent readers behind `&Item` cannot observe a write
+// in progress. The `NonNull` fields inside `InnerTable`/`InternalArray` that
+// block auto-derivation are really just pointers into arena storage that
+// follows the same discipline; they carry no synchronization semantics of
+// their own. Sending an `Item<'de>` across threads is sound because the
+// borrow checker still requires the backing `'de` data (the source string
+// and the `Arena`) to remain valid on the receiving thread, and `Arena` is
+// already `Send`.
+unsafe impl Send for Item<'_> {}
+// SAFETY: See the `Send` impl above. Because `Item` exposes no interior
+// mutability through `&Item`, sharing `&Item` across threads only lets each
+// thread read bits that never change, which is data-race-free.
+unsafe impl Sync for Item<'_> {}
+
 impl<'de> From<i64> for Item<'de> {
     fn from(value: i64) -> Self {
         Self::raw_hints(
@@ -1456,12 +1475,18 @@ pub struct MaybeItem<'de> {
     meta: ItemMetadata,
 }
 
-// SAFETY: MaybeItem is only constructed as either (a) the static NONE sentinel
-// (payload is zeroed, tag is TAG_NONE — no pointers are dereferenced), or
-// (b) a reinterpretation of &Item via from_ref. In both cases the data is
-// accessed only through shared references. All payload variants (integers,
-// floats, bools, &str, Array, InnerTable) are safe to share across threads
-// when behind a shared reference.
+// SAFETY: `MaybeItem` is only constructed as either (a) the static `NONE`
+// sentinel, whose payload is zeroed and tag is `TAG_NONE` so no pointers are
+// dereferenced, or (b) a reinterpretation of `&Item` via `from_ref`. In case
+// (b) it is layout-compatible with `Item` (verified by the const assertions
+// on sizes and the `#[repr(C)]` field order), so any thread that can access
+// an `Item` can access the equivalent `MaybeItem` with the same safety. The
+// same "no interior mutability" argument used for `Item` applies here.
+//
+// `Send` is sound because the only owned form is the `'static` `NONE`
+// sentinel; any transfer of a `MaybeItem` across threads ultimately moves a
+// value layout-equivalent to an `Item`, which is itself `Send`.
+unsafe impl Send for MaybeItem<'_> {}
 unsafe impl Sync for MaybeItem<'_> {}
 
 pub(crate) static NONE: MaybeItem<'static> = MaybeItem {

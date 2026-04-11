@@ -54,6 +54,18 @@ pub struct Arena {
 #[cfg(target_pointer_width = "64")]
 const _: () = assert!(std::mem::size_of::<Arena>() == 24);
 
+// SAFETY: `Arena` owns its heap-allocated slab chain exclusively. Moving the
+// arena to another thread transfers that exclusive ownership, and the bump
+// pointers held in `Cell` are simply data alongside the slabs. No other thread
+// retains access to the slabs after the move, and the global allocator allows
+// `dealloc` on a different thread than the one that called `alloc`.
+//
+// `Arena` is intentionally **not** `Sync`: `alloc`, `alloc_str`, and the
+// reallocation helpers mutate the bump pointers through `&self` via `Cell`,
+// which is not atomic. Concurrent allocation from two threads would race on
+// those cells and corrupt the slab state.
+unsafe impl Send for Arena {}
+
 impl Default for Arena {
     fn default() -> Self {
         Self::new()

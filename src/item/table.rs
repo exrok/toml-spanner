@@ -624,6 +624,22 @@ impl<'de> IntoIterator for Table<'de> {
 const _: () = assert!(std::mem::size_of::<Table<'_>>() == std::mem::size_of::<Item<'_>>());
 const _: () = assert!(std::mem::align_of::<Table<'_>>() == std::mem::align_of::<Item<'_>>());
 
+// SAFETY: `Table` is layout-compatible with `Item` when the item's tag is
+// `TAG_TABLE` (see `as_item`/`into_item`). The underlying `InnerTable` stores
+// a `NonNull` into arena memory and a length/capacity pair, with no interior
+// mutability: every mutation of the entries vector requires `&mut Table`, so
+// shared readers cannot race with a writer. The arena backing the entries is
+// itself borrowed for `'de`, and any inner `Item`s transitively satisfy the
+// same invariants (see `unsafe impl Send/Sync for Item`).
+unsafe impl Send for Table<'_> {}
+unsafe impl Sync for Table<'_> {}
+
+// SAFETY: `IntoIter` owns the `InnerTable` it drains. The same reasoning as
+// for `Table` applies: it has no interior mutability and its `NonNull` points
+// into arena storage that the iterator exclusively reads through `&mut self`.
+unsafe impl Send for IntoIter<'_> {}
+unsafe impl Sync for IntoIter<'_> {}
+
 impl<'de> Table<'de> {
     #[inline]
     pub(crate) fn span_start(&self) -> u32 {
