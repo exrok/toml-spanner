@@ -279,6 +279,7 @@ impl From<&Table<'_>> for OwnedTable {
 /// assert_eq!(owned.as_str(), Some("hello"));
 /// ```
 pub struct OwnedItem {
+    // This 'static is a lie! It borrows from ptr.
     item: Item<'static>,
     ptr: NonNull<u8>,
     capacity: usize,

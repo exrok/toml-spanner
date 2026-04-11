@@ -671,7 +671,7 @@ impl<'de> Table<'de> {
         self.meta.set_flag(FLAG_DOTTED);
     }
 
-    /// Returns the kind of this table (implicit, dotted, header, or inline).
+    /// Returns the [`TableStyle`] recorded on this table.
     #[inline]
     pub fn style(&self) -> TableStyle {
         match self.meta.flag() {
@@ -682,7 +682,12 @@ impl<'de> Table<'de> {
         }
     }
 
-    /// Sets the kind of this table, clearing automatic style resolution.
+    /// Pins the [`TableStyle`] used when this table is emitted.
+    ///
+    /// Tables built programmatically start out with an unresolved style and
+    /// emit picks a rendering from their size and contents (inline for small
+    /// tables, a header otherwise). Calling this method locks in `kind` so
+    /// the choice survives emission unchanged.
     #[inline]
     pub fn set_style(&mut self, kind: TableStyle) {
         let flag = match kind {

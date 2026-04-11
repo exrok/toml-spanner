@@ -179,25 +179,61 @@ impl ItemMetadata {
     }
 }
 
-/// The kind of a TOML table, distinguishing how it was defined in the source.
+/// How a TOML table is spelled in source text.
+///
+/// The same logical table can be written in four surface forms. Parsing
+/// records which form produced each table, and emit consults it when
+/// rendering. Read the current style with [`Table::style`] and pin a new
+/// choice with [`Table::set_style`].
+///
+/// ```toml
+/// [section]            # Header
+/// key = 1
+///
+/// inline = { x = 1 }   # Inline
+///
+/// a.b.c = 1            # `a.b` is Dotted, `a` is Implicit
+/// ```
+///
+/// [`Table::style`]: crate::Table::style
+/// [`Table::set_style`]: crate::Table::set_style
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TableStyle {
-    /// Structural parent with no explicit header (`FLAG_TABLE`).
+    /// An intermediate parent the user never spelled out.
+    ///
+    /// Writing `[a.b]` or `a.b = 1` brings `a` into existence even though
+    /// the path only names `b`. Such parents are `Implicit`.
     Implicit,
-    /// Created by dotted keys, e.g. `a.b.c = 1` (`FLAG_DOTTED`).
+    /// A table defined by a dotted key path, for example `a.b = 1`.
     Dotted,
-    /// Explicit `[section]` header (`FLAG_HEADER`).
+    /// A table defined by an explicit `[section]` header.
     Header,
-    /// Inline `{ }` table (`FLAG_FROZEN`).
+    /// A sealed inline table written with braces, such as `{ x = 1, y = 2 }`.
     Inline,
 }
 
-/// The kind of a TOML array, distinguishing inline arrays from arrays of tables.
+/// How a TOML array is spelled in source text.
+///
+/// TOML distinguishes a literal array from an array of tables built with
+/// repeated `[[section]]` headers. Read the current style with
+/// [`Array::style`] and pin a new choice with [`Array::set_style`].
+///
+/// ```toml
+/// inline = [1, 2, 3]   # Inline
+///
+/// [[items]]            # Header (array of tables)
+/// name = "first"
+/// [[items]]
+/// name = "second"
+/// ```
+///
+/// [`Array::style`]: crate::Array::style
+/// [`Array::set_style`]: crate::Array::set_style
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ArrayStyle {
-    /// Inline `[1, 2, 3]` array (`FLAG_ARRAY`).
+    /// A literal array written with brackets, such as `[1, 2, 3]`.
     Inline,
-    /// Array of tables `[[section]]` (`FLAG_AOT`).
+    /// An array of tables written with repeated `[[section]]` headers.
     Header,
 }
 

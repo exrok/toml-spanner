@@ -531,7 +531,7 @@ impl<'de> Array<'de> {
         unsafe { std::mem::transmute(self) }
     }
 
-    /// Returns the kind of this array (inline or header/array-of-tables).
+    /// Returns the [`ArrayStyle`] recorded on this array.
     #[inline]
     pub fn style(&self) -> ArrayStyle {
         match self.meta.flag() {
@@ -540,7 +540,11 @@ impl<'de> Array<'de> {
         }
     }
 
-    /// Sets the kind of this array, clearing automatic style resolution.
+    /// Pins the [`ArrayStyle`] used when this array is emitted.
+    ///
+    /// Arrays built programmatically start out with an unresolved style and
+    /// emit picks a rendering from their contents. Calling this method
+    /// locks in `kind` so the choice survives emission unchanged.
     #[inline]
     pub fn set_style(&mut self, kind: ArrayStyle) {
         let flag = match kind {
