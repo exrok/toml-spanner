@@ -34,6 +34,35 @@ pub struct Date {
     pub day: u8,
 }
 
+impl Date {
+    /// Builds a [`Date`] from its year, month, and day components.
+    ///
+    /// Returns [`None`] when the values fall outside the TOML calendar range:
+    ///
+    /// - `year` in `0..=9999`
+    /// - `month` in `1..=12`
+    /// - `day` in the range of the given month, accounting for leap years
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use toml_spanner::Date;
+    ///
+    /// assert!(Date::new(2024, 2, 29).is_some());
+    /// assert!(Date::new(2023, 2, 29).is_none());
+    /// assert!(Date::new(10000, 1, 1).is_none());
+    /// ```
+    pub fn new(year: u16, month: u8, day: u8) -> Option<Date> {
+        if year > 9999 || month == 0 || month > 12 {
+            return None;
+        }
+        if day == 0 || day > days_in_month(year, month) {
+            return None;
+        }
+        Some(Date { year, month, day })
+    }
+}
+
 /// A UTC offset attached to an offset date-time.
 ///
 /// TOML offset date-times include a timezone offset suffix such as `Z`,
@@ -141,6 +170,58 @@ impl Time {
     pub fn has_seconds(&self) -> bool {
         self.flags & HAS_SECONDS != 0
     }
+
+    /// Builds a [`Time`] from its clock components.
+    ///
+    /// Returns [`None`] when the values fall outside the TOML range:
+    ///
+    /// - `hour` in `0..=23`
+    /// - `minute` in `0..=59`
+    /// - `second` in `0..=60` (`60` is reserved for leap seconds)
+    /// - `nanosecond` in `0..=999_999_999`
+    ///
+    /// Serialization emits only the fractional digits needed to round-trip
+    /// `nanosecond` exactly, so a trailing zero you did not provide will not
+    /// appear in the output:
+    ///
+    /// | `nanosecond` | serialized fraction |
+    /// | -- | -- |
+    /// | `0` | (none) |
+    /// | `500_000_000` | `.5` |
+    /// | `123_000_000` | `.123` |
+    /// | `123` | `.000000123` |
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use toml_spanner::Time;
+    ///
+    /// let time = Time::new(14, 30, 5, 123_000_000).unwrap();
+    /// assert_eq!(time.second, 5);
+    /// assert_eq!(time.subsecond_precision(), 3);
+    ///
+    /// assert!(Time::new(24, 0, 0, 0).is_none());
+    /// assert!(Time::new(0, 0, 0, 1_000_000_000).is_none());
+    /// ```
+    pub fn new(hour: u8, minute: u8, second: u8, nanosecond: u32) -> Option<Time> {
+        if hour > 23 || minute > 59 || second > 60 || nanosecond > 999_999_999 {
+            return None;
+        }
+        let mut precision: u8 = if nanosecond == 0 { 0 } else { 9 };
+        let mut n = nanosecond;
+        while precision > 0 && n % 10 == 0 {
+            n /= 10;
+            precision -= 1;
+        }
+        let flags = HAS_SECONDS | (precision << NANO_SHIFT);
+        Some(Time {
+            flags,
+            hour,
+            minute,
+            second,
+            nanosecond,
+        })
+    }
 }
 
 /// Container for temporal values for TOML format, based on RFC 3339.
@@ -176,22 +257,49 @@ impl Time {
 /// ```
 ///
 /// # Constructing a `DateTime`
-/// Generally, you should be parsing `DateTime` values from a TOML document, but for testing purposes,
-/// `FromStr` is also implemented allowing for `"2026-01-04".parse::<DateTime>()`.
+///
+/// Parsing from a TOML document is the usual path. For ad hoc values,
+/// [`FromStr`] accepts any RFC 3339 form:
 ///
 /// ```
-/// use toml_spanner::{Date, Time, TimeOffset, DateTime};
+/// use toml_spanner::{Date, DateTime, TimeOffset};
 /// let value: DateTime = "2026-01-04T12:30:45Z".parse().unwrap();
 /// assert_eq!(value.date(), Some(Date { year: 2026, month: 1, day: 4 }));
-/// assert_eq!(value.time().unwrap().minute, 30);
 /// assert_eq!(value.offset(), Some(TimeOffset::Z));
+/// ```
+///
+/// To build one from parts, use [`Date::new`] and [`Time::new`] for the
+/// components then pick the constructor matching the TOML kind you want:
+/// [`DateTime::local_date`], [`DateTime::local_time`],
+/// [`DateTime::local_datetime`], or [`DateTime::offset_datetime`]. The
+/// result serializes back to its RFC 3339 form via [`DateTime::format`]:
+///
+/// ```
+/// use std::mem::MaybeUninit;
+/// use toml_spanner::{Date, DateTime, Time, TimeOffset};
+///
+/// let dt = DateTime::offset_datetime(
+///     Date::new(2026, 1, 4).unwrap(),
+///     Time::new(12, 30, 45, 0).unwrap(),
+///     TimeOffset::Z,
+/// ).unwrap();
+///
+/// let mut buf = MaybeUninit::uninit();
+/// assert_eq!(dt.format(&mut buf), "2026-01-04T12:30:45Z");
 /// ```
 ///
 /// <details>
 /// <summary>Toggle Jiff Conversions Examples</summary>
 ///
+/// This example is kept in sync with
+/// `crates/third-party-integration-tests/src/main.rs`. Edits here should be
+/// mirrored there.
+///
 /// ```ignore
-/// use toml_spanner::{FromToml, Error as TomlError, Span as TomlSpan};
+/// use toml_spanner::{
+///     Arena, Date, DateTime, Error as TomlError, FromToml, Item, Key, Span as TomlSpan,
+///     Table, Time, TimeOffset, ToToml, ToTomlError,
+/// };
 ///
 /// fn extract_date(
 ///     datetime: &toml_spanner::DateTime,
@@ -200,9 +308,6 @@ impl Time {
 ///     let Some(date) = datetime.date() else {
 ///         return Err(TomlError::custom("Missing date component", span));
 ///     };
-///     // toml_spanner guartees the following inclusive ranges
-///     // year: 0-9999, month: 1-12, day: 1-31
-///     // making the as casts safe.
 ///     match jiff::civil::Date::new(date.year as i16, date.month as i8, date.day as i8) {
 ///         Ok(value) => Ok(value),
 ///         Err(err) => Err(TomlError::custom(format!("Invalid date: {err}"), span)),
@@ -216,9 +321,6 @@ impl Time {
 ///     let Some(time) = datetime.time() else {
 ///         return Err(TomlError::custom("Missing time component", span));
 ///     };
-///     // toml_spanner guartees the following inclusive ranges
-///     // hour: 0-23, minute: 0-59, second: 0-60, nanosecond: 0-999999999
-///     // making the as casts safe.
 ///     match jiff::civil::Time::new(
 ///         time.hour as i8,
 ///         time.minute as i8,
@@ -252,14 +354,12 @@ impl Time {
 ///     let Some(datetime) = item.as_datetime() else {
 ///         return Err(item.expected(&"date"));
 ///     };
-///
 ///     if datetime.time().is_some() {
 ///         return Err(TomlError::custom(
 ///             "Expected lone date but found time",
 ///             item.span(),
 ///         ));
 ///     };
-///
 ///     extract_date(datetime, item.span())
 /// }
 ///
@@ -267,14 +367,12 @@ impl Time {
 ///     let Some(datetime) = item.as_datetime() else {
 ///         return Err(item.expected(&"civil datetime"));
 ///     };
-///
 ///     if datetime.offset().is_some() {
 ///         return Err(TomlError::custom(
 ///             "Expected naive timestamp but found offset",
 ///             item.span(),
 ///         ));
 ///     };
-///
 ///     Ok(jiff::civil::DateTime::from_parts(
 ///         extract_date(datetime, item.span())?,
 ///         extract_time(datetime, item.span())?,
@@ -299,7 +397,43 @@ impl Time {
 ///     }
 /// }
 ///
-/// #[derive(Debug)]
+/// fn from_jiff_date(date: jiff::civil::Date) -> Result<Date, ToTomlError> {
+///     let year = date.year();
+///     if year < 0 {
+///         return Err(ToTomlError::from("year out of TOML range (0..=9999)"));
+///     }
+///     Date::new(year as u16, date.month() as u8, date.day() as u8)
+///         .ok_or_else(|| ToTomlError::from("date out of TOML range"))
+/// }
+///
+/// fn from_jiff_time(time: jiff::civil::Time) -> Result<Time, ToTomlError> {
+///     Time::new(
+///         time.hour() as u8,
+///         time.minute() as u8,
+///         time.second() as u8,
+///         time.subsec_nanosecond() as u32,
+///     )
+///     .ok_or_else(|| ToTomlError::from("time out of TOML range"))
+/// }
+///
+/// fn from_jiff_civil_datetime(dt: jiff::civil::DateTime) -> Result<DateTime, ToTomlError> {
+///     Ok(DateTime::local_datetime(
+///         from_jiff_date(dt.date())?,
+///         from_jiff_time(dt.time())?,
+///     ))
+/// }
+///
+/// fn from_jiff_timestamp(ts: jiff::Timestamp) -> Result<DateTime, ToTomlError> {
+///     let civil = ts.to_zoned(jiff::tz::TimeZone::UTC).datetime();
+///     Ok(DateTime::offset_datetime(
+///         from_jiff_date(civil.date())?,
+///         from_jiff_time(civil.time())?,
+///         TimeOffset::Z,
+///     )
+///     .expect("TimeOffset::Z is always valid"))
+/// }
+///
+/// #[derive(Debug, PartialEq)]
 /// pub struct TimeConfig {
 ///     pub date: jiff::civil::Date,
 ///     pub datetime: jiff::civil::DateTime,
@@ -321,6 +455,30 @@ impl Time {
 ///     }
 /// }
 ///
+/// impl ToToml for TimeConfig {
+///     fn to_toml<'a>(&'a self, arena: &'a Arena) -> Result<Item<'a>, ToTomlError> {
+///         let Some(mut table) = Table::try_with_capacity(3, arena) else {
+///             return Err(ToTomlError::from("table capacity exceeded"));
+///         };
+///         table.insert_unique(
+///             Key::new("date"),
+///             Item::from(DateTime::local_date(from_jiff_date(self.date)?)),
+///             arena,
+///         );
+///         table.insert_unique(
+///             Key::new("datetime"),
+///             Item::from(from_jiff_civil_datetime(self.datetime)?),
+///             arena,
+///         );
+///         table.insert_unique(
+///             Key::new("timestamp"),
+///             Item::from(from_jiff_timestamp(self.timestamp)?),
+///             arena,
+///         );
+///         Ok(table.into_item())
+///     }
+/// }
+///
 /// fn main() {
 ///     let arena = toml_spanner::Arena::new();
 ///
@@ -331,7 +489,13 @@ impl Time {
 ///     "#;
 ///     let mut doc = toml_spanner::parse(toml_doc, &arena).unwrap();
 ///     let config: TimeConfig = doc.to().unwrap();
-///     println!("{:#?}", config);
+///
+///     let emitted = toml_spanner::to_string(&config).unwrap();
+///
+///     let round_trip_arena = toml_spanner::Arena::new();
+///     let mut round_trip_doc = toml_spanner::parse(&emitted, &round_trip_arena).unwrap();
+///     let round_trip: TimeConfig = round_trip_doc.to().unwrap();
+///     assert_eq!(config, round_trip);
 /// }
 /// ```
 ///
@@ -427,6 +591,144 @@ impl FromStr for DateTime {
 }
 
 impl DateTime {
+    /// Builds a [`DateTime`] holding only a calendar date.
+    ///
+    /// Serialized as a TOML [local date].
+    ///
+    /// [local date]: https://toml.io/en/v1.1.0#local-date
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use toml_spanner::{Date, DateTime};
+    ///
+    /// let dt = DateTime::local_date(Date::new(2026, 3, 15).unwrap());
+    /// assert_eq!(dt.date().unwrap().month, 3);
+    /// assert!(dt.time().is_none());
+    /// ```
+    pub fn local_date(date: Date) -> DateTime {
+        DateTime {
+            date,
+            flags: HAS_DATE,
+            hour: 0,
+            minute: 0,
+            seconds: 0,
+            nanos: 0,
+            offset_minutes: i16::MIN,
+        }
+    }
+
+    /// Builds a [`DateTime`] holding only a time of day.
+    ///
+    /// Serialized as a TOML [local time].
+    ///
+    /// [local time]: https://toml.io/en/v1.1.0#local-time
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use toml_spanner::{Time, DateTime};
+    ///
+    /// let dt = DateTime::local_time(Time::new(14, 30, 5, 0).unwrap());
+    /// assert_eq!(dt.time().unwrap().hour, 14);
+    /// assert!(dt.date().is_none());
+    /// ```
+    pub fn local_time(time: Time) -> DateTime {
+        DateTime {
+            date: Date {
+                year: 0,
+                month: 0,
+                day: 0,
+            },
+            flags: HAS_TIME | (time.flags & 0xF4),
+            hour: time.hour,
+            minute: time.minute,
+            seconds: time.second,
+            nanos: time.nanosecond,
+            offset_minutes: i16::MIN,
+        }
+    }
+
+    /// Builds a [`DateTime`] holding a date and time without a UTC offset.
+    ///
+    /// Serialized as a TOML [local date-time]. Use this for wall-clock values
+    /// whose timezone is implied by context rather than recorded in the data.
+    ///
+    /// [local date-time]: https://toml.io/en/v1.1.0#local-date-time
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use toml_spanner::{Date, Time, DateTime};
+    ///
+    /// let dt = DateTime::local_datetime(
+    ///     Date::new(2026, 3, 15).unwrap(),
+    ///     Time::new(14, 30, 5, 0).unwrap(),
+    /// );
+    /// assert_eq!(dt.date().unwrap().day, 15);
+    /// assert!(dt.offset().is_none());
+    /// ```
+    pub fn local_datetime(date: Date, time: Time) -> DateTime {
+        DateTime {
+            date,
+            flags: HAS_DATE | HAS_TIME | (time.flags & 0xF4),
+            hour: time.hour,
+            minute: time.minute,
+            seconds: time.second,
+            nanos: time.nanosecond,
+            offset_minutes: i16::MIN,
+        }
+    }
+
+    /// Builds a [`DateTime`] holding a date, time, and UTC offset.
+    ///
+    /// Serialized as a TOML [offset date-time], the form to use when the
+    /// value refers to an absolute moment in time.
+    ///
+    /// Returns [`None`] when `offset` is a [`TimeOffset::Custom`] whose
+    /// `minutes` fall outside `±23:59`. [`TimeOffset::Z`] always succeeds.
+    ///
+    /// [offset date-time]: https://toml.io/en/v1.1.0#offset-date-time
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use toml_spanner::{Date, Time, DateTime, TimeOffset};
+    ///
+    /// let dt = DateTime::offset_datetime(
+    ///     Date::new(2026, 3, 15).unwrap(),
+    ///     Time::new(14, 30, 5, 0).unwrap(),
+    ///     TimeOffset::Z,
+    /// ).unwrap();
+    /// assert_eq!(dt.offset(), Some(TimeOffset::Z));
+    ///
+    /// assert!(DateTime::offset_datetime(
+    ///     Date::new(2026, 3, 15).unwrap(),
+    ///     Time::new(14, 30, 5, 0).unwrap(),
+    ///     TimeOffset::Custom { minutes: 1440 },
+    /// ).is_none());
+    /// ```
+    pub fn offset_datetime(date: Date, time: Time, offset: TimeOffset) -> Option<DateTime> {
+        let offset_minutes = match offset {
+            TimeOffset::Z => i16::MAX,
+            TimeOffset::Custom { minutes } => {
+                if !(-1439..=1439).contains(&minutes) {
+                    return None;
+                }
+                minutes
+            }
+        };
+        Some(DateTime {
+            date,
+            flags: HAS_DATE | HAS_TIME | (time.flags & 0xF4),
+            hour: time.hour,
+            minute: time.minute,
+            seconds: time.second,
+            nanos: time.nanosecond,
+            offset_minutes,
+        })
+    }
+
     /// Maximum number of bytes produced by [`DateTime::format`].
     ///
     /// Use this to size the [`MaybeUninit`] buffer passed to [`DateTime::format`].

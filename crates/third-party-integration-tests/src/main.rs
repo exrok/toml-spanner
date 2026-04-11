@@ -1,4 +1,10 @@
-use toml_spanner::{Error as TomlError, FromToml, Span as TomlSpan};
+// Kept in sync with the jiff integration example under `<details>` in
+// `src/time.rs`. Edits here should be mirrored there.
+
+use toml_spanner::{
+    Arena, Date, DateTime, Error as TomlError, FromToml, Item, Key, Span as TomlSpan, Table, Time,
+    TimeOffset, ToToml, ToTomlError,
+};
 
 fn extract_date(
     datetime: &toml_spanner::DateTime,
@@ -7,7 +13,7 @@ fn extract_date(
     let Some(date) = datetime.date() else {
         return Err(TomlError::custom("Missing date component", span));
     };
-    // toml_spanner guartees the following inclusive ranges
+    // toml_spanner guarantees the following inclusive ranges
     // year: 0-9999, month: 1-12, day: 1-31
     // making the as casts safe.
     match jiff::civil::Date::new(date.year as i16, date.month as i8, date.day as i8) {
@@ -23,7 +29,7 @@ fn extract_time(
     let Some(time) = datetime.time() else {
         return Err(TomlError::custom("Missing time component", span));
     };
-    // toml_spanner guartees the following inclusive ranges
+    // toml_spanner guarantees the following inclusive ranges
     // hour: 0-23, minute: 0-59, second: 0-60, nanosecond: 0-999999999
     // making the as casts safe.
     match jiff::civil::Time::new(
@@ -106,7 +112,43 @@ fn to_jiff_timestamp(item: &toml_spanner::Item<'_>) -> Result<jiff::Timestamp, T
     }
 }
 
-#[derive(Debug)]
+fn from_jiff_date(date: jiff::civil::Date) -> Result<Date, ToTomlError> {
+    let year = date.year();
+    if year < 0 {
+        return Err(ToTomlError::from("year out of TOML range (0..=9999)"));
+    }
+    Date::new(year as u16, date.month() as u8, date.day() as u8)
+        .ok_or_else(|| ToTomlError::from("date out of TOML range"))
+}
+
+fn from_jiff_time(time: jiff::civil::Time) -> Result<Time, ToTomlError> {
+    Time::new(
+        time.hour() as u8,
+        time.minute() as u8,
+        time.second() as u8,
+        time.subsec_nanosecond() as u32,
+    )
+    .ok_or_else(|| ToTomlError::from("time out of TOML range"))
+}
+
+fn from_jiff_civil_datetime(dt: jiff::civil::DateTime) -> Result<DateTime, ToTomlError> {
+    Ok(DateTime::local_datetime(
+        from_jiff_date(dt.date())?,
+        from_jiff_time(dt.time())?,
+    ))
+}
+
+fn from_jiff_timestamp(ts: jiff::Timestamp) -> Result<DateTime, ToTomlError> {
+    let civil = ts.to_zoned(jiff::tz::TimeZone::UTC).datetime();
+    Ok(DateTime::offset_datetime(
+        from_jiff_date(civil.date())?,
+        from_jiff_time(civil.time())?,
+        TimeOffset::Z,
+    )
+    .expect("TimeOffset::Z is always valid"))
+}
+
+#[derive(Debug, PartialEq)]
 pub struct TimeConfig {
     pub date: jiff::civil::Date,
     pub datetime: jiff::civil::DateTime,
@@ -128,6 +170,30 @@ impl<'de> FromToml<'de> for TimeConfig {
     }
 }
 
+impl ToToml for TimeConfig {
+    fn to_toml<'a>(&'a self, arena: &'a Arena) -> Result<Item<'a>, ToTomlError> {
+        let Some(mut table) = Table::try_with_capacity(3, arena) else {
+            return Err(ToTomlError::from("table capacity exceeded"));
+        };
+        table.insert_unique(
+            Key::new("date"),
+            Item::from(DateTime::local_date(from_jiff_date(self.date)?)),
+            arena,
+        );
+        table.insert_unique(
+            Key::new("datetime"),
+            Item::from(from_jiff_civil_datetime(self.datetime)?),
+            arena,
+        );
+        table.insert_unique(
+            Key::new("timestamp"),
+            Item::from(from_jiff_timestamp(self.timestamp)?),
+            arena,
+        );
+        Ok(table.into_item())
+    }
+}
+
 fn main() {
     let arena = toml_spanner::Arena::new();
 
@@ -138,5 +204,14 @@ fn main() {
     "#;
     let mut doc = toml_spanner::parse(toml_doc, &arena).unwrap();
     let config: TimeConfig = doc.to().unwrap();
-    println!("{:#?}", config);
+    println!("parsed = {config:#?}");
+
+    let emitted = toml_spanner::to_string(&config).unwrap();
+    println!("\nemitted =\n{emitted}");
+
+    let round_trip_arena = toml_spanner::Arena::new();
+    let mut round_trip_doc = toml_spanner::parse(&emitted, &round_trip_arena).unwrap();
+    let round_trip: TimeConfig = round_trip_doc.to().unwrap();
+    assert_eq!(config, round_trip, "round-trip through ToToml must match");
+    println!("\nround-trip ok");
 }

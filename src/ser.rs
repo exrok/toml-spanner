@@ -6,7 +6,7 @@ use std::{
     sync::Arc,
 };
 
-use crate::{Arena, Array, Item, Key, Table, item::Value};
+use crate::{Arena, Array, DateTime, Item, Key, Table, item::Value};
 
 /// extracted out to avoid code bloat
 fn optional_to_required<'a>(
@@ -189,6 +189,12 @@ impl ToToml for f64 {
 }
 
 impl ToToml for bool {
+    fn to_toml<'a>(&'a self, _: &'a Arena) -> Result<Item<'a>, ToTomlError> {
+        Ok(Item::from(*self))
+    }
+}
+
+impl ToToml for DateTime {
     fn to_toml<'a>(&'a self, _: &'a Arena) -> Result<Item<'a>, ToTomlError> {
         Ok(Item::from(*self))
     }

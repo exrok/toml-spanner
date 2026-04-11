@@ -129,9 +129,10 @@ dependencies = [
 
 [[package]]
 name = "toml-spanner"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "foldhash",
+ "zmij",
 ]
 
 [[package]]
@@ -154,3 +155,9 @@ checksum = "ae137229bcbd6cdf0f7b80a31df61766145077ddf49416a728b02cb3921ff3fc"
 dependencies = [
  "windows-link",
 ]
+
+[[package]]
+name = "zmij"
+version = "1.0.21"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b8848ee67ecc8aedbaf3e4122217aff892639231befc6a1b58d29fff4c2cabaa"

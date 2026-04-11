@@ -593,3 +593,172 @@ fn from_str_and_error() {
     // DateTimeError is std::error::Error
     let _: &dyn std::error::Error = &err;
 }
+
+#[track_caller]
+fn fmt(dt: DateTime) -> String {
+    let mut buf = MaybeUninit::uninit();
+    dt.format(&mut buf).to_owned()
+}
+
+#[test]
+fn date_new_validates() {
+    assert_eq!(
+        Date::new(2026, 3, 15),
+        Some(Date {
+            year: 2026,
+            month: 3,
+            day: 15
+        })
+    );
+    assert_eq!(
+        Date::new(2024, 2, 29),
+        Some(Date {
+            year: 2024,
+            month: 2,
+            day: 29
+        })
+    );
+    assert_eq!(Date::new(2023, 2, 29), None);
+    assert_eq!(Date::new(2024, 2, 30), None);
+    assert_eq!(Date::new(2023, 4, 31), None);
+    assert_eq!(Date::new(10000, 1, 1), None);
+    assert_eq!(Date::new(2023, 0, 1), None);
+    assert_eq!(Date::new(2023, 13, 1), None);
+    assert_eq!(Date::new(2023, 1, 0), None);
+    assert_eq!(Date::new(2023, 1, 32), None);
+    assert_eq!(
+        Date::new(0, 1, 1),
+        Some(Date {
+            year: 0,
+            month: 1,
+            day: 1
+        })
+    );
+    assert_eq!(
+        Date::new(9999, 12, 31),
+        Some(Date {
+            year: 9999,
+            month: 12,
+            day: 31
+        })
+    );
+}
+
+#[test]
+fn time_new_validates() {
+    let t = Time::new(14, 30, 5, 0).unwrap();
+    assert_eq!(t.hour, 14);
+    assert_eq!(t.minute, 30);
+    assert_eq!(t.second, 5);
+    assert_eq!(t.nanosecond, 0);
+    assert!(t.has_seconds());
+
+    assert!(Time::new(24, 0, 0, 0).is_none());
+    assert!(Time::new(0, 60, 0, 0).is_none());
+    assert!(Time::new(0, 0, 61, 0).is_none());
+    assert!(Time::new(0, 0, 0, 1_000_000_000).is_none());
+
+    assert!(Time::new(0, 0, 60, 0).is_some());
+    assert!(Time::new(23, 59, 60, 999_999_999).is_some());
+}
+
+#[test]
+fn time_new_auto_precision() {
+    let cases: &[(u32, u8, &str)] = &[
+        (0, 0, "00:00:00"),
+        (500_000_000, 1, "00:00:00.5"),
+        (100_000_000, 1, "00:00:00.1"),
+        (120_000_000, 2, "00:00:00.12"),
+        (123_000_000, 3, "00:00:00.123"),
+        (123_456_000, 6, "00:00:00.123456"),
+        (123_456_789, 9, "00:00:00.123456789"),
+        (1, 9, "00:00:00.000000001"),
+        (999_999_999, 9, "00:00:00.999999999"),
+    ];
+    for (nanos, expected_precision, expected_output) in cases {
+        let t = Time::new(0, 0, 0, *nanos).unwrap();
+        assert_eq!(
+            t.subsecond_precision(),
+            *expected_precision,
+            "wrong precision for nanos={nanos}"
+        );
+        let dt = DateTime::local_time(t);
+        assert_eq!(&fmt(dt), expected_output, "wrong format for nanos={nanos}");
+    }
+}
+
+#[test]
+fn datetime_local_date_roundtrip() {
+    let dt = DateTime::local_date(Date::new(1997, 2, 28).unwrap());
+    assert_eq!(fmt(dt), "1997-02-28");
+    assert_eq!(fmt(dt).parse::<DateTime>().unwrap(), dt);
+    assert!(dt.time().is_none());
+    assert!(dt.offset().is_none());
+}
+
+#[test]
+fn datetime_local_time_roundtrip() {
+    let dt = DateTime::local_time(Time::new(14, 30, 5, 0).unwrap());
+    assert_eq!(fmt(dt), "14:30:05");
+    assert_eq!(fmt(dt).parse::<DateTime>().unwrap(), dt);
+    assert!(dt.date().is_none());
+    assert!(dt.offset().is_none());
+
+    let dt = DateTime::local_time(Time::new(14, 30, 5, 123_000_000).unwrap());
+    assert_eq!(fmt(dt), "14:30:05.123");
+}
+
+#[test]
+fn datetime_local_datetime_roundtrip() {
+    let dt = DateTime::local_datetime(
+        Date::new(2066, 1, 30).unwrap(),
+        Time::new(14, 45, 0, 0).unwrap(),
+    );
+    assert_eq!(fmt(dt), "2066-01-30T14:45:00");
+    assert_eq!(fmt(dt).parse::<DateTime>().unwrap(), dt);
+    assert!(dt.offset().is_none());
+
+    let dt = DateTime::local_datetime(
+        Date::new(2023, 6, 15).unwrap(),
+        Time::new(12, 30, 45, 500_000_000).unwrap(),
+    );
+    assert_eq!(fmt(dt), "2023-06-15T12:30:45.5");
+}
+
+#[test]
+fn datetime_offset_datetime_roundtrip() {
+    let date = Date::new(1979, 5, 27).unwrap();
+    let time = Time::new(7, 32, 0, 0).unwrap();
+
+    let z = DateTime::offset_datetime(date, time, TimeOffset::Z).unwrap();
+    assert_eq!(fmt(z), "1979-05-27T07:32:00Z");
+    assert_eq!(fmt(z).parse::<DateTime>().unwrap(), z);
+
+    let plus = DateTime::offset_datetime(date, time, TimeOffset::Custom { minutes: 330 }).unwrap();
+    assert_eq!(fmt(plus), "1979-05-27T07:32:00+05:30");
+    assert_eq!(fmt(plus).parse::<DateTime>().unwrap(), plus);
+
+    let minus =
+        DateTime::offset_datetime(date, time, TimeOffset::Custom { minutes: -480 }).unwrap();
+    assert_eq!(fmt(minus), "1979-05-27T07:32:00-08:00");
+    assert_eq!(fmt(minus).parse::<DateTime>().unwrap(), minus);
+}
+
+#[test]
+fn datetime_offset_bounds() {
+    let date = Date::new(2023, 1, 1).unwrap();
+    let time = Time::new(0, 0, 0, 0).unwrap();
+
+    assert!(
+        DateTime::offset_datetime(date, time, TimeOffset::Custom { minutes: 1439 }).is_some()
+    );
+    assert!(
+        DateTime::offset_datetime(date, time, TimeOffset::Custom { minutes: -1439 }).is_some()
+    );
+    assert!(
+        DateTime::offset_datetime(date, time, TimeOffset::Custom { minutes: 1440 }).is_none()
+    );
+    assert!(
+        DateTime::offset_datetime(date, time, TimeOffset::Custom { minutes: -1440 }).is_none()
+    );
+}
