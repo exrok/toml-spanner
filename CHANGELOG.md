@@ -11,6 +11,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.2] - 2026-04-11
+
+## Added
+
+- `OwnedItem` and `OwnedTable`, self-referential wrappers that keep a parsed item or table alive
+  without threading an arena lifetime through user types. Intended for use with
+  `#[toml(flatten, with = flatten_any)]` fields. (#3)
+- `FromFlattened` and `ToFlattened` implementations for `Item` and `Table`, so they can appear
+  directly in `#[toml(flatten)]` fields.
+- `Send` and `Sync` implementations for `Arena`, `Item`, `Table`, `Array`, `OwnedItem`, and
+  `OwnedTable`.
+- `DateTime::local_date`, `DateTime::local_time`, `DateTime::local_datetime`, and
+  `DateTime::offset_datetime` constructors, plus validating `Date::new` and `Time::new`, for
+  building temporal values from components. `DateTime` now also implements `ToToml`.
+
 ## [1.0.1] - 2026-04-04
 
 ### Added
@@ -137,7 +152,8 @@ Initial release of `toml-spanner`, forked from [`toml-span`](https://github.com/
 
 <!-- next-url -->
 
-[Unreleased]: https://github.com/exrok/toml-spanner/compare/1.0.1...HEAD
+[Unreleased]: https://github.com/exrok/toml-spanner/compare/1.0.2...HEAD
+[1.0.2]: https://github.com/exrok/toml-spanner/compare/1.0.1...1.0.2
 [1.0.1]: https://github.com/exrok/toml-spanner/compare/1.0.0...1.0.1
 [1.0.0]: https://github.com/exrok/toml-spanner/compare/0.4.0...1.0.0
 [0.4.0]: https://github.com/exrok/toml-spanner/compare/0.3.0...0.4.0

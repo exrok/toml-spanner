@@ -500,7 +500,7 @@ dependencies = [
 
 [[package]]
 name = "toml-spanner"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "foldhash",
  "toml-spanner-macros 1.0.0 (registry+https://github.com/rust-lang/crates.io-index)",

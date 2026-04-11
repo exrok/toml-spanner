@@ -198,7 +198,7 @@ zed/Cargo.toml (parse + deserialize)
 
 For a crate serializing and deserializing a simplified cargo manifest using the derive macro for each crate. With unrestricted parallelism we get the following:
 
-<img width="1971" height="725" alt="cargo-toml_aggregate" src="https://github.com/user-attachments/assets/d311f26d-0815-4758-9cee-de520390e329" />
+<img alt="cargo-toml_aggregate" src="https://github.com/user-attachments/assets/d311f26d-0815-4758-9cee-de520390e329" />
 
 See [Compile Time Benchmarks](https://github.com/exrok/rust-serialization-build-time-benchmarks/blob/main/README.md) for more details.
 

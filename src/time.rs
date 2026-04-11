@@ -209,7 +209,7 @@ impl Time {
         }
         let mut precision: u8 = if nanosecond == 0 { 0 } else { 9 };
         let mut n = nanosecond;
-        while precision > 0 && n % 10 == 0 {
+        while precision > 0 && n.is_multiple_of(10) {
             n /= 10;
             precision -= 1;
         }

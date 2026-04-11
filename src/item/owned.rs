@@ -115,7 +115,7 @@ fn compute_size(item: &Item<'_>, aligned: &mut usize, strings: &mut usize) {
 ///
 /// [`FromFlattened`](crate::FromFlattened) is not provided because
 /// [`flatten_any`](crate::helper::flatten_any) is more performant
-/// than direct implementation could be, (due to current trait defintion).
+/// than direct implementation could be, due to current trait definition.
 ///
 /// ```rust,ignore
 /// use toml_spanner::Toml;

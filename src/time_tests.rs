@@ -749,16 +749,8 @@ fn datetime_offset_bounds() {
     let date = Date::new(2023, 1, 1).unwrap();
     let time = Time::new(0, 0, 0, 0).unwrap();
 
-    assert!(
-        DateTime::offset_datetime(date, time, TimeOffset::Custom { minutes: 1439 }).is_some()
-    );
-    assert!(
-        DateTime::offset_datetime(date, time, TimeOffset::Custom { minutes: -1439 }).is_some()
-    );
-    assert!(
-        DateTime::offset_datetime(date, time, TimeOffset::Custom { minutes: 1440 }).is_none()
-    );
-    assert!(
-        DateTime::offset_datetime(date, time, TimeOffset::Custom { minutes: -1440 }).is_none()
-    );
+    assert!(DateTime::offset_datetime(date, time, TimeOffset::Custom { minutes: 1439 }).is_some());
+    assert!(DateTime::offset_datetime(date, time, TimeOffset::Custom { minutes: -1439 }).is_some());
+    assert!(DateTime::offset_datetime(date, time, TimeOffset::Custom { minutes: 1440 }).is_none());
+    assert!(DateTime::offset_datetime(date, time, TimeOffset::Custom { minutes: -1440 }).is_none());
 }
