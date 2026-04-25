@@ -2118,6 +2118,23 @@ impl<'de> Document<'de> {
         }
     }
 
+    /// Resolves the TOML path of every accumulated error.
+    ///
+    /// Errors recorded by [`Error::custom_at`](crate::Error::custom_at) or
+    /// any `report_*` method on [`Context`](crate::Context) are anchored
+    /// to an [`Item`](crate::Item) but start without a dotted path. This
+    /// method walks the parsed tree and populates
+    /// [`Error::path`](crate::Error::path) for each one.
+    ///
+    /// [`to`](Self::to) and [`to_allowing_errors`](Self::to_allowing_errors)
+    /// invoke this automatically. Call it explicitly when driving
+    /// extraction through [`split`](Self::split) or
+    /// [`table_helper`](Self::table_helper) and reading errors through
+    /// [`errors`](Self::errors).
+    pub fn compute_error_paths(&mut self) {
+        crate::de::compute_paths(&self.table, &mut self.ctx.errors);
+    }
+
     /// Converts the root table into a typed value `T` via [`FromToml`](crate::FromToml).
     /// returning non-fatal errors alongside.
     ///

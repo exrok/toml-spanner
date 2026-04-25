@@ -27,23 +27,34 @@ use crate::{
 /// This function walks the tree to find which table entry or array element each
 /// pointer belongs to, then replaces the uncomputed path with a real one.
 pub(crate) fn compute_paths(root: &Table<'_>, errors: &mut [Error]) {
-    let mut pending: Vec<(*const u8, &mut MaybeTomlPath)> = Vec::new();
+    let mut pending: Vec<(*const u8, Option<&mut MaybeTomlPath>)> = Vec::new();
     for error in errors.iter_mut() {
         if error.path.is_uncomputed() {
-            pending.push((error.path.uncomputed_ptr() as *const u8, &mut error.path));
+            pending.push((
+                error.path.uncomputed_ptr() as *const u8,
+                Some(&mut error.path),
+            ));
         }
     }
     if pending.is_empty() {
         return;
     }
+    pending.sort_unstable_by_key(|(addr, _)| *addr as usize);
 
     let mut path_stack: [PathComponent<'_>; 32] = [PathComponent::Index(0); 32];
     compute_paths_walk(root.as_item(), &mut pending, &mut path_stack, 0);
 }
 
+fn pending_region_start(
+    pending: &[(*const u8, Option<&mut MaybeTomlPath>)],
+    base_addr: usize,
+) -> usize {
+    pending.partition_point(|p| (p.0 as usize) < base_addr)
+}
+
 fn compute_paths_walk<'de>(
     item: &Item<'de>,
-    pending: &mut Vec<(*const u8, &mut MaybeTomlPath)>,
+    pending: &mut [(*const u8, Option<&mut MaybeTomlPath>)],
     path_stack: &mut [PathComponent<'de>; 32],
     path_depth: usize,
 ) {
@@ -60,22 +71,20 @@ fn compute_paths_walk<'de>(
             let base = entries.as_ptr() as *const u8;
             // SAFETY: entries is a valid slice; pointer arithmetic stays in bounds.
             let end = unsafe { base.add(entries.len() * entry_size) };
+            let base_addr = base as usize;
+            let end_addr = end as usize;
 
-            let mut i = 0;
-            while let Some((ptr, path)) = pending.get_mut(i) {
-                let ptr: *const u8 = *ptr;
-                // SAFETY: base+key_size is the address of the first Item in entries.
-                if ptr >= base && ptr < end {
-                    let byte_offset = unsafe { ptr.byte_offset_from(base) } as usize;
-                    let entry_index = byte_offset / entry_size;
-                    if entry_index < entries.len() {
-                        path_stack[path_depth] = PathComponent::Key(entries[entry_index].0);
-                        **path = MaybeTomlPath::from_components(&path_stack[..path_depth + 1]);
-                        pending.swap_remove(i);
-                        continue;
-                    }
+            let start_idx = pending_region_start(pending, base_addr);
+            for slot in &mut pending[start_idx..] {
+                if (slot.0 as usize) >= end_addr {
+                    break;
                 }
-                i += 1;
+                let Some(path) = slot.1.take() else { continue };
+                // SAFETY: slot.0 is in [base, end) by partition_point + break bounds.
+                let byte_offset = unsafe { slot.0.byte_offset_from(base) } as usize;
+                let entry_index = byte_offset / entry_size;
+                path_stack[path_depth] = PathComponent::Key(entries[entry_index].0);
+                *path = MaybeTomlPath::from_components(&path_stack[..path_depth + 1]);
             }
 
             for (key, child) in table {
@@ -92,21 +101,20 @@ fn compute_paths_walk<'de>(
             let base = slice.as_ptr() as *const u8;
             // SAFETY: slice is a valid slice; pointer arithmetic stays in bounds.
             let end = unsafe { base.add(slice.len() * item_size) };
+            let base_addr = base as usize;
+            let end_addr = end as usize;
 
-            let mut i = 0;
-            while let Some((ptr, path)) = pending.get_mut(i) {
-                let ptr = *ptr;
-                if ptr >= base && ptr < end {
-                    let byte_offset = unsafe { ptr.byte_offset_from(base) } as usize;
-                    let elem_index = byte_offset / item_size;
-                    if elem_index < slice.len() {
-                        path_stack[path_depth] = PathComponent::Index(elem_index);
-                        **path = MaybeTomlPath::from_components(&path_stack[..path_depth + 1]);
-                        pending.swap_remove(i);
-                        continue;
-                    }
+            let start_idx = pending_region_start(pending, base_addr);
+            for slot in &mut pending[start_idx..] {
+                if (slot.0 as usize) >= end_addr {
+                    break;
                 }
-                i += 1;
+                let Some(path) = slot.1.take() else { continue };
+                // SAFETY: slot.0 is in [base, end) by partition_point + break bounds.
+                let byte_offset = unsafe { slot.0.byte_offset_from(base) } as usize;
+                let elem_index = byte_offset / item_size;
+                path_stack[path_depth] = PathComponent::Index(elem_index);
+                *path = MaybeTomlPath::from_components(&path_stack[..path_depth + 1]);
             }
 
             let mut idx = 0; // For some reason more efficient then iter() enumerate()
@@ -580,10 +588,21 @@ impl<'de> Context<'de> {
         Failed
     }
 
-    /// Records a custom error from a [`ToString`] value and returns [`Failed`].
+    /// Records a custom error anchored to `item` and returns [`Failed`].
+    ///
+    /// Equivalent to pushing [`Error::custom_at(error, item)`](Error::custom_at).
+    /// The recorded [`Error::path`] resolves to the dotted TOML path of
+    /// `item` once
+    /// [`Document::compute_error_paths`](crate::Document::compute_error_paths)
+    /// has run, which [`Document::to`](crate::Document::to) and
+    /// [`Document::to_allowing_errors`](crate::Document::to_allowing_errors)
+    /// do automatically.
+    ///
+    /// Use [`Context::report_error_at`](Self::report_error_at) when only a
+    /// [`Span`] is available.
     #[cold]
     pub fn report_custom_error(&mut self, error: impl ToString, item: &Item<'de>) -> Failed {
-        self.push_error(Error::custom(error, item.span()))
+        self.push_error(Error::custom_at(error, item))
     }
 
     /// Records an out-of-range error for the type `name` and returns [`Failed`].

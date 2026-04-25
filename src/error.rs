@@ -567,6 +567,28 @@ impl Error {
         }
     }
 
+    /// Creates an error with a custom message anchored to `item`.
+    ///
+    /// Like [`Error::custom`], but in addition to setting
+    /// [`span`](Self::span) from `item.span()`, the error is bound to
+    /// `item` so that [`Error::path`] reports the dotted TOML path to it
+    /// after
+    /// [`Document::compute_error_paths`](crate::Document::compute_error_paths)
+    /// runs. [`Document::to`](crate::Document::to) and
+    /// [`Document::to_allowing_errors`](crate::Document::to_allowing_errors)
+    /// invoke that pass automatically.
+    ///
+    /// Use [`Error::custom`] when no item is available or when the dotted
+    /// path is not needed.
+    #[cfg(feature = "from-toml")]
+    pub fn custom_at(message: impl ToString, item: &Item<'_>) -> Error {
+        Error {
+            kind: ErrorInner::Custom(message.to_string().into()),
+            span: item.span(),
+            path: MaybeTomlPath::uncomputed(item),
+        }
+    }
+
     /// Creates an error with a static message at the given source span.
     #[cfg(feature = "from-toml")]
     pub(crate) fn custom_static(message: &'static str, span: Span) -> Error {
