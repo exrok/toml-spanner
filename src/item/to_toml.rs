@@ -22,6 +22,9 @@ pub(crate) const EXPANDED_BIT: u32 = 1 << 25;
 /// Bit 24 of `end_and_flag`: when set in format-hints mode, prevents this
 /// item from being reprojected during format-preserving emission.
 pub(crate) const IGNORE_SOURCE_FORMATTING_RECURSIVELY_BIT: u32 = 1 << 24;
+/// Bit 23 of `end_and_flag`: when set in format-hints mode, `start_and_tag`
+/// still stores the source span start rather than a projected source index.
+pub(crate) const PRESERVED_SPAN_START_BIT: u32 = 1 << 23;
 
 impl ItemMetadata {
     /// Returns the projected index (bits 3-31 of `start_and_tag`).
@@ -37,13 +40,35 @@ impl ItemMetadata {
         ((self.end_and_flag as i32) >> 31) as u32 | FLAG_MASK
     }
 
+    #[inline]
+    fn enter_hints_preserving_span_start(&mut self) {
+        let was_span_mode = self.is_span_mode();
+        self.end_and_flag |= HINTS_BIT;
+        if was_span_mode {
+            self.end_and_flag |= PRESERVED_SPAN_START_BIT;
+        }
+    }
+
+    #[inline]
+    pub(crate) fn span_identity_start(&self) -> Option<u32> {
+        let has_preserved_start = self.end_and_flag & (HINTS_BIT | PRESERVED_SPAN_START_BIT)
+            == (HINTS_BIT | PRESERVED_SPAN_START_BIT);
+        if self.is_span_mode() || has_preserved_start {
+            Some(self.start_and_tag >> TAG_SHIFT)
+        } else {
+            None
+        }
+    }
+
     /// Stores a reprojected index, preserving user-set hint bits when
     /// already in hints mode. Returns `false` if the index doesn't fit.
     #[inline]
     pub(crate) fn set_reprojected_index(&mut self, index: usize) -> bool {
         if index <= (u32::MAX >> TAG_SHIFT) as usize {
             self.start_and_tag = (self.start_and_tag & TAG_MASK) | ((index as u32) << TAG_SHIFT);
-            self.end_and_flag = (self.end_and_flag & self.hints_preserve_mask()) | HINTS_BIT;
+            self.end_and_flag =
+                (self.end_and_flag & (self.hints_preserve_mask() & !PRESERVED_SPAN_START_BIT))
+                    | HINTS_BIT;
             true
         } else {
             false
@@ -56,7 +81,10 @@ impl ItemMetadata {
     pub(crate) fn set_reprojected_to_none(&mut self) {
         self.start_and_tag |= NOT_PROJECTED;
         self.end_and_flag =
-            (self.end_and_flag & (self.hints_preserve_mask() & !FULL_MATCH_BIT)) | HINTS_BIT;
+            (self.end_and_flag
+                & (self.hints_preserve_mask()
+                    & !(FULL_MATCH_BIT | PRESERVED_SPAN_START_BIT)))
+                | HINTS_BIT;
     }
 
     #[inline]
@@ -72,7 +100,8 @@ impl ItemMetadata {
     /// Disables source-position reordering for this table's entries.
     #[inline]
     pub(crate) fn set_ignore_source_order(&mut self) {
-        self.end_and_flag |= HINTS_BIT | IGNORE_SOURCE_ORDER_BIT;
+        self.enter_hints_preserving_span_start();
+        self.end_and_flag |= IGNORE_SOURCE_ORDER_BIT;
     }
 
     /// Returns `true` if source-position reordering is disabled.
@@ -86,7 +115,8 @@ impl ItemMetadata {
     /// Marks an array element as reordered during reprojection.
     #[inline]
     pub(crate) fn set_array_reordered(&mut self) {
-        self.end_and_flag |= HINTS_BIT | ARRAY_REORDERED_BIT;
+        self.enter_hints_preserving_span_start();
+        self.end_and_flag |= ARRAY_REORDERED_BIT;
     }
 
     /// Returns `true` if this element was reordered during array reprojection.
@@ -98,7 +128,8 @@ impl ItemMetadata {
     /// Disables copying structural styles from source during reprojection.
     #[inline]
     pub(crate) fn set_ignore_source_style(&mut self) {
-        self.end_and_flag |= HINTS_BIT | IGNORE_SOURCE_STYLE_BIT;
+        self.enter_hints_preserving_span_start();
+        self.end_and_flag |= IGNORE_SOURCE_STYLE_BIT;
     }
 
     /// Returns `true` if source-style copying is disabled for this table.
@@ -110,7 +141,8 @@ impl ItemMetadata {
 
     #[inline]
     pub(crate) fn set_expanded(&mut self) {
-        self.end_and_flag |= HINTS_BIT | EXPANDED_BIT;
+        self.enter_hints_preserving_span_start();
+        self.end_and_flag |= EXPANDED_BIT;
     }
 
     #[inline]
@@ -126,7 +158,8 @@ impl ItemMetadata {
     /// Prevents this item from being reprojected during format-preserving emission.
     #[inline]
     pub(crate) fn set_ignore_source_formatting_recursively(&mut self) {
-        self.end_and_flag |= HINTS_BIT | IGNORE_SOURCE_FORMATTING_RECURSIVELY_BIT;
+        self.enter_hints_preserving_span_start();
+        self.end_and_flag |= IGNORE_SOURCE_FORMATTING_RECURSIVELY_BIT;
     }
 
     /// Returns `true` if this item should skip reprojection and use formatted output.

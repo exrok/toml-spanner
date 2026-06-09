@@ -64,8 +64,11 @@ const NOT_PROJECTED: u32 = !(TAG_MASK); // 0xFFFF_FFF8
 /// - `start_and_tag`: bits 0-2 = tag, bits 3-30 = span start (28 bits, max 256 MiB)
 /// - `end_and_flag`: bits 0-2 = flag, bits 3-30 = span end (28 bits), bit 31 = 0
 ///
-/// **Format hints variant** (bit 31 = 1): items constructed programmatically.
-/// - `start_and_tag`: bits 0-2 = tag, bits 3-31 = projected index (all 1's = not projected)
+/// **Format hints variant** (bit 31 = 1): items constructed programmatically
+/// or carrying emission hints.
+/// - `start_and_tag`: bits 0-2 = tag, bits 3-31 = projected index
+///   (all 1's = not projected), or preserved span start while the
+///   to-toml preserved-start hint is set
 /// - `end_and_flag`: bit 31 = 1, bits 0-2 = flag, bits 3-30 = format hint bits
 #[derive(Copy, Clone)]
 #[repr(C)]

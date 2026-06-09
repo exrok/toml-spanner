@@ -2132,6 +2132,32 @@ beta = \"data\" # config for beta
 }
 
 #[test]
+fn span_identity_preserves_child_table_hint_start() {
+    let source = "\
+[package]
+alpha = 1 # alpha
+beta = 1 # beta
+";
+
+    let result = format_with_span_identity(source, |root| {
+        let package = root
+            .get_mut("package")
+            .unwrap()
+            .as_table_mut()
+            .unwrap();
+        package.entries_mut().swap(0, 1);
+        package.set_ignore_source_order();
+    });
+
+    let expected = "\
+[package]
+beta = 1 # beta
+alpha = 1 # alpha
+";
+    assert_eq!(result, expected, "result: {result:?}");
+}
+
+#[test]
 fn comments_of_lost_table_should_be_discarded() {
     let arena = Arena::new();
     let input = "\

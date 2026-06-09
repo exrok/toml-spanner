@@ -23,6 +23,19 @@ fn maybe_force_collision(hash: u64) -> u64 {
     hash
 }
 
+#[inline]
+fn span_identity_matches(src: &Item<'_>, dest: &Item<'_>) -> bool {
+    src.meta
+        .span_identity_start()
+        .zip(dest.meta.span_identity_start())
+        .is_some_and(|(src_start, dest_start)| src_start == dest_start)
+}
+
+#[inline]
+fn span_identity_key(item: &Item<'_>) -> u32 {
+    item.meta.span_identity_start().unwrap_or(u32::MAX)
+}
+
 /// Reprojects structural kinds from a parsed source onto a destination table.
 ///
 /// Takes a [`Document`] to statically enforce that the source was produced by
@@ -87,7 +100,7 @@ fn reproject_item<'de>(
         return false;
     }
 
-    if span_identity && src.span() != dest.span() {
+    if span_identity && !span_identity_matches(src, dest) {
         dest.meta.set_ignore_source_formatting_recursively();
         clear_stale_item(dest);
         return false;
@@ -506,10 +519,9 @@ const INDEX_LIMIT: usize = 32;
 ///
 /// Returns `true` when every dest element fully matched a src element.
 ///
-/// When `span_identity` is true, matches by `span.start` (exact identity)
-/// instead of content hash (best-effort). Span identity avoids collision
-/// groups and `equal_items` verification since each parsed element has a
-/// unique byte offset.
+/// When `span_identity` is true, matches by source span start instead of
+/// content hash. Hint-mode items can participate when they explicitly
+/// preserved that start before repurposing the rest of their metadata.
 fn reproject_array<'de>(
     index: &TableIndex<'_>,
     src: &'de Array<'de>,
@@ -534,14 +546,13 @@ fn reproject_array<'de>(
         return reproject_array_positional(index, src, dest, items);
     }
 
-    // Content-based prefix optimization: skip leading elements that are
-    // identical in both arrays. Not applicable to span identity mode
-    // where modified elements must still match by position.
+    // Prefix optimization: skip leading elements that match by the active
+    // identity strategy before falling back to the sorted matcher.
     let mut prefix = 0;
     let mut prefix_all_full = true;
     while let (Some(src_head), Some(dst_head)) = (src.get(prefix), dest.get_mut(prefix)) {
         let same = if span_identity {
-            src_head.span() == dst_head.span()
+            span_identity_matches(src_head, dst_head)
         } else {
             crate::item::equal_items(src_head, dst_head, Some(index))
         };
@@ -564,10 +575,10 @@ fn reproject_array<'de>(
     let mut buf: Vec<u64> = Vec::with_capacity(n + m);
     if span_identity {
         for (i, item) in src.iter().enumerate() {
-            buf.push(((item.span().start as u64) << HASH_SHIFT) | (i as u64));
+            buf.push(((span_identity_key(item) as u64) << HASH_SHIFT) | (i as u64));
         }
         for (i, item) in dest.iter().enumerate() {
-            buf.push(((item.span().start as u64) << HASH_SHIFT) | (i as u64));
+            buf.push(((span_identity_key(item) as u64) << HASH_SHIFT) | (i as u64));
         }
     } else {
         let build = foldhash::quality::RandomState::default();

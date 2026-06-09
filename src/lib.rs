@@ -424,10 +424,10 @@ impl<'a> Formatting<'a> {
     /// reorder such items can silently reattach comments and numeric
     /// formatting to the wrong items.
     ///
-    /// With span identity enabled, each candidate pair's spans are
-    /// compared. When the spans match, the reference item's formatting
-    /// is projected onto the dest item. When they differ, the dest
-    /// item is treated as if
+    /// With span identity enabled, each candidate pair's source span
+    /// starts are compared. When the starts match, the reference item's
+    /// formatting is projected onto the dest item. When they differ,
+    /// the dest item is treated as if
     /// [`Item::set_ignore_source_formatting_recursively`] had been
     /// called on it: its subtree is emitted from scratch rather than
     /// pulling bytes from the reference text.
@@ -437,10 +437,10 @@ impl<'a> Formatting<'a> {
     /// suitable for round-trips through [`FromToml`] and [`ToToml`],
     /// which do not preserve spans.
     ///
-    /// The caller must ensure that every dest item carrying a
-    /// non-empty span points into the reference document. Items
-    /// replaced with fresh values, or otherwise stripped of their
-    /// original spans, are not projected even when their content
+    /// The caller must ensure that every dest item carrying a source
+    /// span start points into the reference document. Items replaced
+    /// with fresh values, or otherwise stripped of their original
+    /// source identity, are not projected even when their content
     /// matches the reference.
     ///
     /// # Examples
