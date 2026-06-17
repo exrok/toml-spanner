@@ -8,7 +8,7 @@ mod tests;
 ///
 /// Convertible to and from [`Range<u32>`](std::ops::Range) and
 /// [`Range<usize>`](std::ops::Range).
-#[derive(Copy, Clone, PartialEq, Eq, Default, Debug)]
+#[derive(Copy, Clone, PartialEq, Eq, Default, Debug, PartialOrd, Ord, Hash)]
 pub struct Span {
     /// Start byte offset (inclusive).
     pub start: u32,
