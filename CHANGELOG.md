@@ -9,7 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- next-header -->
 
-## [Unreleased]
+## [1.0.3] - 2026-06-17
+
+### Added
+
+- `PartialOrd`, `Ord`, and `Hash` implementations for `Span`.
+- `Document::compute_error_paths`, exposing TOML path resolution for errors when driving extraction
+  through `split` or `table_helper` rather than `to`.
+
+### Changed
+
+- Format preservation now retains the original span start when an item enters hint mode, so
+  span-identity reprojection can match reordered or hinted items.
+
+### Fixed
+
+- Error path computation is no longer quadratic in the number of errors.
 
 ## [1.0.2] - 2026-04-11
 
