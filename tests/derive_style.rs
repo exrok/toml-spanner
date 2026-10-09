@@ -147,6 +147,53 @@ fn style_with_vec_header() {
 }
 
 #[test]
+fn style_with_vec_header_preserved_from_missing_source_key() {
+    #[derive(Toml, Debug, PartialEq)]
+    #[toml(ToToml)]
+    struct WithServers {
+        #[toml(style = Header)]
+        servers: Vec<StyleInner>,
+        #[toml(style = Header)]
+        audio: StyleInner,
+    }
+
+    let arena = toml_spanner::Arena::new();
+    let doc = toml_spanner::parse("[audio]\na = 9\nb = 10\n", &arena).unwrap();
+    let v = WithServers {
+        servers: vec![StyleInner { a: 1, b: 2 }],
+        audio: StyleInner { a: 9, b: 10 },
+    };
+    let s = toml_spanner::Formatting::preserved_from(&doc)
+        .format(&v)
+        .unwrap();
+
+    assert!(s.contains("[[servers]]"), "got:\n{s}");
+    assert!(!s.contains("servers = ["), "got:\n{s}");
+}
+
+#[test]
+fn style_with_vec_header_preserved_from_empty_source_array() {
+    #[derive(Toml, Debug, PartialEq)]
+    #[toml(ToToml)]
+    struct WithServers {
+        #[toml(style = Header)]
+        servers: Vec<StyleInner>,
+    }
+
+    let arena = toml_spanner::Arena::new();
+    let doc = toml_spanner::parse("servers = []\n", &arena).unwrap();
+    let v = WithServers {
+        servers: vec![StyleInner { a: 1, b: 2 }],
+    };
+    let s = toml_spanner::Formatting::preserved_from(&doc)
+        .format(&v)
+        .unwrap();
+
+    assert!(s.contains("[[servers]]"), "got:\n{s}");
+    assert!(!s.contains("servers = ["), "got:\n{s}");
+}
+
+#[test]
 fn style_with_vec_inline() {
     #[derive(Toml, Debug, PartialEq)]
     #[toml(ToToml)]

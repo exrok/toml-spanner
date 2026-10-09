@@ -240,7 +240,16 @@ fn reproject_table<'de>(
             }
 
             if let Some(da) = dst_item.as_array_mut() {
-                if kind == ArrayStyle::Header && da.style() == ArrayStyle::Inline {
+                let dest_kind = da.style();
+                if kind == ArrayStyle::Inline
+                    && sa.is_empty()
+                    && dest_kind == ArrayStyle::Header
+                    && !da.is_empty()
+                {
+                    // An empty array has no array-of-tables spelling, so it
+                    // is emitted as `key = []` even when the destination schema
+                    // wants `[[key]]` once entries exist.
+                } else if kind == ArrayStyle::Header && dest_kind == ArrayStyle::Inline {
                     let mut has_non_frozen = false;
                     for e in da.iter() {
                         if let Some(t) = e.as_table() {
