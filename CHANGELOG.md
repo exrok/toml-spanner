@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- next-header -->
 
+## [Unreleased]
+
+### Added
+
+- `FromToml` implementation for `DateTime`.
+- `ToToml` implementation for unsized boxes such as `Box<str>` and `Box<[T]>`.
+
+### Fixed
+
+- Format preservation no longer forces an array of tables to stay inline when the source document
+  held an empty array (`key = []`) for a field styled as `Header`.
+
 ## [1.0.3] - 2026-06-17
 
 ### Added

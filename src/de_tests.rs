@@ -136,6 +136,29 @@ fn deser_floats() {
 }
 
 #[test]
+fn deser_datetimes() {
+    let arena = Arena::new();
+
+    // Offset date-time
+    let val: crate::DateTime = parse_val("v = 2026-01-04T12:30:45Z", &arena).unwrap();
+    assert_eq!(val, "2026-01-04T12:30:45Z".parse().unwrap());
+
+    // Local date
+    let val: crate::DateTime = parse_val("v = 2026-01-04", &arena).unwrap();
+    assert!(val.date().is_some());
+    assert!(val.time().is_none());
+
+    // Local time
+    let val: crate::DateTime = parse_val("v = 12:30:45", &arena).unwrap();
+    assert!(val.date().is_none());
+    assert!(val.time().is_some());
+
+    // Wrong type
+    let err = parse_val::<crate::DateTime>(r#"v = "not a datetime""#, &arena).unwrap_err();
+    assert!(matches!(err.kind(), crate::ErrorKind::Wanted { .. }));
+}
+
+#[test]
 fn deser_vecs() {
     let arena = Arena::new();
 

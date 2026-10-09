@@ -1256,6 +1256,15 @@ impl<'de> FromToml<'de> for f64 {
     }
 }
 
+impl<'de> FromToml<'de> for crate::DateTime {
+    fn from_toml(ctx: &mut Context<'de>, value: &Item<'de>) -> Result<Self, Failed> {
+        match value.as_datetime() {
+            Some(dt) => Ok(*dt),
+            None => Err(ctx.report_expected_but_found(&"a datetime", value)),
+        }
+    }
+}
+
 impl<'de, T> FromToml<'de> for Vec<T>
 where
     T: FromToml<'de>,

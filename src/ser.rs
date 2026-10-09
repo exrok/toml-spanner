@@ -152,7 +152,7 @@ impl ToToml for String {
     }
 }
 
-impl<T: ToToml> ToToml for Box<T> {
+impl<T: ToToml + ?Sized> ToToml for Box<T> {
     fn to_toml<'a>(&'a self, arena: &'a Arena) -> Result<Item<'a>, ToTomlError> {
         <T as ToToml>::to_toml(self, arena)
     }
@@ -468,5 +468,38 @@ impl From<&'static str> for ToTomlError {
         Self {
             message: Cow::Borrowed(message),
         }
+    }
+}
+
+#[cfg(all(test, feature = "to-toml"))]
+mod unsized_box_tests {
+    use super::*;
+
+    // Regression: `Box<str>` and `Box<[T]>` are unsized, so they were not
+    // covered by the `Box<T: Sized>` impl. Deserialize-only configs commonly
+    // store strings as `Box<str>` and lists as `Box<[T]>`, and schema default
+    // capture serializes such values through `ToToml`.
+    #[test]
+    fn box_str_serializes() {
+        let arena = Arena::new();
+        let value: Box<str> = "hello".into();
+        let item = value.to_toml(&arena).unwrap();
+        assert_eq!(item.as_str(), Some("hello"));
+    }
+
+    #[test]
+    fn box_slice_serializes() {
+        let arena = Arena::new();
+        let value: Box<[u32]> = vec![1u32, 2, 3].into_boxed_slice();
+        let item = value.to_toml(&arena).unwrap();
+        assert_eq!(item.as_array().map(|a| a.len()), Some(3));
+    }
+
+    #[test]
+    fn box_slice_of_box_str_serializes() {
+        let arena = Arena::new();
+        let value: Box<[Box<str>]> = vec!["a".into(), "b".into()].into_boxed_slice();
+        let item = value.to_toml(&arena).unwrap();
+        assert_eq!(item.as_array().map(|a| a.len()), Some(2));
     }
 }
